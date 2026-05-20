@@ -8,15 +8,21 @@ import {
 } from "./prompt";
 import { createAdminClient } from "@/lib/supabase/admin";
 
-let openaiClient: OpenAI | null = null;
+// 智谱 AI (BigModel) — OpenAI-compatible API
+let zhipuClient: OpenAI | null = null;
 
-function getOpenAIClient(): OpenAI {
-  if (!openaiClient) {
-    openaiClient = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
+function getZhipuClient(): OpenAI {
+  if (!zhipuClient) {
+    zhipuClient = new OpenAI({
+      apiKey: process.env.ZHIPU_API_KEY,
+      baseURL: process.env.ZHIPU_BASE_URL || "https://open.bigmodel.cn/api/paas/v4/",
     });
   }
-  return openaiClient;
+  return zhipuClient;
+}
+
+function getModel(): string {
+  return process.env.ZHIPU_MODEL || "GLM-4.7-FlashX";
 }
 
 export type SuggestionType =
@@ -85,10 +91,12 @@ export async function generateSuggestion(
       userPrompt = `${TICKET_SUMMARY_PROMPT}\n\n${context}`;
   }
 
-  // Call OpenAI
-  const openai = getOpenAIClient();
-  const completion = await openai.chat.completions.create({
-    model: "gpt-4o",
+  // Call 智谱 AI via OpenAI-compatible API
+  const client = getZhipuClient();
+  const model = getModel();
+
+  const completion = await client.chat.completions.create({
+    model: model,
     messages: [
       { role: "system", content: SYSTEM_PROMPT },
       { role: "user", content: userPrompt },
@@ -106,7 +114,7 @@ export async function generateSuggestion(
     .insert({
       ticket_id: ticketId,
       suggestion_type: suggestionType,
-      model_name: "gpt-4o",
+      model_name: model,
       output_text: outputText,
       confidence_level: confidence,
       created_by: userId,
@@ -123,6 +131,7 @@ export async function generateSuggestion(
     output_text: outputText,
     confidence_level: confidence,
     suggestion_type: suggestionType,
+    model_name: model,
   };
 }
 
