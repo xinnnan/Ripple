@@ -5,6 +5,14 @@ import { STATUS_LABELS, SEVERITY_LABELS } from "@/types/ticket";
 import { formatDate } from "@/lib/utils";
 import Link from "next/link";
 
+function buildFilterQuery(filters: { status?: string; severity?: string }) {
+  const params = new URLSearchParams();
+  if (filters.status) params.set("status", filters.status);
+  if (filters.severity) params.set("severity", filters.severity);
+  const qs = params.toString();
+  return qs ? `?${qs}` : "";
+}
+
 interface Props {
   searchParams: Promise<{ status?: string; severity?: string }>;
 }
@@ -41,7 +49,7 @@ export default async function TicketsPage({ searchParams }: Props) {
           </p>
         </div>
         <Link
-          href="/api/tickets?format=csv"
+          href={`/api/tickets/export${buildFilterQuery(filters)}`}
           className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-accent transition-colors"
         >
           Export CSV
