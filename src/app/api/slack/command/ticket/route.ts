@@ -57,7 +57,7 @@ export async function POST(request: NextRequest) {
     await client.chat.postEphemeral({
       channel: channel_id,
       user: user_id,
-      text: "📝 Ticket form opened. Fill in the details and click *Create Ticket* to submit, or *Cancel* to discard.",
+      text: "📝 Ticket form opened. Fill in the details and click *Create Ticket* to submit, or *Cancel* to discard.\n\n💡 _Tip: After creating the ticket, you can attach photos, videos, or log files by posting them in this channel._",
     });
 
     // Return empty 200 with no body — Slack won't show any message

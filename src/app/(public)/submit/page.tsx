@@ -69,42 +69,49 @@ export default function SubmitTicketPage() {
     setIsSubmitting(true);
 
     try {
-      // Upload files first if any
-      const attachmentPaths: string[] = [];
-      if (files.length > 0) {
-        for (const file of files) {
-          const formData = new FormData();
-          formData.append("file", file);
-          // TODO: Upload to Supabase Storage via /api/upload
-        }
-      }
-
-      // Create ticket
+      // Create ticket first
       const res = await fetch("/api/tickets", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...formData,
           source: "web",
-          attachments: attachmentPaths,
         }),
       });
 
       const data = await res.json();
 
-      if (res.ok) {
-        setResult({
-          success: true,
-          ticket_no: data.ticket_no,
-          message:
-            "Your ticket has been submitted. A confirmation email has been sent to you.",
-        });
-      } else {
+      if (!res.ok) {
         setResult({
           success: false,
           message: data.error || "Failed to submit ticket. Please try again.",
         });
+        return;
       }
+
+      // Upload files if any
+      if (files.length > 0 && data.id) {
+        for (const file of files) {
+          const uploadForm = new FormData();
+          uploadForm.append("file", file);
+          uploadForm.append("ticket_id", data.id);
+          uploadForm.append("visibility", "customer");
+          // Fire and forget — don't block the success state on upload failures
+          fetch("/api/upload", {
+            method: "POST",
+            body: uploadForm,
+          }).catch((err) =>
+            console.error("Failed to upload attachment:", err)
+          );
+        }
+      }
+
+      setResult({
+        success: true,
+        ticket_no: data.ticket_no,
+        message:
+          "Your ticket has been submitted. A confirmation email has been sent to you.",
+      });
     } catch {
       setResult({
         success: false,
