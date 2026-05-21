@@ -29,7 +29,7 @@ export default function HomePage() {
               href="/dashboard"
               className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
             >
-              Dashboard
+              Engineer Login
             </Link>
           </nav>
         </div>
@@ -46,18 +46,12 @@ export default function HomePage() {
             support requests, track issues, and communicate with our engineering
             team.
           </p>
-          <div className="mt-10 flex items-center justify-center gap-4">
+          <div className="mt-10 flex items-center justify-center">
             <Link
               href="/submit"
-              className="rounded-lg bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground shadow-sm hover:bg-primary/90 transition-colors"
+              className="rounded-lg bg-primary px-8 py-3.5 text-sm font-semibold text-primary-foreground shadow-sm hover:bg-primary/90 transition-colors"
             >
               Submit Support Request
-            </Link>
-            <Link
-              href="/dashboard"
-              className="rounded-lg border border-border px-6 py-3 text-sm font-semibold text-foreground shadow-sm hover:bg-accent transition-colors"
-            >
-              Internal Dashboard
             </Link>
           </div>
         </div>

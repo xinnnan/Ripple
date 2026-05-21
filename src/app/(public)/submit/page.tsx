@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
+import { useRouter } from "next/navigation";
 import {
   REQUEST_TYPE_LABELS,
   SEVERITY_LABELS,
@@ -26,6 +28,7 @@ interface FormData {
 }
 
 export default function SubmitTicketPage() {
+  const router = useRouter();
   const [formData, setFormData] = useState<FormData>({
     site_code: "",
     submitter_name: "",
@@ -163,16 +166,29 @@ export default function SubmitTicketPage() {
       {/* Header */}
       <header className="border-b border-border">
         <div className="mx-auto max-w-3xl px-6 py-4 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-3">
-            <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
-              <span className="text-primary-foreground font-bold text-sm">
-                R
+          <div className="flex items-center gap-4">
+            <Link
+              href="/"
+              className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" />
+              </svg>
+              Back
+            </Link>
+            <Link href="/" className="flex items-center gap-3">
+              <Image
+                src="/logo.png"
+                alt="Ripple"
+                width={28}
+                height={28}
+                className="rounded-lg"
+              />
+              <span className="text-lg font-semibold text-foreground">
+                Ripple
               </span>
-            </div>
-            <span className="text-lg font-semibold text-foreground">
-              Ripple
-            </span>
-          </Link>
+            </Link>
+          </div>
           <span className="text-sm text-muted-foreground">
             DropletAI Support
           </span>
@@ -433,14 +449,23 @@ export default function SubmitTicketPage() {
             </div>
           </div>
 
-          {/* Submit */}
-          <button
-            type="submit"
-            disabled={isSubmitting}
-            className="w-full rounded-lg bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground shadow-sm hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {isSubmitting ? "Submitting..." : "Submit Support Request"}
-          </button>
+          {/* Submit / Cancel */}
+          <div className="flex items-center gap-4">
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className="flex-1 rounded-lg bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground shadow-sm hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isSubmitting ? "Submitting..." : "Submit Support Request"}
+            </button>
+            <button
+              type="button"
+              onClick={() => router.back()}
+              className="rounded-lg border border-border px-6 py-3 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
         </form>
       </main>
 
