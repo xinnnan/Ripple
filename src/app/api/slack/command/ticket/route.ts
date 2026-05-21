@@ -53,8 +53,8 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // Return empty 200 — the modal is opened via the API call above
-    return NextResponse.json({});
+    // Return empty 200 with no body — Slack won't show any message
+    return new NextResponse(null, { status: 200 });
   } catch (error) {
     console.error("Slack /ticket command error:", error);
     return NextResponse.json(
