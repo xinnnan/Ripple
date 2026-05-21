@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
@@ -12,6 +12,7 @@ import {
   type Severity,
   type Impact,
 } from "@/types/ticket";
+import { createClient } from "@/lib/supabase/client";
 
 interface FormData {
   site_code: string;
@@ -25,6 +26,12 @@ interface FormData {
   asset_id: string;
   area: string;
   description: string;
+}
+
+interface UserSite {
+  site_id: string;
+  site_code: string;
+  site_name: string;
 }
 
 export default function SubmitTicketPage() {
@@ -49,6 +56,54 @@ export default function SubmitTicketPage() {
     ticket_no?: string;
     message?: string;
   } | null>(null);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [userSites, setUserSites] = useState<UserSite[]>([]);
+  const [selectedSiteId, setSelectedSiteId] = useState("");
+
+  useEffect(() => {
+    async function checkAuth() {
+      try {
+        const supabase = createClient();
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          setIsLoggedIn(true);
+          // Pre-fill user info
+          const { data: profile } = await supabase
+            .from("users")
+            .select("full_name, email, phone")
+            .eq("id", user.id)
+            .single();
+          if (profile) {
+            setFormData((prev) => ({
+              ...prev,
+              submitter_name: profile.full_name || "",
+              submitter_email: profile.email || "",
+              submitter_phone: profile.phone || "",
+            }));
+          }
+          // Load user's sites
+          const { data: memberships } = await supabase
+            .from("site_members")
+            .select("site_id, sites(id, site_code, site_name)")
+            .eq("user_id", user.id);
+          if (memberships) {
+            const sites = memberships.map((m) => {
+              const s = (Array.isArray(m.sites) ? m.sites[0] : m.sites) as unknown as { id: string; site_code: string; site_name: string };
+              return {
+                site_id: s.id,
+                site_code: s.site_code,
+                site_name: s.site_name,
+              };
+            });
+            setUserSites(sites);
+          }
+        }
+      } catch {
+        // Not logged in, continue as guest
+      }
+    }
+    checkAuth();
+  }, []);
 
   const handleChange = (
     e: React.ChangeEvent<
@@ -228,15 +283,37 @@ export default function SubmitTicketPage() {
                 <label className="block text-sm font-medium text-foreground mb-1">
                   Site Code *
                 </label>
-                <input
-                  type="text"
-                  name="site_code"
-                  value={formData.site_code}
-                  onChange={handleChange}
-                  required
-                  placeholder="e.g. ADI-INDY-001"
-                  className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-                />
+                {isLoggedIn && userSites.length > 0 ? (
+                  <select
+                    value={selectedSiteId}
+                    onChange={(e) => {
+                      setSelectedSiteId(e.target.value);
+                      const site = userSites.find((s) => s.site_id === e.target.value);
+                      if (site) {
+                        setFormData((prev) => ({ ...prev, site_code: site.site_code }));
+                      }
+                    }}
+                    required
+                    className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                  >
+                    <option value="">Select a site...</option>
+                    {userSites.map((site) => (
+                      <option key={site.site_id} value={site.site_id}>
+                        {site.site_name} ({site.site_code})
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    type="text"
+                    name="site_code"
+                    value={formData.site_code}
+                    onChange={handleChange}
+                    required
+                    placeholder="e.g. ADI-INDY-001"
+                    className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                  />
+                )}
               </div>
               <div>
                 <label className="block text-sm font-medium text-foreground mb-1">

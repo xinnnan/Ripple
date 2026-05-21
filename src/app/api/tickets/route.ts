@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { generateSecureToken, formatTicketNo } from "@/lib/utils";
+import { buildMasterTicketMessage } from "@/lib/slack/blocks/ticket-master";
+import { WebClient } from "@slack/web-api";
 import { z } from "zod";
 
 const createTicketSchema = z.object({
@@ -128,7 +130,36 @@ export async function POST(request: NextRequest) {
       actor_id: data.created_by || null,
     });
 
-    // TODO: Post to Slack site channel
+    // Post to Slack site channel
+    try {
+      const siteData = Array.isArray(ticket.site) ? ticket.site[0] : ticket.site;
+      const slackChannelId = (siteData as unknown as { slack_channel_id: string | null } | null)?.slack_channel_id;
+
+      if (slackChannelId) {
+        const slackToken = process.env.SLACK_BOT_TOKEN;
+        if (slackToken) {
+          const web = new WebClient(slackToken);
+          const customerData = Array.isArray(ticket.customer) ? ticket.customer[0] : ticket.customer;
+
+          const masterBlocks = buildMasterTicketMessage({
+            ...ticket,
+            customer: customerData as { id: string; name: string } | undefined,
+            site: siteData as { id: string; site_name: string; site_code: string } | undefined,
+            owner: undefined,
+            creator: undefined,
+          } as import("@/types/ticket").Ticket);
+
+          await web.chat.postMessage({
+            channel: slackChannelId,
+            text: `New ticket: [${ticket.ticket_no}] ${ticket.title}`,
+            blocks: masterBlocks,
+          });
+        }
+      }
+    } catch (slackError) {
+      console.error("Failed to post ticket to Slack channel (non-fatal):", slackError);
+    }
+
     // TODO: Send confirmation email
 
     return NextResponse.json(
