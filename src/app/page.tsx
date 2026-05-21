@@ -42,9 +42,8 @@ export default function HomePage() {
             Support Portal
           </h1>
           <p className="mt-6 text-lg leading-8 text-muted-foreground">
-            DropletAI Services support system for industrial automation. Submit
-            support requests, track issues, and communicate with our engineering
-            team.
+            Submit support requests, track issues, and communicate with our
+            engineering team.
           </p>
           <div className="mt-10 flex items-center justify-center">
             <Link
