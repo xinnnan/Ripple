@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { WebClient } from "@slack/web-api";
 
 export async function POST(request: NextRequest) {
   try {
@@ -6,6 +7,7 @@ export async function POST(request: NextRequest) {
     const payload = JSON.parse(formData.get("payload") as string);
 
     const { type, actions, trigger_id, user, channel, message } = payload;
+    const client = new WebClient(process.env.SLACK_BOT_TOKEN);
 
     console.log(
       `Slack interactive: type=${type}, user=${user?.id}, channel=${channel?.id}`
@@ -55,10 +57,20 @@ export async function POST(request: NextRequest) {
         const callbackId = view.callback_id;
 
         switch (callbackId) {
-          case "ticket_form_submit":
+          case "ticket_form_submit": {
             // TODO: Create ticket from modal data
             console.log("Ticket form submitted");
+            // Send ephemeral confirmation
+            const metadata = JSON.parse(view.private_metadata || "{}");
+            if (metadata.channel_id && user?.id) {
+              await client.chat.postEphemeral({
+                channel: metadata.channel_id,
+                user: user.id,
+                text: "✅ Ticket submitted successfully! Our team will review it shortly. You'll receive updates in this channel.",
+              }).catch(() => {});
+            }
             break;
+          }
 
           case "resolve_form_submit":
             // TODO: Resolve ticket with modal data
@@ -67,6 +79,22 @@ export async function POST(request: NextRequest) {
 
           default:
             console.log(`Unknown view submission: ${callbackId}`);
+        }
+        break;
+      }
+
+      case "view_closed": {
+        // User clicked Cancel on a modal
+        const view = payload.view;
+        const callbackId = view?.callback_id;
+        const metadata = JSON.parse(view?.private_metadata || "{}");
+
+        if (callbackId === "ticket_form_submit" && metadata.channel_id && user?.id) {
+          await client.chat.postEphemeral({
+            channel: metadata.channel_id,
+            user: user.id,
+            text: "🚫 Ticket creation cancelled.",
+          }).catch(() => {});
         }
         break;
       }

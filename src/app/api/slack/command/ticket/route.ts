@@ -53,6 +53,13 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    // Send an ephemeral hint to the user
+    await client.chat.postEphemeral({
+      channel: channel_id,
+      user: user_id,
+      text: "📝 Ticket form opened. Fill in the details and click *Create Ticket* to submit, or *Cancel* to discard.",
+    });
+
     // Return empty 200 with no body — Slack won't show any message
     return new NextResponse(null, { status: 200 });
   } catch (error) {
