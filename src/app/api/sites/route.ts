@@ -11,6 +11,13 @@ const createSiteSchema = z.object({
   slack_channel_id: z.string().optional(),
   default_owner_id: z.string().uuid().optional(),
   status: z.enum(["active", "inactive", "commissioning", "decommissioned"]).default("active"),
+  project_status: z.enum([
+    "pre_signoff",
+    "in_warranty",
+    "full_coverage",
+    "essential_coverage",
+    "out_of_service",
+  ]).default("pre_signoff"),
 });
 
 export async function GET(request: NextRequest) {

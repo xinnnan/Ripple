@@ -7,6 +7,7 @@ import {
   PROJECT_STATUS_LABELS,
   PROJECT_STATUS_COLORS,
 } from "@/types/ticket";
+import { CreateSiteForm } from "./create-site-form";
 
 export const dynamic = "force-dynamic";
 
@@ -55,6 +56,12 @@ export default async function AdminSitesPage() {
     .order("site_name")
     .limit(200);
 
+  // Get all customers for create form
+  const { data: customers } = await admin
+    .from("customers")
+    .select("id, name")
+    .order("name");
+
   interface SiteRow {
     id: string;
     site_name: string;
@@ -77,17 +84,29 @@ export default async function AdminSitesPage() {
             Site Management
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Manage sites, project status, and Slack channel linking
+            Manage site codes, project status, and Slack channel linking
           </p>
         </div>
       </div>
 
+      {/* Create Site Form */}
+      <CreateSiteForm customers={customers || []} />
+
+      {/* Sites Table */}
       <div className="rounded-xl border border-border overflow-hidden">
+        <div className="p-4 border-b border-border bg-muted/50">
+          <h2 className="text-base font-semibold text-foreground">
+            All Sites ({typedSites.length})
+          </h2>
+        </div>
         <table className="w-full">
           <thead>
-            <tr className="border-b border-border bg-muted/50">
+            <tr className="border-b border-border bg-muted/30">
               <th className="p-3 text-left text-xs font-medium text-muted-foreground">
-                Site
+                Site Code
+              </th>
+              <th className="p-3 text-left text-xs font-medium text-muted-foreground">
+                Site Name
               </th>
               <th className="p-3 text-left text-xs font-medium text-muted-foreground">
                 Customer
@@ -110,10 +129,10 @@ export default async function AdminSitesPage() {
             {typedSites.length === 0 ? (
               <tr>
                 <td
-                  colSpan={6}
+                  colSpan={7}
                   className="p-6 text-center text-sm text-muted-foreground"
                 >
-                  No sites found. Add sites through the database or API.
+                  No sites found. Use the form above to create your first site.
                 </td>
               </tr>
             ) : (
@@ -134,14 +153,14 @@ export default async function AdminSitesPage() {
                 return (
                   <tr key={site.id} className="hover:bg-muted/30">
                     <td className="p-3">
-                      <div>
-                        <p className="text-sm font-medium text-foreground">
-                          {site.site_name}
-                        </p>
-                        <p className="text-xs text-muted-foreground font-mono">
-                          {site.site_code}
-                        </p>
-                      </div>
+                      <span className="inline-flex items-center rounded-md bg-primary/10 px-2 py-1 text-xs font-mono font-semibold text-primary">
+                        {site.site_code}
+                      </span>
+                    </td>
+                    <td className="p-3">
+                      <span className="text-sm font-medium text-foreground">
+                        {site.site_name}
+                      </span>
                     </td>
                     <td className="p-3">
                       <span className="text-sm text-foreground">

@@ -59,6 +59,9 @@ export default function SubmitTicketPage() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [userSites, setUserSites] = useState<UserSite[]>([]);
   const [selectedSiteId, setSelectedSiteId] = useState("");
+  const [siteCodeValid, setSiteCodeValid] = useState<boolean | null>(null);
+  const [siteCodeValidating, setSiteCodeValidating] = useState(false);
+  const [validatedSiteName, setValidatedSiteName] = useState("");
 
   useEffect(() => {
     async function checkAuth() {
@@ -113,6 +116,39 @@ export default function SubmitTicketPage() {
     setFormData((prev) => ({ ...prev, [e.target.name]: e.target.value }));
   };
 
+  // Debounced site code validation for non-logged-in users
+  useEffect(() => {
+    if (isLoggedIn || !formData.site_code) {
+      setSiteCodeValid(null);
+      setValidatedSiteName("");
+      return;
+    }
+
+    const code = formData.site_code.trim();
+    if (code.length < 3) {
+      setSiteCodeValid(null);
+      setValidatedSiteName("");
+      return;
+    }
+
+    setSiteCodeValidating(true);
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/sites/validate?site_code=${encodeURIComponent(code)}`);
+        const data = await res.json();
+        setSiteCodeValid(data.valid);
+        setValidatedSiteName(data.valid ? data.site?.site_name || "" : "");
+      } catch {
+        setSiteCodeValid(false);
+        setValidatedSiteName("");
+      } finally {
+        setSiteCodeValidating(false);
+      }
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [formData.site_code, isLoggedIn]);
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       setFiles(Array.from(e.target.files));
@@ -121,6 +157,26 @@ export default function SubmitTicketPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Validate site code for non-logged-in users
+    if (!isLoggedIn && siteCodeValid === false) {
+      return;
+    }
+    if (!isLoggedIn && siteCodeValid === null && formData.site_code.trim().length >= 3) {
+      // Try one more validation
+      try {
+        const valRes = await fetch(`/api/sites/validate?site_code=${encodeURIComponent(formData.site_code.trim())}`);
+        const valData = await valRes.json();
+        if (!valData.valid) {
+          setSiteCodeValid(false);
+          return;
+        }
+      } catch {
+        setSiteCodeValid(false);
+        return;
+      }
+    }
+
     setIsSubmitting(true);
 
     try {
@@ -304,15 +360,38 @@ export default function SubmitTicketPage() {
                     ))}
                   </select>
                 ) : (
-                  <input
-                    type="text"
-                    name="site_code"
-                    value={formData.site_code}
-                    onChange={handleChange}
-                    required
-                    placeholder="e.g. ADI-INDY-001"
-                    className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-                  />
+                  <div>
+                    <input
+                      type="text"
+                      name="site_code"
+                      value={formData.site_code}
+                      onChange={handleChange}
+                      required
+                      placeholder="e.g. ADI-INDY-001"
+                      className={`w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 ${
+                        siteCodeValid === true
+                          ? "border-green-400 focus:ring-green-200"
+                          : siteCodeValid === false
+                          ? "border-red-400 focus:ring-red-200"
+                          : "border-border focus:ring-primary"
+                      }`}
+                    />
+                    {siteCodeValidating && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Checking...
+                      </p>
+                    )}
+                    {siteCodeValid === true && validatedSiteName && (
+                      <p className="text-xs text-green-600 mt-1">
+                        ✓ {validatedSiteName}
+                      </p>
+                    )}
+                    {siteCodeValid === false && formData.site_code.length >= 3 && (
+                      <p className="text-xs text-red-600 mt-1">
+                        Site code not found. Please check and try again.
+                      </p>
+                    )}
+                  </div>
                 )}
               </div>
               <div>
