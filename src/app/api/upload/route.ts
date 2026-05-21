@@ -13,10 +13,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 });
     }
 
-    // Validate file size (10MB max)
-    if (file.size > 10 * 1024 * 1024) {
+    // Validate file size (50MB max)
+    if (file.size > 50 * 1024 * 1024) {
       return NextResponse.json(
-        { error: "File size must be less than 10MB" },
+        { error: "File size must be less than 50MB" },
         { status: 400 }
       );
     }

@@ -441,7 +441,7 @@ export default function SubmitTicketPage() {
                 </span>{" "}
                 or drag and drop
                 <p className="text-xs mt-1">
-                  Photos, logs, screenshots (max 10MB each)
+                  Photos, videos, logs, documents (max 50MB each)
                 </p>
               </label>
               {files.length > 0 && (
