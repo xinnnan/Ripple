@@ -5,6 +5,10 @@ export const metadata: Metadata = {
   title: "Ripple — DropletAI Support",
   description:
     "DropletAI Services support portal. Submit and track support requests for your automation systems.",
+  icons: {
+    icon: "/favicon.png",
+    apple: "/apple-icon.png",
+  },
 };
 
 export default function RootLayout({

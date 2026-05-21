@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 
 export default function HomePage() {
   return (
@@ -7,9 +8,13 @@ export default function HomePage() {
       <header className="border-b border-border">
         <div className="mx-auto max-w-7xl px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
-              <span className="text-primary-foreground font-bold text-sm">R</span>
-            </div>
+            <Image
+              src="/logo.png"
+              alt="Ripple"
+              width={32}
+              height={32}
+              className="rounded-lg"
+            />
             <span className="text-lg font-semibold text-foreground">Ripple</span>
             <span className="text-sm text-muted-foreground">by DropletAI</span>
           </div>
