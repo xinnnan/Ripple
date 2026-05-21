@@ -98,6 +98,102 @@ export default function HomePage() {
             </p>
           </div>
         </div>
+
+        {/* Info Section */}
+        <div className="mt-24 space-y-12">
+          {/* What is Ripple */}
+          <div className="rounded-2xl border border-border bg-muted/30 p-8 sm:p-10">
+            <div className="flex items-start gap-5">
+              <div className="h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+                <Image
+                  src="/logo.png"
+                  alt="Ripple"
+                  width={28}
+                  height={28}
+                  className="rounded-lg"
+                />
+              </div>
+              <div>
+                <h2 className="text-xl font-bold text-foreground mb-3">
+                  What is Ripple?
+                </h2>
+                <p className="text-muted-foreground leading-relaxed">
+                  Ripple is DropletAI&apos;s dedicated service and dispatch tool. It
+                  connects our clients with field operations, software and hardware
+                  engineering teams to efficiently resolve faults, software bugs,
+                  requests, and track routine maintenance for your automation
+                  deployments.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-8 sm:grid-cols-2">
+            {/* Slack Channel */}
+            <div className="rounded-2xl border border-border p-8">
+              <div className="h-10 w-10 rounded-lg bg-purple-50 flex items-center justify-center mb-4">
+                <svg className="h-5 w-5 text-purple-600" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M5.042 15.165a2.528 2.528 0 0 1-2.52 2.523A2.528 2.528 0 0 1 0 15.165a2.527 2.527 0 0 1 2.522-2.52h2.52v2.52zm1.271 0a2.527 2.527 0 0 1 2.521-2.52 2.527 2.527 0 0 1 2.521 2.52v6.313A2.528 2.528 0 0 1 8.834 24a2.528 2.528 0 0 1-2.521-2.522v-6.313zM8.834 5.042a2.528 2.528 0 0 1-2.521-2.52A2.528 2.528 0 0 1 8.834 0a2.528 2.528 0 0 1 2.521 2.522v2.52H8.834zm0 1.271a2.528 2.528 0 0 1 2.521 2.521 2.528 2.528 0 0 1-2.521 2.521H2.522A2.528 2.528 0 0 1 0 8.834a2.528 2.528 0 0 1 2.522-2.521h6.312zm10.124 2.521a2.528 2.528 0 0 1 2.521-2.521A2.528 2.528 0 0 1 24 8.834a2.528 2.528 0 0 1-2.521 2.521h-2.521V8.834zm-1.27 0a2.528 2.528 0 0 1-2.523 2.521 2.527 2.527 0 0 1-2.52-2.521V2.522A2.527 2.527 0 0 1 15.165 0a2.528 2.528 0 0 1 2.523 2.522v6.312zm-2.523 10.122a2.528 2.528 0 0 1 2.523 2.522A2.528 2.528 0 0 1 15.165 24a2.527 2.527 0 0 1-2.52-2.522v-2.522h2.52zm0-1.27a2.527 2.527 0 0 1-2.52-2.523 2.527 2.527 0 0 1 2.52-2.52h6.315A2.528 2.528 0 0 1 24 15.163a2.528 2.528 0 0 1-2.521 2.523h-6.315z" />
+                </svg>
+              </div>
+              <h3 className="text-lg font-semibold text-foreground mb-3">
+                Slack Connect Channel
+              </h3>
+              <p className="text-sm text-muted-foreground leading-relaxed mb-4">
+                Create and manage tickets without leaving your workspace using the{" "}
+                <code className="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">
+                  /ticket
+                </code>{" "}
+                command. Get real-time updates, communicate with engineers, and
+                resolve issues — all inside Slack.
+              </p>
+              <div className="rounded-lg bg-muted/50 p-4">
+                <p className="text-xs font-medium text-foreground mb-1">
+                  How to join
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Contact your DropletAI Account Manager to set up a dedicated
+                  Slack Connect channel between our organizations.
+                </p>
+              </div>
+            </div>
+
+            {/* Site Code */}
+            <div className="rounded-2xl border border-border p-8">
+              <div className="h-10 w-10 rounded-lg bg-amber-50 flex items-center justify-center mb-4">
+                <svg className="h-5 w-5 text-amber-600" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1 1 15 0Z" />
+                </svg>
+              </div>
+              <h3 className="text-lg font-semibold text-foreground mb-3">
+                Finding Your Site Code
+              </h3>
+              <p className="text-sm text-muted-foreground leading-relaxed mb-4">
+                Every automation deployment is assigned a unique Site Code (e.g.,{" "}
+                <code className="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">
+                  XYZ-ABC-001
+                </code>
+                ). This code is required to submit a ticket so our engineers know
+                exactly which facility needs support.
+              </p>
+              <div className="rounded-lg bg-muted/50 p-4">
+                <p className="text-xs font-medium text-foreground mb-1">
+                  Don&apos;t know your Site Code?
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Ask your Account Manager or email{" "}
+                  <a
+                    href="mailto:support@dropletai.services"
+                    className="text-primary hover:underline"
+                  >
+                    support@dropletai.services
+                  </a>
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
       </main>
 
       {/* Footer */}
