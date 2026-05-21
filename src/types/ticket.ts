@@ -115,6 +115,29 @@ export interface Customer {
   created_at: string;
 }
 
+export type ProjectStatus =
+  | "pre_signoff"
+  | "in_warranty"
+  | "full_coverage"
+  | "essential_coverage"
+  | "out_of_service";
+
+export const PROJECT_STATUS_LABELS: Record<ProjectStatus, string> = {
+  pre_signoff: "Pre-Signoff",
+  in_warranty: "In Warranty",
+  full_coverage: "Full Coverage",
+  essential_coverage: "Essential Coverage",
+  out_of_service: "Out of Service",
+};
+
+export const PROJECT_STATUS_COLORS: Record<ProjectStatus, string> = {
+  pre_signoff: "bg-yellow-100 text-yellow-800",
+  in_warranty: "bg-green-100 text-green-800",
+  full_coverage: "bg-blue-100 text-blue-800",
+  essential_coverage: "bg-purple-100 text-purple-800",
+  out_of_service: "bg-gray-100 text-gray-800",
+};
+
 export interface Site {
   id: string;
   customer_id: string;
@@ -125,6 +148,7 @@ export interface Site {
   slack_channel_id: string | null;
   default_owner_id: string | null;
   status: string;
+  project_status: ProjectStatus;
   created_at: string;
   customer?: Customer;
 }

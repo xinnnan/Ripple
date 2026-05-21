@@ -1,28 +1,75 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createServerClient } from "@supabase/ssr";
 
 // Routes that require authentication
-const PROTECTED_ROUTES = ["/dashboard", "/tickets", "/customers", "/settings"];
+const PROTECTED_ROUTES = [
+  "/dashboard",
+  "/tickets",
+  "/customers",
+  "/settings",
+  "/sites",
+  "/profile",
+  "/admin",
+];
 
-export function middleware(request: NextRequest) {
+// Routes that should redirect to dashboard if already logged in
+const AUTH_ROUTES = ["/login", "/signup"];
+
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Check if the route is protected
+  let supabaseResponse = NextResponse.next({ request });
+
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll();
+        },
+        setAll(cookiesToSet: { name: string; value: string; options: Record<string, unknown> }[]) {
+          cookiesToSet.forEach(({ name, value }) =>
+            request.cookies.set(name, value)
+          );
+          supabaseResponse = NextResponse.next({ request });
+          cookiesToSet.forEach(({ name, value, options }) =>
+            supabaseResponse.cookies.set(name, value, options)
+          );
+        },
+      },
+    }
+  );
+
+  // Refresh the session
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
   const isProtected = PROTECTED_ROUTES.some(
     (route) => pathname === route || pathname.startsWith(`${route}/`)
   );
 
-  if (isProtected) {
-    // TODO: Check for valid Supabase Auth session
-    // For MVP, we allow access without auth (will be added with Supabase Auth)
-    // In production, redirect to login if no valid session
+  const isAuthRoute = AUTH_ROUTES.some(
+    (route) => pathname === route || pathname.startsWith(`${route}/`)
+  );
 
-    // const sessionToken = request.cookies.get("sb-access-token")?.value;
-    // if (!sessionToken) {
-    //   return NextResponse.redirect(new URL("/login", request.url));
-    // }
+  // Redirect to login if not authenticated and trying to access protected route
+  if (isProtected && !user) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/login";
+    url.searchParams.set("next", pathname);
+    return NextResponse.redirect(url);
   }
 
-  return NextResponse.next();
+  // Redirect to dashboard if already authenticated and trying to access auth routes
+  if (isAuthRoute && user) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/dashboard";
+    return NextResponse.redirect(url);
+  }
+
+  return supabaseResponse;
 }
 
 export const config = {
@@ -31,5 +78,10 @@ export const config = {
     "/tickets/:path*",
     "/customers/:path*",
     "/settings/:path*",
+    "/sites/:path*",
+    "/profile/:path*",
+    "/admin/:path*",
+    "/login",
+    "/signup",
   ],
 };

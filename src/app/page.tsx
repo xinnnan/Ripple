@@ -26,7 +26,7 @@ export default function HomePage() {
               Submit Ticket
             </Link>
             <Link
-              href="/dashboard"
+              href="/login"
               className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
             >
               Engineer Login
