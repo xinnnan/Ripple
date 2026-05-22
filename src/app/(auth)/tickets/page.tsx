@@ -48,12 +48,20 @@ export default async function TicketsPage({ searchParams }: Props) {
             All support tickets across customers and sites
           </p>
         </div>
-        <Link
-          href={`/api/tickets/export${buildFilterQuery(filters)}`}
-          className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-accent transition-colors"
-        >
-          Export CSV
-        </Link>
+        <div className="flex gap-3">
+          <Link
+            href="/submit"
+            className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+          >
+            + Submit Ticket
+          </Link>
+          <Link
+            href={`/api/tickets/export${buildFilterQuery(filters)}`}
+            className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-accent transition-colors"
+          >
+            Export CSV
+          </Link>
+        </div>
       </div>
 
       {/* Filters */}

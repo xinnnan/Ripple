@@ -2,6 +2,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { STATUS_LABELS, SEVERITY_LABELS, REQUEST_TYPE_LABELS, IMPACT_LABELS } from "@/types/ticket";
 import { formatDate } from "@/lib/utils";
 import Link from "next/link";
+import { AIAssistButton } from "./ai-assist-button";
 
 interface Props {
   params: Promise<{ ticketId: string }>;
@@ -87,11 +88,7 @@ export default async function TicketDetailPage({ params }: Props) {
           </div>
           <h1 className="text-2xl font-bold text-foreground">{ticket.title}</h1>
         </div>
-        <div className="flex gap-2">
-          <button className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-accent">
-            Ask Ripple Assist
-          </button>
-        </div>
+        <AIAssistButton ticketId={ticket.id} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">

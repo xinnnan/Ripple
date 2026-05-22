@@ -43,7 +43,7 @@ export default function SettingsPage() {
                 AI Provider
               </label>
               <div className="rounded-lg border border-border px-3 py-2 text-sm text-muted-foreground bg-muted">
-                智谱 AI (BigModel)
+                MiniMax AI
               </div>
             </div>
             <div>
@@ -51,7 +51,7 @@ export default function SettingsPage() {
                 Default Model
               </label>
               <div className="rounded-lg border border-border px-3 py-2 text-sm text-muted-foreground bg-muted">
-                GLM-4.7-FlashX (configured in .env.local)
+                M2.7-highspeed (configured in .env.local)
               </div>
             </div>
           </div>

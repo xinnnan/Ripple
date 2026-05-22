@@ -8,21 +8,21 @@ import {
 } from "./prompt";
 import { createAdminClient } from "@/lib/supabase/admin";
 
-// 智谱 AI (BigModel) — OpenAI-compatible API
-let zhipuClient: OpenAI | null = null;
+// MiniMax AI — OpenAI-compatible API
+let minimaxClient: OpenAI | null = null;
 
-function getZhipuClient(): OpenAI {
-  if (!zhipuClient) {
-    zhipuClient = new OpenAI({
-      apiKey: process.env.ZHIPU_API_KEY,
-      baseURL: process.env.ZHIPU_BASE_URL || "https://open.bigmodel.cn/api/paas/v4/",
+function getMiniMaxClient(): OpenAI {
+  if (!minimaxClient) {
+    minimaxClient = new OpenAI({
+      apiKey: process.env.MINIMAX_API_KEY,
+      baseURL: process.env.MINIMAX_BASE_URL || "https://api.minimax.chat/v1/",
     });
   }
-  return zhipuClient;
+  return minimaxClient;
 }
 
 function getModel(): string {
-  return process.env.ZHIPU_MODEL || "GLM-4.7-FlashX";
+  return process.env.MINIMAX_MODEL || "M2.7-highspeed";
 }
 
 export type SuggestionType =
@@ -91,8 +91,8 @@ export async function generateSuggestion(
       userPrompt = `${TICKET_SUMMARY_PROMPT}\n\n${context}`;
   }
 
-  // Call 智谱 AI via OpenAI-compatible API
-  const client = getZhipuClient();
+  // Call MiniMax AI via OpenAI-compatible API
+  const client = getMiniMaxClient();
   const model = getModel();
 
   const completion = await client.chat.completions.create({
