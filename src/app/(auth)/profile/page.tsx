@@ -38,6 +38,15 @@ export default function ProfilePage() {
     text: string;
   } | null>(null);
 
+  // Password change state
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [passwordMessage, setPasswordMessage] = useState<{
+    type: "success" | "error";
+    text: string;
+  } | null>(null);
+
   useEffect(() => {
     loadProfile();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -81,6 +90,44 @@ export default function ProfilePage() {
       setMessage({ type: "success", text: "Profile updated successfully" });
     }
     setSaving(false);
+  }
+
+  async function handleChangePassword() {
+    setPasswordMessage(null);
+
+    if (!newPassword || newPassword.length < 6) {
+      setPasswordMessage({
+        type: "error",
+        text: "Password must be at least 6 characters",
+      });
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setPasswordMessage({
+        type: "error",
+        text: "Passwords do not match",
+      });
+      return;
+    }
+
+    setChangingPassword(true);
+
+    const { error } = await supabase.auth.updateUser({
+      password: newPassword,
+    });
+
+    if (error) {
+      setPasswordMessage({ type: "error", text: error.message });
+    } else {
+      setPasswordMessage({
+        type: "success",
+        text: "Password updated successfully",
+      });
+      setNewPassword("");
+      setConfirmPassword("");
+    }
+    setChangingPassword(false);
   }
 
   if (loading) {
@@ -257,36 +304,56 @@ export default function ProfilePage() {
           </div>
         </div>
 
-        {/* Security */}
+        {/* Change Password */}
         <div className="rounded-xl border border-border p-6">
           <h2 className="text-base font-semibold text-foreground mb-4">
-            Security
+            Change Password
           </h2>
-          <div className="space-y-3">
-            <div className="flex items-center justify-between py-2">
-              <div>
-                <p className="text-sm font-medium text-foreground">Password</p>
-                <p className="text-xs text-muted-foreground">
-                  Last changed: Unknown
-                </p>
-              </div>
-              <button
-                onClick={async () => {
-                  const { error } = await supabase.auth.updateUser({
-                    password: undefined,
-                  });
-                  if (!error) {
-                    setMessage({
-                      type: "success",
-                      text: "Password reset email sent",
-                    });
-                  }
-                }}
-                className="text-sm font-medium text-primary hover:text-primary/80 transition-colors"
-              >
-                Change Password
-              </button>
+
+          {passwordMessage && (
+            <div
+              className={`mb-4 rounded-lg px-4 py-3 text-sm ${
+                passwordMessage.type === "success"
+                  ? "bg-green-50 text-green-800 border border-green-200"
+                  : "bg-red-50 text-red-800 border border-red-200"
+              }`}
+            >
+              {passwordMessage.text}
             </div>
+          )}
+
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-1">
+                New Password
+              </label>
+              <input
+                type="password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="At least 6 characters"
+                className="w-full rounded-lg border border-border px-3 py-2 text-sm text-foreground bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-1">
+                Confirm New Password
+              </label>
+              <input
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="Repeat new password"
+                className="w-full rounded-lg border border-border px-3 py-2 text-sm text-foreground bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+              />
+            </div>
+            <button
+              onClick={handleChangePassword}
+              disabled={changingPassword}
+              className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
+            >
+              {changingPassword ? "Updating..." : "Update Password"}
+            </button>
           </div>
         </div>
       </div>

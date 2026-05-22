@@ -5,7 +5,6 @@ import { createServerClient } from "@supabase/ssr";
 const PROTECTED_ROUTES = [
   "/dashboard",
   "/tickets",
-  "/customers",
   "/settings",
   "/sites",
   "/profile",
@@ -76,7 +75,6 @@ export const config = {
   matcher: [
     "/dashboard/:path*",
     "/tickets/:path*",
-    "/customers/:path*",
     "/settings/:path*",
     "/sites/:path*",
     "/profile/:path*",
