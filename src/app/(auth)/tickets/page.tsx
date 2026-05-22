@@ -4,6 +4,7 @@ export const dynamic = "force-dynamic";
 import { STATUS_LABELS, SEVERITY_LABELS } from "@/types/ticket";
 import { formatDate } from "@/lib/utils";
 import Link from "next/link";
+import { TicketsPageHeader } from "./tickets-page-header";
 
 function buildFilterQuery(filters: { status?: string; severity?: string }) {
   const params = new URLSearchParams();
@@ -41,28 +42,7 @@ export default async function TicketsPage({ searchParams }: Props) {
 
   return (
     <div className="p-8">
-      <div className="mb-8 flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Tickets</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            All support tickets across customers and sites
-          </p>
-        </div>
-        <div className="flex gap-3">
-          <Link
-            href="/submit"
-            className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
-          >
-            + Submit Ticket
-          </Link>
-          <Link
-            href={`/api/tickets/export${buildFilterQuery(filters)}`}
-            className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-accent transition-colors"
-          >
-            Export CSV
-          </Link>
-        </div>
-      </div>
+      <TicketsPageHeader filterQuery={buildFilterQuery(filters)} />
 
       {/* Filters */}
       <div className="flex gap-2 mb-6">

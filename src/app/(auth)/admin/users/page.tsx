@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import type { UserRole } from "@/types/ticket";
+import { CreateUserForm } from "./create-user-form";
 
 export const dynamic = "force-dynamic";
 
@@ -71,13 +72,9 @@ export default async function AdminUsersPage() {
             Manage user accounts and site access
           </p>
         </div>
-        <Link
-          href="/admin/users/new"
-          className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
-        >
-          Invite User
-        </Link>
       </div>
+
+      <CreateUserForm />
 
       <div className="rounded-xl border border-border overflow-hidden">
         <table className="w-full">
