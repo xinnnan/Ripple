@@ -57,16 +57,6 @@ export default function AuthLayout({
             </svg>
             My Sites
           </Link>
-          <Link
-            href="/submit"
-            className="flex items-center gap-3 rounded-lg bg-primary/10 px-3 py-2 text-sm font-medium text-primary hover:bg-primary/20 transition-colors"
-          >
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v6m3-3H9m12 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
-            </svg>
-            Submit Ticket
-          </Link>
-
           {/* Admin Section */}
           <div className="pt-4 mt-4 border-t border-border">
             <p className="px-3 mb-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
