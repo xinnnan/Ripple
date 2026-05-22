@@ -12,10 +12,7 @@ import { CreateSiteForm } from "../sites/create-site-form";
 
 export const dynamic = "force-dynamic";
 
-const INTERNAL_ROLES: UserRole[] = [
-  "internal_admin",
-  "internal_service_manager",
-];
+const ADMIN_ROLES: UserRole[] = ["internal_admin"];
 
 export default async function CustomersSitesPage() {
   const supabase = await createClient();
@@ -33,7 +30,7 @@ export default async function CustomersSitesPage() {
     .single();
 
   const role = userProfile?.role as UserRole | undefined;
-  if (!role || !INTERNAL_ROLES.includes(role)) {
+  if (!role || !ADMIN_ROLES.includes(role)) {
     redirect("/dashboard");
   }
 
@@ -51,21 +48,24 @@ export default async function CustomersSitesPage() {
   ]);
 
   const customers = customersRes.data || [];
-  const sites = sitesRes.data || [];
+  const allSites = sitesRes.data || [];
+
+  // Build customer options for the CreateSiteForm
+  const customerOptions = customers.map((c: { id: string; name: string }) => ({
+    id: c.id,
+    name: c.name,
+  }));
 
   return (
     <div className="p-8">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-foreground">Customers & Sites</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Manage customer organizations and their sites
-        </p>
-      </div>
-
-      {/* Create Forms */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-8">
+      <div className="mb-6 flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-foreground">Customers & Sites</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Manage customer organizations and their sites
+          </p>
+        </div>
         <CreateCustomerForm />
-        <CreateSiteForm customers={customers.map((c: { id: string; name: string }) => ({ id: c.id, name: c.name }))} />
       </div>
 
       {/* Customers with their Sites */}
@@ -84,13 +84,6 @@ export default async function CustomersSitesPage() {
             status: string;
             sites: { id: string; site_name: string; site_code: string; project_status: string }[] | null;
           }) => {
-            const customerSites = sites.filter(
-              (s: { customer: { id: string }[] | { id: string } | null }) => {
-                const cData = Array.isArray(s.customer) ? s.customer[0] : s.customer;
-                return (cData as unknown as { id: string })?.id === customer.id;
-              }
-            );
-
             return (
               <div key={customer.id} className="rounded-xl border border-border overflow-hidden">
                 {/* Customer Header */}
@@ -125,6 +118,12 @@ export default async function CustomersSitesPage() {
                     >
                       {customer.status}
                     </span>
+                    <CreateSiteForm
+                      customers={customerOptions}
+                      defaultCustomerId={customer.id}
+                      defaultCustomerName={customer.name}
+                      compact
+                    />
                     <Link
                       href={`/admin/customers/${customer.id}`}
                       className="text-xs font-medium text-primary hover:text-primary/80 transition-colors"
@@ -171,11 +170,7 @@ export default async function CustomersSitesPage() {
                     </div>
                   ) : (
                     <p className="text-xs text-muted-foreground">
-                      No sites yet.{" "}
-                      <Link href="/admin/sites" className="text-primary hover:text-primary/80">
-                        Create a site
-                      </Link>{" "}
-                      and assign it to this customer.
+                      No sites yet. Use the Add Site button above to add one.
                     </p>
                   )}
                 </div>

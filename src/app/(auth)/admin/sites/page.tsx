@@ -11,10 +11,7 @@ import { CreateSiteForm } from "./create-site-form";
 
 export const dynamic = "force-dynamic";
 
-const INTERNAL_ROLES: UserRole[] = [
-  "internal_admin",
-  "internal_service_manager",
-];
+const ADMIN_ROLES: UserRole[] = ["internal_admin"];
 
 export default async function AdminSitesPage() {
   const supabase = await createClient();
@@ -32,7 +29,7 @@ export default async function AdminSitesPage() {
     .single();
 
   const role = userProfile?.role as UserRole | undefined;
-  if (!role || !INTERNAL_ROLES.includes(role)) {
+  if (!role || !ADMIN_ROLES.includes(role)) {
     redirect("/dashboard");
   }
 

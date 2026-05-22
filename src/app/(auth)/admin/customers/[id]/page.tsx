@@ -5,13 +5,11 @@ import Link from "next/link";
 import type { UserRole } from "@/types/ticket";
 import { PROJECT_STATUS_LABELS, PROJECT_STATUS_COLORS } from "@/types/ticket";
 import { EditCustomerForm } from "./edit-customer-form";
+import { CreateSiteForm } from "../../sites/create-site-form";
 
 export const dynamic = "force-dynamic";
 
-const INTERNAL_ROLES: UserRole[] = [
-  "internal_admin",
-  "internal_service_manager",
-];
+const ADMIN_ROLES: UserRole[] = ["internal_admin"];
 
 export default async function AdminCustomerDetailPage({
   params,
@@ -34,7 +32,7 @@ export default async function AdminCustomerDetailPage({
     .single();
 
   const role = userProfile?.role as UserRole | undefined;
-  if (!role || !INTERNAL_ROLES.includes(role)) {
+  if (!role || !ADMIN_ROLES.includes(role)) {
     redirect("/dashboard");
   }
 
@@ -145,24 +143,17 @@ export default async function AdminCustomerDetailPage({
             <h2 className="text-base font-semibold text-foreground">
               Sites ({sites?.length || 0})
             </h2>
-            <Link
-              href="/admin/sites"
-              className="text-sm font-medium text-primary hover:text-primary/80 transition-colors"
-            >
-              Manage Sites →
-            </Link>
+            <CreateSiteForm
+              customers={[{ id: customer.id, name: customer.name }]}
+              defaultCustomerId={customer.id}
+              defaultCustomerName={customer.name}
+              compact
+            />
           </div>
 
           {(!sites || sites.length === 0) ? (
             <p className="text-sm text-muted-foreground">
-              No sites yet.{" "}
-              <Link
-                href="/admin/sites"
-                className="text-primary hover:text-primary/80"
-              >
-                Create a site
-              </Link>{" "}
-              and assign it to this customer.
+              No sites yet. Use the Add Site button above to create one.
             </p>
           ) : (
             <div className="space-y-2">

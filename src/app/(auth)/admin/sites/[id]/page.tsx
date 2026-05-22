@@ -7,10 +7,7 @@ import { EditSiteForm } from "./edit-site-form";
 
 export const dynamic = "force-dynamic";
 
-const INTERNAL_ROLES: UserRole[] = [
-  "internal_admin",
-  "internal_service_manager",
-];
+const ADMIN_ROLES: UserRole[] = ["internal_admin"];
 
 export default async function AdminSiteDetailPage({
   params,
@@ -33,7 +30,7 @@ export default async function AdminSiteDetailPage({
     .single();
 
   const role = userProfile?.role as UserRole | undefined;
-  if (!role || !INTERNAL_ROLES.includes(role)) {
+  if (!role || !ADMIN_ROLES.includes(role)) {
     redirect("/dashboard");
   }
 

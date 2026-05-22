@@ -3,7 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { redirect } from "next/navigation";
 import { STATUS_LABELS } from "@/types/ticket";
 import { PROJECT_STATUS_LABELS, PROJECT_STATUS_COLORS } from "@/types/ticket";
-import { formatDate } from "@/lib/utils";
+import { formatDate, isInternalEmail } from "@/lib/utils";
 import Link from "next/link";
 import type { UserRole } from "@/types/ticket";
 
@@ -28,12 +28,15 @@ export default async function DashboardPage() {
   // Get user role
   const { data: userProfile } = await supabase
     .from("users")
-    .select("role, full_name")
+    .select("role, full_name, email")
     .eq("id", authUser.id)
     .single();
 
   const role = userProfile?.role as UserRole | undefined;
-  const isInternal = role && INTERNAL_ROLES.includes(role);
+  const email = userProfile?.email as string | undefined;
+  const isInternal = role
+    ? INTERNAL_ROLES.includes(role)
+    : email ? isInternalEmail(email) : false;
 
   if (isInternal) {
     return <InternalDashboard />;

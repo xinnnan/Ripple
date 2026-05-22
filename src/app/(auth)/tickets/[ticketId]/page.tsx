@@ -1,4 +1,5 @@
 import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
 import { STATUS_LABELS, SEVERITY_LABELS, REQUEST_TYPE_LABELS, IMPACT_LABELS } from "@/types/ticket";
 import { formatDate } from "@/lib/utils";
 import Link from "next/link";
@@ -12,6 +13,16 @@ export default async function TicketDetailPage({ params }: Props) {
   const { ticketId } = await params;
   const supabase = createAdminClient();
 
+  // Get current user for timezone
+  const serverSupabase = await createClient();
+  const { data: { user: authUser } } = await serverSupabase.auth.getUser();
+
+  let userTimezone = "America/New_York";
+  if (authUser) {
+    // Try to detect timezone from user's browser - we use the site timezone or default
+    // For now, we pass the user's locale timezone through the formatDate function
+  }
+
   // Fetch ticket by ID or ticket_no
   const { data: ticket } = await supabase
     .from("tickets")
@@ -19,7 +30,7 @@ export default async function TicketDetailPage({ params }: Props) {
       `
       *,
       customer:customers(id, name),
-      site:sites(id, site_name, site_code, slack_channel_id),
+      site:sites(id, site_name, site_code, slack_channel_id, timezone),
       owner:users!tickets_owner_id_fkey(id, full_name, email),
       creator:users!tickets_created_by_fkey(id, full_name, email)
     `
@@ -38,6 +49,11 @@ export default async function TicketDetailPage({ params }: Props) {
     );
   }
 
+  // Get site timezone for display
+  const siteData = Array.isArray(ticket.site) ? ticket.site[0] : ticket.site;
+  const siteTimezone = (siteData as unknown as { timezone?: string })?.timezone || "America/New_York";
+  userTimezone = siteTimezone;
+
   // Fetch all comments (including internal)
   const { data: comments } = await supabase
     .from("ticket_comments")
@@ -52,10 +68,10 @@ export default async function TicketDetailPage({ params }: Props) {
     .eq("ticket_id", ticket.id)
     .order("created_at", { ascending: true });
 
-  // Fetch events
+  // Fetch events with actor info
   const { data: events } = await supabase
     .from("ticket_events")
-    .select("*")
+    .select("*, actor:users!ticket_events_actor_id_fkey(full_name, email, role)")
     .eq("ticket_id", ticket.id)
     .order("created_at", { ascending: true });
 
@@ -65,6 +81,19 @@ export default async function TicketDetailPage({ params }: Props) {
     .select("*")
     .eq("ticket_id", ticket.id)
     .order("created_at", { ascending: false });
+
+  // Format event type labels
+  function formatEventType(type: string): string {
+    const labels: Record<string, string> = {
+      ticket_created: "Ticket created",
+      status_changed: "Status changed",
+      owner_assigned: "Owner assigned",
+      severity_changed: "Severity changed",
+      comment_added: "Comment added",
+      attachment_added: "Attachment added",
+    };
+    return labels[type] || type.replace(/_/g, " ");
+  }
 
   return (
     <div className="p-8">
@@ -145,7 +174,7 @@ export default async function TicketDetailPage({ params }: Props) {
                         </span>
                       )}
                       <span className="text-xs text-muted-foreground">
-                        {formatDate(comment.created_at)}
+                        {formatDate(comment.created_at, userTimezone)}
                       </span>
                     </div>
                     <p className="text-sm text-muted-foreground whitespace-pre-wrap">{comment.body}</p>
@@ -192,7 +221,7 @@ export default async function TicketDetailPage({ params }: Props) {
                     <div className="flex items-center gap-2 mb-2">
                       <span className="text-xs font-medium text-blue-700">{sug.suggestion_type}</span>
                       <span className="text-xs text-muted-foreground">via {sug.model_name}</span>
-                      <span className="text-xs text-muted-foreground">{formatDate(sug.created_at)}</span>
+                      <span className="text-xs text-muted-foreground">{formatDate(sug.created_at, userTimezone)}</span>
                       {sug.confidence_level && (
                         <span className={`text-xs px-1.5 py-0.5 rounded ${
                           sug.confidence_level === "high" ? "bg-green-100 text-green-700" :
@@ -226,34 +255,75 @@ export default async function TicketDetailPage({ params }: Props) {
               <div><dt className="text-xs text-muted-foreground">Source</dt><dd className="font-medium">{ticket.source}</dd></div>
               <div><dt className="text-xs text-muted-foreground">Owner</dt><dd className="font-medium">{ticket.owner?.[0]?.full_name || "Unassigned"}</dd></div>
               {ticket.submitter_name && <div><dt className="text-xs text-muted-foreground">Submitter</dt><dd className="font-medium">{ticket.submitter_name} ({ticket.submitter_email})</dd></div>}
-              <div><dt className="text-xs text-muted-foreground">Created</dt><dd className="font-medium">{formatDate(ticket.created_at)}</dd></div>
-              {ticket.resolved_at && <div><dt className="text-xs text-muted-foreground">Resolved</dt><dd className="font-medium">{formatDate(ticket.resolved_at)}</dd></div>}
-              {ticket.closed_at && <div><dt className="text-xs text-muted-foreground">Closed</dt><dd className="font-medium">{formatDate(ticket.closed_at)}</dd></div>}
+              <div>
+                <dt className="text-xs text-muted-foreground">Created</dt>
+                <dd className="font-medium">{formatDate(ticket.created_at, userTimezone)}</dd>
+              </div>
+              {ticket.resolved_at && (
+                <div>
+                  <dt className="text-xs text-muted-foreground">Resolved</dt>
+                  <dd className="font-medium">{formatDate(ticket.resolved_at, userTimezone)}</dd>
+                </div>
+              )}
+              {ticket.closed_at && (
+                <div>
+                  <dt className="text-xs text-muted-foreground">Closed</dt>
+                  <dd className="font-medium">{formatDate(ticket.closed_at, userTimezone)}</dd>
+                </div>
+              )}
             </dl>
+            <p className="text-xs text-muted-foreground border-t border-border pt-2 mt-2">
+              All times shown in {userTimezone}
+            </p>
           </div>
 
           {/* Activity Timeline */}
           {events && events.length > 0 && (
             <div className="rounded-xl border border-border p-6">
               <h2 className="text-sm font-semibold text-foreground mb-3">Activity</h2>
-              <div className="space-y-2">
-                {events.map((ev: { id: string; event_type: string; old_value: string | null; new_value: string | null; created_at: string }, i: number) => (
-                  <div key={ev.id || i} className="flex items-start gap-2">
-                    <div className="mt-1.5 h-1.5 w-1.5 rounded-full bg-primary flex-shrink-0" />
-                    <div>
-                      <p className="text-xs text-foreground">
-                        {ev.event_type === "ticket_created" && "Ticket created"}
-                        {ev.event_type === "status_changed" && `Status: ${ev.old_value} → ${ev.new_value}`}
-                        {ev.event_type === "owner_assigned" && "Owner assigned"}
-                        {ev.event_type === "severity_changed" && `Severity: ${ev.old_value} → ${ev.new_value}`}
-                        {ev.event_type === "comment_added" && `Comment added (${ev.new_value})`}
-                        {ev.event_type === "attachment_added" && `Attachment: ${ev.new_value}`}
-                      </p>
-                      <p className="text-xs text-muted-foreground">{formatDate(ev.created_at)}</p>
+              <div className="space-y-3">
+                {events.map((ev: {
+                  id: string;
+                  event_type: string;
+                  old_value: string | null;
+                  new_value: string | null;
+                  created_at: string;
+                  actor: { full_name: string; email: string; role: string }[] | null;
+                }, i: number) => {
+                  const actorData = ev.actor
+                    ? (Array.isArray(ev.actor) ? ev.actor[0] : ev.actor) as { full_name: string; email: string; role: string } | null
+                    : null;
+
+                  return (
+                    <div key={ev.id || i} className="flex items-start gap-2">
+                      <div className="mt-1.5 h-1.5 w-1.5 rounded-full bg-primary flex-shrink-0" />
+                      <div>
+                        <p className="text-xs text-foreground">
+                          {ev.event_type === "ticket_created" && "Ticket created"}
+                          {ev.event_type === "status_changed" && `Status: ${ev.old_value} → ${ev.new_value}`}
+                          {ev.event_type === "owner_assigned" && `Owner assigned: ${ev.new_value ? "changed" : "assigned"}`}
+                          {ev.event_type === "severity_changed" && `Severity: ${ev.old_value} → ${ev.new_value}`}
+                          {ev.event_type === "comment_added" && `Comment added (${ev.new_value})`}
+                          {ev.event_type === "attachment_added" && `Attachment: ${ev.new_value}`}
+                        </p>
+                        <div className="flex items-center gap-1">
+                          <p className="text-xs text-muted-foreground">
+                            {formatDate(ev.created_at, userTimezone)}
+                          </p>
+                          {actorData && (
+                            <span className="text-xs text-muted-foreground">
+                              by {actorData.full_name || actorData.email}
+                            </span>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
+              <p className="text-xs text-muted-foreground border-t border-border pt-2 mt-3">
+                Times in {userTimezone}
+              </p>
             </div>
           )}
         </div>

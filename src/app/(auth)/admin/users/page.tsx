@@ -17,10 +17,7 @@ const ROLE_LABELS: Record<UserRole, string> = {
   guest: "Guest",
 };
 
-const INTERNAL_ROLES: UserRole[] = [
-  "internal_admin",
-  "internal_service_manager",
-];
+const ADMIN_ROLES: UserRole[] = ["internal_admin"];
 
 export default async function AdminUsersPage() {
   const supabase = await createClient();
@@ -39,7 +36,7 @@ export default async function AdminUsersPage() {
     .single();
 
   const role = userProfile?.role as UserRole | undefined;
-  if (!role || !INTERNAL_ROLES.includes(role)) {
+  if (!role || !ADMIN_ROLES.includes(role)) {
     redirect("/dashboard");
   }
 

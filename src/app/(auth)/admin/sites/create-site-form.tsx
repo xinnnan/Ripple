@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { ProjectStatus } from "@/types/ticket";
+import { COMMON_TIMEZONES } from "@/lib/utils";
 
 const STATUS_OPTIONS: { value: ProjectStatus; label: string }[] = [
   { value: "pre_signoff", label: "Pre-Signoff" },
@@ -16,11 +17,23 @@ interface CustomerOption {
   name: string;
 }
 
-export function CreateSiteForm({ customers }: { customers: CustomerOption[] }) {
+interface CreateSiteFormProps {
+  customers: CustomerOption[];
+  defaultCustomerId?: string;
+  defaultCustomerName?: string;
+  compact?: boolean;
+}
+
+export function CreateSiteForm({
+  customers,
+  defaultCustomerId,
+  defaultCustomerName,
+  compact = false,
+}: CreateSiteFormProps) {
   const [expanded, setExpanded] = useState(false);
   const [siteName, setSiteName] = useState("");
   const [siteCode, setSiteCode] = useState("");
-  const [customerId, setCustomerId] = useState("");
+  const [customerId, setCustomerId] = useState(defaultCustomerId || "");
   const [timezone, setTimezone] = useState("America/New_York");
   const [address, setAddress] = useState("");
   const [projectStatus, setProjectStatus] = useState<ProjectStatus>("pre_signoff");
@@ -29,6 +42,12 @@ export function CreateSiteForm({ customers }: { customers: CustomerOption[] }) {
     type: "success" | "error";
     text: string;
   } | null>(null);
+
+  useEffect(() => {
+    if (defaultCustomerId) {
+      setCustomerId(defaultCustomerId);
+    }
+  }, [defaultCustomerId]);
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -58,12 +77,11 @@ export function CreateSiteForm({ customers }: { customers: CustomerOption[] }) {
       setMessage({ type: "success", text: `Site ${siteCode.toUpperCase()} created successfully` });
       setSiteName("");
       setSiteCode("");
-      setCustomerId("");
+      if (!defaultCustomerId) setCustomerId("");
       setTimezone("America/New_York");
       setAddress("");
       setProjectStatus("pre_signoff");
 
-      // Reload page to show new site
       setTimeout(() => window.location.reload(), 1000);
     } catch (err) {
       setMessage({
@@ -77,22 +95,24 @@ export function CreateSiteForm({ customers }: { customers: CustomerOption[] }) {
 
   if (!expanded) {
     return (
-      <div className="mb-6">
-        <button
-          onClick={() => setExpanded(true)}
-          className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
-        >
-          + Create New Site
-        </button>
-      </div>
+      <button
+        onClick={() => setExpanded(true)}
+        className={
+          compact
+            ? "text-xs font-medium text-primary hover:text-primary/80 transition-colors"
+            : "rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+        }
+      >
+        {compact ? "+ Add Site" : "+ Create New Site"}
+      </button>
     );
   }
 
   return (
-    <div className="mb-6 rounded-xl border border-border p-6">
+    <div className={compact ? "mt-3 rounded-lg border border-border p-4" : "mb-6 rounded-xl border border-border p-6"}>
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-base font-semibold text-foreground">
-          Create New Site
+        <h2 className={compact ? "text-sm font-semibold text-foreground" : "text-base font-semibold text-foreground"}>
+          {defaultCustomerName ? `Add Site to ${defaultCustomerName}` : "Create New Site"}
         </h2>
         <button
           onClick={() => setExpanded(false)}
@@ -152,19 +172,25 @@ export function CreateSiteForm({ customers }: { customers: CustomerOption[] }) {
             <label className="block text-sm font-medium text-foreground mb-1">
               Customer *
             </label>
-            <select
-              value={customerId}
-              onChange={(e) => setCustomerId(e.target.value)}
-              required
-              className="w-full rounded-lg border border-border px-3 py-2 text-sm text-foreground bg-background"
-            >
-              <option value="">Select a customer...</option>
-              {customers.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
+            {defaultCustomerId ? (
+              <div className="w-full rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-sm text-foreground">
+                {defaultCustomerName || customers.find((c) => c.id === defaultCustomerId)?.name || "Selected Customer"}
+              </div>
+            ) : (
+              <select
+                value={customerId}
+                onChange={(e) => setCustomerId(e.target.value)}
+                required
+                className="w-full rounded-lg border border-border px-3 py-2 text-sm text-foreground bg-background"
+              >
+                <option value="">Select a customer...</option>
+                {customers.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
           <div>
             <label className="block text-sm font-medium text-foreground mb-1">
@@ -187,15 +213,19 @@ export function CreateSiteForm({ customers }: { customers: CustomerOption[] }) {
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-foreground mb-1">
-              Timezone
+              Timezone *
             </label>
-            <input
-              type="text"
+            <select
               value={timezone}
               onChange={(e) => setTimezone(e.target.value)}
-              placeholder="America/New_York"
-              className="w-full rounded-lg border border-border px-3 py-2 text-sm text-foreground bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-            />
+              className="w-full rounded-lg border border-border px-3 py-2 text-sm text-foreground bg-background"
+            >
+              {COMMON_TIMEZONES.map((tz) => (
+                <option key={tz.value} value={tz.value}>
+                  {tz.label} ({tz.value})
+                </option>
+              ))}
+            </select>
           </div>
           <div>
             <label className="block text-sm font-medium text-foreground mb-1">
