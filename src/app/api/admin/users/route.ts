@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { requireAdmin } from "@/lib/supabase/auth-helpers";
 import { z } from "zod";
 
 const createUserSchema = z.object({
@@ -20,6 +21,11 @@ const createUserSchema = z.object({
 
 export async function POST(request: NextRequest) {
   try {
+    const auth = await requireAdmin();
+    if ("error" in auth) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status });
+    }
+
     const body = await request.json();
     const data = createUserSchema.parse(body);
 

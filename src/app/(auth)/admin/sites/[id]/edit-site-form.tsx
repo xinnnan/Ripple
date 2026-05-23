@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { ProjectStatus } from "@/types/ticket";
 import { PROJECT_STATUS_LABELS } from "@/types/ticket";
+import { COMMON_TIMEZONES } from "@/lib/utils";
 
 const STATUS_OPTIONS: { value: ProjectStatus; label: string }[] = [
   { value: "pre_signoff", label: "Pre-Signoff" },
@@ -182,15 +183,19 @@ export function EditSiteForm({
 
         <div>
           <label className="block text-sm font-medium text-foreground mb-1">
-            Timezone
+            Timezone *
           </label>
-          <input
-            type="text"
+          <select
             value={timezone}
             onChange={(e) => setTimezone(e.target.value)}
-            placeholder="America/New_York"
-            className="w-full rounded-lg border border-border px-3 py-2 text-sm text-foreground bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-          />
+            className="w-full rounded-lg border border-border px-3 py-2 text-sm text-foreground bg-background"
+          >
+            {COMMON_TIMEZONES.map((tz) => (
+              <option key={tz.value} value={tz.value}>
+                {tz.label} ({tz.value})
+              </option>
+            ))}
+          </select>
         </div>
 
         <div>

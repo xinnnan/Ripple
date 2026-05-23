@@ -4,6 +4,7 @@ import { STATUS_LABELS, SEVERITY_LABELS, REQUEST_TYPE_LABELS, IMPACT_LABELS } fr
 import { formatDate } from "@/lib/utils";
 import Link from "next/link";
 import { AIAssistButton } from "./ai-assist-button";
+import { TicketActionsPanel } from "./ticket-actions-panel";
 
 interface Props {
   params: Promise<{ ticketId: string }>;
@@ -326,6 +327,14 @@ export default async function TicketDetailPage({ params }: Props) {
               </p>
             </div>
           )}
+          {/* Ticket Actions */}
+          <TicketActionsPanel
+            ticketId={ticket.id}
+            currentStatus={ticket.status}
+            currentSeverity={ticket.severity}
+            currentOwnerId={ticket.owner_id}
+            siteTimezone={userTimezone}
+          />
         </div>
       </div>
     </div>

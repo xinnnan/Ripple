@@ -10,6 +10,7 @@ import {
   type Impact,
 } from "@/types/ticket";
 import { createClient } from "@/lib/supabase/client";
+import { isInternalEmail } from "@/lib/utils";
 
 interface UserSite {
   site_id: string;
@@ -48,26 +49,62 @@ export function CreateTicketModal({ open, onClose, onCreated }: CreateTicketModa
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      const { data: memberships } = await supabase
-        .from("site_members")
-        .select("site_id, sites(id, site_code, site_name, customer:customers(name))")
-        .eq("user_id", user.id);
+      // Check if user is internal
+      const { data: profile } = await supabase
+        .from("users")
+        .select("role, email")
+        .eq("id", user.id)
+        .single();
 
-      if (memberships) {
-        const sites = memberships.map((m) => {
-          const s = (Array.isArray(m.sites) ? m.sites[0] : m.sites) as unknown as {
-            id: string; site_code: string; site_name: string;
-            customer: { name: string }[] | null;
-          };
-          const customerData = Array.isArray(s.customer) ? s.customer[0] : s.customer;
-          return {
-            site_id: s.id,
-            site_code: s.site_code,
-            site_name: s.site_name,
-            customer_name: customerData?.name || "",
-          };
-        });
-        setUserSites(sites);
+      const role = profile?.role as string | undefined;
+      const email = profile?.email as string | undefined;
+      const isInternal = role
+        ? ["internal_admin", "internal_service_manager", "internal_engineer", "internal_solution_engineer"].includes(role)
+        : email ? isInternalEmail(email) : false;
+
+      if (isInternal) {
+        // Internal users see ALL sites
+        const { data: allSites } = await supabase
+          .from("sites")
+          .select("id, site_code, site_name, customer:customers(name)")
+          .eq("status", "active")
+          .order("site_name");
+
+        if (allSites) {
+          const sites = allSites.map((s) => {
+            const customerData = Array.isArray(s.customer) ? s.customer[0] : s.customer;
+            return {
+              site_id: s.id,
+              site_code: s.site_code,
+              site_name: s.site_name,
+              customer_name: (customerData as unknown as { name: string })?.name || "",
+            };
+          });
+          setUserSites(sites);
+        }
+      } else {
+        // Customer users see only their sites
+        const { data: memberships } = await supabase
+          .from("site_members")
+          .select("site_id, sites(id, site_code, site_name, customer:customers(name))")
+          .eq("user_id", user.id);
+
+        if (memberships) {
+          const sites = memberships.map((m) => {
+            const s = (Array.isArray(m.sites) ? m.sites[0] : m.sites) as unknown as {
+              id: string; site_code: string; site_name: string;
+              customer: { name: string }[] | null;
+            };
+            const customerData = Array.isArray(s.customer) ? s.customer[0] : s.customer;
+            return {
+              site_id: s.id,
+              site_code: s.site_code,
+              site_name: s.site_name,
+              customer_name: customerData?.name || "",
+            };
+          });
+          setUserSites(sites);
+        }
       }
     } catch {
       // Not logged in
@@ -100,6 +137,9 @@ export function CreateTicketModal({ open, onClose, onCreated }: CreateTicketModa
     }
 
     try {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+
       const res = await fetch("/api/tickets", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -113,6 +153,7 @@ export function CreateTicketModal({ open, onClose, onCreated }: CreateTicketModa
           area: area || undefined,
           description,
           source: "web",
+          created_by: user?.id || undefined,
         }),
       });
 

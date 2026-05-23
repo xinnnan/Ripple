@@ -1,4 +1,5 @@
 import { createAdminClient } from "@/lib/supabase/admin";
+import { requireAdmin } from "@/lib/supabase/auth-helpers";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function PATCH(
@@ -7,6 +8,11 @@ export async function PATCH(
 ) {
   const { id } = await params;
   try {
+    const auth = await requireAdmin();
+    if ("error" in auth) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status });
+    }
+
     const body = await request.json();
     const {
       site_name,
