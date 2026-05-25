@@ -6,10 +6,9 @@ import type { UserRole } from "@/types/ticket";
 import { PROJECT_STATUS_LABELS, PROJECT_STATUS_COLORS } from "@/types/ticket";
 import { EditCustomerForm } from "./edit-customer-form";
 import { CreateSiteForm } from "../../sites/create-site-form";
+import { ADMIN_ROLES } from "@/lib/roles";
 
 export const dynamic = "force-dynamic";
-
-const ADMIN_ROLES: UserRole[] = ["internal_admin"];
 
 export default async function AdminCustomerDetailPage({
   params,

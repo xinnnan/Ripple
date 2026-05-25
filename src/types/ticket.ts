@@ -33,13 +33,10 @@ export type Impact =
 export type CommentVisibility = "customer" | "internal";
 
 export type UserRole =
-  | "internal_admin"
-  | "internal_service_manager"
-  | "internal_engineer"
-  | "internal_solution_engineer"
-  | "customer_admin"
-  | "customer_user"
-  | "guest";
+  | "admin"
+  | "engineer"
+  | "customer_manager"
+  | "customer";
 
 export const REQUEST_TYPE_LABELS: Record<RequestType, string> = {
   incident: "Incident",

@@ -9,10 +9,9 @@ import {
 } from "@/types/ticket";
 import { CreateCustomerForm } from "../customers/create-customer-form";
 import { CreateSiteForm } from "../sites/create-site-form";
+import { ADMIN_ROLES } from "@/lib/roles";
 
 export const dynamic = "force-dynamic";
-
-const ADMIN_ROLES: UserRole[] = ["internal_admin"];
 
 export default async function CustomersSitesPage() {
   const supabase = await createClient();

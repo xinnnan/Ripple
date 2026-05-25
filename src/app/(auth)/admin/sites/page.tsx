@@ -8,10 +8,9 @@ import {
   PROJECT_STATUS_COLORS,
 } from "@/types/ticket";
 import { CreateSiteForm } from "./create-site-form";
+import { ADMIN_ROLES } from "@/lib/roles";
 
 export const dynamic = "force-dynamic";
-
-const ADMIN_ROLES: UserRole[] = ["internal_admin"];
 
 export default async function AdminSitesPage() {
   const supabase = await createClient();

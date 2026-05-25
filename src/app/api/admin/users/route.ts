@@ -8,13 +8,10 @@ const createUserSchema = z.object({
   password: z.string().min(6),
   full_name: z.string().min(1).max(200),
   role: z.enum([
-    "internal_admin",
-    "internal_service_manager",
-    "internal_engineer",
-    "internal_solution_engineer",
-    "customer_admin",
-    "customer_user",
-    "guest",
+    "admin",
+    "engineer",
+    "customer_manager",
+    "customer",
   ]),
   phone: z.string().optional(),
 });

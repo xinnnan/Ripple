@@ -15,7 +15,7 @@ export default async function CreateFieldServicePage() {
   const { data: engineers } = await supabase
     .from("users")
     .select("id, full_name, email, role")
-    .in("role", ["internal_engineer", "internal_solution_engineer", "internal_service_manager"])
+    .in("role", ["engineer"])
     .eq("status", "active")
     .order("full_name");
 

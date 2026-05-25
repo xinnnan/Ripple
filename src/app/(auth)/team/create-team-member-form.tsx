@@ -1,21 +1,33 @@
 "use client";
 
 import { useState } from "react";
-import type { UserRole } from "@/types/ticket";
-import { ROLE_OPTIONS } from "@/lib/roles";
 
-export function CreateUserForm() {
+interface SiteOption {
+  id: string;
+  site_name: string;
+  site_code: string;
+}
+
+export function CreateTeamMemberForm({ sites }: { sites: SiteOption[] }) {
   const [expanded, setExpanded] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
-  const [role, setRole] = useState<UserRole>("customer");
   const [phone, setPhone] = useState("");
+  const [selectedSites, setSelectedSites] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{
     type: "success" | "error";
     text: string;
   } | null>(null);
+
+  function toggleSite(siteId: string) {
+    setSelectedSites((prev) =>
+      prev.includes(siteId)
+        ? prev.filter((id) => id !== siteId)
+        : [...prev, siteId]
+    );
+  }
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -23,34 +35,34 @@ export function CreateUserForm() {
     setMessage(null);
 
     try {
-      const res = await fetch("/api/admin/users", {
+      const res = await fetch("/api/team", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           email,
           password,
           full_name: fullName,
-          role,
           phone: phone || undefined,
+          site_ids: selectedSites.length > 0 ? selectedSites : undefined,
         }),
       });
 
       if (!res.ok) {
         const data = await res.json();
-        throw new Error(data.error || "Failed to create user");
+        throw new Error(data.error || "Failed to create team member");
       }
 
-      setMessage({ type: "success", text: `User ${email} created successfully` });
+      setMessage({ type: "success", text: `Team member ${email} created successfully` });
       setEmail("");
       setPassword("");
       setFullName("");
-      setRole("customer");
       setPhone("");
+      setSelectedSites([]);
       setTimeout(() => window.location.reload(), 1000);
     } catch (err) {
       setMessage({
         type: "error",
-        text: err instanceof Error ? err.message : "Failed to create user",
+        text: err instanceof Error ? err.message : "Failed to create team member",
       });
     } finally {
       setSaving(false);
@@ -64,7 +76,7 @@ export function CreateUserForm() {
           onClick={() => setExpanded(true)}
           className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
         >
-          + Create User
+          + Add Team Member
         </button>
       </div>
     );
@@ -74,7 +86,7 @@ export function CreateUserForm() {
     <div className="mb-6 rounded-xl border border-border p-6">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-base font-semibold text-foreground">
-          Create New User
+          Add Team Member
         </h2>
         <button
           onClick={() => setExpanded(false)}
@@ -126,7 +138,7 @@ export function CreateUserForm() {
             />
           </div>
         </div>
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-foreground mb-1">
               Full Name *
@@ -142,22 +154,6 @@ export function CreateUserForm() {
           </div>
           <div>
             <label className="block text-sm font-medium text-foreground mb-1">
-              Role *
-            </label>
-            <select
-              value={role}
-              onChange={(e) => setRole(e.target.value as UserRole)}
-              className="w-full rounded-lg border border-border px-3 py-2 text-sm text-foreground bg-background"
-            >
-              {ROLE_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-foreground mb-1">
               Phone
             </label>
             <input
@@ -169,12 +165,40 @@ export function CreateUserForm() {
             />
           </div>
         </div>
+
+        {/* Site Assignment */}
+        <div>
+          <label className="block text-sm font-medium text-foreground mb-2">
+            Assign Sites
+          </label>
+          {sites.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No sites available.</p>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {sites.map((site) => (
+                <button
+                  key={site.id}
+                  type="button"
+                  onClick={() => toggleSite(site.id)}
+                  className={`inline-flex items-center rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+                    selectedSites.includes(site.id)
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-muted text-muted-foreground hover:bg-muted/80"
+                  }`}
+                >
+                  {site.site_name}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
         <button
           type="submit"
           disabled={saving}
           className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
         >
-          {saving ? "Creating..." : "Create User"}
+          {saving ? "Creating..." : "Add Team Member"}
         </button>
       </form>
     </div>

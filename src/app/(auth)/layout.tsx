@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import type { UserRole } from "@/types/ticket";
 import { isInternalEmail } from "@/lib/utils";
+import { INTERNAL_ROLES, isAdminRole, isCustomerManager } from "@/lib/roles";
 
 export const dynamic = "force-dynamic";
 
@@ -23,15 +24,17 @@ export default async function AuthLayout({
   // Get user profile for role-based nav
   const { data: userProfile } = await supabase
     .from("users")
-    .select("role, email")
+    .select("role, email, customer_id")
     .eq("id", authUser.id)
     .single();
 
   const role = userProfile?.role as UserRole | undefined;
   const email = userProfile?.email as string | undefined;
-  const isAdmin = role === "internal_admin";
+  const customerId = userProfile?.customer_id as string | null;
+  const isAdmin = role ? isAdminRole(role) : false;
+  const isManager = role ? isCustomerManager(role) : false;
   const isInternal = role
-    ? ["internal_admin", "internal_service_manager", "internal_engineer", "internal_solution_engineer"].includes(role)
+    ? INTERNAL_ROLES.includes(role)
     : email ? isInternalEmail(email) : false;
 
   return (
@@ -62,7 +65,7 @@ export default async function AuthLayout({
             className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-foreground hover:bg-accent transition-colors"
           >
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25a2.25 2.25 0 01-2.25-2.25v-2.25z" />
             </svg>
             Dashboard
           </Link>
@@ -75,6 +78,7 @@ export default async function AuthLayout({
             </svg>
             Tickets
           </Link>
+          {/* Customer users and customer managers see My Sites */}
           {!isInternal && (
             <Link
               href="/sites"
@@ -87,7 +91,19 @@ export default async function AuthLayout({
               My Sites
             </Link>
           )}
-          {/* Admin Section - only for internal_admin */}
+          {/* Customer Manager: Team management */}
+          {isManager && (
+            <Link
+              href="/team"
+              className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+            >
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M18 18.72a9.094 9.094 0 0 0 3.741-.479 3 3 0 0 0-4.682-2.72m.94 3.198.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0 1 12 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 0 1 6 18.719m12 0a5.971 5.971 0 0 0-.941-3.197m0 0A5.995 5.995 0 0 0 12 12.75a5.995 5.995 0 0 0-5.058 2.772m0 0a3 3 0 0 0-4.681 2.72 8.986 8.986 0 0 0 3.74.477m.94-3.197a5.971 5.971 0 0 0-.94 3.197M15 6.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm6 3a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Zm-13.5 0a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Z" />
+              </svg>
+              Team
+            </Link>
+          )}
+          {/* Admin Section - only for admin role */}
           {isAdmin && (
             <div className="pt-4 mt-4 border-t border-border">
               <p className="px-3 mb-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
@@ -162,15 +178,6 @@ export default async function AuthLayout({
               <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" />
             </svg>
             Profile
-          </Link>
-          <Link
-            href="/"
-            className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
-          >
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" />
-            </svg>
-            Back to Portal
           </Link>
           <form action="/auth/logout" method="POST">
             <button

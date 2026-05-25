@@ -4,16 +4,7 @@ import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import Image from "next/image";
 import type { UserRole } from "@/types/ticket";
-
-const ROLE_LABELS: Record<UserRole, string> = {
-  internal_admin: "Internal Admin",
-  internal_service_manager: "Service Manager",
-  internal_engineer: "Engineer",
-  internal_solution_engineer: "Solution Engineer",
-  customer_admin: "Customer Admin",
-  customer_user: "Customer User",
-  guest: "Guest",
-};
+import { ROLE_LABELS } from "@/lib/roles";
 
 interface UserProfile {
   id: string;

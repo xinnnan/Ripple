@@ -4,20 +4,9 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import type { UserRole } from "@/types/ticket";
 import { CreateUserForm } from "./create-user-form";
+import { ROLE_LABELS, ADMIN_ROLES } from "@/lib/roles";
 
 export const dynamic = "force-dynamic";
-
-const ROLE_LABELS: Record<UserRole, string> = {
-  internal_admin: "Internal Admin",
-  internal_service_manager: "Service Manager",
-  internal_engineer: "Engineer",
-  internal_solution_engineer: "Solution Engineer",
-  customer_admin: "Customer Admin",
-  customer_user: "Customer User",
-  guest: "Guest",
-};
-
-const ADMIN_ROLES: UserRole[] = ["internal_admin"];
 
 export default async function AdminUsersPage() {
   const supabase = await createClient();

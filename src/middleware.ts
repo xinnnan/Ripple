@@ -9,6 +9,7 @@ const PROTECTED_ROUTES = [
   "/sites",
   "/profile",
   "/admin",
+  "/team",
 ];
 
 // Routes that should redirect to dashboard if already logged in
@@ -79,6 +80,7 @@ export const config = {
     "/sites/:path*",
     "/profile/:path*",
     "/admin/:path*",
+    "/team/:path*",
     "/login",
     "/signup",
   ],

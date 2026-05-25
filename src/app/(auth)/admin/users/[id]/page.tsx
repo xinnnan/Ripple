@@ -4,10 +4,9 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import type { UserRole } from "@/types/ticket";
 import { EditUserForm } from "./edit-user-form";
+import { ADMIN_ROLES } from "@/lib/roles";
 
 export const dynamic = "force-dynamic";
-
-const ADMIN_ROLES: UserRole[] = ["internal_admin"];
 
 export default async function AdminUserDetailPage({
   params,

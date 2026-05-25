@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { isInternalEmail } from "@/lib/utils";
 import type { UserRole } from "@/types/ticket";
+import { INTERNAL_ROLES } from "@/lib/roles";
 
 export const dynamic = "force-dynamic";
 
@@ -24,7 +25,7 @@ export async function GET(request: NextRequest) {
   const role = userProfile?.role as UserRole | undefined;
   const email = userProfile?.email as string | undefined;
   const isInternal = role
-    ? ["internal_admin", "internal_service_manager", "internal_engineer", "internal_solution_engineer"].includes(role)
+    ? INTERNAL_ROLES.includes(role)
     : email ? isInternalEmail(email) : false;
 
   const admin = createAdminClient();
@@ -96,7 +97,7 @@ export async function POST(request: NextRequest) {
   const role = userProfile?.role as UserRole | undefined;
   const email = userProfile?.email as string | undefined;
   const isInternal = role
-    ? ["internal_admin", "internal_service_manager", "internal_engineer", "internal_solution_engineer"].includes(role)
+    ? INTERNAL_ROLES.includes(role)
     : email ? isInternalEmail(email) : false;
 
   if (!isInternal) {

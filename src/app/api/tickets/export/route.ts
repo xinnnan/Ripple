@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { isInternalEmail } from "@/lib/utils";
 import type { UserRole } from "@/types/ticket";
+import { INTERNAL_ROLES, isCustomerManager } from "@/lib/roles";
 
 export const dynamic = "force-dynamic";
 
@@ -24,18 +25,20 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Determine if user is internal
+    // Determine if user is internal or customer_manager
     const { data: userProfile } = await supabase
       .from("users")
-      .select("role, email")
+      .select("role, email, customer_id")
       .eq("id", authUser.id)
       .single();
 
     const role = userProfile?.role as UserRole | undefined;
     const email = userProfile?.email as string | undefined;
+    const customerId = (userProfile as Record<string, unknown> | null)?.customer_id as string | null;
     const isInternal = role
-      ? ["internal_admin", "internal_service_manager", "internal_engineer", "internal_solution_engineer"].includes(role)
+      ? INTERNAL_ROLES.includes(role)
       : email ? isInternalEmail(email) : false;
+    const isManager = role ? isCustomerManager(role) : false;
 
     const admin = createAdminClient();
     const { searchParams } = new URL(request.url);
@@ -62,14 +65,32 @@ export async function GET(request: NextRequest) {
       `)
       .order("created_at", { ascending: false });
 
-    // If customer user, restrict to their sites only
-    if (!isInternal) {
+    // If customer_manager, restrict to all sites under their customer
+    if (!isInternal && isManager && customerId) {
+      const { data: customerSites } = await admin
+        .from("sites")
+        .select("id")
+        .eq("customer_id", customerId);
+      const siteIds = (customerSites || []).map((s: { id: string }) => s.id);
+      if (siteIds.length === 0) {
+        const headers = [
+          "Ticket #", "Title", "Description", "Request Type", "Severity",
+          "Status", "Impact", "Source", "Customer", "Site Code", "Site Name",
+          "Assignee", "Created At", "Updated At", "Resolved At", "Closed At",
+        ];
+        return new Response(headers.join(",") + "\n", {
+          headers: { "Content-Type": "text/csv", "Content-Disposition": "attachment; filename=tickets.csv" },
+        });
+      }
+      query = query.in("site_id", siteIds);
+    } else if (!isInternal) {
+      // Regular customer user: restrict to their assigned sites only
       const { data: memberships } = await supabase
         .from("site_members")
         .select("site_id")
         .eq("user_id", authUser.id);
 
-      const siteIds = (memberships || []).map((m) => m.site_id);
+      const siteIds = (memberships || []).map((m: { site_id: string }) => m.site_id);
 
       if (siteIds.length === 0) {
         // No sites — return empty CSV
@@ -97,8 +118,8 @@ export async function GET(request: NextRequest) {
     const severity = searchParams.get("severity");
     if (severity) query = query.eq("severity", severity);
 
-    const customerId = searchParams.get("customer_id");
-    if (customerId) query = query.eq("customer_id", customerId);
+    const filterCustomerId = searchParams.get("customer_id");
+    if (filterCustomerId) query = query.eq("customer_id", filterCustomerId);
 
     const siteId = searchParams.get("site_id");
     if (siteId) query = query.eq("site_id", siteId);

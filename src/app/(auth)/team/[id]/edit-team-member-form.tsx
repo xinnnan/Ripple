@@ -1,28 +1,44 @@
 "use client";
 
 import { useState } from "react";
-import type { UserRole } from "@/types/ticket";
-import { ROLE_OPTIONS } from "@/lib/roles";
+
+interface SiteOption {
+  id: string;
+  site_name: string;
+  site_code: string;
+}
 
 interface UserData {
   id: string;
-  email: string;
-  full_name: string | null;
-  role: string;
+  full_name: string;
   status: string;
-  phone: string | null;
-  created_at: string;
 }
 
-export function EditUserForm({ user }: { user: UserData }) {
+export function EditTeamMemberForm({
+  user,
+  sites,
+  currentSiteIds,
+}: {
+  user: UserData;
+  sites: SiteOption[];
+  currentSiteIds: string[];
+}) {
   const [fullName, setFullName] = useState(user.full_name || "");
-  const [role, setRole] = useState(user.role);
   const [status, setStatus] = useState(user.status);
+  const [selectedSites, setSelectedSites] = useState<string[]>(currentSiteIds);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{
     type: "success" | "error";
     text: string;
   } | null>(null);
+
+  function toggleSite(siteId: string) {
+    setSelectedSites((prev) =>
+      prev.includes(siteId)
+        ? prev.filter((id) => id !== siteId)
+        : [...prev, siteId]
+    );
+  }
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
@@ -30,22 +46,26 @@ export function EditUserForm({ user }: { user: UserData }) {
     setMessage(null);
 
     try {
-      const res = await fetch(`/api/admin/users/${user.id}`, {
+      const res = await fetch(`/api/team/${user.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ full_name: fullName, role, status }),
+        body: JSON.stringify({
+          full_name: fullName,
+          status,
+          site_ids: selectedSites,
+        }),
       });
 
       if (!res.ok) {
         const data = await res.json();
-        throw new Error(data.error || "Failed to update user");
+        throw new Error(data.error || "Failed to update team member");
       }
 
-      setMessage({ type: "success", text: "User updated successfully" });
+      setMessage({ type: "success", text: "Team member updated successfully" });
     } catch (err) {
       setMessage({
         type: "error",
-        text: err instanceof Error ? err.message : "Failed to update user",
+        text: err instanceof Error ? err.message : "Failed to update team member",
       });
     } finally {
       setSaving(false);
@@ -55,7 +75,7 @@ export function EditUserForm({ user }: { user: UserData }) {
   return (
     <div className="rounded-xl border border-border p-6">
       <h2 className="text-base font-semibold text-foreground mb-4">
-        User Details
+        Edit Details
       </h2>
 
       {message && (
@@ -73,15 +93,6 @@ export function EditUserForm({ user }: { user: UserData }) {
       <form onSubmit={handleSave} className="space-y-4">
         <div>
           <label className="block text-sm font-medium text-foreground mb-1">
-            Email
-          </label>
-          <div className="rounded-lg border border-border px-3 py-2 text-sm text-muted-foreground bg-muted">
-            {user.email}
-          </div>
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-foreground mb-1">
             Full Name
           </label>
           <input
@@ -90,23 +101,6 @@ export function EditUserForm({ user }: { user: UserData }) {
             onChange={(e) => setFullName(e.target.value)}
             className="w-full rounded-lg border border-border px-3 py-2 text-sm text-foreground bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
           />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-foreground mb-1">
-            Role
-          </label>
-          <select
-            value={role}
-            onChange={(e) => setRole(e.target.value)}
-            className="w-full rounded-lg border border-border px-3 py-2 text-sm text-foreground bg-background"
-          >
-            {ROLE_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
         </div>
 
         <div>
@@ -120,8 +114,34 @@ export function EditUserForm({ user }: { user: UserData }) {
           >
             <option value="active">Active</option>
             <option value="inactive">Inactive</option>
-            <option value="suspended">Suspended</option>
           </select>
+        </div>
+
+        {/* Site Assignment */}
+        <div>
+          <label className="block text-sm font-medium text-foreground mb-2">
+            Site Access
+          </label>
+          {sites.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No sites available.</p>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {sites.map((site) => (
+                <button
+                  key={site.id}
+                  type="button"
+                  onClick={() => toggleSite(site.id)}
+                  className={`inline-flex items-center rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+                    selectedSites.includes(site.id)
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-muted text-muted-foreground hover:bg-muted/80"
+                  }`}
+                >
+                  {site.site_name}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         <button

@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 import { STATUS_LABELS, SEVERITY_LABELS } from "@/types/ticket";
+import { INTERNAL_ROLES, isCustomerManager } from "@/lib/roles";
 import { formatDate, isInternalEmail } from "@/lib/utils";
 import type { UserRole } from "@/types/ticket";
 import Link from "next/link";
@@ -34,15 +35,17 @@ export default async function TicketsPage({ searchParams }: Props) {
   // Get user profile
   const { data: userProfile } = await supabase
     .from("users")
-    .select("role, email")
+    .select("role, email, customer_id")
     .eq("id", authUser.id)
     .single();
 
   const role = userProfile?.role as UserRole | undefined;
   const email = userProfile?.email as string | undefined;
+  const customerId = userProfile?.customer_id as string | null;
   const isInternal = role
-    ? ["internal_admin", "internal_service_manager", "internal_engineer", "internal_solution_engineer"].includes(role)
+    ? INTERNAL_ROLES.includes(role)
     : email ? isInternalEmail(email) : false;
+  const isManager = role ? isCustomerManager(role) : false;
 
   const admin = createAdminClient();
 
@@ -59,19 +62,28 @@ export default async function TicketsPage({ searchParams }: Props) {
     .order("created_at", { ascending: false })
     .limit(100);
 
-  // If customer user, filter to only their sites
-  if (!isInternal) {
+  // If customer_manager, filter to all sites under their customer
+  if (!isInternal && isManager && customerId) {
+    const { data: customerSites } = await admin
+      .from("sites")
+      .select("id")
+      .eq("customer_id", customerId);
+    const siteIds = (customerSites || []).map((s: { id: string }) => s.id);
+    if (siteIds.length === 0) {
+      return renderTicketsPage(filters, [], isInternal);
+    }
+    query = query.in("site_id", siteIds);
+  } else if (!isInternal) {
+    // Regular customer user: filter to only their assigned sites
     const { data: memberships } = await supabase
       .from("site_members")
       .select("site_id")
       .eq("user_id", authUser.id);
 
-    const siteIds = (memberships || []).map((m) => m.site_id);
+    const siteIds = (memberships || []).map((m: { site_id: string }) => m.site_id);
 
     if (siteIds.length === 0) {
-      // No sites - show nothing
-      const { data: tickets } = await query.limit(0);
-      return renderTicketsPage(filters, tickets || [], isInternal);
+      return renderTicketsPage(filters, [], isInternal);
     }
 
     query = query.in("site_id", siteIds);

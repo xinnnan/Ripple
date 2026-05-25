@@ -1,6 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { STATUS_LABELS, SEVERITY_LABELS, REQUEST_TYPE_LABELS, IMPACT_LABELS } from "@/types/ticket";
+import { INTERNAL_ROLES } from "@/lib/roles";
 import { SPR_STATUS_LABELS, SPR_STATUS_COLORS, FSO_STATUS_LABELS, FSO_STATUS_COLORS, SERVICE_TYPE_LABELS } from "@/types/spare-parts";
 import { formatDate, isInternalEmail } from "@/lib/utils";
 import type { UserRole } from "@/types/ticket";
@@ -105,7 +106,7 @@ export default async function TicketDetailPage({ params }: Props) {
         const { data: p } = await serverSupabase.from("users").select("role, email").eq("id", authUser.id).single();
         const r = p?.role as UserRole | undefined;
         const e = p?.email as string | undefined;
-        return r ? ["internal_admin", "internal_service_manager", "internal_engineer", "internal_solution_engineer"].includes(r) : e ? isInternalEmail(e) : false;
+        return r ? INTERNAL_ROLES.includes(r) : e ? isInternalEmail(e) : false;
       })())
     : false;
 

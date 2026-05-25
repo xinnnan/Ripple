@@ -8,7 +8,9 @@ import {
   type RequestType,
   type Severity,
   type Impact,
+  type UserRole,
 } from "@/types/ticket";
+import { INTERNAL_ROLES, isCustomerManager } from "@/lib/roles";
 import { createClient } from "@/lib/supabase/client";
 import { isInternalEmail } from "@/lib/utils";
 
@@ -49,18 +51,20 @@ export function CreateTicketModal({ open, onClose, onCreated }: CreateTicketModa
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // Check if user is internal
+      // Check if user is internal or customer_manager
       const { data: profile } = await supabase
         .from("users")
-        .select("role, email")
+        .select("role, email, customer_id")
         .eq("id", user.id)
         .single();
 
-      const role = profile?.role as string | undefined;
+      const role = profile?.role as UserRole | undefined;
       const email = profile?.email as string | undefined;
+      const customerId = (profile as Record<string, unknown> | null)?.customer_id as string | null;
       const isInternal = role
-        ? ["internal_admin", "internal_service_manager", "internal_engineer", "internal_solution_engineer"].includes(role)
+        ? INTERNAL_ROLES.includes(role)
         : email ? isInternalEmail(email) : false;
+      const isManager = role ? isCustomerManager(role) : false;
 
       if (isInternal) {
         // Internal users see ALL sites
@@ -82,8 +86,29 @@ export function CreateTicketModal({ open, onClose, onCreated }: CreateTicketModa
           });
           setUserSites(sites);
         }
+      } else if (isManager && customerId) {
+        // Customer managers see all sites under their customer
+        const { data: allSites } = await supabase
+          .from("sites")
+          .select("id, site_code, site_name, customer:customers(name)")
+          .eq("customer_id", customerId)
+          .eq("status", "active")
+          .order("site_name");
+
+        if (allSites) {
+          const sites = allSites.map((s) => {
+            const customerData = Array.isArray(s.customer) ? s.customer[0] : s.customer;
+            return {
+              site_id: s.id,
+              site_code: s.site_code,
+              site_name: s.site_name,
+              customer_name: (customerData as unknown as { name: string })?.name || "",
+            };
+          });
+          setUserSites(sites);
+        }
       } else {
-        // Customer users see only their sites
+        // Regular customer users see only their assigned sites
         const { data: memberships } = await supabase
           .from("site_members")
           .select("site_id, sites(id, site_code, site_name, customer:customers(name))")
