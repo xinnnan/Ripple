@@ -98,11 +98,11 @@ function renderTicketsPage(
     site: { site_name: string }[];
     owner: { full_name: string }[];
   }[],
-  _isInternal: boolean
+  isInternal: boolean
 ) {
   return (
     <div className="p-8">
-      <TicketsPageHeader filterQuery={buildFilterQuery(filters)} />
+      <TicketsPageHeader filterQuery={buildFilterQuery(filters)} isInternal={isInternal} />
 
       {/* Filters */}
       <div className="flex gap-2 mb-6">

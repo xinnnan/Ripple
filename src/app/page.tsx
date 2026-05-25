@@ -29,7 +29,7 @@ export default function HomePage() {
               href="/login"
               className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
             >
-              Engineer Login
+              Login
             </Link>
           </nav>
         </div>

@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
+import { isInternalEmail } from "@/lib/utils";
+import type { UserRole } from "@/types/ticket";
 
 export const dynamic = "force-dynamic";
 
@@ -13,11 +16,32 @@ function escapeCsv(value: unknown): string {
 
 export async function GET(request: NextRequest) {
   try {
-    const supabase = createAdminClient();
+    // Auth check — only authenticated users can export
+    const supabase = await createClient();
+    const { data: { user: authUser } } = await supabase.auth.getUser();
+
+    if (!authUser) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    // Determine if user is internal
+    const { data: userProfile } = await supabase
+      .from("users")
+      .select("role, email")
+      .eq("id", authUser.id)
+      .single();
+
+    const role = userProfile?.role as UserRole | undefined;
+    const email = userProfile?.email as string | undefined;
+    const isInternal = role
+      ? ["internal_admin", "internal_service_manager", "internal_engineer", "internal_solution_engineer"].includes(role)
+      : email ? isInternalEmail(email) : false;
+
+    const admin = createAdminClient();
     const { searchParams } = new URL(request.url);
 
     // Build query with filters
-    let query = supabase
+    let query = admin
       .from("tickets")
       .select(`
         ticket_no,
@@ -29,7 +53,7 @@ export async function GET(request: NextRequest) {
         impact,
         source,
         customer:customers(name),
-        site:sites(site_code, name),
+        site:sites(site_code, site_name),
         assignee:users(full_name),
         created_at,
         updated_at,
@@ -37,6 +61,34 @@ export async function GET(request: NextRequest) {
         closed_at
       `)
       .order("created_at", { ascending: false });
+
+    // If customer user, restrict to their sites only
+    if (!isInternal) {
+      const { data: memberships } = await supabase
+        .from("site_members")
+        .select("site_id")
+        .eq("user_id", authUser.id);
+
+      const siteIds = (memberships || []).map((m) => m.site_id);
+
+      if (siteIds.length === 0) {
+        // No sites — return empty CSV
+        const headers = [
+          "Ticket #", "Title", "Description", "Request Type", "Severity",
+          "Status", "Impact", "Source", "Customer", "Site Code", "Site Name",
+          "Assignee", "Created At", "Updated At", "Resolved At", "Closed At",
+        ];
+        return new NextResponse(headers.map(escapeCsv).join(","), {
+          status: 200,
+          headers: {
+            "Content-Type": "text/csv; charset=utf-8",
+            "Content-Disposition": `attachment; filename="ripple-tickets-${new Date().toISOString().slice(0, 10)}.csv"`,
+          },
+        });
+      }
+
+      query = query.in("site_id", siteIds);
+    }
 
     // Apply same filters as ticket list
     const status = searchParams.get("status");
@@ -94,7 +146,7 @@ export async function GET(request: NextRequest) {
       escapeCsv(t.source),
       escapeCsv((t.customer as Record<string, unknown>)?.name ?? ""),
       escapeCsv((t.site as Record<string, unknown>)?.site_code ?? ""),
-      escapeCsv((t.site as Record<string, unknown>)?.name ?? ""),
+      escapeCsv((t.site as Record<string, unknown>)?.site_name ?? ""),
       escapeCsv((t.assignee as Record<string, unknown>)?.full_name ?? ""),
       escapeCsv(t.created_at),
       escapeCsv(t.updated_at),

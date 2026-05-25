@@ -1,7 +1,9 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { STATUS_LABELS, SEVERITY_LABELS, REQUEST_TYPE_LABELS, IMPACT_LABELS } from "@/types/ticket";
-import { formatDate } from "@/lib/utils";
+import { SPR_STATUS_LABELS, SPR_STATUS_COLORS, FSO_STATUS_LABELS, FSO_STATUS_COLORS, SERVICE_TYPE_LABELS } from "@/types/spare-parts";
+import { formatDate, isInternalEmail } from "@/lib/utils";
+import type { UserRole } from "@/types/ticket";
 import Link from "next/link";
 import { AIAssistButton } from "./ai-assist-button";
 import { TicketActionsPanel } from "./ticket-actions-panel";
@@ -82,6 +84,30 @@ export default async function TicketDetailPage({ params }: Props) {
     .select("*")
     .eq("ticket_id", ticket.id)
     .order("created_at", { ascending: false });
+
+  // Fetch linked spare part requests
+  const { data: partRequests } = await supabase
+    .from("spare_part_requests")
+    .select("id, request_no, status, priority, total_cost, created_at, items:spare_part_request_items(quantity)")
+    .eq("ticket_id", ticket.id)
+    .order("created_at", { ascending: false });
+
+  // Fetch linked field service orders
+  const { data: fieldServiceOrders } = await supabase
+    .from("field_service_orders")
+    .select("id, order_no, title, service_type, status, scheduled_date, estimated_hours, actual_hours, engineers:field_service_engineers(engineer:users(full_name))")
+    .eq("ticket_id", ticket.id)
+    .order("created_at", { ascending: false });
+
+  // Check if user is internal for showing create buttons
+  const isInternal = authUser
+    ? (await (async () => {
+        const { data: p } = await serverSupabase.from("users").select("role, email").eq("id", authUser.id).single();
+        const r = p?.role as UserRole | undefined;
+        const e = p?.email as string | undefined;
+        return r ? ["internal_admin", "internal_service_manager", "internal_engineer", "internal_solution_engineer"].includes(r) : e ? isInternalEmail(e) : false;
+      })())
+    : false;
 
   // Format event type labels
   function formatEventType(type: string): string {
@@ -239,6 +265,106 @@ export default async function TicketDetailPage({ params }: Props) {
               </div>
             </div>
           )}
+
+          {/* Linked Spare Part Requests */}
+          <div className="rounded-xl border border-border overflow-hidden">
+            <div className="p-4 border-b border-border flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-foreground">
+                📦 Spare Part Requests ({partRequests?.length || 0})
+              </h2>
+              {isInternal && (
+                <Link
+                  href={`/admin/part-requests/create?ticket_id=${ticket.id}`}
+                  className="text-xs font-medium text-primary hover:text-primary/80"
+                >
+                  + New Request
+                </Link>
+              )}
+            </div>
+            {(!partRequests || partRequests.length === 0) ? (
+              <div className="p-4 text-center text-xs text-muted-foreground">
+                No spare part requests linked to this ticket.
+              </div>
+            ) : (
+              <div className="divide-y divide-border">
+                {partRequests.map((req: Record<string, unknown>) => {
+                  const statusColor = SPR_STATUS_COLORS[req.status as keyof typeof SPR_STATUS_COLORS] || "bg-gray-100 text-gray-800";
+                  const itemCount = Array.isArray(req.items) ? req.items.length : 0;
+                  return (
+                    <Link
+                      key={req.id as string}
+                      href={`/admin/part-requests/${req.id as string}`}
+                      className="flex items-center justify-between p-3 hover:bg-muted/50 transition-colors"
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className="text-xs font-mono font-medium text-primary">{req.request_no as string}</span>
+                        <span className="text-xs text-muted-foreground">{itemCount} items</span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        {req.total_cost ? <span className="text-xs text-muted-foreground">${Number(req.total_cost).toFixed(2)}</span> : null}
+                        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${statusColor}`}>
+                          {SPR_STATUS_LABELS[req.status as keyof typeof SPR_STATUS_LABELS] || req.status as string}
+                        </span>
+                      </div>
+                    </Link>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Linked Field Service Orders */}
+          <div className="rounded-xl border border-border overflow-hidden">
+            <div className="p-4 border-b border-border flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-foreground">
+                🔧 Field Service Orders ({fieldServiceOrders?.length || 0})
+              </h2>
+              {isInternal && (
+                <Link
+                  href={`/admin/field-service/create?ticket_id=${ticket.id}`}
+                  className="text-xs font-medium text-primary hover:text-primary/80"
+                >
+                  + New Service Order
+                </Link>
+              )}
+            </div>
+            {(!fieldServiceOrders || fieldServiceOrders.length === 0) ? (
+              <div className="p-4 text-center text-xs text-muted-foreground">
+                No field service orders linked to this ticket.
+              </div>
+            ) : (
+              <div className="divide-y divide-border">
+                {fieldServiceOrders.map((order: Record<string, unknown>) => {
+                  const statusColor = FSO_STATUS_COLORS[order.status as keyof typeof FSO_STATUS_COLORS] || "bg-gray-100 text-gray-800";
+                  const engineers = (order.engineers as Record<string, unknown>[]) || [];
+                  const engineerNames = engineers.map((e) => {
+                    const eng = e.engineer as Record<string, unknown> | null;
+                    return eng?.full_name as string || "";
+                  }).filter(Boolean).join(", ");
+                  return (
+                    <Link
+                      key={order.id as string}
+                      href={`/admin/field-service/${order.id as string}`}
+                      className="flex items-center justify-between p-3 hover:bg-muted/50 transition-colors"
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className="text-xs font-mono font-medium text-primary">{order.order_no as string}</span>
+                        <span className="text-xs text-foreground">{order.title as string}</span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="text-xs text-muted-foreground">
+                          {SERVICE_TYPE_LABELS[order.service_type as keyof typeof SERVICE_TYPE_LABELS] || order.service_type as string}
+                        </span>
+                        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${statusColor}`}>
+                          {FSO_STATUS_LABELS[order.status as keyof typeof FSO_STATUS_LABELS] || order.status as string}
+                        </span>
+                      </div>
+                    </Link>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Sidebar */}
