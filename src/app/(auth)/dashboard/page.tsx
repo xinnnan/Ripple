@@ -209,7 +209,7 @@ async function CustomerManagerDashboard({ customerId }: { userId: string; custom
   const siteIds = (sites || []).map((s) => s.id);
 
   // Get tickets for all customer sites
-  const [ticketsRes, openRes] = await Promise.all([
+  const [ticketsRes, openRes, openBySiteRes, p1p2Res] = await Promise.all([
     supabase
       .from("tickets")
       .select(
@@ -233,10 +233,55 @@ async function CustomerManagerDashboard({ customerId }: { userId: string; custom
         "waiting_droplet",
         "reopened",
       ]),
+    // Open tickets grouped by site (org-centric view)
+    supabase
+      .from("tickets")
+      .select("site_id, sites(id, site_name, site_code)")
+      .in("site_id", siteIds)
+      .in("status", [
+        "new",
+        "assigned",
+        "in_progress",
+        "waiting_customer",
+        "waiting_droplet",
+        "reopened",
+      ]),
+    // P1/P2 active for SLA-at-a-glance
+    supabase
+      .from("tickets")
+      .select("id", { count: "exact", head: true })
+      .in("site_id", siteIds)
+      .in("severity", ["P1", "P2"])
+      .in("status", [
+        "new",
+        "assigned",
+        "in_progress",
+        "waiting_customer",
+        "waiting_droplet",
+        "reopened",
+      ]),
   ]);
 
   const recentTickets = ticketsRes.data || [];
   const openCount = openRes.count ?? 0;
+  const p1p2Count = p1p2Res.count ?? 0;
+
+  // Aggregate open tickets per site
+  const openBySite = new Map<string, { name: string; code: string; count: number }>();
+  (openBySiteRes.data || []).forEach((row: { site_id: string; sites: { id: string; site_name: string; site_code: string }[] | { id: string; site_name: string; site_code: string } | null }) => {
+    const s = Array.isArray(row.sites) ? row.sites[0] : row.sites;
+    if (!s) return;
+    const existing = openBySite.get(s.id);
+    if (existing) {
+      existing.count++;
+    } else {
+      openBySite.set(s.id, { name: s.site_name, code: s.site_code, count: 1 });
+    }
+  });
+  const topSitesByOpen = Array.from(openBySite.entries())
+    .map(([id, v]) => ({ id, ...v }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 5);
 
   // Get team members count
   const { count: teamCount } = await supabase
@@ -269,9 +314,9 @@ async function CustomerManagerDashboard({ customerId }: { userId: string; custom
           </p>
         </div>
         <div className="rounded-xl border border-border p-6">
-          <p className="text-sm text-muted-foreground">Total Tickets</p>
-          <p className="text-3xl font-bold mt-1 text-green-600">
-            {recentTickets.length}
+          <p className="text-sm text-muted-foreground">P1 / P2 Active</p>
+          <p className="text-3xl font-bold mt-1 text-red-600">
+            {p1p2Count}
           </p>
         </div>
         <div className="rounded-xl border border-border p-6">
@@ -281,6 +326,46 @@ async function CustomerManagerDashboard({ customerId }: { userId: string; custom
           </p>
         </div>
       </div>
+
+      {/* Sites needing attention */}
+      {topSitesByOpen.length > 0 && (
+        <div className="rounded-xl border border-border mb-8">
+          <div className="p-6 border-b border-border flex items-center justify-between">
+            <h2 className="text-base font-semibold text-foreground">
+              Sites needing attention
+            </h2>
+            <span className="text-xs text-muted-foreground">
+              by open ticket count
+            </span>
+          </div>
+          <div className="divide-y divide-border">
+            {topSitesByOpen.map((s) => (
+              <Link
+                key={s.id}
+                href={`/tickets?site=${s.id}`}
+                className="flex items-center justify-between p-4 hover:bg-muted/50 transition-colors"
+              >
+                <div>
+                  <p className="text-sm font-medium text-foreground">
+                    {s.name}
+                  </p>
+                  <p className="text-xs font-mono text-muted-foreground">
+                    {s.code}
+                  </p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="text-lg font-semibold text-amber-600">
+                    {s.count}
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    open
+                  </span>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Sites */}
       <div className="rounded-xl border border-border mb-8">
