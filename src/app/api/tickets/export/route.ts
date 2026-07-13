@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { createClient } from "@/lib/supabase/server";
-import { isInternalEmail } from "@/lib/utils";
-import type { UserRole } from "@/types/ticket";
-import { INTERNAL_ROLES, isCustomerManager } from "@/lib/roles";
+import { getUserScope, scopeTickets } from "@/lib/supabase/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -15,38 +12,49 @@ function escapeCsv(value: unknown): string {
   return str;
 }
 
+const HEADERS = [
+  "Ticket #",
+  "Title",
+  "Description",
+  "Request Type",
+  "Severity",
+  "Status",
+  "Impact",
+  "Source",
+  "Customer",
+  "Site Code",
+  "Site Name",
+  "Assignee",
+  "Created At",
+  "Updated At",
+  "Resolved At",
+  "Closed At",
+];
+
+function csvResponse(content: string, dateStamp: string) {
+  return new NextResponse(content, {
+    status: 200,
+    headers: {
+      "Content-Type": "text/csv; charset=utf-8",
+      "Content-Disposition": `attachment; filename="ripple-tickets-${dateStamp}.csv"`,
+    },
+  });
+}
+
 export async function GET(request: NextRequest) {
   try {
-    // Auth check — only authenticated users can export
-    const supabase = await createClient();
-    const { data: { user: authUser } } = await supabase.auth.getUser();
-
-    if (!authUser) {
+    const scope = await getUserScope();
+    if (!scope) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-
-    // Determine if user is internal or customer_manager
-    const { data: userProfile } = await supabase
-      .from("users")
-      .select("role, email, customer_id")
-      .eq("id", authUser.id)
-      .single();
-
-    const role = userProfile?.role as UserRole | undefined;
-    const email = userProfile?.email as string | undefined;
-    const customerId = (userProfile as Record<string, unknown> | null)?.customer_id as string | null;
-    const isInternal = role
-      ? INTERNAL_ROLES.includes(role)
-      : email ? isInternalEmail(email) : false;
-    const isManager = role ? isCustomerManager(role) : false;
 
     const admin = createAdminClient();
     const { searchParams } = new URL(request.url);
 
-    // Build query with filters
     let query = admin
       .from("tickets")
-      .select(`
+      .select(
+        `
         ticket_no,
         title,
         description,
@@ -62,56 +70,14 @@ export async function GET(request: NextRequest) {
         updated_at,
         resolved_at,
         closed_at
-      `)
+      `
+      )
       .order("created_at", { ascending: false });
 
-    // If customer_manager, restrict to all sites under their customer
-    if (!isInternal && isManager && customerId) {
-      const { data: customerSites } = await admin
-        .from("sites")
-        .select("id")
-        .eq("customer_id", customerId);
-      const siteIds = (customerSites || []).map((s: { id: string }) => s.id);
-      if (siteIds.length === 0) {
-        const headers = [
-          "Ticket #", "Title", "Description", "Request Type", "Severity",
-          "Status", "Impact", "Source", "Customer", "Site Code", "Site Name",
-          "Assignee", "Created At", "Updated At", "Resolved At", "Closed At",
-        ];
-        return new Response(headers.join(",") + "\n", {
-          headers: { "Content-Type": "text/csv", "Content-Disposition": "attachment; filename=tickets.csv" },
-        });
-      }
-      query = query.in("site_id", siteIds);
-    } else if (!isInternal) {
-      // Regular customer user: restrict to their assigned sites only
-      const { data: memberships } = await supabase
-        .from("site_members")
-        .select("site_id")
-        .eq("user_id", authUser.id);
+    // Scope to the user's tenant
+    query = scopeTickets(query, scope);
 
-      const siteIds = (memberships || []).map((m: { site_id: string }) => m.site_id);
-
-      if (siteIds.length === 0) {
-        // No sites — return empty CSV
-        const headers = [
-          "Ticket #", "Title", "Description", "Request Type", "Severity",
-          "Status", "Impact", "Source", "Customer", "Site Code", "Site Name",
-          "Assignee", "Created At", "Updated At", "Resolved At", "Closed At",
-        ];
-        return new NextResponse(headers.map(escapeCsv).join(","), {
-          status: 200,
-          headers: {
-            "Content-Type": "text/csv; charset=utf-8",
-            "Content-Disposition": `attachment; filename="ripple-tickets-${new Date().toISOString().slice(0, 10)}.csv"`,
-          },
-        });
-      }
-
-      query = query.in("site_id", siteIds);
-    }
-
-    // Apply same filters as ticket list
+    // Filter parameters — all gated by the user's scope
     const status = searchParams.get("status");
     if (status) query = query.eq("status", status);
 
@@ -119,10 +85,28 @@ export async function GET(request: NextRequest) {
     if (severity) query = query.eq("severity", severity);
 
     const filterCustomerId = searchParams.get("customer_id");
-    if (filterCustomerId) query = query.eq("customer_id", filterCustomerId);
+    if (filterCustomerId) {
+      // Only admins can override the customer filter
+      if (!scope.isInternal) {
+        return NextResponse.json(
+          { error: "Forbidden: customer filter is admin-only" },
+          { status: 403 }
+        );
+      }
+      query = query.eq("customer_id", filterCustomerId);
+    }
 
     const siteId = searchParams.get("site_id");
-    if (siteId) query = query.eq("site_id", siteId);
+    if (siteId) {
+      // Non-internal users can only filter within their visible sites
+      if (!scope.isInternal && !scope.siteIds.includes(siteId)) {
+        return NextResponse.json(
+          { error: "Forbidden: site is outside your scope" },
+          { status: 403 }
+        );
+      }
+      query = query.eq("site_id", siteId);
+    }
 
     const dateFrom = searchParams.get("date_from");
     if (dateFrom) query = query.gte("created_at", dateFrom);
@@ -135,26 +119,6 @@ export async function GET(request: NextRequest) {
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
-
-    // Build CSV
-    const headers = [
-      "Ticket #",
-      "Title",
-      "Description",
-      "Request Type",
-      "Severity",
-      "Status",
-      "Impact",
-      "Source",
-      "Customer",
-      "Site Code",
-      "Site Name",
-      "Assignee",
-      "Created At",
-      "Updated At",
-      "Resolved At",
-      "Closed At",
-    ];
 
     const rows = (tickets || []).map((t: Record<string, unknown>) => [
       escapeCsv(t.ticket_no),
@@ -175,20 +139,8 @@ export async function GET(request: NextRequest) {
       escapeCsv(t.closed_at),
     ]);
 
-    const csvContent = [
-      headers.map(escapeCsv).join(","),
-      ...rows.map((row) => row.join(",")),
-    ].join("\n");
-
-    const filename = `ripple-tickets-${new Date().toISOString().slice(0, 10)}.csv`;
-
-    return new NextResponse(csvContent, {
-      status: 200,
-      headers: {
-        "Content-Type": "text/csv; charset=utf-8",
-        "Content-Disposition": `attachment; filename="${filename}"`,
-      },
-    });
+    const csv = [HEADERS.map(escapeCsv).join(","), ...rows.map((r) => r.join(","))].join("\n");
+    return csvResponse(csv, new Date().toISOString().slice(0, 10));
   } catch (err) {
     console.error("CSV export error:", err);
     return NextResponse.json(
