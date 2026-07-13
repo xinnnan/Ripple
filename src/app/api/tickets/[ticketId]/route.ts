@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { requireInternal, getAuthUser } from "@/lib/supabase/auth-helpers";
+import { getUserScope, scopeTickets } from "@/lib/supabase/scope";
 import { z } from "zod";
 
 interface RouteContext {
@@ -32,9 +34,20 @@ export async function GET(
 ) {
   try {
     const { ticketId } = await context.params;
+
+    // Auth required. Use the scope to filter out tickets the user can't see.
+    const auth = await getAuthUser();
+    if ("error" in auth) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status });
+    }
+    const scope = await getUserScope();
+    if (!scope) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const supabase = createAdminClient();
 
-    const { data: ticket, error } = await supabase
+    let query = supabase
       .from("tickets")
       .select(
         `
@@ -45,29 +58,13 @@ export async function GET(
         creator:users!tickets_created_by_fkey(id, full_name, email)
       `
       )
-      .eq("id", ticketId)
-      .single();
+      .or(`id.eq.${ticketId},ticket_no.eq.${ticketId}`);
+    query = scopeTickets(query, scope);
+
+    const { data: ticket, error } = await query.maybeSingle();
 
     if (error || !ticket) {
-      // Try by ticket_no
-      const { data: ticketByNo, error: err2 } = await supabase
-        .from("tickets")
-        .select(
-          `
-          *,
-          customer:customers(id, name),
-          site:sites(id, site_name, site_code, slack_channel_id),
-          owner:users!tickets_owner_id_fkey(id, full_name, email),
-          creator:users!tickets_created_by_fkey(id, full_name, email)
-        `
-        )
-        .eq("ticket_no", ticketId)
-        .single();
-
-      if (err2 || !ticketByNo) {
-        return NextResponse.json({ error: "Ticket not found" }, { status: 404 });
-      }
-      return NextResponse.json({ ticket: ticketByNo });
+      return NextResponse.json({ error: "Ticket not found" }, { status: 404 });
     }
 
     return NextResponse.json({ ticket });
@@ -82,6 +79,12 @@ export async function PATCH(
   context: RouteContext
 ) {
   try {
+    // Only internal users (admin / engineer) can modify a ticket.
+    const auth = await requireInternal();
+    if ("error" in auth) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status });
+    }
+
     const { ticketId } = await context.params;
     const body = await request.json();
     const data = patchTicketSchema.parse(body);

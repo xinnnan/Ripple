@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { getAuthUser } from "@/lib/supabase/auth-helpers";
+import { getUserScope, scopeTickets } from "@/lib/supabase/scope";
 import { z } from "zod";
 
 interface RouteContext {
@@ -18,18 +20,41 @@ export async function GET(
   context: RouteContext
 ) {
   try {
+    const auth = await getAuthUser();
+    if ("error" in auth) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status });
+    }
+
     const { ticketId } = await context.params;
     const supabase = createAdminClient();
     const { searchParams } = new URL(request.url);
     const visibility = searchParams.get("visibility");
 
+    // Verify the user can see this ticket (defence in depth)
+    const scope = await getUserScope();
+    if (!scope) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    let ticketQuery = supabase
+      .from("tickets")
+      .select("id")
+      .or(`id.eq.${ticketId},ticket_no.eq.${ticketId}`);
+    ticketQuery = scopeTickets(ticketQuery, scope);
+    const { data: ticket } = await ticketQuery.maybeSingle();
+    if (!ticket) {
+      return NextResponse.json({ error: "Ticket not found" }, { status: 404 });
+    }
+
     let query = supabase
       .from("ticket_comments")
       .select("*, author:users(full_name, email, role)")
-      .eq("ticket_id", ticketId)
+      .eq("ticket_id", ticket.id)
       .order("created_at", { ascending: true });
 
-    if (visibility) {
+    // Non-internal users can never see internal comments.
+    if (!scope.isInternal) {
+      query = query.eq("visibility", "customer");
+    } else if (visibility) {
       query = query.eq("visibility", visibility);
     }
 
@@ -51,11 +76,21 @@ export async function POST(
   context: RouteContext
 ) {
   try {
+    const auth = await getAuthUser();
+    if ("error" in auth) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status });
+    }
+
     const { ticketId } = await context.params;
     const body = await request.json();
     const data = createCommentSchema.parse(body);
 
     const supabase = createAdminClient();
+
+    // Non-internal users can never post internal comments — silently
+    // downgrade to customer-visible.
+    const isInternal = auth.role === "admin" || auth.role === "engineer";
+    const safeVisibility = isInternal ? data.visibility : "customer";
 
     const { data: comment, error } = await supabase
       .from("ticket_comments")
@@ -63,7 +98,7 @@ export async function POST(
         ticket_id: ticketId,
         author_id: data.author_id || null,
         body: data.body,
-        visibility: data.visibility,
+        visibility: safeVisibility,
         source: data.source,
       })
       .select("*, author:users(full_name, email)")
@@ -79,7 +114,7 @@ export async function POST(
       ticket_id: ticketId,
       event_type: "comment_added",
       old_value: null,
-      new_value: data.visibility,
+      new_value: safeVisibility,
       actor_id: data.author_id || null,
     });
 

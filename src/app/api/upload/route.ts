@@ -1,13 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { getAuthUser } from "@/lib/supabase/auth-helpers";
 
 export async function POST(request: NextRequest) {
   try {
+    const auth = await getAuthUser();
+    if ("error" in auth) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status });
+    }
+    // Only internal users can post internal-only attachments.
+    const isInternal = auth.role === "admin" || auth.role === "engineer";
+
     const formData = await request.formData();
     const file = formData.get("file") as File | null;
     const ticketId = formData.get("ticket_id") as string | null;
     const uploadedBy = formData.get("uploaded_by") as string | null;
-    const visibility = (formData.get("visibility") as string) || "customer";
+    const requestedVisibility = (formData.get("visibility") as string) || "customer";
+    const visibility = isInternal ? requestedVisibility : "customer";
 
     if (!file) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 });

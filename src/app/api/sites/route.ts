@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { getAuthUser, requireAdmin } from "@/lib/supabase/auth-helpers";
+import { getUserScope, scopeSites } from "@/lib/supabase/scope";
 import { z } from "zod";
 
 const createSiteSchema = z.object({
@@ -22,6 +24,15 @@ const createSiteSchema = z.object({
 
 export async function GET(request: NextRequest) {
   try {
+    const auth = await getAuthUser();
+    if ("error" in auth) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status });
+    }
+    const scope = await getUserScope();
+    if (!scope) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const { searchParams } = new URL(request.url);
     const supabase = createAdminClient();
 
@@ -29,9 +40,16 @@ export async function GET(request: NextRequest) {
       .from("sites")
       .select("*, customer:customers(id, name)")
       .order("site_name");
+    query = scopeSites(query, scope);
 
+    // Optional customer_id filter (must be allowed by scope)
     const customerId = searchParams.get("customer_id");
-    if (customerId) query = query.eq("customer_id", customerId);
+    if (customerId) {
+      if (!scope.isInternal && scope.customerId !== customerId) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
+      query = query.eq("customer_id", customerId);
+    }
 
     const { data: sites, error } = await query;
 
@@ -48,6 +66,10 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    const auth = await requireAdmin();
+    if ("error" in auth) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status });
+    }
     const body = await request.json();
     const data = createSiteSchema.parse(body);
     const supabase = createAdminClient();
