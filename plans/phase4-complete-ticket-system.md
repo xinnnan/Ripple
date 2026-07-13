@@ -293,3 +293,60 @@ git diff --check
 ## Changelog
 
 - 2026-07-13：初稿，整理 5 个 Sprint、~50 个需求点
+- 2026-07-13：Sprint 1 全部完成（6 个 Phase / 14 个 commit / ~2900 行净增）
+  - Phase A: 安全网 + 修坑 — scope 模块、错误页、admin 角色门、空状态、API 鉴权、scope 拆分
+  - Phase B: 工单核心 — 列表增强（搜索 / 多状态 / 客户 / 站点 / 负责人 / 时间 / 分页）、详情交互补齐（状态 / 严重度 / 负责人 / 评论 / 附件 / 内部 vs 客户可见 / Resolve 流程）
+  - Phase C: 站点 + 客户 + 用户 + 审计 — 详情页 tabs 化、audit_logs 表 + /admin/audit
+  - Phase D: 客户体验 + 客户经理 — dashboard P1/P2 卡片、Sites needing attention、team overview
+  - Phase E: Slack 闭环 — interactive 路由接到已有 handlers + 签名验证
+  - Phase F: 收尾 — 文档与推送
+
+## Sprint 1 交付清单
+
+| 需求 | 状态 | 在哪 |
+|---|---|---|
+| INT-1 工单列表搜索 / 筛选 / 分页 | ✅ | `src/app/(auth)/tickets/{page,ticket-filters,ticket-list-controls}.tsx` |
+| INT-2 工单详情交互 | ✅ | `src/app/(auth)/tickets/[ticketId]/{page,ticket-actions-panel}.tsx` |
+| INT-3 站点详情 | ✅ | `src/app/(auth)/admin/sites/[id]/page.tsx` |
+| INT-4 客户详情 | ✅ | `src/app/(auth)/admin/customers/[id]/page.tsx` |
+| AD-1 admin 详情 tabs 化 | ✅ | `src/components/detail-tabs.tsx` + 3 个 detail 页 |
+| AD-2 审计日志中心 | ✅ | `supabase/migrations/018_audit_logs.sql` + `src/lib/audit.ts` + `src/app/(auth)/admin/audit/page.tsx` |
+| PLT-1 租户隔离 wrapper | ✅ | `src/lib/supabase/{scope,scope.client}.ts` |
+| PLT-2 错误页 / 404 | ✅ | `src/app/{error,not-found}.tsx` + `(auth)/{not-found,loading}.tsx` |
+| PLT-3 空状态统一 | ✅ | `src/components/empty-state.tsx` + 5 处替换 |
+| CM-1 客户经理组织概览 | ✅ | `src/app/(auth)/dashboard/page.tsx` (CustomerManagerDashboard) |
+| CM-2 团队管理增强 | ✅ | `src/app/(auth)/team/page.tsx` |
+| CUS-1/2/3 客户 dashboard / 列表 / 详情 | ⚠️ 复用 | 同一份组件、scope 已在服务端 |
+| 7 个 Slack action handler | ✅ | `src/lib/slack/handlers/actions.ts` + `src/app/api/slack/interactive/route.ts` + 签名验证 `src/lib/slack/verify.ts` |
+| Sprint 1 内未做 |  |  |
+| 邮件通知 | — | Resend 接好，留到 Sprint 2 跟客户体验一起做 |
+| Dashboard 时区 | — | ticket detail 已用 site timezone；dashboard 仍是 server local；Sprint 2 修 |
+| 客户 / 站点 / 用户删除 | — | 软删除（status=inactive）继续；硬删不在 Sprint 1 范围 |
+
+## Sprint 1 commit 链
+
+```
+d2b7cdc feat(slack): wire interactive route to the existing handlers + add signature verify
+b704fba feat(dashboard,team): org-centric view for customer manager
+e8d2471 feat(admin-detail): tabs for customers + users detail pages
+0ad5ccc feat(site-detail): tabs (Overview/Tickets/Members/Inventory/Slack/History)
+9632a8f feat(audit): cross-entity audit log + /admin/audit page
+303522b feat(ticket-detail): interactive controls, role-aware visibility, resolve flow
+0d4eded feat(tickets): search, multi-filter, pagination for the ticket list
+477a363 refactor(scope): split client/server helpers, simplify create-ticket modal
+599be0b fix(security): lock down the previously-open API routes
+f907363 feat(ux): unified empty states for the 5 most-visible empty pages
+e50eee4 feat(ux): error boundaries, 404, admin role gate
+bcc29b6 feat(scope): add tenant isolation scope module
+bcd18d0 docs: Phase 4 plan — complete ticket system
+```
+
+## Sprint 1 已知遗留（带去 Sprint 2）
+
+- e2e 冒烟测试未跑（本地无 `.env.local`，dev server 起不来；需要 Vercel preview 或在有 env 的环境里跑）
+- 公共提交后邮件未发（Resend 接好但未触发）
+- 仪表板时区硬编码（`America/New_York`）— ticket detail 已修，dashboard 待修
+- `/settings` 仍是占位符
+- MiniMax AI base URL 真实性未验证（sprint 2 顺手做）
+- 工单号 `MAX + 1` 仍 racy（sprint 2 切 sequence）
+- 客户 / 站点 / 用户硬删除（sprint 3+）
