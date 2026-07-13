@@ -504,8 +504,20 @@ async function CustomerDashboard({ userId }: { userId: string }) {
           </Link>
         </div>
         {sites.length === 0 ? (
-          <div className="p-6 text-center text-sm text-muted-foreground">
-            No sites assigned yet. Contact your Account Manager.
+          <div className="p-8 text-center">
+            <div className="mx-auto h-10 w-10 rounded-full bg-muted flex items-center justify-center mb-3">
+              <svg className="h-5 w-5 text-muted-foreground" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1 1 15 0Z" />
+              </svg>
+            </div>
+            <h3 className="text-sm font-semibold text-foreground mb-1">
+              No sites assigned to you yet
+            </h3>
+            <p className="text-sm text-muted-foreground max-w-sm mx-auto">
+              Ask your Customer Manager to assign you to a site, or contact
+              your DropletAI Account Manager to get set up.
+            </p>
           </div>
         ) : (
           <div className="divide-y divide-border">
@@ -560,15 +572,25 @@ async function CustomerDashboard({ userId }: { userId: string }) {
           </Link>
         </div>
         {recentTickets.length === 0 ? (
-          <div className="p-6 text-center text-sm text-muted-foreground">
-            No tickets yet.{" "}
+          <div className="p-8 text-center">
+            <div className="mx-auto h-10 w-10 rounded-full bg-muted flex items-center justify-center mb-3">
+              <svg className="h-5 w-5 text-muted-foreground" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 6v.75m0 3v.75m0 3v.75m0 3V18m-9-5.25h5.25M7.5 15h3M3.375 5.25c-.621 0-1.125.504-1.125 1.125v3.026a2.999 2.999 0 0 1 0 5.198v3.026c0 .621.504 1.125 1.125 1.125h17.25c.621 0 1.125-.504 1.125-1.125v-3.026a2.999 2.999 0 0 1 0-5.198V6.375c0-.621-.504-1.125-1.125-1.125H3.375z" />
+              </svg>
+            </div>
+            <h3 className="text-sm font-semibold text-foreground mb-1">
+              No tickets yet
+            </h3>
+            <p className="text-sm text-muted-foreground max-w-sm mx-auto mb-4">
+              When you submit a ticket, it will appear here so you can track
+              its progress.
+            </p>
             <Link
               href="/submit"
-              className="text-primary hover:text-primary/80"
+              className="inline-block rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
             >
-              Submit a request
-            </Link>{" "}
-            to get started.
+              Submit a ticket
+            </Link>
           </div>
         ) : (
           <div className="divide-y divide-border">

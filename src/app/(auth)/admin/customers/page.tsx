@@ -67,9 +67,18 @@ export default async function AdminCustomersPage() {
       {/* Customers List */}
       <div className="space-y-4">
         {typedCustomers.length === 0 ? (
-          <div className="rounded-xl border border-border p-12 text-center">
-            <p className="text-sm text-muted-foreground">
-              No customers yet. Use the form above to create your first customer.
+          <div className="rounded-xl border border-dashed border-border bg-muted/20 p-12 text-center">
+            <div className="mx-auto h-10 w-10 rounded-full bg-muted flex items-center justify-center mb-3">
+              <svg className="h-5 w-5 text-muted-foreground" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 21h19.5m-18-18v18m10.5-18v18m6-13.5V21M6.75 6.75h.75m-.75 3h.75m-.75 3h.75m3-6h.75m-.75 3h.75m-.75 3h.75M6.75 21v-3.375c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21M3 3h12m-.75 4.5H21m-3.75 3h.008v.008h-.008v-.008zm0 3h.008v.008h-.008v-.008zm0 3h.008v.008h-.008v-.008z" />
+              </svg>
+            </div>
+            <h3 className="text-sm font-semibold text-foreground mb-1">
+              No customers yet
+            </h3>
+            <p className="text-sm text-muted-foreground max-w-md mx-auto">
+              Use the form above to create your first customer. Each customer
+              can have multiple sites and users.
             </p>
           </div>
         ) : (

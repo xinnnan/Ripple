@@ -4,7 +4,6 @@ import { PROJECT_STATUS_LABELS, PROJECT_STATUS_COLORS } from "@/types/ticket";
 import type { UserRole } from "@/types/ticket";
 import { isCustomerManager } from "@/lib/roles";
 import Link from "next/link";
-import Image from "next/image";
 import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
@@ -97,22 +96,39 @@ export default async function SitesPage() {
       </div>
 
       {sites.length === 0 ? (
-        <div className="rounded-xl border border-border p-12 text-center">
-          <Image
-            src="/logo.png"
-            alt="Ripple"
-            width={48}
-            height={48}
-            className="rounded-xl mx-auto mb-4 opacity-50"
-          />
-          <h3 className="text-lg font-semibold text-foreground mb-2">
-            No sites assigned
-          </h3>
-          <p className="text-sm text-muted-foreground max-w-md mx-auto">
-            You do not have access to any sites yet. Contact your DropletAI
-            Account Manager to get set up.
-          </p>
-        </div>
+        isManager ? (
+          <div className="rounded-xl border border-dashed border-border bg-muted/20 p-12 text-center">
+            <div className="mx-auto h-10 w-10 rounded-full bg-muted flex items-center justify-center mb-3">
+              <svg className="h-5 w-5 text-muted-foreground" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1 1 15 0Z" />
+              </svg>
+            </div>
+            <h3 className="text-sm font-semibold text-foreground mb-1">
+              No sites under your organization yet
+            </h3>
+            <p className="text-sm text-muted-foreground max-w-md mx-auto mb-4">
+              Your organization doesn&apos;t have any active sites. Contact
+              your DropletAI Account Manager to get set up.
+            </p>
+          </div>
+        ) : (
+          <div className="rounded-xl border border-dashed border-border bg-muted/20 p-12 text-center">
+            <div className="mx-auto h-10 w-10 rounded-full bg-muted flex items-center justify-center mb-3">
+              <svg className="h-5 w-5 text-muted-foreground" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1 1 15 0Z" />
+              </svg>
+            </div>
+            <h3 className="text-sm font-semibold text-foreground mb-1">
+              No sites assigned to you
+            </h3>
+            <p className="text-sm text-muted-foreground max-w-md mx-auto">
+              You don&apos;t have access to any sites yet. Ask your Customer
+              Manager to assign you to one.
+            </p>
+          </div>
+        )
       ) : (
         <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {sites.map((site) => {

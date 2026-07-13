@@ -7,6 +7,7 @@ import { STATUS_LABELS, SEVERITY_LABELS } from "@/types/ticket";
 import { formatDate } from "@/lib/utils";
 import Link from "next/link";
 import { TicketsPageHeader } from "./tickets-page-header";
+import { TableEmpty } from "@/components/empty-state";
 
 function buildFilterQuery(filters: { status?: string; severity?: string }) {
   const params = new URLSearchParams();
@@ -129,14 +130,25 @@ function renderTicketsPage(
           </thead>
           <tbody className="divide-y divide-border">
             {tickets.length === 0 ? (
-              <tr>
-                <td
-                  colSpan={7}
-                  className="p-8 text-center text-sm text-muted-foreground"
-                >
-                  No tickets found.
-                </td>
-              </tr>
+              <TableEmpty
+                colSpan={7}
+                icon="ticket"
+                title="No tickets yet"
+                description={
+                  filters.status || filters.severity
+                    ? "No tickets match the current filters."
+                    : isInternal
+                    ? "When tickets are created they will appear here."
+                    : "When you submit a ticket, it will appear here."
+                }
+                action={
+                  filters.status || filters.severity
+                    ? { label: "Clear filters", href: "/tickets" }
+                    : isInternal
+                    ? undefined
+                    : { label: "Submit a ticket", href: "/submit" }
+                }
+              />
             ) : (
               tickets.map(
                 (ticket) => (
