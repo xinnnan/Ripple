@@ -1,44 +1,28 @@
 import { createAdminClient } from "@/lib/supabase/admin";
-import { createClient } from "@/lib/supabase/server";
-import { redirect } from "next/navigation";
 import Link from "next/link";
-import type { UserRole } from "@/types/ticket";
+import { formatDate } from "@/lib/utils";
+import { ROLE_LABELS } from "@/lib/roles";
 import { EditUserForm } from "./edit-user-form";
-import { ADMIN_ROLES } from "@/lib/roles";
+import { DetailTabs, getCurrentTab } from "@/components/detail-tabs";
+import { TableEmpty } from "@/components/empty-state";
 
 export const dynamic = "force-dynamic";
 
-export default async function AdminUserDetailPage({
-  params,
-}: {
+interface Props {
   params: Promise<{ id: string }>;
-}) {
+  searchParams: Promise<{ tab?: string }>;
+}
+
+export default async function AdminUserDetailPage({ params, searchParams }: Props) {
   const { id } = await params;
-  const supabase = await createClient();
-
-  const {
-    data: { user: authUser },
-  } = await supabase.auth.getUser();
-
-  if (!authUser) redirect("/login");
-
-  const { data: userProfile } = await supabase
-    .from("users")
-    .select("role")
-    .eq("id", authUser.id)
-    .single();
-
-  const role = userProfile?.role as UserRole | undefined;
-  if (!role || !ADMIN_ROLES.includes(role)) {
-    redirect("/dashboard");
-  }
+  const { tab } = await searchParams;
+  const activeTab = getCurrentTab({ tab }, "overview");
 
   const admin = createAdminClient();
 
-  // Get user details
   const { data: user } = await admin
     .from("users")
-    .select("id, email, full_name, role, status, phone, created_at")
+    .select("id, email, full_name, role, status, phone, customer_id, created_at, customer:customers(name)")
     .eq("id", id)
     .single();
 
@@ -56,114 +40,186 @@ export default async function AdminUserDetailPage({
     );
   }
 
-  // Get user's site memberships
-  const { data: memberships } = await admin
-    .from("site_members")
-    .select(
-      `
-      id,
-      role,
-      site_id,
-      sites(id, site_name, site_code)
-    `
-    )
-    .eq("user_id", id);
+  const [membershipsRes, allSitesRes, auditRes] = await Promise.all([
+    admin
+      .from("site_members")
+      .select("id, role, site_id, sites(id, site_name, site_code, customer:customers(name))")
+      .eq("user_id", id),
+    admin
+      .from("sites")
+      .select("id, site_name, site_code, customer:customers(name)")
+      .order("site_name"),
+    admin
+      .from("audit_logs")
+      .select("id, created_at, action, field_name, old_value, new_value, actor_email, actor_full_name, actor_role")
+      .eq("entity_type", "user")
+      .eq("entity_id", id)
+      .order("created_at", { ascending: false })
+      .limit(20),
+  ]);
 
-  // Get all sites for assignment
-  const { data: allSites } = await admin
-    .from("sites")
-    .select("id, site_name, site_code, customer:customers(name)")
-    .order("site_name");
-
-  interface MembershipRow {
+  const memberships = (membershipsRes.data || []) as unknown as {
     id: string;
     role: string;
     site_id: string;
-    sites: { id: string; site_name: string; site_code: string }[] | null;
-  }
-
-  interface SiteOption {
+    sites:
+      | { id: string; site_name: string; site_code: string; customer: { name: string }[] | null }[]
+      | { id: string; site_name: string; site_code: string; customer: { name: string }[] | null }
+      | null;
+  }[];
+  const allSites = (allSitesRes.data || []) as unknown as {
     id: string;
     site_name: string;
     site_code: string;
     customer: { name: string }[] | null;
-  }
+  }[];
+  const audit = (auditRes.data || []) as unknown as {
+    id: string;
+    created_at: string;
+    action: string;
+    field_name: string | null;
+    old_value: string | null;
+    new_value: string | null;
+    actor_email: string | null;
+    actor_full_name: string | null;
+    actor_role: string | null;
+  }[];
 
-  const typedMemberships = (memberships || []) as unknown as MembershipRow[];
-  const typedAllSites = (allSites || []) as unknown as SiteOption[];
+  const customerData = Array.isArray(user.customer)
+    ? user.customer[0]
+    : user.customer;
+
+  const tabs = [
+    { key: "overview", label: "Overview" },
+    { key: "sites", label: "Site Access", count: memberships.length },
+    { key: "history", label: "History", count: audit.length },
+  ];
 
   return (
     <div className="p-8">
-      <div className="mb-8">
+      <div className="mb-6">
         <Link
           href="/admin/users"
           className="text-sm text-muted-foreground hover:text-foreground transition-colors"
         >
           ← Back to Users
         </Link>
-        <h1 className="text-2xl font-bold text-foreground mt-2">
-          Edit User
-        </h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Manage user details and site access
-        </p>
+        <div className="mt-2 flex items-start justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-foreground">
+              {user.full_name}
+            </h1>
+            <p className="text-sm text-muted-foreground mt-1">
+              {user.email}
+              {user.phone && <span> · {user.phone}</span>}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-blue-50 text-blue-700">
+              {ROLE_LABELS[user.role as keyof typeof ROLE_LABELS] || user.role}
+            </span>
+            <span
+              className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                user.status === "active"
+                  ? "bg-green-100 text-green-800"
+                  : "bg-gray-100 text-gray-800"
+              }`}
+            >
+              {user.status}
+            </span>
+          </div>
+        </div>
       </div>
 
-      <div className="max-w-3xl space-y-6">
-        {/* User Edit Form */}
-        <EditUserForm user={user} />
+      <DetailTabs
+        current={activeTab}
+        basePath={`/admin/users/${id}`}
+        tabs={tabs}
+      />
 
-        {/* Site Access */}
-        <div className="rounded-xl border border-border p-6">
-          <h2 className="text-base font-semibold text-foreground mb-4">
-            Site Access
-          </h2>
+      {activeTab === "overview" && (
+        <div className="space-y-6">
+          <div className="rounded-xl border border-border p-6">
+            <h2 className="text-base font-semibold text-foreground mb-4">
+              User details
+            </h2>
+            <EditUserForm user={user} />
+          </div>
 
-          {/* Current memberships */}
-          <div className="space-y-2 mb-4">
-            {typedMemberships.length === 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="rounded-xl border border-border p-6">
+              <p className="text-xs text-muted-foreground">Customer</p>
+              <p className="text-base font-semibold mt-1">
+                {customerData?.name || "—"}
+              </p>
+            </div>
+            <div className="rounded-xl border border-border p-6">
+              <p className="text-xs text-muted-foreground">Sites assigned</p>
+              <p className="text-3xl font-bold text-blue-600 mt-1">
+                {memberships.length}
+              </p>
+            </div>
+            <div className="rounded-xl border border-border p-6">
+              <p className="text-xs text-muted-foreground">Joined</p>
+              <p className="text-sm font-medium mt-1">
+                {formatDate(user.created_at)}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeTab === "sites" && (
+        <div className="space-y-4">
+          <div className="rounded-xl border border-border p-6">
+            <h2 className="text-base font-semibold text-foreground mb-4">
+              Site Access ({memberships.length})
+            </h2>
+            {memberships.length === 0 ? (
               <p className="text-sm text-muted-foreground">
                 No sites assigned.
               </p>
             ) : (
-              typedMemberships.map((m) => {
-                const siteData = Array.isArray(m.sites)
-                  ? m.sites[0]
-                  : m.sites;
-                return (
-                  <div
-                    key={m.id}
-                    className="flex items-center justify-between rounded-lg border border-border px-4 py-3"
-                  >
-                    <div>
-                      <p className="text-sm font-medium text-foreground">
-                        {siteData?.site_name || "Unknown"}
-                      </p>
-                      <p className="text-xs text-muted-foreground font-mono">
-                        {siteData?.site_code}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <span className="text-xs text-muted-foreground capitalize">
-                        {m.role}
-                      </span>
-                      <form action={`/api/admin/site-members?action=remove&membershipId=${m.id}`} method="POST">
-                        <button
-                          type="submit"
-                          className="text-xs font-medium text-red-600 hover:text-red-800 transition-colors"
+              <div className="space-y-2">
+                {memberships.map((m) => {
+                  const siteData = Array.isArray(m.sites) ? m.sites[0] : m.sites;
+                  return (
+                    <div
+                      key={m.id}
+                      className="flex items-center justify-between rounded-lg border border-border px-4 py-3"
+                    >
+                      <div>
+                        <p className="text-sm font-medium text-foreground">
+                          {siteData?.site_name || "Unknown"}
+                        </p>
+                        <p className="text-xs text-muted-foreground font-mono">
+                          {siteData?.site_code}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="text-xs text-muted-foreground capitalize">
+                          {m.role}
+                        </span>
+                        <form
+                          action={`/api/admin/site-members?action=remove&membershipId=${m.id}`}
+                          method="POST"
                         >
-                          Remove
-                        </button>
-                      </form>
+                          <button
+                            type="submit"
+                            className="text-xs font-medium text-red-600 hover:text-red-800 transition-colors"
+                          >
+                            Remove
+                          </button>
+                        </form>
+                      </div>
                     </div>
-                  </div>
-                );
-              })
+                  );
+                })}
+              </div>
             )}
           </div>
 
-          {/* Add site access */}
-          <div className="border-t border-border pt-4">
+          <div className="rounded-xl border border-border p-6">
             <h3 className="text-sm font-medium text-foreground mb-3">
               Add Site Access
             </h3>
@@ -181,7 +237,7 @@ export default async function AdminUserDetailPage({
                   className="w-full rounded-lg border border-border px-3 py-2 text-sm text-foreground bg-background"
                 >
                   <option value="">Select a site...</option>
-                  {typedAllSites.map((site) => {
+                  {allSites.map((site) => {
                     const customerData = site.customer as unknown as { name: string }[] | null;
                     const customerName = Array.isArray(customerData)
                       ? customerData[0]?.name
@@ -216,7 +272,66 @@ export default async function AdminUserDetailPage({
             </form>
           </div>
         </div>
-      </div>
+      )}
+
+      {activeTab === "history" && (
+        <div className="rounded-xl border border-border overflow-hidden">
+          {audit.length === 0 ? (
+            <div className="p-6">
+              <TableEmpty
+                colSpan={1}
+                icon="search"
+                title="No history yet"
+                description="Changes to this user will appear here."
+              />
+            </div>
+          ) : (
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-border bg-muted/50">
+                  <th className="text-left text-xs font-medium text-muted-foreground p-3">
+                    When
+                  </th>
+                  <th className="text-left text-xs font-medium text-muted-foreground p-3">
+                    Who
+                  </th>
+                  <th className="text-left text-xs font-medium text-muted-foreground p-3">
+                    Action
+                  </th>
+                  <th className="text-left text-xs font-medium text-muted-foreground p-3">
+                    Field
+                  </th>
+                  <th className="text-left text-xs font-medium text-muted-foreground p-3">
+                    Old → New
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {audit.map((a) => (
+                  <tr key={a.id} className="hover:bg-muted/30 transition-colors">
+                    <td className="p-3 text-xs text-muted-foreground">
+                      {formatDate(a.created_at)}
+                    </td>
+                    <td className="p-3 text-sm">
+                      {a.actor_full_name || a.actor_email || "—"}
+                    </td>
+                    <td className="p-3 text-sm">{a.action}</td>
+                    <td className="p-3 text-sm">{a.field_name || "—"}</td>
+                    <td className="p-3 text-xs text-muted-foreground">
+                      {a.old_value && (
+                        <span className="line-through mr-1">{a.old_value}</span>
+                      )}
+                      {a.new_value && (
+                        <span className="text-foreground">→ {a.new_value}</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
     </div>
   );
 }
