@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAdmin } from "@/lib/supabase/auth-helpers";
+import { logAudit } from "@/lib/audit";
 import { z } from "zod";
 
 const createUserSchema = z.object({
@@ -53,6 +54,19 @@ export async function POST(request: NextRequest) {
         .from("users")
         .update({ phone: data.phone })
         .eq("id", authUser.user.id);
+    }
+
+    // Audit log — user creation is security-relevant
+    if (authUser.user) {
+      await logAudit({
+        actorId: auth.userId,
+        actorRole: auth.role,
+        entityType: "user",
+        entityId: authUser.user.id,
+        action: "created",
+        newValue: data.email,
+        metadata: { role: data.role, full_name: data.full_name },
+      });
     }
 
     return NextResponse.json(
