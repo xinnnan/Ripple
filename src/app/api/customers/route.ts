@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAdmin } from "@/lib/supabase/auth-helpers";
+import { logAudit } from "@/lib/audit";
 import { z } from "zod";
 
 const createCustomerSchema = z.object({
@@ -52,6 +53,16 @@ export async function POST(request: NextRequest) {
       console.error("Failed to create customer:", error);
       return NextResponse.json({ error: "Failed to create customer" }, { status: 500 });
     }
+
+    await logAudit({
+      actorId: auth.userId,
+      actorRole: auth.role,
+      entityType: "customer",
+      entityId: customer.id,
+      action: "created",
+      newValue: customer.name,
+      metadata: { status: customer.status, domain: customer.domain },
+    });
 
     return NextResponse.json({ customer }, { status: 201 });
   } catch (error) {

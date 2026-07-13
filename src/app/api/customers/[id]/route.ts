@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAdmin } from "@/lib/supabase/auth-helpers";
+import { logDiff } from "@/lib/audit";
 import { z } from "zod";
 
 const updateCustomerSchema = z.object({
@@ -30,6 +31,14 @@ export async function PATCH(
     }
 
     const supabase = createAdminClient();
+
+    // Fetch before-state for the audit diff
+    const { data: before } = await supabase
+      .from("customers")
+      .select("name, domain, status")
+      .eq("id", id)
+      .single();
+
     const { error } = await supabase
       .from("customers")
       .update(data)
@@ -38,6 +47,17 @@ export async function PATCH(
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
+
+    // Audit log (best-effort, never throws)
+    await logDiff({
+      actorId: auth.userId,
+      actorEmail: undefined,
+      actorRole: auth.role,
+      entityType: "customer",
+      entityId: id,
+      before,
+      after: data,
+    });
 
     return NextResponse.json({ success: true });
   } catch (error) {
