@@ -22,7 +22,6 @@
 //   const siteIds = await getCurrentSiteIds();
 
 import { createClient } from "./server";
-import { createClient as createBrowserClient } from "./client";
 import { createAdminClient } from "./admin";
 import { INTERNAL_ROLES, isCustomerManager } from "@/lib/roles";
 import { isInternalEmail } from "@/lib/utils";
@@ -211,48 +210,9 @@ export function scopeUsers<Q extends { eq: Function }>(
 }
 
 // ---------------------------------------------------------------------------
-// Client-side helpers (for client components / modals)
+// Client-side helpers
 // ---------------------------------------------------------------------------
-
-/**
- * Get the list of site_ids the current browser session is allowed to use.
- * Used by client components like the create-ticket modal.
- */
-export async function getCurrentSiteIds(): Promise<string[]> {
-  const supabase = createBrowserClient();
-  const {
-    data: { user: authUser },
-  } = await supabase.auth.getUser();
-  if (!authUser) return [];
-
-  const { data: profile } = await supabase
-    .from("users")
-    .select("role, email, customer_id")
-    .eq("id", authUser.id)
-    .single();
-  if (!profile) return [];
-
-  const role = (profile.role as UserRole | null) ?? "customer";
-  const email = profile.email as string;
-  const customerId = (profile.customer_id as string | null) ?? null;
-  const isInternal = role ? INTERNAL_ROLES.includes(role) : isInternalEmail(email);
-  const isManager = isCustomerManager(role);
-
-  if (isInternal) return []; // empty = no filter (sees all)
-
-  if (isManager && customerId) {
-    const admin = createAdminClient();
-    const { data: sites } = await admin
-      .from("sites")
-      .select("id")
-      .eq("customer_id", customerId)
-      .eq("status", "active");
-    return (sites || []).map((s) => s.id as string);
-  }
-
-  const { data: memberships } = await supabase
-    .from("site_members")
-    .select("site_id")
-    .eq("user_id", authUser.id);
-  return (memberships || []).map((m) => m.site_id as string);
-}
+// `getCurrentSiteIds` and `getCurrentSites` live in `scope.client.ts` so that
+// this file (which imports `next/headers` via the server client) stays
+// server-only. Client components must import directly from
+// `@/lib/supabase/scope.client`.
