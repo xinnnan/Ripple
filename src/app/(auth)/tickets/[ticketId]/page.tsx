@@ -1,13 +1,20 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
-import { STATUS_LABELS, SEVERITY_LABELS, REQUEST_TYPE_LABELS, IMPACT_LABELS } from "@/types/ticket";
-import { INTERNAL_ROLES } from "@/lib/roles";
+import {
+  STATUS_LABELS,
+  SEVERITY_LABELS,
+  REQUEST_TYPE_LABELS,
+  IMPACT_LABELS,
+  type TicketStatus,
+  type Severity,
+} from "@/types/ticket";
 import { SPR_STATUS_LABELS, SPR_STATUS_COLORS, FSO_STATUS_LABELS, FSO_STATUS_COLORS, SERVICE_TYPE_LABELS } from "@/types/spare-parts";
-import { formatDate, isInternalEmail } from "@/lib/utils";
-import type { UserRole } from "@/types/ticket";
+import { formatDate } from "@/lib/utils";
 import Link from "next/link";
 import { AIAssistButton } from "./ai-assist-button";
 import { TicketActionsPanel } from "./ticket-actions-panel";
+import { getUserScope, scopeTickets } from "@/lib/supabase/scope";
+import { isAdminRole } from "@/lib/roles";
 
 interface Props {
   params: Promise<{ ticketId: string }>;
@@ -17,18 +24,19 @@ export default async function TicketDetailPage({ params }: Props) {
   const { ticketId } = await params;
   const supabase = createAdminClient();
 
-  // Get current user for timezone
   const serverSupabase = await createClient();
-  const { data: { user: authUser } } = await serverSupabase.auth.getUser();
+  const {
+    data: { user: authUser },
+  } = await serverSupabase.auth.getUser();
 
-  let userTimezone = "America/New_York";
-  if (authUser) {
-    // Try to detect timezone from user's browser - we use the site timezone or default
-    // For now, we pass the user's locale timezone through the formatDate function
-  }
+  const scope = await getUserScope();
+  const currentUserId = authUser?.id || "";
+  const isInternal = scope?.isInternal ?? false;
+  const isAdmin = scope ? isAdminRole(scope.role) : false;
 
-  // Fetch ticket by ID or ticket_no
-  const { data: ticket } = await supabase
+  // Fetch ticket by ID or ticket_no, scoped so non-internal users can't see
+  // tickets outside their tenant.
+  let ticketQuery = supabase
     .from("tickets")
     .select(
       `
@@ -39,8 +47,11 @@ export default async function TicketDetailPage({ params }: Props) {
       creator:users!tickets_created_by_fkey(id, full_name, email)
     `
     )
-    .or(`id.eq.${ticketId},ticket_no.eq.${ticketId}`)
-    .single();
+    .or(`id.eq.${ticketId},ticket_no.eq.${ticketId}`);
+  if (scope) {
+    ticketQuery = scopeTickets(ticketQuery, scope);
+  }
+  const { data: ticket } = await ticketQuery.maybeSingle();
 
   if (!ticket) {
     return (
@@ -55,29 +66,53 @@ export default async function TicketDetailPage({ params }: Props) {
 
   // Get site timezone for display
   const siteData = Array.isArray(ticket.site) ? ticket.site[0] : ticket.site;
-  const siteTimezone = (siteData as unknown as { timezone?: string })?.timezone || "America/New_York";
-  userTimezone = siteTimezone;
+  const userTimezone =
+    (siteData as unknown as { timezone?: string } | null)?.timezone ||
+    "America/New_York";
 
-  // Fetch all comments (including internal)
-  const { data: comments } = await supabase
+  // Comments: non-internal users only see customer-visible comments
+  let commentsQuery = supabase
     .from("ticket_comments")
     .select("*, author:users(full_name, role)")
     .eq("ticket_id", ticket.id)
     .order("created_at", { ascending: true });
+  if (!isInternal) {
+    commentsQuery = commentsQuery.eq("visibility", "customer");
+  }
+  const { data: comments } = await commentsQuery;
 
-  // Fetch attachments
-  const { data: attachments } = await supabase
+  // Attachments: same visibility gating
+  let attachmentsQuery = supabase
     .from("ticket_attachments")
     .select("*")
     .eq("ticket_id", ticket.id)
     .order("created_at", { ascending: true });
+  if (!isInternal) {
+    attachmentsQuery = attachmentsQuery.eq("visibility", "customer");
+  }
+  const { data: attachments } = await attachmentsQuery;
 
-  // Fetch events with actor info
-  const { data: events } = await supabase
-    .from("ticket_events")
-    .select("*, actor:users!ticket_events_actor_id_fkey(full_name, email, role)")
-    .eq("ticket_id", ticket.id)
-    .order("created_at", { ascending: true });
+  // Events: only internal users see the full audit trail. Customers get
+  // a high-level "what happened" view built in the UI from the ticket
+  // fields directly (no raw event rows).
+  const { data: events } = isInternal
+    ? await supabase
+        .from("ticket_events")
+        .select("*, actor:users!ticket_events_actor_id_fkey(full_name, email, role)")
+        .eq("ticket_id", ticket.id)
+        .order("created_at", { ascending: true })
+    : { data: null };
+
+  // Available owners (for the owner selector — internal users only need this)
+  const { data: ownersData } = isInternal
+    ? await supabase
+        .from("users")
+        .select("id, full_name")
+        .in("role", ["admin", "engineer"])
+        .eq("status", "active")
+        .order("full_name")
+    : { data: [] };
+  const availableOwners = ownersData || [];
 
   // Fetch AI suggestions
   const { data: aiSuggestions } = await supabase
@@ -99,16 +134,6 @@ export default async function TicketDetailPage({ params }: Props) {
     .select("id, order_no, title, service_type, status, scheduled_date, estimated_hours, actual_hours, engineers:field_service_engineers(engineer:users(full_name))")
     .eq("ticket_id", ticket.id)
     .order("created_at", { ascending: false });
-
-  // Check if user is internal for showing create buttons
-  const isInternal = authUser
-    ? (await (async () => {
-        const { data: p } = await serverSupabase.from("users").select("role, email").eq("id", authUser.id).single();
-        const r = p?.role as UserRole | undefined;
-        const e = p?.email as string | undefined;
-        return r ? INTERNAL_ROLES.includes(r) : e ? isInternalEmail(e) : false;
-      })())
-    : false;
 
   // Format event type labels
   function formatEventType(type: string): string {
@@ -457,10 +482,16 @@ export default async function TicketDetailPage({ params }: Props) {
           {/* Ticket Actions */}
           <TicketActionsPanel
             ticketId={ticket.id}
-            currentStatus={ticket.status}
-            currentSeverity={ticket.severity}
+            ticketNo={ticket.ticket_no}
+            currentStatus={ticket.status as TicketStatus}
+            currentSeverity={ticket.severity as Severity}
             currentOwnerId={ticket.owner_id}
-            siteTimezone={userTimezone}
+            availableOwners={availableOwners}
+            currentUserId={currentUserId}
+            isInternal={isInternal}
+            isAdmin={isAdmin}
+            currentCustomerVisibleSummary={ticket.customer_visible_summary}
+            currentInternalSummary={ticket.internal_summary}
           />
         </div>
       </div>
