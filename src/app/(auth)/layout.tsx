@@ -3,8 +3,7 @@ import Image from "next/image";
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import type { UserRole } from "@/types/ticket";
-import { isInternalEmail } from "@/lib/utils";
-import { INTERNAL_ROLES, isAdminRole, isCustomerManager } from "@/lib/roles";
+import { isAdminRole, isCustomerManager, isInternalUser } from "@/lib/roles";
 
 export const dynamic = "force-dynamic";
 
@@ -33,9 +32,9 @@ export default async function AuthLayout({
   const customerId = userProfile?.customer_id as string | null;
   const isAdmin = role ? isAdminRole(role) : false;
   const isManager = role ? isCustomerManager(role) : false;
-  const isInternal = role
-    ? INTERNAL_ROLES.includes(role)
-    : email ? isInternalEmail(email) : false;
+  const isInternal = isInternalUser({ role, email });
+
+
 
   return (
     <div className="min-h-screen bg-background flex">

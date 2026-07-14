@@ -4,8 +4,7 @@
 
 import { createClient } from "./client";
 import { createAdminClient } from "./admin";
-import { INTERNAL_ROLES, isCustomerManager } from "@/lib/roles";
-import { isInternalEmail } from "@/lib/utils";
+import { isCustomerManager, isInternalUser } from "@/lib/roles";
 import type { UserRole } from "@/types/ticket";
 
 /**
@@ -29,7 +28,7 @@ export async function getCurrentSiteIds(): Promise<string[]> {
   const role = (profile.role as UserRole | null) ?? "customer";
   const email = profile.email as string;
   const customerId = (profile.customer_id as string | null) ?? null;
-  const isInternal = role ? INTERNAL_ROLES.includes(role) : isInternalEmail(email);
+  const isInternal = isInternalUser({ role, email });
   const isManager = isCustomerManager(role);
 
   if (isInternal) return []; // empty = no filter (sees all)
@@ -76,7 +75,7 @@ export async function getCurrentSites(): Promise<
   const role = (profile.role as UserRole | null) ?? "customer";
   const email = profile.email as string;
   const customerId = (profile.customer_id as string | null) ?? null;
-  const isInternal = role ? INTERNAL_ROLES.includes(role) : isInternalEmail(email);
+  const isInternal = isInternalUser({ role, email });
   const isManager = isCustomerManager(role);
 
   const admin = createAdminClient();

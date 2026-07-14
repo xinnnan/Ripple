@@ -23,8 +23,11 @@
 
 import { createClient } from "./server";
 import { createAdminClient } from "./admin";
-import { INTERNAL_ROLES, isCustomerManager } from "@/lib/roles";
-import { isInternalEmail } from "@/lib/utils";
+import {
+  INTERNAL_ROLES,
+  isCustomerManager,
+  isInternalUser,
+} from "@/lib/roles";
 import type { UserRole } from "@/types/ticket";
 
 // ---------------------------------------------------------------------------
@@ -88,9 +91,7 @@ export async function getUserScope(): Promise<UserScope | null> {
   const customerId = (profile.customer_id as string | null) ?? null;
   const fullName = (profile.full_name as string | null) ?? null;
 
-  const isInternal = role
-    ? INTERNAL_ROLES.includes(role)
-    : isInternalEmail(email);
+  const isInternal = isInternalUser({ role, email });
   const isManager = isCustomerManager(role);
   const isCustomer = !isInternal && !isManager;
 

@@ -1,5 +1,6 @@
 // Centralized role definitions and helpers for Ripple
 import type { UserRole } from "@/types/ticket";
+import { isInternalEmail } from "@/lib/utils";
 
 // ============================================================
 // Role constants
@@ -23,6 +24,29 @@ export function isAdminRole(role: UserRole): boolean {
 
 export function isCustomerManager(role: UserRole): boolean {
   return role === "customer_manager";
+}
+
+/**
+ * Returns true when the user is internal (admin / engineer).
+ *
+ * Trust order:
+ *   1. The `role` column on `public.users` is the source of truth.
+ *   2. If the role is not set yet (e.g. right after signup, before the
+ *      handle_new_user trigger has run, or for a legacy guest user),
+ *      fall back to the email domain check.
+ *   3. If neither is available, the user is treated as external.
+ *
+ * This is the single helper every server check should call. Inline
+ * `INTERNAL_ROLES.includes(role) || isInternalEmail(email)` patterns
+ * are an anti-pattern — they drift and miss edge cases.
+ */
+export function isInternalUser(input: {
+  role?: UserRole | null;
+  email?: string | null;
+}): boolean {
+  if (input.role) return INTERNAL_ROLES.includes(input.role);
+  if (input.email) return isInternalEmail(input.email);
+  return false;
 }
 
 // ============================================================

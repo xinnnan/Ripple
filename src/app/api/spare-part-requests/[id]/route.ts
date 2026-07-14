@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
-import { isInternalEmail } from "@/lib/utils";
 import type { UserRole } from "@/types/ticket";
-import { INTERNAL_ROLES } from "@/lib/roles";
+import { isInternalUser } from "@/lib/roles";
 
 export const dynamic = "force-dynamic";
 
@@ -62,9 +61,9 @@ export async function PATCH(
 
   const role = userProfile?.role as UserRole | undefined;
   const email = userProfile?.email as string | undefined;
-  const isInternal = role
-    ? INTERNAL_ROLES.includes(role)
-    : email ? isInternalEmail(email) : false;
+  const isInternal = isInternalUser({ role, email });
+
+
 
   if (!isInternal) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });

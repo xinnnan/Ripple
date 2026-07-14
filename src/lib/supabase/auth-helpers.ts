@@ -1,6 +1,11 @@
 import { createClient } from "@/lib/supabase/server";
 import type { UserRole } from "@/types/ticket";
-import { ADMIN_ROLES, INTERNAL_ROLES, isCustomerManager } from "@/lib/roles";
+import {
+  ADMIN_ROLES,
+  INTERNAL_ROLES,
+  isCustomerManager,
+  isInternalUser,
+} from "@/lib/roles";
 
 export async function requireAdmin() {
   const supabase = await createClient();
@@ -50,9 +55,7 @@ export async function requireInternal() {
   const role = userProfile?.role as UserRole | undefined;
   const email = userProfile?.email as string | undefined;
   const customerId = userProfile?.customer_id as string | null;
-  const isInternal = role
-    ? INTERNAL_ROLES.includes(role)
-    : email ? email.endsWith("@dropletai.services") : false;
+  const isInternal = isInternalUser({ role, email });
 
   if (!isInternal) {
     return { error: "Forbidden: Internal access required", status: 403 } as const;
@@ -85,9 +88,7 @@ export async function getAuthUser() {
   const email = userProfile?.email as string | undefined;
   const customerId = userProfile?.customer_id as string | null;
   const fullName = userProfile?.full_name as string | null;
-  const isInternal = role
-    ? INTERNAL_ROLES.includes(role)
-    : email ? email.endsWith("@dropletai.services") : false;
+  const isInternal = isInternalUser({ role, email });
   const isManager = role ? isCustomerManager(role) : false;
 
   return {
