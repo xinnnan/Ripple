@@ -294,13 +294,27 @@ NEXT_PUBLIC_APP_URL=
 
 > These are real things that bit us or cost time. Read before re-implementing.
 
+### RLS policies that reference their own table cause infinite recursion
+Found 2026-07-14 during e2e testing. `supabase/migrations/017_consolidate_roles.sql` added a policy on `users` whose USING clause did `SELECT 1 FROM users WHERE id = auth.uid() ...`. When postgres evaluates that, it must check RLS on `users` to satisfy the inner SELECT — which triggers the same policy again. HTTP 500 / `42P17 infinite recursion`.
+
+The bug was invisible to:
+- The Sprint 1 e2e audit (which only tested admin-client paths = service role = bypasses RLS)
+- The dashboard smoke test (the page renders; it just shows "0 sites / 0 tickets" because getUserScope() throws and returns null)
+- Any API route that uses `createAdminClient()` directly
+
+It only surfaces on cookie-based reads of `public.users`, which every Supabase SSR client does for `getUser()`. The cookie-based API routes silently 401'd for every valid user.
+
+Fix pattern: when an RLS policy on table X needs to look up "the caller's row in X", use a `SECURITY DEFINER` function. It runs as the function owner and bypasses RLS, breaking the recursion. See `supabase/migrations/019_fix_user_rls_recursion.sql` for the canonical example (`current_user_role()` / `current_user_customer_id()`).
+
+**Lesson:** every migration that adds an RLS policy should include a quick e2e test that drives a real cookie-based login (not just an admin client). The admin client bypasses everything; the cookie client doesn't.
+
 ### AI provider migration is non-trivial
 We changed AI providers 3× in 2 weeks: OpenAI → Zhipu BigModel (commit `01a71b8`) → MiniMax (current). Each swap required:
 - Updating env var names + base URL
 - Re-validating that the prompt format still produces parseable `confidence: high/medium/low` text (parsed by `detectConfidence()` in `src/lib/ai/suggest.ts:138`)
 - Re-testing safety boundaries (the `SYSTEM_PROMPT` was tuned to the model's behavior)
 
-**Current concern:** `MINIMAX_BASE_URL=https://api.minimax.chat/v1/` — the domain `minimax.chat` is not a known public LLM endpoint. Either this is an internal/private gateway (and we should document the operator) or it's a placeholder that needs to point to a real provider. **Verify before going live.** Also confirm `M2.7-highspeed` is a valid model name on whatever base URL we land on.
+**Current concern:** `MINIMAX_BASE_URL=https://api.minimax.chat/v1/` — the domain `minimax.chat` is not a known public LLM endpoint. The URL resolves and returns proper error responses, so the gateway is real — but the shipped `MINIMAX_API_KEY` returns `401 invalid api key (2049)`. Until the key is fixed, the AI endpoint serves a structured mock (see `src/lib/ai/suggest.ts` `_mock` field). Also confirm `M2.7-highspeed` is a valid model name on whatever base URL we land on.
 
 ### Don't fight the RLS — use admin client + code filters
 Initial pages tried to use RLS for scoping. Too painful (join complexity, debug difficulty). Most pages now use `createAdminClient()` (service role) and filter in code. **This means every new query must be carefully scoped** — there's no DB-level safety net for "I forgot the `where site_id in (...)`".
@@ -343,33 +357,36 @@ The `plans/e2e-audit-and-test-plan.md` from 2026-05-23 was the most productive d
 - **Phase 2.5** (commits `f3fcb69`–`a62c043`): ticket creation modal, MiniMax AI, e2e audit fixes
 - **Phase 3** (commits `38f8fe7`–`1eb7dca`): spare parts + field service dispatch, role consolidation to 4 types, customer_manager team management
 - **Phase 4 Sprint 1** (commits `bcd18d0`–`e444a38`, 14 commits): tenant scope module, error/404 pages, admin role gate, empty-state component, API auth lockdown, ticket list search/filters/pagination, ticket detail interactivity, site/customer/user detail tabs, audit log table + page, customer manager dashboard enrichment, Slack interactive loop closed. Full plan in `plans/phase4-complete-ticket-system.md`.
+- **Phase 4 Sprint 2** (commits `ce45ee8`–`53186a0`, 13 commits): full repo cleanup. Extracted `createTicketCore()` (dedupes 2 create paths), `isInternalUser()` (collapses 11 duplicate sites), `lib/slack/sync.ts` (wires PATCH → Slack master message back-sync), email confirm + resolution (Resend, lazy + escape), MiniMax mock fallback (graceful no-key / 401), closed `GET /api/tickets` tenant leak, added Slack signature verify to `/ticket` slash command. **Found and shipped migration 019 to fix an RLS infinite-recursion bug introduced by 017** — see "Known issues" below. Full audit: `plans/e2e-audit-sprint2.md`.
 
 ### Known issues / open work
 | Priority | Item | Where | Notes |
 |---|---|---|---|
-| 🔴 High | Verify MiniMax AI base URL `https://api.minimax.chat/v1/` is real and reachable | `.env.local.example:12`, `src/lib/ai/suggest.ts:18` | See §9 lesson; Sprint 2 |
-| 🟡 Med | Email confirmations not implemented (Resend key present but unused) | `src/app/api/tickets/route.ts:163` (TODO), `src/lib/email/send.ts` (template exists, no caller) | Sprint 2 — submit confirm + resolution notice |
+| 🔴 High | **Apply `supabase/migrations/019_fix_user_rls_recursion.sql` in the Supabase SQL editor.** | n/a (SQL editor) | Without this, every cookie-based read of `public.users` returns 500 / infinite recursion. Service-role paths are unaffected, so admin clients work; the dashboard, however, silently shows 0 sites/0 tickets for every user. **This is the only blocker between current code and a fully working e2e flow.** |
+| 🟡 Med | MiniMax AI key invalid (`401 invalid api key (2049)`). | `.env` `MINIMAX_API_KEY` | Mock fallback is in place; real AI works once key is fixed. Provider URL `https://api.minimax.chat/v1/` resolves and returns proper error responses, so the gateway is real — just the key is wrong. |
+| 🟡 Med | Resend sender domain `dropletai.services` not verified | `src/lib/email/send.ts` | Email send returns `send_failed` until domain is verified at resend.com/domains. Ticket creation still works. |
 | 🟡 Med | Dashboard timezone hardcoded to `America/New_York` for some widgets | `src/app/(auth)/dashboard/page.tsx` | Should derive from user or first site; ticket detail already uses `site.timezone` |
 | 🟡 Med | `/settings` page is a placeholder | `src/app/(auth)/settings/page.tsx` | Notification preferences, timezone, theme |
-| 🟡 Med | Sprint 1 e2e not run locally — `.env.local` absent | n/a | Vercel preview env or local setup needed |
-| 🟢 Low | Master Slack message not updated when ticket changes via web | `src/app/api/tickets/[ticketId]/route.ts` | Two-way Slack ↔ web sync |
+| 🟢 Low | Ticket number `MAX + 1` is racy under high write concurrency | `src/lib/tickets/create.ts:generateNextTicketNo` | Sprint 3 — switch to Postgres sequence |
+| 🟢 Low | Slack handlers (assign / in_progress / request_info / resolve) still call `client.chat.update` inline instead of using the new `updateMasterMessage()` | `src/lib/slack/handlers/actions.ts` | Already factored in `lib/slack/sync.ts`; just needs the 4 call sites swapped. |
+| 🟢 Low | Slack `events` route doesn't route customer messages to a ticket comment yet | `src/app/api/slack/events/route.ts` | Sprint 3 |
 | 🟢 Low | Hard delete missing — only soft-delete via `status='inactive'` | n/a | Accepted convention |
-| 🟢 Low | No automated tests | n/a | E2E checklist is manual |
-| 🟢 Low | Ticket number `MAX + 1` is racy under high write concurrency | `src/app/api/tickets/route.ts:74-84` | Switch to sequence in Sprint 2 |
+| 🟢 Low | No automated tests beyond the 54 vitest unit tests | n/a | E2E scripts live in `/tmp/ripple-e2e/` (artifacts, not committed) |
 
-### Next priorities (Sprint 2, in proposed order)
-1. **AI provider verification + e2e test** — confirm MiniMax works (or fall back to Zhipu) and run a smoke test against a real Supabase env.
-2. **Email notifications** — wire Resend in `POST /api/tickets` (submission confirmation) and `PATCH /api/tickets/[id]` when status flips to `resolved` (resolution notice). Customer-visible summary goes in the body.
-3. **Customer / customer manager polish** — public token page reply, customer self-service submit form already done, focus on a guided "new ticket" wizard.
-4. **Sprint 1 e2e audit** — re-run the audit template against the new state, capture regressions.
-5. **Ticket number sequence migration** — small migration to switch `MAX + 1` to a Postgres sequence.
+### Next priorities (Sprint 3, in proposed order)
+1. **Apply migration 019** to unblock the e2e flow. (Manual — see Known issues above.)
+2. **Fix MiniMax AI key** (or swap provider in `.env`). Verify `/api/ai/suggest` returns a real model response, not a mock.
+3. **Verify Resend sender domain** so confirmation / resolution emails actually send.
+4. **Ticket number sequence migration** (020) — small migration to switch `MAX + 1` to a Postgres sequence.
+5. **Collapse Slack handlers to `updateMasterMessage()`** — 4 inline `chat.update` calls become 4 one-liners.
 6. **Dashboard timezone** — derive from user or first site.
-7. **Start Sprint 3 items** — Kanban view (INT-5), SLA monitoring (INT-6), notifications center (INT-7).
+7. **Sprint 3 feature work** — Kanban view (INT-5), SLA monitoring (INT-6), notifications center (INT-7).
+8. **Start real Slack Connect work** — see PRD §8.5 / SLK-015.
 
 ### Open architectural questions
-- Should we move from `createAdminClient() + code filter` back to proper RLS once we have more tables? The current approach scales fine but has lower safety margin. Sprint 1 added a `withScope()` wrapper to make new queries harder to forget the filter.
-- Should ticket numbering move from `MAX + 1` to a Postgres sequence? Only matters if ticket creation > ~10/min sustained.
-- Are we keeping Resend for email, or switching to Slack DMs only? Resend is wired but unused.
+- The RLS recursion bug surfaces a bigger question: do we keep `createAdminClient() + code filter` (the current pattern in `lib/supabase/scope.ts`) or move back to proper RLS once migration 019 + similar fixes are in place? The current pattern scales fine but has a lower safety margin for new queries.
+- Are we keeping Resend for email, or switching to Slack DMs only? Resend is wired but the sender domain is unverified.
+- For the AI provider: confirm the actual gateway behind `minimax.chat` — if it really is MiniMax (and the key is just wrong), great; if it's something else entirely, we should rename the env vars.
 
 ---
 
