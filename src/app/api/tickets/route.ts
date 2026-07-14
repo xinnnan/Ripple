@@ -3,6 +3,7 @@ import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthUser } from "@/lib/supabase/auth-helpers";
 import { getUserScope, scopeTickets } from "@/lib/supabase/scope";
+import { sendTicketConfirmation } from "@/lib/email/send";
 import {
   createTicketCore,
   resolveSiteByCode,
@@ -80,13 +81,36 @@ export async function POST(request: NextRequest) {
       asset_id: data.asset_id,
       area: data.area,
       created_by: data.created_by,
+      submitter_name: data.submitter_name,
+      submitter_email: data.submitter_email,
+      submitter_phone: data.submitter_phone,
     });
 
-    // TODO Sprint 2: send confirmation email via Resend when submitter_email
-    // is present and RESEND_API_KEY is set. Wired in Phase 2.2.
-    // if (data.submitter_email && process.env.RESEND_API_KEY) {
-    //   await sendTicketConfirmation({ to, ticketNo, ... });
-    // }
+    // Fire-and-forget confirmation email. Never fails the request —
+    // if RESEND_API_KEY is missing or Resend errors, the customer
+    // still has their ticket_no + secure_token in the response.
+    if (data.submitter_email) {
+      const customerName =
+        (result.ticket.customer as { name?: string } | undefined)?.name ??
+        "Customer";
+      const siteName =
+        (result.ticket.site as { site_name?: string } | undefined)?.site_name ??
+        "Site";
+      const emailRes = await sendTicketConfirmation({
+        to: data.submitter_email,
+        ticketNo: result.ticket_no,
+        title: data.title,
+        secureToken: result.secure_token,
+        customerName,
+        siteName,
+      });
+      if (!emailRes.sent) {
+        console.warn(
+          `[POST /api/tickets] confirmation email not sent: ${emailRes.reason}` +
+            (emailRes.error ? ` (${emailRes.error})` : "")
+        );
+      }
+    }
 
     return NextResponse.json(
       {

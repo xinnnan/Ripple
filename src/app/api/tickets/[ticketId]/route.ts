@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { requireInternal, getAuthUser } from "@/lib/supabase/auth-helpers";
 import { getUserScope, scopeTickets } from "@/lib/supabase/scope";
 import { updateMasterMessage } from "@/lib/slack/sync";
+import { sendTicketResolved } from "@/lib/email/send";
 import { z } from "zod";
 
 interface RouteContext {
@@ -194,9 +195,30 @@ export async function PATCH(
       );
     }
 
-    // TODO Sprint 2: send Resend resolution email if status → resolved.
-    // Wired in Phase 2.2 (next commit). Skipped here so this commit
-    // stays small.
+    // Send a resolution email when the status flips to "resolved".
+    // Re-read submitter_email + customer_visible_summary from the
+    // updated ticket to make sure we have the latest values.
+    if (data.status === "resolved" && currentTicket.status !== "resolved") {
+      const submitterEmail = ticket.submitter_email as string | null;
+      const summary =
+        (ticket.customer_visible_summary as string | null) ??
+        "Your ticket has been resolved. Please reply if anything is still off.";
+      if (submitterEmail) {
+        const emailRes = await sendTicketResolved({
+          to: submitterEmail,
+          ticketNo: ticket.ticket_no as string,
+          title: ticket.title as string,
+          secureToken: ticket.secure_token as string,
+          resolutionSummary: summary,
+        });
+        if (!emailRes.sent) {
+          console.warn(
+            `[PATCH /api/tickets/[id]] resolution email not sent: ${emailRes.reason}` +
+              (emailRes.error ? ` (${emailRes.error})` : "")
+          );
+        }
+      }
+    }
 
     return NextResponse.json({ ticket });
   } catch (error) {

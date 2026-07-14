@@ -52,6 +52,12 @@ export interface CreateTicketInput {
   area?: string | null;
   /** Auth user id (uuid) of the requester, if known. */
   created_by?: string | null;
+  /** Contact info for the submitter (used for confirmation email and
+   *  to reach the customer later). Optional — internal/auto-created
+   *  tickets may not have these. */
+  submitter_name?: string | null;
+  submitter_email?: string | null;
+  submitter_phone?: string | null;
 }
 
 export interface CreateTicketOptions {
@@ -182,6 +188,9 @@ export async function createTicketCore(
       asset_id: input.asset_id ?? null,
       area: input.area ?? null,
       created_by: input.created_by ?? null,
+      submitter_name: input.submitter_name ?? null,
+      submitter_email: input.submitter_email ?? null,
+      submitter_phone: input.submitter_phone ?? null,
       secure_token: secureToken,
     })
     .select(
