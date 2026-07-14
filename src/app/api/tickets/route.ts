@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createAdminClient } from "@/lib/supabase/admin";
-import { generateSecureToken, formatTicketNo } from "@/lib/utils";
-import { buildMasterTicketMessage } from "@/lib/slack/blocks/ticket-master";
-import { WebClient } from "@slack/web-api";
 import { z } from "zod";
+import { createAdminClient } from "@/lib/supabase/admin";
+import {
+  createTicketCore,
+  resolveSiteByCode,
+} from "@/lib/tickets/create";
 
 const createTicketSchema = z.object({
   customer_id: z.string().uuid().optional(),
@@ -46,17 +47,12 @@ export async function POST(request: NextRequest) {
 
     const supabase = createAdminClient();
 
-    // Resolve site from site_code if provided
+    // Resolve site: prefer explicit ids, fall back to site_code lookup.
     let siteId = data.site_id;
     let customerId = data.customer_id;
 
     if (!siteId && data.site_code) {
-      const { data: site } = await supabase
-        .from("sites")
-        .select("id, customer_id")
-        .eq("site_code", data.site_code.toUpperCase())
-        .single();
-
+      const site = await resolveSiteByCode(supabase, data.site_code);
       if (site) {
         siteId = site.id;
         customerId = site.customer_id;
@@ -70,102 +66,30 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get next ticket number
-    const { data: lastTicket } = await supabase
-      .from("tickets")
-      .select("ticket_no")
-      .order("ticket_no", { ascending: false })
-      .limit(1)
-      .single();
-
-    const lastNum = lastTicket
-      ? parseInt(lastTicket.ticket_no.replace("RPL-", ""), 10)
-      : 0;
-    const ticketNo = formatTicketNo(lastNum + 1);
-
-    // Create ticket
-    const secureToken = generateSecureToken();
-
-    const { data: ticket, error } = await supabase
-      .from("tickets")
-      .insert({
-        ticket_no: ticketNo,
-        customer_id: customerId,
-        site_id: siteId,
-        source: data.source,
-        title: data.title,
-        description: data.description,
-        request_type: data.request_type,
-        severity: data.severity,
-        status: "new",
-        impact: data.impact || null,
-        asset_id: data.asset_id || null,
-        area: data.area || null,
-        created_by: data.created_by || null,
-        secure_token: secureToken,
-      })
-      .select(
-        `
-        *,
-        customer:customers(id, name),
-        site:sites(id, site_name, site_code, slack_channel_id)
-      `
-      )
-      .single();
-
-    if (error) {
-      console.error("Failed to create ticket:", error);
-      return NextResponse.json(
-        { error: "Failed to create ticket" },
-        { status: 500 }
-      );
-    }
-
-    // Create ticket event
-    await supabase.from("ticket_events").insert({
-      ticket_id: ticket.id,
-      event_type: "ticket_created",
-      old_value: null,
-      new_value: "new",
-      actor_id: data.created_by || null,
+    const result = await createTicketCore({
+      customer_id: customerId,
+      site_id: siteId,
+      source: data.source,
+      title: data.title,
+      description: data.description,
+      request_type: data.request_type,
+      severity: data.severity,
+      impact: data.impact,
+      asset_id: data.asset_id,
+      area: data.area,
+      created_by: data.created_by,
     });
 
-    // Post to Slack site channel
-    try {
-      const siteData = Array.isArray(ticket.site) ? ticket.site[0] : ticket.site;
-      const slackChannelId = (siteData as unknown as { slack_channel_id: string | null } | null)?.slack_channel_id;
-
-      if (slackChannelId) {
-        const slackToken = process.env.SLACK_BOT_TOKEN;
-        if (slackToken) {
-          const web = new WebClient(slackToken);
-          const customerData = Array.isArray(ticket.customer) ? ticket.customer[0] : ticket.customer;
-
-          const masterBlocks = buildMasterTicketMessage({
-            ...ticket,
-            customer: customerData as { id: string; name: string } | undefined,
-            site: siteData as { id: string; site_name: string; site_code: string } | undefined,
-            owner: undefined,
-            creator: undefined,
-          } as import("@/types/ticket").Ticket);
-
-          await web.chat.postMessage({
-            channel: slackChannelId,
-            text: `New ticket: [${ticket.ticket_no}] ${ticket.title}`,
-            blocks: masterBlocks,
-          });
-        }
-      }
-    } catch (slackError) {
-      console.error("Failed to post ticket to Slack channel (non-fatal):", slackError);
-    }
-
-    // TODO: Send confirmation email
+    // TODO Sprint 2: send confirmation email via Resend when submitter_email
+    // is present and RESEND_API_KEY is set. Wired in Phase 2.2.
+    // if (data.submitter_email && process.env.RESEND_API_KEY) {
+    //   await sendTicketConfirmation({ to, ticketNo, ... });
+    // }
 
     return NextResponse.json(
       {
-        ticket_no: ticket.ticket_no,
-        secure_token: ticket.secure_token,
+        ticket_no: result.ticket_no,
+        secure_token: result.secure_token,
         message: "Ticket created successfully",
       },
       { status: 201 }
@@ -178,59 +102,6 @@ export async function POST(request: NextRequest) {
       );
     }
     console.error("Create ticket error:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
-  }
-}
-
-export async function GET(request: NextRequest) {
-  try {
-    const { searchParams } = new URL(request.url);
-    const supabase = createAdminClient();
-
-    let query = supabase
-      .from("tickets")
-      .select(
-        `
-        *,
-        customer:customers(id, name),
-        site:sites(id, site_name, site_code),
-        owner:users!tickets_owner_id_fkey(id, full_name)
-      `
-      )
-      .order("created_at", { ascending: false });
-
-    // Filters
-    const status = searchParams.get("status");
-    if (status) query = query.eq("status", status);
-
-    const severity = searchParams.get("severity");
-    if (severity) query = query.eq("severity", severity);
-
-    const customer_id = searchParams.get("customer_id");
-    if (customer_id) query = query.eq("customer_id", customer_id);
-
-    const site_id = searchParams.get("site_id");
-    if (site_id) query = query.eq("site_id", site_id);
-
-    const limit = parseInt(searchParams.get("limit") || "50");
-    query = query.limit(limit);
-
-    const { data: tickets, error } = await query;
-
-    if (error) {
-      console.error("Failed to fetch tickets:", error);
-      return NextResponse.json(
-        { error: "Failed to fetch tickets" },
-        { status: 500 }
-      );
-    }
-
-    return NextResponse.json({ tickets });
-  } catch (error) {
-    console.error("Get tickets error:", error);
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

@@ -3,7 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { buildMasterTicketMessage } from "../blocks/ticket-master";
 import { buildResolveModal } from "../blocks/resolve-modal";
 import { buildAskRippleAssistModal } from "../blocks/ai-modal";
-import { generateSecureToken, formatTicketNo } from "@/lib/utils";
+import { createTicketCore, resolveSiteBySlackChannel } from "@/lib/tickets/create";
 
 interface ActionPayload {
   actions: { action_id: string; value?: string; selected_option?: { value: string } }[];
@@ -223,88 +223,70 @@ export async function handleViewSubmission(
         .eq("slack_user_id", payload.user.id)
         .single();
 
-      // Determine site from channel
+      // Determine site: prefer metadata from the modal's private_metadata
+      // (set when the modal was opened in a known-bound channel), fall
+      // back to looking up the channel → slack_channels → site mapping.
       let siteId = metadata.site_id;
       let customerId = metadata.customer_id;
 
       if (!siteId && metadata.channel_id) {
-        const { data: slackChannel } = await supabase
-          .from("slack_channels")
-          .select("site_id, sites(customer_id)")
-          .eq("channel_id", metadata.channel_id)
-          .single();
-        if (slackChannel) {
-          siteId = slackChannel.site_id;
-          customerId = (slackChannel.sites as unknown as { customer_id: string })?.customer_id;
+        const site = await resolveSiteBySlackChannel(supabase, metadata.channel_id);
+        if (site) {
+          siteId = site.id;
+          customerId = site.customer_id;
         }
       }
 
       if (!siteId || !customerId) {
         return {
           response_action: "errors",
-          errors: { title_block: "Could not determine site. Please configure this channel." },
+          errors: {
+            title_block:
+              "Could not determine site for this channel. Ask an admin to map it in /admin/sites.",
+          },
         };
       }
 
-      // Generate ticket number
-      const { data: lastTicket } = await supabase
-        .from("tickets")
-        .select("ticket_no")
-        .order("ticket_no", { ascending: false })
-        .limit(1)
-        .single();
-
-      const lastNum = lastTicket ? parseInt(lastTicket.ticket_no.replace("RPL-", ""), 10) : 0;
-      const ticketNo = formatTicketNo(lastNum + 1);
-      const secureToken = generateSecureToken();
-
-      // Create ticket
-      const { data: ticket, error } = await supabase
-        .from("tickets")
-        .insert({
-          ticket_no: ticketNo,
-          customer_id: customerId,
-          site_id: siteId,
-          source: "slack",
-          title,
-          description,
-          request_type: requestType,
-          severity,
-          impact,
-          asset_id: assetId || null,
-          area: area || null,
-          created_by: internalUser?.id || null,
-          secure_token: secureToken,
-        })
-        .select(
-          `*, customer:customers(name), site:sites(site_name, site_code, slack_channel_id), owner:users!tickets_owner_id_fkey(full_name)`
-        )
-        .single();
-
-      if (error) {
-        console.error("Failed to create ticket:", error);
+      try {
+        await createTicketCore(
+          {
+            customer_id: customerId,
+            site_id: siteId,
+            source: "slack",
+            title,
+            description,
+            request_type: requestType as
+              | "incident"
+              | "service_request"
+              | "question"
+              | "change_request"
+              | "parts_rma"
+              | "deployment_issue"
+              | "training_documentation",
+            severity: severity as "P1" | "P2" | "P3" | "P4",
+            impact: (impact || null) as
+              | "safety"
+              | "production_stopped"
+              | "production_slowed"
+              | "single_asset"
+              | "no_impact"
+              | null,
+            asset_id: assetId || null,
+            area: area || null,
+            created_by: internalUser?.id ?? null,
+          },
+          {
+            slackChannelId: metadata.channel_id,
+            slackClient: client,
+          }
+        );
+      } catch (err) {
+        console.error("[ticket_form_submit] createTicketCore failed:", err);
         return {
           response_action: "errors",
           errors: { title_block: "Failed to create ticket. Please try again." },
         };
       }
-
-      // Log event
-      await supabase.from("ticket_events").insert({
-        ticket_id: ticket.id,
-        event_type: "ticket_created",
-        old_value: null,
-        new_value: "new",
-        actor_id: internalUser?.id || null,
-      });
-
-      // Post master ticket message to channel
-      const blocks = buildMasterTicketMessage(ticket);
-      await client.chat.postMessage({
-        channel: metadata.channel_id,
-        text: `🎫 New ticket: ${ticketNo} — ${title}`,
-        blocks,
-      });
 
       // Return success - close modal
       return { response_action: "clear" };
