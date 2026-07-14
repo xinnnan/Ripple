@@ -1,16 +1,41 @@
 import { NextRequest, NextResponse } from "next/server";
 import { WebClient } from "@slack/web-api";
 import { buildTicketFormModal } from "@/lib/slack/blocks/ticket-form";
+import { verifySlackSignature } from "@/lib/slack/verify";
 
 export async function POST(request: NextRequest) {
   try {
-    // Parse Slack slash command payload (sent as form-encoded)
-    const formData = await request.formData();
-    const channel_id = formData.get("channel_id") as string;
-    const channel_name = formData.get("channel_name") as string;
-    const user_id = formData.get("user_id") as string;
-    const trigger_id = formData.get("trigger_id") as string;
-    const text = formData.get("text") as string;
+    // Slack signs the raw body. We must read it as text BEFORE parsing
+    // the form data, because once we call request.formData() the body
+    // is consumed. (The /events + /interactive routes hit this same
+    // gotcha — see c5b4c1b for the fix there.)
+    const rawBody = await request.text();
+    const sigCheck = verifySlackSignature(
+      rawBody,
+      request.headers.get("x-slack-signature"),
+      request.headers.get("x-slack-request-timestamp"),
+      process.env.SLACK_SIGNING_SECRET ?? null
+    );
+    if (!sigCheck.ok) {
+      console.warn(
+        `[slack/command/ticket] signature rejected: ${sigCheck.reason}`
+      );
+      return NextResponse.json(
+        {
+          response_type: "ephemeral",
+          text: "❌ Signature verification failed.",
+        },
+        { status: 401 }
+      );
+    }
+
+    // Re-parse the (now verified) body as form data.
+    const params = new URLSearchParams(rawBody);
+    const channel_id = params.get("channel_id") || "";
+    const channel_name = params.get("channel_name") || "";
+    const user_id = params.get("user_id") || "";
+    const trigger_id = params.get("trigger_id") || "";
+    const text = params.get("text") || "";
 
     console.log(
       `/ticket command from user ${user_id} in channel ${channel_name} (${channel_id})`
