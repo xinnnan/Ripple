@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireInternal, getAuthUser } from "@/lib/supabase/auth-helpers";
 import { getUserScope, scopeTickets } from "@/lib/supabase/scope";
+import { updateMasterMessage } from "@/lib/slack/sync";
 import { z } from "zod";
 
 interface RouteContext {
@@ -179,8 +180,23 @@ export async function PATCH(
       await supabase.from("ticket_events").insert(events);
     }
 
-    // TODO: Update Slack master message
-    // TODO: Send email notification if resolved
+    // Sync the change back to Slack so the master card in the channel
+    // stays in lockstep with the database. The function looks up the
+    // most recent master message from `slack_messages`; if none is
+    // recorded (e.g. ticket was created before Sprint 2), it silently
+    // no-ops and the ticket still updates.
+    const syncResult = await updateMasterMessage(ticket as import("@/types/ticket").Ticket);
+    if (!syncResult.ok) {
+      // Non-fatal: log and continue. Web portal is the source of truth.
+      console.warn(
+        `[PATCH /api/tickets/[id]] Slack sync skipped: ${syncResult.reason ?? "unknown"}` +
+          (syncResult.error ? ` (${syncResult.error})` : "")
+      );
+    }
+
+    // TODO Sprint 2: send Resend resolution email if status → resolved.
+    // Wired in Phase 2.2 (next commit). Skipped here so this commit
+    // stays small.
 
     return NextResponse.json({ ticket });
   } catch (error) {

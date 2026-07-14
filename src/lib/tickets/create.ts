@@ -24,6 +24,7 @@ import { WebClient } from "@slack/web-api";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { generateSecureToken, formatTicketNo } from "@/lib/utils";
 import { buildMasterTicketMessage } from "@/lib/slack/blocks/ticket-master";
+import { recordMasterMessage } from "@/lib/slack/sync";
 import type {
   Ticket,
   TicketSource,
@@ -226,7 +227,7 @@ export async function createTicketCore(
         const customerData = Array.isArray(ticket.customer)
           ? ticket.customer[0]
           : ticket.customer;
-        await client.chat.postMessage({
+        const slackRes = await client.chat.postMessage({
           channel: targetChannel,
           text: `🎫 New ticket: [${ticket.ticket_no}] ${ticket.title}`,
           blocks: buildMasterTicketMessage({
@@ -237,6 +238,24 @@ export async function createTicketCore(
             creator: undefined,
           } as Ticket),
         });
+        // Record the master message so future PATCH / status changes
+        // know which Slack message to update (see lib/slack/sync.ts).
+        if (slackRes?.ts && typeof slackRes.ts === "string") {
+          // We need the slack_channels.id (UUID), not the channel id
+          // string. Look it up — this is cheap (indexed by channel_id).
+          const { data: ch } = await supabase
+            .from("slack_channels")
+            .select("id")
+            .eq("channel_id", targetChannel)
+            .maybeSingle();
+          if (ch?.id) {
+            await recordMasterMessage({
+              ticketId: ticket.id,
+              slackChannelId: ch.id,
+              messageTs: slackRes.ts,
+            });
+          }
+        }
         postedToSlack = true;
       } catch (e) {
         console.error("[createTicketCore] Slack post failed (non-fatal):", e);
