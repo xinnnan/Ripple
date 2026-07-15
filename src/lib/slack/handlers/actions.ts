@@ -1,9 +1,10 @@
 import type { WebClient } from "@slack/web-api";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { buildMasterTicketMessage } from "../blocks/ticket-master";
 import { buildResolveModal } from "../blocks/resolve-modal";
 import { buildAskRippleAssistModal } from "../blocks/ai-modal";
 import { createTicketCore, resolveSiteBySlackChannel } from "@/lib/tickets/create";
+import { updateMasterMessage } from "../sync";
+import type { Ticket } from "@/types/ticket";
 
 interface ActionPayload {
   actions: { action_id: string; value?: string; selected_option?: { value: string } }[];
@@ -52,14 +53,11 @@ export async function handleBlockAction(
         )
         .single();
 
-      if (ticket && messageTs && channelId) {
-        // Update master message
-        const blocks = buildMasterTicketMessage(ticket);
-        await client.chat.update({
-          channel: channelId,
-          ts: messageTs,
-          text: `[${ticket.ticket_no}] Status: Assigned to ${ticket.owner?.[0]?.full_name || "Unknown"}`,
-          blocks,
+      if (ticket) {
+        await updateMasterMessage(ticket as unknown as Ticket, {
+          channelId,
+          messageTs,
+          client,
         });
       }
       break;
@@ -77,13 +75,11 @@ export async function handleBlockAction(
         )
         .single();
 
-      if (ticket && messageTs && channelId) {
-        const blocks = buildMasterTicketMessage(ticket);
-        await client.chat.update({
-          channel: channelId,
-          ts: messageTs,
-          text: `[${ticket.ticket_no}] Status: In Progress`,
-          blocks,
+      if (ticket) {
+        await updateMasterMessage(ticket as unknown as Ticket, {
+          channelId,
+          messageTs,
+          client,
         });
       }
       break;
@@ -101,13 +97,11 @@ export async function handleBlockAction(
         )
         .single();
 
-      if (ticket && messageTs && channelId) {
-        const blocks = buildMasterTicketMessage(ticket);
-        await client.chat.update({
-          channel: channelId,
-          ts: messageTs,
-          text: `[${ticket.ticket_no}] Status: Waiting on Customer`,
-          blocks,
+      if (ticket) {
+        await updateMasterMessage(ticket as unknown as Ticket, {
+          channelId,
+          messageTs,
+          client,
         });
       }
       break;
@@ -315,14 +309,11 @@ export async function handleViewSubmission(
         )
         .single();
 
-      if (ticket && metadata.channel_id && metadata.message_ts) {
-        // Update master message
-        const blocks = buildMasterTicketMessage(ticket);
-        await client.chat.update({
-          channel: metadata.channel_id,
-          ts: metadata.message_ts,
-          text: `[${ticket.ticket_no}] Status: Resolved`,
-          blocks,
+      if (ticket) {
+        await updateMasterMessage(ticket as unknown as Ticket, {
+          channelId: metadata.channel_id,
+          messageTs: metadata.message_ts,
+          client,
         });
       }
 

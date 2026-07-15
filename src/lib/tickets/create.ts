@@ -132,11 +132,36 @@ export async function resolveSiteBySlackChannel(
 // ---------------------------------------------------------------------------
 
 /**
- * Compute the next ticket number. Uses SELECT MAX + 1 — known to be racy
- * under high concurrency. See AGENTS.md §9. Acceptable for current volume.
- * Migration 019 (planned Sprint 2) will switch to a Postgres sequence.
+ * Compute the next ticket number. Backed by the `next_ticket_no()` RPC
+ * (see migration 020), which uses a Postgres sequence to eliminate the
+ * SELECT-MAX+1 race that the old code had.
+ *
+ * Fallback: if the RPC isn't available (e.g. the migration hasn't been
+ * applied yet), fall back to the racy MAX+1 path so the system stays
+ * online. Logs a warning so the operator notices.
  */
-export async function generateNextTicketNo(supabase: SupabaseClient): Promise<string> {
+export async function generateNextTicketNo(
+  supabase: SupabaseClient
+): Promise<string> {
+  try {
+    const { data, error } = await supabase.rpc("next_ticket_no");
+    if (!error && typeof data === "string" && /^RPL-\d{6}$/.test(data)) {
+      return data;
+    }
+    console.warn(
+      "[tickets] next_ticket_no RPC failed (%s) — falling back to MAX+1. " +
+        "Apply migration 020 to fix.",
+      error?.message ?? "unexpected response"
+    );
+  } catch (e) {
+    console.warn(
+      "[tickets] next_ticket_no RPC threw — falling back to MAX+1. " +
+        "Apply migration 020 to fix.",
+      e
+    );
+  }
+
+  // Fallback: the racy MAX+1 path. Pre-Sprint-2 code path.
   const { data: last } = await supabase
     .from("tickets")
     .select("ticket_no")
