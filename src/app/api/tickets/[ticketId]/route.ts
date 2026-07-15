@@ -4,6 +4,7 @@ import { requireInternal, getAuthUser } from "@/lib/supabase/auth-helpers";
 import { getUserScope, scopeTickets } from "@/lib/supabase/scope";
 import { updateMasterMessage } from "@/lib/slack/sync";
 import { sendTicketResolved } from "@/lib/email/send";
+import { resolveTicketQuery } from "@/lib/tickets/lookup";
 import { z } from "zod";
 
 interface RouteContext {
@@ -50,15 +51,8 @@ export async function GET(
     const supabase = createAdminClient();
 
     // Accept either the ticket UUID or the human-readable ticket_no.
-    // Note: the PostgREST `.or()` filter (id.eq.X,ticket_no.eq.X) can't
-    // be used here — if X isn't a valid UUID the whole `id.eq.X`
-    // expression errors out, taking the `ticket_no.eq.X` branch with
-    // it. So we branch on a UUID regex instead.
-    const isUuid =
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-        ticketId
-      );
-    let baseQuery = supabase
+    // (See lib/tickets/lookup.ts for why the .or() trick doesn't work.)
+    const baseQuery = supabase
       .from("tickets")
       .select(
         `
@@ -69,10 +63,10 @@ export async function GET(
         creator:users!tickets_created_by_fkey(id, full_name, email)
       `
       );
-    baseQuery = isUuid
-      ? baseQuery.eq("id", ticketId)
-      : baseQuery.eq("ticket_no", ticketId);
-    const query = scopeTickets(baseQuery, scope);
+    const query = scopeTickets(
+      resolveTicketQuery(baseQuery, ticketId),
+      scope
+    );
 
     const { data: ticket, error } = await query.maybeSingle();
 
@@ -104,29 +98,11 @@ export async function PATCH(
 
     const supabase = createAdminClient();
 
-    // Accept either the ticket UUID or the human-readable ticket_no
-    // (e.g. RPL-000005). The GET handler does the same — keep them in
-    // sync so callers can use either form consistently.
-    const isUuid =
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-        ticketId
-      );
-    let currentTicket;
-    if (isUuid) {
-      const r = await supabase
-        .from("tickets")
-        .select("status, severity, owner_id")
-        .eq("id", ticketId)
-        .maybeSingle();
-      currentTicket = r.data;
-    } else {
-      const r = await supabase
-        .from("tickets")
-        .select("status, severity, owner_id")
-        .eq("ticket_no", ticketId)
-        .maybeSingle();
-      currentTicket = r.data;
-    }
+    // Fetch current ticket for event logging.
+    const { data: currentTicket } = await resolveTicketQuery(
+      supabase.from("tickets").select("status, severity, owner_id"),
+      ticketId
+    ).maybeSingle();
 
     if (!currentTicket) {
       return NextResponse.json({ error: "Ticket not found" }, { status: 404 });
@@ -156,13 +132,10 @@ export async function PATCH(
     }
 
     // Use the same id-or-ticket_no lookup that we did above.
-    const updateFilter = isUuid
-      ? `id.eq.${ticketId}`
-      : `ticket_no.eq.${ticketId}`;
-    const { data: ticket, error } = await supabase
-      .from("tickets")
-      .update(update)
-      .eq(isUuid ? "id" : "ticket_no", ticketId)
+    const { data: ticket, error } = await resolveTicketQuery(
+      supabase.from("tickets").update(update),
+      ticketId
+    )
       .select(
         `
         *,

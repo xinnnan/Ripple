@@ -14,6 +14,7 @@ import Link from "next/link";
 import { AIAssistButton } from "./ai-assist-button";
 import { TicketActionsPanel } from "./ticket-actions-panel";
 import { getUserScope, scopeTickets } from "@/lib/supabase/scope";
+import { resolveTicketQuery } from "@/lib/tickets/lookup";
 import { isAdminRole } from "@/lib/roles";
 
 interface Props {
@@ -46,8 +47,8 @@ export default async function TicketDetailPage({ params }: Props) {
       owner:users!tickets_owner_id_fkey(id, full_name, email),
       creator:users!tickets_created_by_fkey(id, full_name, email)
     `
-    )
-    .or(`id.eq.${ticketId},ticket_no.eq.${ticketId}`);
+    );
+  ticketQuery = resolveTicketQuery(ticketQuery, ticketId);
   if (scope) {
     ticketQuery = scopeTickets(ticketQuery, scope);
   }

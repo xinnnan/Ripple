@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthUser } from "@/lib/supabase/auth-helpers";
 import { getUserScope, scopeTickets } from "@/lib/supabase/scope";
+import { resolveTicketQuery } from "@/lib/tickets/lookup";
 import { z } from "zod";
 
 interface RouteContext {
@@ -37,9 +38,11 @@ export async function GET(
     }
     let ticketQuery = supabase
       .from("tickets")
-      .select("id")
-      .or(`id.eq.${ticketId},ticket_no.eq.${ticketId}`);
-    ticketQuery = scopeTickets(ticketQuery, scope);
+      .select("id");
+    ticketQuery = scopeTickets(
+      resolveTicketQuery(ticketQuery, ticketId),
+      scope
+    );
     const { data: ticket } = await ticketQuery.maybeSingle();
     if (!ticket) {
       return NextResponse.json({ error: "Ticket not found" }, { status: 404 });
