@@ -49,7 +49,16 @@ export async function GET(
 
     const supabase = createAdminClient();
 
-    let query = supabase
+    // Accept either the ticket UUID or the human-readable ticket_no.
+    // Note: the PostgREST `.or()` filter (id.eq.X,ticket_no.eq.X) can't
+    // be used here — if X isn't a valid UUID the whole `id.eq.X`
+    // expression errors out, taking the `ticket_no.eq.X` branch with
+    // it. So we branch on a UUID regex instead.
+    const isUuid =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+        ticketId
+      );
+    let baseQuery = supabase
       .from("tickets")
       .select(
         `
@@ -59,9 +68,11 @@ export async function GET(
         owner:users!tickets_owner_id_fkey(id, full_name, email),
         creator:users!tickets_created_by_fkey(id, full_name, email)
       `
-      )
-      .or(`id.eq.${ticketId},ticket_no.eq.${ticketId}`);
-    query = scopeTickets(query, scope);
+      );
+    baseQuery = isUuid
+      ? baseQuery.eq("id", ticketId)
+      : baseQuery.eq("ticket_no", ticketId);
+    const query = scopeTickets(baseQuery, scope);
 
     const { data: ticket, error } = await query.maybeSingle();
 
@@ -93,12 +104,29 @@ export async function PATCH(
 
     const supabase = createAdminClient();
 
-    // Fetch current ticket for event logging
-    const { data: currentTicket } = await supabase
-      .from("tickets")
-      .select("status, severity, owner_id")
-      .eq("id", ticketId)
-      .single();
+    // Accept either the ticket UUID or the human-readable ticket_no
+    // (e.g. RPL-000005). The GET handler does the same — keep them in
+    // sync so callers can use either form consistently.
+    const isUuid =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+        ticketId
+      );
+    let currentTicket;
+    if (isUuid) {
+      const r = await supabase
+        .from("tickets")
+        .select("status, severity, owner_id")
+        .eq("id", ticketId)
+        .maybeSingle();
+      currentTicket = r.data;
+    } else {
+      const r = await supabase
+        .from("tickets")
+        .select("status, severity, owner_id")
+        .eq("ticket_no", ticketId)
+        .maybeSingle();
+      currentTicket = r.data;
+    }
 
     if (!currentTicket) {
       return NextResponse.json({ error: "Ticket not found" }, { status: 404 });
@@ -127,10 +155,14 @@ export async function PATCH(
       update.closed_at = new Date().toISOString();
     }
 
+    // Use the same id-or-ticket_no lookup that we did above.
+    const updateFilter = isUuid
+      ? `id.eq.${ticketId}`
+      : `ticket_no.eq.${ticketId}`;
     const { data: ticket, error } = await supabase
       .from("tickets")
       .update(update)
-      .eq("id", ticketId)
+      .eq(isUuid ? "id" : "ticket_no", ticketId)
       .select(
         `
         *,
@@ -146,12 +178,15 @@ export async function PATCH(
       return NextResponse.json({ error: "Failed to update ticket" }, { status: 500 });
     }
 
-    // Log events for changes
+    // Log events for changes. The events.ticket_id column is a UUID FK
+    // to tickets.id, so we must use the resolved UUID (not the URL
+    // param, which might be a human-readable ticket_no like RPL-000005).
+    const ticketUuid = ticket.id as string;
     const events: { ticket_id: string; event_type: string; old_value: string | null; new_value: string | null; actor_id: string | null }[] = [];
 
     if (data.status && data.status !== currentTicket.status) {
       events.push({
-        ticket_id: ticketId,
+        ticket_id: ticketUuid,
         event_type: "status_changed",
         old_value: currentTicket.status,
         new_value: data.status,
@@ -160,7 +195,7 @@ export async function PATCH(
     }
     if (data.severity && data.severity !== currentTicket.severity) {
       events.push({
-        ticket_id: ticketId,
+        ticket_id: ticketUuid,
         event_type: "severity_changed",
         old_value: currentTicket.severity,
         new_value: data.severity,
@@ -169,7 +204,7 @@ export async function PATCH(
     }
     if (data.owner_id && data.owner_id !== currentTicket.owner_id) {
       events.push({
-        ticket_id: ticketId,
+        ticket_id: ticketUuid,
         event_type: "owner_assigned",
         old_value: currentTicket.owner_id,
         new_value: data.owner_id,
