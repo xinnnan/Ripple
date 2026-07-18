@@ -293,16 +293,30 @@ export async function handleViewSubmission(
       const followUp = state.follow_up_block?.follow_up?.selected_option?.value || "no";
       const internalNotes = state.internal_notes_block?.internal_notes?.value || "";
 
-      // Update ticket
+      // Update ticket. Match the PATCH /api/tickets/[id] route:
+      // when status transitions to "resolved", set resolved_at so
+      // the column is consistent regardless of which path the
+      // resolve came from (web vs Slack modal).
+      const { data: currentTicket } = await supabase
+        .from("tickets")
+        .select("status")
+        .eq("ticket_no", ticketNo)
+        .maybeSingle();
+
+      const updateObj: Record<string, unknown> = {
+        status: "resolved",
+        customer_visible_summary: customerSummary,
+        root_cause_category: rootCause,
+        follow_up_needed: followUp === "yes",
+        internal_summary: internalNotes || null,
+      };
+      if (currentTicket && currentTicket.status !== "resolved") {
+        updateObj.resolved_at = new Date().toISOString();
+      }
+
       const { data: ticket } = await supabase
         .from("tickets")
-        .update({
-          status: "resolved",
-          customer_visible_summary: customerSummary,
-          root_cause_category: rootCause,
-          follow_up_needed: followUp === "yes",
-          internal_summary: internalNotes || null,
-        })
+        .update(updateObj)
         .eq("ticket_no", ticketNo)
         .select(
           `*, customer:customers(name), site:sites(site_name, site_code), owner:users!tickets_owner_id_fkey(full_name)`
@@ -317,13 +331,24 @@ export async function handleViewSubmission(
         });
       }
 
-      // Post resolution note in thread
+      // Post resolution note in thread. Best-effort: if the channel
+      // is gone or the bot was uninstalled, the ticket is still
+      // resolved in the DB — don't let a Slack API error 500 the
+      // whole view_submission (which would leave the modal stuck
+      // open for the user).
       if (metadata.channel_id && metadata.message_ts) {
-        await client.chat.postMessage({
-          channel: metadata.channel_id,
-          thread_ts: metadata.message_ts,
-          text: `✅ *Ticket Resolved*\n\n${customerSummary}`,
-        });
+        try {
+          await client.chat.postMessage({
+            channel: metadata.channel_id,
+            thread_ts: metadata.message_ts,
+            text: `✅ *Ticket Resolved*\n\n${customerSummary}`,
+          });
+        } catch (e) {
+          console.warn(
+            "[slack/handlers] resolve thread post failed (non-fatal):",
+            e instanceof Error ? e.message : e
+          );
+        }
       }
 
       return { response_action: "clear" };
@@ -349,13 +374,21 @@ export async function handleViewSubmission(
           source: "slack",
         });
 
-        // Post in thread
+        // Post in thread. Best-effort: a Slack API failure must
+        // not lose the comment we just wrote to the DB.
         if (metadata.channel_id && metadata.message_ts) {
-          await client.chat.postMessage({
-            channel: metadata.channel_id,
-            thread_ts: metadata.message_ts,
-            text: `💬 *Customer Update:*\n${updateText}`,
-          });
+          try {
+            await client.chat.postMessage({
+              channel: metadata.channel_id,
+              thread_ts: metadata.message_ts,
+              text: `💬 *Customer Update:*\n${updateText}`,
+            });
+          } catch (e) {
+            console.warn(
+              "[slack/handlers] customer_update thread post failed (non-fatal):",
+              e instanceof Error ? e.message : e
+            );
+          }
         }
       }
 
