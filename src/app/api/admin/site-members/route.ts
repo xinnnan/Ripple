@@ -2,6 +2,47 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAdmin } from "@/lib/supabase/auth-helpers";
 import { NextRequest, NextResponse } from "next/server";
 
+/**
+ * GET /api/admin/site-members — list site memberships (admin only).
+ * Optional `?site_id=<uuid>` to filter to one site.
+ */
+export async function GET(request: NextRequest) {
+  try {
+    const auth = await requireAdmin();
+    if ("error" in auth) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status });
+    }
+
+    const { searchParams } = new URL(request.url);
+    const siteId = searchParams.get("site_id");
+    const limit = Math.min(
+      Math.max(parseInt(searchParams.get("limit") || "100", 10) || 100, 1),
+      500
+    );
+
+    const supabase = createAdminClient();
+    let query = supabase
+      .from("site_members")
+      .select("*, user:users(id, email, full_name, role), site:sites(id, site_name, site_code)")
+      .order("created_at", { ascending: false })
+      .limit(limit);
+
+    if (siteId) query = query.eq("site_id", siteId);
+
+    const { data: members, error } = await query;
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    return NextResponse.json({ members: members ?? [] });
+  } catch (e) {
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const auth = await requireAdmin();

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { getAuthUser } from "@/lib/supabase/auth-helpers";
 import { getUserScope, scopeTickets } from "@/lib/supabase/scope";
 
 export const dynamic = "force-dynamic";
@@ -43,6 +44,12 @@ function csvResponse(content: string, dateStamp: string) {
 
 export async function GET(request: NextRequest) {
   try {
+    // Auth required — no anonymous exports. The scope filter below
+    // also keeps each user to their own tickets.
+    const auth = await getAuthUser();
+    if ("error" in auth) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status });
+    }
     const scope = await getUserScope();
     if (!scope) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -65,7 +72,7 @@ export async function GET(request: NextRequest) {
         source,
         customer:customers(name),
         site:sites(site_code, site_name),
-        assignee:users(full_name),
+        owner:users!tickets_owner_id_fkey(full_name),
         created_at,
         updated_at,
         resolved_at,
@@ -132,7 +139,7 @@ export async function GET(request: NextRequest) {
       escapeCsv((t.customer as Record<string, unknown>)?.name ?? ""),
       escapeCsv((t.site as Record<string, unknown>)?.site_code ?? ""),
       escapeCsv((t.site as Record<string, unknown>)?.site_name ?? ""),
-      escapeCsv((t.assignee as Record<string, unknown>)?.full_name ?? ""),
+      escapeCsv((t.owner as Record<string, unknown>)?.full_name ?? ""),
       escapeCsv(t.created_at),
       escapeCsv(t.updated_at),
       escapeCsv(t.resolved_at),
