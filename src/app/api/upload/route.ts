@@ -14,7 +14,11 @@ export async function POST(request: NextRequest) {
     const formData = await request.formData();
     const file = formData.get("file") as File | null;
     const ticketId = formData.get("ticket_id") as string | null;
-    const uploadedBy = formData.get("uploaded_by") as string | null;
+    // uploaded_by is intentionally NOT read from the form — the route
+    // always uses auth.userId. A previous version trusted the form
+    // field, which let any logged-in user write the audit log with
+    // a different user's id. The cookie is the source of truth.
+    const uploadedBy: string = auth.userId;
     const requestedVisibility = (formData.get("visibility") as string) || "customer";
     const visibility = isInternal ? requestedVisibility : "customer";
 
@@ -82,7 +86,7 @@ export async function POST(request: NextRequest) {
         .from("ticket_attachments")
         .insert({
           ticket_id: ticketId,
-          uploaded_by: uploadedBy || null,
+          uploaded_by: uploadedBy,
           file_name: file.name,
           file_type: file.type,
           file_size: file.size,
@@ -102,7 +106,7 @@ export async function POST(request: NextRequest) {
         event_type: "attachment_added",
         old_value: null,
         new_value: file.name,
-        actor_id: uploadedBy || null,
+        actor_id: uploadedBy,
       });
 
       return NextResponse.json({ attachment }, { status: 201 });

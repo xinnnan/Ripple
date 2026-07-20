@@ -48,6 +48,20 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const data = createTicketSchema.parse(body);
 
+    // Auth is optional here: the public /submit form is unauthed.
+    // But if the caller IS logged in, we MUST use auth.userId as
+    // created_by, never the body's value. A customer could otherwise
+    // pass created_by=<engineer uuid> and have the ticket appear
+    // engineer-created.
+    //
+    // getAuthUser returns { error, status } if there's no session
+    // — we treat that as "unauthed, allow no created_by". A non-2xx
+    // response there is a real auth failure (which shouldn't happen
+    // for a guest submit, but if it does we fall through to null).
+    const auth = await getAuthUser();
+    const createdBy =
+      !("error" in auth) && auth.userId ? auth.userId : null;
+
     const supabase = createAdminClient();
 
     // Resolve site: prefer explicit ids, fall back to site_code lookup.
@@ -113,7 +127,7 @@ export async function POST(request: NextRequest) {
       impact: data.impact,
       asset_id: data.asset_id,
       area: data.area,
-      created_by: data.created_by,
+      created_by: createdBy,
       submitter_name: data.submitter_name,
       submitter_email: data.submitter_email,
       submitter_phone: data.submitter_phone,

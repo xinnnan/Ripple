@@ -73,10 +73,12 @@ export function TicketActionsPanel({
   }
 
   async function savePatch(patch: Record<string, unknown>) {
+    // The PATCH route infers actor_id from the JWT — don't send it
+    // from the body, that would be a (now-removed) impersonation vector.
     const res = await fetch(`/api/tickets/${ticketId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...patch, actor_id: currentUserId }),
+      body: JSON.stringify(patch),
     });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
@@ -87,7 +89,7 @@ export function TicketActionsPanel({
 
   async function handleSaveAll() {
     if (!dirty) return;
-    const patch: Record<string, unknown> = { actor_id: currentUserId };
+    const patch: Record<string, unknown> = {};
     if (status !== currentStatus) patch.status = status;
     if (severity !== currentSeverity) patch.severity = severity;
     if (ownerId !== currentOwnerId) patch.owner_id = ownerId;
@@ -284,7 +286,6 @@ function ResolveCard({
           status: "resolved",
           customer_visible_summary: customerSummary.trim(),
           internal_summary: internalSummary.trim() || null,
-          actor_id: actorId,
         }),
       });
       if (!res.ok) {

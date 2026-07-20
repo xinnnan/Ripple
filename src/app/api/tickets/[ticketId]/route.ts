@@ -28,7 +28,13 @@ const patchTicketSchema = z.object({
   internal_summary: z.string().optional(),
   root_cause_category: z.string().optional(),
   follow_up_needed: z.boolean().optional(),
-  actor_id: z.string().uuid().optional(),
+  // NOTE: actor_id is intentionally NOT accepted from the body.
+  // The route always uses auth.userId for the ticket_events
+  // actor_id. A previous version trusted the body field, which let
+  // an internal user blame a different engineer in the audit log
+  // by passing actor_id=<other_user_id>. The UI used to send
+  // currentUserId; that's still the value, it just comes from the
+  // JWT now instead of the body.
 });
 
 export async function GET(
@@ -184,7 +190,10 @@ export async function PATCH(
     // Log events for changes. The events.ticket_id column is a UUID FK
     // to tickets.id, so we must use the resolved UUID (not the URL
     // param, which might be a human-readable ticket_no like RPL-000005).
+    // The actor_id is always auth.userId — never the body, which would
+    // let an internal user blame someone else in the audit log.
     const ticketUuid = ticket.id as string;
+    const actorId = auth.userId;
     const events: { ticket_id: string; event_type: string; old_value: string | null; new_value: string | null; actor_id: string | null }[] = [];
 
     if (data.status && data.status !== currentTicket.status) {
@@ -193,7 +202,7 @@ export async function PATCH(
         event_type: "status_changed",
         old_value: currentTicket.status,
         new_value: data.status,
-        actor_id: data.actor_id || null,
+        actor_id: actorId,
       });
     }
     if (data.severity && data.severity !== currentTicket.severity) {
@@ -202,7 +211,7 @@ export async function PATCH(
         event_type: "severity_changed",
         old_value: currentTicket.severity,
         new_value: data.severity,
-        actor_id: data.actor_id || null,
+        actor_id: actorId,
       });
     }
     if (data.owner_id && data.owner_id !== currentTicket.owner_id) {
@@ -211,7 +220,7 @@ export async function PATCH(
         event_type: "owner_assigned",
         old_value: currentTicket.owner_id,
         new_value: data.owner_id,
-        actor_id: data.actor_id || data.owner_id,
+        actor_id: actorId,
       });
     }
 
