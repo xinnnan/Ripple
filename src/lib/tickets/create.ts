@@ -25,6 +25,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { generateSecureToken, formatTicketNo } from "@/lib/utils";
 import { buildMasterTicketMessage } from "@/lib/slack/blocks/ticket-master";
 import { recordMasterMessage } from "@/lib/slack/sync";
+import { computeSlaTargets, findPolicyForCustomer } from "@/lib/sla";
 import type {
   Ticket,
   TicketSource,
@@ -197,6 +198,33 @@ export async function createTicketCore(
   const ticketNo = await generateNextTicketNo(supabase);
   const secureToken = generateSecureToken();
 
+  // Look up the customer's SLA policy (per-customer or default)
+  // and compute the response + resolution due times. If there's
+  // no policy at all, the ticket still gets created — just
+  // without SLA columns, which the UI surfaces as "no SLA".
+  const createdAt = new Date();
+  let slaPolicyId: string | null = null;
+  let firstResponseDueAt: string | null = null;
+  let resolveDueAt: string | null = null;
+  try {
+    const policy = await findPolicyForCustomer(supabase, input.customer_id);
+    if (policy) {
+      const targets = computeSlaTargets({
+        policy,
+        severity: input.severity,
+        createdAt,
+      });
+      slaPolicyId = targets.policyId;
+      firstResponseDueAt = targets.responseDueAt?.toISOString() ?? null;
+      resolveDueAt = targets.resolveDueAt?.toISOString() ?? null;
+    }
+  } catch (e) {
+    // SLA lookup is best-effort — a failed policy fetch must not
+    // block ticket creation. The ticket is created without SLA,
+    // which the UI can flag if it becomes a pattern.
+    console.warn("[tickets] SLA policy lookup failed (non-fatal):", e);
+  }
+
   const { data: ticket, error } = await supabase
     .from("tickets")
     .insert({
@@ -217,6 +245,9 @@ export async function createTicketCore(
       submitter_email: input.submitter_email ?? null,
       submitter_phone: input.submitter_phone ?? null,
       secure_token: secureToken,
+      sla_policy_id: slaPolicyId,
+      first_response_due_at: firstResponseDueAt,
+      resolve_due_at: resolveDueAt,
     })
     .select(
       `

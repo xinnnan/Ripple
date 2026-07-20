@@ -162,6 +162,15 @@ export default async function AuthLayout({
                 </svg>
                 Audit Log
               </Link>
+              <Link
+                href="/admin/sla-policies"
+                className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+              >
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+                </svg>
+                SLA Policies
+              </Link>
             </div>
           )}
 

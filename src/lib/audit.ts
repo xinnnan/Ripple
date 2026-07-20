@@ -29,6 +29,7 @@ export type AuditEntity =
   | "spare_part"
   | "part_request"
   | "field_service_order"
+  | "sla_policy"
   | "comment"
   | "attachment"
   | "auth";
