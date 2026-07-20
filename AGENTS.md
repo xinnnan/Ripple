@@ -319,6 +319,22 @@ We changed AI providers 3× in 2 weeks: OpenAI → Zhipu BigModel (commit `01a71
 ### Don't fight the RLS — use admin client + code filters
 Initial pages tried to use RLS for scoping. Too painful (join complexity, debug difficulty). Most pages now use `createAdminClient()` (service role) and filter in code. **This means every new query must be carefully scoped** — there's no DB-level safety net for "I forgot the `where site_id in (...)`".
 
+### "actor" / "created_by" / "uploaded_by" / "user_id" fields must come from auth, never the body
+Found 2026-07-19 across 4 routes: POST /api/tickets (`created_by`), PATCH /api/tickets/[id] (`actor_id`), POST /api/upload (`uploaded_by`), POST /api/ai/suggest (`user_id`), POST /api/tickets/[id]/comments (`author_id`). All five now force `auth.userId` and ignore the body field. Internal users could otherwise blame each other in the audit log. Same fix pattern: drop the field from the Zod schema, use `auth.userId` server-side, drop the field from the client UI.
+
+### `.maybeSingle()` returns `{ data, error }`, not the row
+Found 2026-07-19 in `POST /api/tickets/[id]/comments`. The handler did `const ticket = await ...maybeSingle()`, then read `ticket.id` (which was always `undefined`) → null ticket_id → 500. The fix: destructure `{ data, error }`, then handle the error case. Most existing code does this correctly; the comments POST was the outlier.
+
+### Zod + try/catch + audit log is the boring baseline
+Found 2026-07-19: 10 admin/internal routes had none of the three. Now they all do. Use the helpers — `getAuthUser()` + `requireAdmin()` + `requireInternal()` + `logAudit()` / `logDiff()`. Every new write route should:
+1. `getAuthUser()` (or `requireAdmin()` / `requireInternal()`)
+2. Zod-parse the body, return 400 on bad input
+3. `try { body = await request.json() } catch { return 400 }` (malformed JSON ≠ server error)
+4. Fetch before-state for the diff
+5. Wrap the DB call in try/catch, log + return generic 500
+6. `logAudit()` per changed field
+7. Return the updated row
+
 ### The "is internal" check is a hot path
 Appears in 8+ pages. The pattern is: check `users.role` first, fall back to `email.endsWith("@dropletai.services")` (for users where role hasn't been set yet — e.g., right after signup). **Always use `INTERNAL_ROLES.includes(role) || isInternalEmail(email)`** and put it in a helper, don't inline. See `src/lib/supabase/auth-helpers.ts:50-90`.
 
@@ -358,6 +374,18 @@ The `plans/e2e-audit-and-test-plan.md` from 2026-05-23 was the most productive d
 - **Phase 3** (commits `38f8fe7`–`1eb7dca`): spare parts + field service dispatch, role consolidation to 4 types, customer_manager team management
 - **Phase 4 Sprint 1** (commits `bcd18d0`–`e444a38`, 14 commits): tenant scope module, error/404 pages, admin role gate, empty-state component, API auth lockdown, ticket list search/filters/pagination, ticket detail interactivity, site/customer/user detail tabs, audit log table + page, customer manager dashboard enrichment, Slack interactive loop closed. Full plan in `plans/phase4-complete-ticket-system.md`.
 - **Phase 4 Sprint 2** (commits `ce45ee8`–`53186a0`, 13 commits): full repo cleanup. Extracted `createTicketCore()` (dedupes 2 create paths), `isInternalUser()` (collapses 11 duplicate sites), `lib/slack/sync.ts` (wires PATCH → Slack master message back-sync), email confirm + resolution (Resend, lazy + escape), MiniMax mock fallback (graceful no-key / 401), closed `GET /api/tickets` tenant leak, added Slack signature verify to `/ticket` slash command. **Found and shipped migration 019 to fix an RLS infinite-recursion bug introduced by 017** — see "Known issues" below. Full audit: `plans/e2e-audit-sprint2.md`.
+- **Phase 4 Sprint 3 (security hardening, in progress)** (commits `aa7761c`–`3af10c6`, 6 commits): scan-and-fix loop. Found and fixed 13 real bugs across 5 commits. Highlights:
+  - **Auth-bypass / impersonation class** (3 fixes): POST /api/tickets/[id]/comments used `const ticket = await ...maybeSingle()` instead of destructuring `{ data, error }` → 500 with null ticket_id; PATCH /api/tickets/[id] trusted `actor_id` from body (any internal user could blame someone else in audit log); POST /api/tickets and POST /api/upload and POST /api/ai/suggest trusted `created_by` / `uploaded_by` / `user_id` from body. All four now use `auth.userId` unconditionally.
+  - **PII / internal-field leak** (commit `f59ea68`): GET /api/tickets/[id] now strips `internal_summary`, `root_cause_category`, `follow_up_needed`, `secure_token`, `submitter_email`, `submitter_phone` for non-internal callers; admin gets them via second query.
+  - **Anonymous enumeration** (commit `3af10c6`): GET /api/slack/channels was unauthenticated, anyone could enumerate every Slack channel the bot can see. Added `requireAdmin()`.
+  - **Missing validation/audit/try-catch** (commits `dca26c1` and `4d60bc4`): 10 admin/internal routes had no Zod, no try/catch, no audit log. Now all have:
+    - Zod parse → 400 with field-level details on bad input
+    - try/catch around `request.json()` and DB calls (malformed JSON → 400, DB error → generic 500, no schema leak)
+    - `logAudit()` per change (admin can now see who edited which spare_part, inventory row, site, user, team member, FSO, SPR)
+    - SPR's `total_cost` is now server-computed from item rows (was trusted from body — admin could submit a $1 quote that the system stored as $1M)
+  - **Slack handlers audit gap** (commit `3af10c6`): `assign_to_me`, `mark_in_progress`, `request_info`, `resolve_form_submit` were mutating tickets with no audit_logs entry. Added per-action `logAudit()` calls using the resolved internal user as actor.
+  - **Helper upgrade**: `requireAdmin()` now also returns `email` (it was already selecting it — just not exposing).
+  - **New tests**: 6 new e2e scripts (10–16), 96 new test cases. Full suite: 12 e2e mjs (174) + 6 unit (63) + 2 browser (25) = **262 tests, all green**.
 
 ### Known issues / open work
 | Priority | Item | Where | Notes |
@@ -374,11 +402,11 @@ The `plans/e2e-audit-and-test-plan.md` from 2026-05-23 was the most productive d
 | 🟢 Low | No automated tests beyond the 54 vitest unit tests | n/a | E2E scripts live in `/tmp/ripple-e2e/` (artifacts, not committed) |
 
 ### Next priorities (Sprint 3, in proposed order)
-1. **Apply migration 019** to unblock the e2e flow. (Manual — see Known issues above.)
+1. **Apply migration 019** ✅ done (2026-07-14).
 2. **Fix MiniMax AI key** (or swap provider in `.env`). Verify `/api/ai/suggest` returns a real model response, not a mock.
 3. **Verify Resend sender domain** so confirmation / resolution emails actually send.
-4. **Ticket number sequence migration** (020) — small migration to switch `MAX + 1` to a Postgres sequence.
-5. **Collapse Slack handlers to `updateMasterMessage()`** — 4 inline `chat.update` calls become 4 one-liners.
+4. **Ticket number sequence migration** (020) ✅ done (2026-07-14) — `next_ticket_no()` RPC + 021 volatility fix.
+5. **Collapse Slack handlers to `updateMasterMessage()`** — 4 inline `chat.update` calls become 4 one-liners. (Done in 3af10c6 actually — handlers now use `updateMasterMessage` everywhere; further collapse of the 4 audit calls per action is a follow-up.)
 6. **Dashboard timezone** — derive from user or first site.
 7. **Sprint 3 feature work** — Kanban view (INT-5), SLA monitoring (INT-6), notifications center (INT-7).
 8. **Start real Slack Connect work** — see PRD §8.5 / SLK-015.
