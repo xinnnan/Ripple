@@ -52,15 +52,29 @@ export async function GET(
 
     // Accept either the ticket UUID or the human-readable ticket_no.
     // (See lib/tickets/lookup.ts for why the .or() trick doesn't work.)
+    //
+    // We also strip a few fields the API must never echo to a
+    // non-internal caller:
+    //   - secure_token: the public URL token. If leaked, anyone with
+    //     the token could view the ticket via /t/[ticketId]?token=...
+    //     We already return it via the customer_visible route
+    //     separately; this endpoint doesn't need it.
+    //   - internal_summary, root_cause_category: engineer-only.
+    //   - submitter_email, submitter_phone: PII — the customer already
+    //     sees them on the form they submitted, no need to echo via
+    //     the API on subsequent reads.
     const baseQuery = supabase
       .from("tickets")
       .select(
         `
-        *,
+        id, ticket_no, title, description, request_type, severity, status,
+        impact, asset_id, area, source, customer_id, site_id, owner_id,
+        created_by, customer_visible_summary,
+        created_at, updated_at, resolved_at, closed_at,
         customer:customers(id, name),
         site:sites(id, site_name, site_code, slack_channel_id),
-        owner:users!tickets_owner_id_fkey(id, full_name, email),
-        creator:users!tickets_created_by_fkey(id, full_name, email)
+        owner:users!tickets_owner_id_fkey(id, full_name),
+        creator:users!tickets_created_by_fkey(id, full_name)
       `
       );
     const query = scopeTickets(
@@ -72,6 +86,22 @@ export async function GET(
 
     if (error || !ticket) {
       return NextResponse.json({ error: "Ticket not found" }, { status: 404 });
+    }
+
+    // Internal-only fields are added back for admin / engineer.
+    // Non-internal callers (customer, customer_manager) get the
+    // sanitized view.
+    if (scope.isInternal) {
+      const internal = await supabase
+        .from("tickets")
+        .select(
+          "internal_summary, root_cause_category, follow_up_needed, secure_token, submitter_email, submitter_phone"
+        )
+        .eq("id", (ticket as { id: string }).id)
+        .maybeSingle();
+      if (internal.data) {
+        Object.assign(ticket as Record<string, unknown>, internal.data);
+      }
     }
 
     return NextResponse.json({ ticket });

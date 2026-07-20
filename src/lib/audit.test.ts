@@ -67,7 +67,7 @@ describe("logAudit", () => {
   it("swallows insert errors and never throws", async () => {
     insertMock.mockResolvedValueOnce({ error: { message: "db down" } });
     // Should not throw
-    await logAudit({ entityType: "x", action: "created" });
+    await logAudit({ entityType: "customer", action: "created" });
     // And it should still attempt the insert
     expect(insertMock).toHaveBeenCalledTimes(1);
   });

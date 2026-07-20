@@ -2,12 +2,22 @@ import { describe, it, expect, vi } from "vitest";
 import { scopeTickets, scopeSites, scopeCustomers } from "./scope";
 import type { UserScope } from "./scope";
 
-// Mock the query builder — chainable like the Supabase client
-function mockQuery() {
-  const q: Record<string, unknown> = {};
+// Loose mock — we just need the .eq / .in / .gte / .lte to be callable
+// and the chain to be the same object so the function-under-test can
+// call .eq and we can read the result. The test never types it as
+// PostgrestFilterBuilder, so the generic constraint doesn't bite.
+type MockQ = {
+  [k: string]: unknown;
+  eq: (col: string, val: unknown) => MockQ;
+  in: (col: string, vals: unknown[]) => MockQ;
+  gte: (col: string, val: unknown) => MockQ;
+  lte: (col: string, val: unknown) => MockQ;
+};
+function mockQuery(): MockQ {
+  const q: MockQ = {} as MockQ;
   const methods = ["select", "eq", "in", "gte", "lte", "or", "order", "range", "limit", "maybeSingle", "single"];
   for (const m of methods) {
-    q[m] = vi.fn(() => q);
+    (q as Record<string, unknown>)[m] = vi.fn(() => q);
   }
   return q;
 }
