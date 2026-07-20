@@ -69,6 +69,39 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Security: if the caller passed BOTH site_id and customer_id
+    // explicitly, we MUST verify they match the row in DB. Otherwise
+    // a malicious caller could post { site_id: <SITE_A>,
+    // customer_id: <CUST_B> } and create a ticket that says it's for
+    // SITE_A but is attributed to CUST_B. The site_code path is
+    // safe because customer_id is derived from the same DB row.
+    if (data.site_id && data.customer_id) {
+      const { data: siteRow, error: siteErr } = await supabase
+        .from("sites")
+        .select("customer_id")
+        .eq("id", siteId)
+        .maybeSingle();
+      if (siteErr) {
+        console.error("POST /api/tickets site lookup failed:", siteErr);
+        return NextResponse.json(
+          { error: "Internal server error" },
+          { status: 500 }
+        );
+      }
+      if (!siteRow) {
+        return NextResponse.json(
+          { error: "site_id not found" },
+          { status: 400 }
+        );
+      }
+      if (siteRow.customer_id !== customerId) {
+        return NextResponse.json(
+          { error: "site_id and customer_id do not match" },
+          { status: 400 }
+        );
+      }
+    }
+
     const result = await createTicketCore({
       customer_id: customerId,
       site_id: siteId,

@@ -27,7 +27,21 @@ export async function GET(request: NextRequest) {
 
   const search = searchParams.get("search");
   if (search) {
-    query = query.or(`part_number.ilike.%${search}%,part_name.ilike.%${search}%`);
+    // Strip all PostgREST or-filter metacharacters (comma, parens,
+    // percent, dot) so a search like "x,part_number.eq.42" can't
+    // inject an extra filter condition. The trimmed, max-100-char
+    // value is the only thing that ends up in the or() pattern.
+    const sanitized = search
+      .replace(/[%,().]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 100);
+    if (sanitized) {
+      const pattern = `%${sanitized}%`;
+      query = query.or(
+        `part_number.ilike.${pattern},part_name.ilike.${pattern}`
+      );
+    }
   }
 
   const { data, error } = await query;

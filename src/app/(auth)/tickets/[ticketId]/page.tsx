@@ -115,12 +115,17 @@ export default async function TicketDetailPage({ params }: Props) {
     : { data: [] };
   const availableOwners = ownersData || [];
 
-  // Fetch AI suggestions
-  const { data: aiSuggestions } = await supabase
-    .from("ai_suggestions")
-    .select("*")
-    .eq("ticket_id", ticket.id)
-    .order("created_at", { ascending: false });
+  // Fetch AI suggestions — internal-only. The AI panel shows
+  // troubleshooting notes, customer-reply drafts, and our
+  // mock-fallback text ("Ripple Assist is offline..."), none of
+  // which should leak to customer-role viewers.
+  const { data: aiSuggestions } = isInternal
+    ? await supabase
+        .from("ai_suggestions")
+        .select("*")
+        .eq("ticket_id", ticket.id)
+        .order("created_at", { ascending: false })
+    : { data: null };
 
   // Fetch linked spare part requests
   const { data: partRequests } = await supabase
