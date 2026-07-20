@@ -14,7 +14,11 @@ const suggestSchema = z.object({
     "closure_summary",
     "log_analysis",
   ]),
-  user_id: z.string().uuid(),
+  // user_id is intentionally NOT accepted — the route forces
+  // created_by = auth.userId on the ai_suggestions row. A previous
+  // version trusted the body field, which let any logged-in user
+  // log a suggestion as someone else. (Same pattern as the
+  // ticket_events.actor_id fix in ccaaad5.)
 });
 
 export async function POST(request: NextRequest) {
@@ -31,7 +35,7 @@ export async function POST(request: NextRequest) {
     const result = await generateSuggestion(
       data.ticket_id,
       data.suggestion_type as SuggestionType,
-      data.user_id
+      auth.userId
     );
 
     return NextResponse.json(result);

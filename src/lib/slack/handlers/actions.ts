@@ -4,6 +4,7 @@ import { buildResolveModal } from "../blocks/resolve-modal";
 import { buildAskRippleAssistModal } from "../blocks/ai-modal";
 import { createTicketCore, resolveSiteBySlackChannel } from "@/lib/tickets/create";
 import { updateMasterMessage } from "../sync";
+import { logAudit } from "@/lib/audit";
 import type { Ticket } from "@/types/ticket";
 
 interface ActionPayload {
@@ -54,6 +55,33 @@ export async function handleBlockAction(
         .single();
 
       if (ticket) {
+        // Log status + owner change to audit_logs.
+        // We do this here (not via a DB trigger) so the actor_id
+        // is the actual Slack user, not "NEW.owner_id" (which is
+        // the old DB-trigger default; see migration 015).
+        await logAudit({
+          actorId: internalUser.id,
+          actorEmail: null,
+          actorRole: "engineer",
+          entityType: "ticket",
+          entityId: ticket.id,
+          action: "owner_assigned",
+          fieldName: "owner_id",
+          newValue: internalUser.id,
+          metadata: { source: "slack", trigger: "assign_to_me" },
+        });
+        await logAudit({
+          actorId: internalUser.id,
+          actorEmail: null,
+          actorRole: "engineer",
+          entityType: "ticket",
+          entityId: ticket.id,
+          action: "status_changed",
+          fieldName: "status",
+          newValue: "assigned",
+          metadata: { source: "slack", trigger: "assign_to_me" },
+        });
+
         await updateMasterMessage(ticket as unknown as Ticket, {
           channelId,
           messageTs,
@@ -76,6 +104,18 @@ export async function handleBlockAction(
         .single();
 
       if (ticket) {
+        await logAudit({
+          actorId: internalUser?.id ?? null,
+          actorEmail: null,
+          actorRole: "engineer",
+          entityType: "ticket",
+          entityId: ticket.id,
+          action: "status_changed",
+          fieldName: "status",
+          newValue: "in_progress",
+          metadata: { source: "slack", trigger: "mark_in_progress" },
+        });
+
         await updateMasterMessage(ticket as unknown as Ticket, {
           channelId,
           messageTs,
@@ -98,6 +138,17 @@ export async function handleBlockAction(
         .single();
 
       if (ticket) {
+        await logAudit({
+          actorId: internalUser?.id ?? null,
+          actorEmail: null,
+          actorRole: "engineer",
+          entityType: "ticket",
+          entityId: ticket.id,
+          action: "status_changed",
+          fieldName: "status",
+          newValue: "waiting_customer",
+          metadata: { source: "slack", trigger: "request_info" },
+        });
         await updateMasterMessage(ticket as unknown as Ticket, {
           channelId,
           messageTs,
@@ -324,6 +375,44 @@ export async function handleViewSubmission(
         .single();
 
       if (ticket) {
+        // Look up the internal user once for the audit log actor.
+        // The view_submission already came in signed, so the slack
+        // user_id is authentic.
+        let actorId: string | null = null;
+        if (payload.user.id) {
+          const { data: actor } = await supabase
+            .from("users")
+            .select("id, role")
+            .eq("slack_user_id", payload.user.id)
+            .maybeSingle();
+          actorId = actor?.id ?? null;
+        }
+
+        await logAudit({
+          actorId,
+          actorEmail: null,
+          actorRole: "engineer",
+          entityType: "ticket",
+          entityId: ticket.id,
+          action: "status_changed",
+          fieldName: "status",
+          newValue: "resolved",
+          metadata: { source: "slack", trigger: "resolve_form_submit" },
+        });
+        if (customerSummary) {
+          await logAudit({
+            actorId,
+            actorEmail: null,
+            actorRole: "engineer",
+            entityType: "ticket",
+            entityId: ticket.id,
+            action: "resolved",
+            fieldName: "customer_visible_summary",
+            newValue: customerSummary,
+            metadata: { source: "slack" },
+          });
+        }
+
         await updateMasterMessage(ticket as unknown as Ticket, {
           channelId: metadata.channel_id,
           messageTs: metadata.message_ts,
@@ -422,7 +511,6 @@ export async function handleViewSubmission(
             body: JSON.stringify({
               ticket_id: ticket.id,
               suggestion_type: taskType,
-              user_id: internalUser.id,
             }),
           });
 

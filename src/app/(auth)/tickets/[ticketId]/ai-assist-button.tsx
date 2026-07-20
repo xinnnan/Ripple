@@ -30,7 +30,6 @@ export function AIAssistButton({ ticketId, userId }: AIAssistButtonProps) {
         body: JSON.stringify({
           ticket_id: ticketId,
           suggestion_type: type,
-          user_id: userId || "system",
         }),
       });
 
