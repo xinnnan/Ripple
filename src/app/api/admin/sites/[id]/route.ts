@@ -2,6 +2,24 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAdmin } from "@/lib/supabase/auth-helpers";
 import { logDiff } from "@/lib/audit";
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
+
+const updateSiteSchema = z.object({
+  site_name: z.string().trim().min(1).max(200).optional(),
+  site_code: z.string().trim().min(1).max(50).optional(),
+  customer_id: z.string().uuid().optional(),
+  timezone: z.string().trim().min(1).max(100).optional(),
+  address: z.string().trim().max(500).nullable().optional(),
+  project_status: z.enum([
+    "pre_signoff",
+    "in_warranty",
+    "full_coverage",
+    "essential_coverage",
+    "out_of_service",
+  ]).optional(),
+  status: z.enum(["active", "inactive", "commissioning", "decommissioned"]).optional(),
+  slack_channel_id: z.string().trim().max(50).nullable().optional(),
+});
 
 export async function PATCH(
   request: NextRequest,
@@ -15,33 +33,19 @@ export async function PATCH(
     }
 
     const body = await request.json();
-    const {
-      site_name,
-      site_code,
-      customer_id,
-      timezone,
-      address,
-      project_status,
-      status,
-      slack_channel_id,
-    } = body;
+    const data = updateSiteSchema.parse(body);
 
-    const updates: Record<string, unknown> = {};
-    if (site_name !== undefined) updates.site_name = site_name;
-    if (site_code !== undefined) updates.site_code = site_code;
-    if (customer_id !== undefined) updates.customer_id = customer_id;
-    if (timezone !== undefined) updates.timezone = timezone;
-    if (address !== undefined) updates.address = address;
-    if (project_status !== undefined) updates.project_status = project_status;
-    if (status !== undefined) updates.status = status;
-    if (slack_channel_id !== undefined)
-      updates.slack_channel_id = slack_channel_id;
-
-    if (Object.keys(updates).length === 0) {
+    if (Object.keys(data).length === 0) {
       return NextResponse.json(
         { error: "No fields to update" },
         { status: 400 }
       );
+    }
+
+    // Normalise site_code to uppercase (the column is upper-cased on
+    // the public submit path; we keep that convention here too).
+    if (data.site_code) {
+      data.site_code = data.site_code.toUpperCase();
     }
 
     const supabase = createAdminClient();
@@ -57,25 +61,39 @@ export async function PATCH(
 
     const { error } = await supabase
       .from("sites")
-      .update(updates)
+      .update(data)
       .eq("id", id);
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      console.error("PATCH /api/admin/sites/[id] failed:", error);
+      if (error.code === "23505") {
+        return NextResponse.json(
+          { error: "Site code already exists" },
+          { status: 409 }
+        );
+      }
+      return NextResponse.json({ error: "Failed to update site" }, { status: 500 });
     }
 
     // Audit log (best-effort)
     await logDiff({
       actorId: auth.userId,
+      actorEmail: auth.email,
       actorRole: auth.role,
       entityType: "site",
       entityId: id,
       before,
-      after: updates,
+      after: data,
     });
 
     return NextResponse.json({ success: true });
-  } catch {
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return NextResponse.json(
+        { error: "Validation error", details: error.errors },
+        { status: 400 }
+      );
+    }
     return NextResponse.json(
       { error: "Invalid request body" },
       { status: 400 }

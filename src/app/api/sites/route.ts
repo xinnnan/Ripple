@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthUser, requireAdmin } from "@/lib/supabase/auth-helpers";
 import { getUserScope, scopeSites } from "@/lib/supabase/scope";
+import { logAudit } from "@/lib/audit";
 import { z } from "zod";
 
 const createSiteSchema = z.object({
@@ -93,6 +94,21 @@ export async function POST(request: NextRequest) {
       }
       return NextResponse.json({ error: "Failed to create site" }, { status: 500 });
     }
+
+    await logAudit({
+      actorId: auth.userId,
+      actorEmail: auth.email,
+      actorRole: auth.role,
+      entityType: "site",
+      entityId: site.id,
+      action: "created",
+      newValue: site.site_code,
+      metadata: {
+        site_name: site.site_name,
+        customer_id: site.customer_id,
+        project_status: site.project_status,
+      },
+    });
 
     return NextResponse.json({ site }, { status: 201 });
   } catch (error) {

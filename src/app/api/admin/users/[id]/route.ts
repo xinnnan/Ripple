@@ -2,6 +2,13 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAdmin } from "@/lib/supabase/auth-helpers";
 import { logDiff, logAudit } from "@/lib/audit";
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
+
+const updateUserSchema = z.object({
+  full_name: z.string().trim().min(1).max(200).optional(),
+  role: z.enum(["admin", "engineer", "customer_manager", "customer"]).optional(),
+  status: z.enum(["active", "inactive", "invited"]).optional(),
+});
 
 export async function PATCH(
   request: NextRequest,
@@ -15,14 +22,9 @@ export async function PATCH(
     }
 
     const body = await request.json();
-    const { full_name, role, status } = body;
+    const data = updateUserSchema.parse(body);
 
-    const updates: Record<string, string> = {};
-    if (full_name !== undefined) updates.full_name = full_name;
-    if (role !== undefined) updates.role = role;
-    if (status !== undefined) updates.status = status;
-
-    if (Object.keys(updates).length === 0) {
+    if (Object.keys(data).length === 0) {
       return NextResponse.json(
         { error: "No fields to update" },
         { status: 400 }
@@ -34,46 +36,55 @@ export async function PATCH(
     // Fetch before-state for the audit diff
     const { data: before } = await supabase
       .from("users")
-      .select("full_name, role, status")
+      .select("full_name, role, status, email")
       .eq("id", id)
       .single();
 
     const { error } = await supabase
       .from("users")
-      .update(updates)
+      .update(data)
       .eq("id", id);
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      console.error("PATCH /api/admin/users/[id] failed:", error);
+      return NextResponse.json({ error: "Failed to update user" }, { status: 500 });
     }
 
     // Role change is security-relevant — log it explicitly even if
     // logDiff also picks it up.
-    if (role && before?.role && role !== before.role) {
+    if (data.role && before?.role && data.role !== before.role) {
       await logAudit({
         actorId: auth.userId,
+        actorEmail: auth.email,
         actorRole: auth.role,
         entityType: "user",
         entityId: id,
         action: "role_changed",
         fieldName: "role",
         oldValue: before.role,
-        newValue: role,
-        metadata: { target_email: (before as unknown as { email?: string })?.email },
+        newValue: data.role,
+        metadata: { target_email: before.email },
       });
     }
 
     await logDiff({
       actorId: auth.userId,
+      actorEmail: auth.email,
       actorRole: auth.role,
       entityType: "user",
       entityId: id,
       before,
-      after: updates,
+      after: data,
     });
 
     return NextResponse.json({ success: true });
-  } catch {
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return NextResponse.json(
+        { error: "Validation error", details: error.errors },
+        { status: 400 }
+      );
+    }
     return NextResponse.json(
       { error: "Invalid request body" },
       { status: 400 }
