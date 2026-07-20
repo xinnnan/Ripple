@@ -25,11 +25,12 @@ export async function requireAdmin() {
     .single();
 
   const role = userProfile?.role as UserRole | undefined;
+  const email = userProfile?.email as string | undefined;
   if (!role || !ADMIN_ROLES.includes(role)) {
     return { error: "Forbidden: Admin access required", status: 403 } as const;
   }
 
-  return { userId: authUser.id, role } as const;
+  return { userId: authUser.id, role, email: email! } as const;
 }
 
 /**
