@@ -5,6 +5,10 @@ import { getUserScope, scopeTickets } from "@/lib/supabase/scope";
 import { updateMasterMessage } from "@/lib/slack/sync";
 import { sendTicketResolved } from "@/lib/email/send";
 import { resolveTicketQuery } from "@/lib/tickets/lookup";
+import {
+  computeSlaBreached,
+  isFirstResponseEvent,
+} from "@/lib/sla";
 import { z } from "zod";
 
 interface RouteContext {
@@ -134,9 +138,14 @@ export async function PATCH(
 
     const supabase = createAdminClient();
 
-    // Fetch current ticket for event logging.
+    // Fetch current ticket for event logging AND SLA recompute.
+    // We need a few extra fields: the SLA columns + status, plus
+    // owner_id for the events. (The `select` below mirrors the
+    // audit log + SLA compute needs.)
     const { data: currentTicket } = await resolveTicketQuery(
-      supabase.from("tickets").select("status, severity, owner_id"),
+      supabase.from("tickets").select(
+        "id, status, severity, owner_id, first_response_due_at, resolve_due_at, first_response_at, sla_breached"
+      ),
       ticketId
     ).maybeSingle();
 
@@ -165,6 +174,55 @@ export async function PATCH(
     // Set closed_at when closing
     if (data.status === "closed" && currentTicket.status !== "closed") {
       update.closed_at = new Date().toISOString();
+    }
+
+    // SLA bookkeeping. Two things can move here:
+    //   1. Status leaving `new` counts as a "first response" event
+    //      (assign_to_me, mark_in_progress, etc.) — stamp
+    //      first_response_at.
+    //   2. The new status + new first_response_at feeds
+    //      computeSlaBreached for the resolved-state / still-open
+    //      branch. `sla_breached` is sticky (never cleared once
+    //      true) so we only OR the new value with the existing one.
+    const statusChanged = data.status !== undefined && data.status !== currentTicket.status;
+    if (
+      statusChanged &&
+      isFirstResponseEvent({
+        isInternalComment: false,
+        statusChanged: true,
+        oldStatus: currentTicket.status as "new" | "assigned" | "in_progress" | "waiting_customer" | "waiting_droplet" | "resolved" | "closed" | "reopened" | null,
+        newStatus: data.status as "new" | "assigned" | "in_progress" | "waiting_customer" | "waiting_droplet" | "resolved" | "closed" | "reopened",
+        hadFirstResponse: !!currentTicket.first_response_at,
+      })
+    ) {
+      const now = new Date();
+      const firstResponseAt = now.toISOString();
+      // With first_response_at set, the response window is met.
+      // Recompute breach based on the resolution window + the
+      // new status. A status of "resolved" / "closed" means the
+      // resolution clock is satisfied (otherwise it would have
+      // been a breach — computeSlaBreached handles that).
+      const breached = computeSlaBreached({
+        status: (data.status ?? currentTicket.status) as "new" | "assigned" | "in_progress" | "waiting_customer" | "waiting_droplet" | "resolved" | "closed" | "reopened",
+        first_response_due_at: null,
+        resolve_due_at: currentTicket.resolve_due_at,
+        first_response_at: firstResponseAt,
+      });
+      update.first_response_at = firstResponseAt;
+      // OR with existing — sla_breached is sticky.
+      update.sla_breached = !!(currentTicket.sla_breached || breached);
+    } else if (statusChanged || data.severity !== undefined) {
+      // No first_response stamp, but a status / severity change
+      // can still flip sla_breached (e.g. resolving right at the
+      // buzzer). Recompute.
+      const effectiveStatus = (data.status ?? currentTicket.status) as "new" | "assigned" | "in_progress" | "waiting_customer" | "waiting_droplet" | "resolved" | "closed" | "reopened";
+      const breached = computeSlaBreached({
+        status: effectiveStatus,
+        first_response_due_at: currentTicket.first_response_due_at,
+        resolve_due_at: currentTicket.resolve_due_at,
+        first_response_at: currentTicket.first_response_at,
+      });
+      update.sla_breached = !!(currentTicket.sla_breached || breached);
     }
 
     // Use the same id-or-ticket_no lookup that we did above.

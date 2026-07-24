@@ -72,7 +72,8 @@ export function TicketFilters({
     !!filters.customer_id ||
     !!filters.site_id ||
     !!filters.owner_id ||
-    (filters.range && filters.range !== "all");
+    (filters.range && filters.range !== "all") ||
+    !!filters.sla;
 
   const start = (filters.page || 1) * PAGE_SIZE - PAGE_SIZE + 1;
   const end = Math.min((filters.page || 1) * PAGE_SIZE, totalCount);
@@ -244,6 +245,30 @@ export function TicketFilters({
             <option value="90d">Last 90 days</option>
           </select>
         </div>
+
+        {/* SLA bucket — internal-only. Customers / managers don't
+            manage SLAs so the filter is hidden for them. */}
+        {options.canFilterByOwner && (
+          <div>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">
+              SLA
+            </label>
+            <select
+              value={filters.sla || "all"}
+              onChange={(e) => {
+                const v = e.target.value as TicketFiltersState["sla"];
+                update({ sla: v === "all" ? undefined : v });
+              }}
+              className="rounded-lg border border-border px-3 py-1.5 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/20"
+            >
+              <option value="all">All</option>
+              <option value="breached">⚠ Breached</option>
+              <option value="breaching">Breaching soon</option>
+              <option value="on_track">On track</option>
+              <option value="no_sla">No SLA</option>
+            </select>
+          </div>
+        )}
 
         {/* Clear */}
         {hasActiveFilters && (

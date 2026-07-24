@@ -15,6 +15,8 @@ export type TicketFiltersState = {
   site_id?: string;
   owner_id?: string;
   range?: "7d" | "30d" | "90d" | "all";
+  /** SLA bucket. "all" / "breached" / "breaching" / "on_track" / "no_sla". */
+  sla?: "all" | "breached" | "breaching" | "on_track" | "no_sla";
   page?: number;
 };
 
@@ -37,6 +39,7 @@ export function parseFilters(params: URLSearchParams): TicketFiltersState {
       .filter(Boolean);
 
   const range = get("range") as TicketFiltersState["range"];
+  const slaRaw = get("sla") as TicketFiltersState["sla"];
   const page = parseInt(get("page") || "1", 10);
   return {
     q: get("q"),
@@ -46,6 +49,7 @@ export function parseFilters(params: URLSearchParams): TicketFiltersState {
     site_id: get("site"),
     owner_id: get("owner"),
     range: range && ["7d", "30d", "90d", "all"].includes(range) ? range : undefined,
+    sla: slaRaw && ["all", "breached", "breaching", "on_track", "no_sla"].includes(slaRaw) ? slaRaw : undefined,
     page: Number.isFinite(page) && page > 0 ? page : 1,
   };
 }
@@ -61,6 +65,7 @@ export function buildParams(filters: TicketFiltersState): string {
   if (filters.site_id) p.set("site", filters.site_id);
   if (filters.owner_id) p.set("owner", filters.owner_id);
   if (filters.range) p.set("range", filters.range);
+  if (filters.sla) p.set("sla", filters.sla);
   if (filters.page && filters.page > 1) p.set("page", String(filters.page));
   const s = p.toString();
   return s ? `?${s}` : "";

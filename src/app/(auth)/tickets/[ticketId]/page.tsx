@@ -13,6 +13,7 @@ import { formatDate } from "@/lib/utils";
 import Link from "next/link";
 import { AIAssistButton } from "./ai-assist-button";
 import { TicketActionsPanel } from "./ticket-actions-panel";
+import { SLABadge } from "./sla-badge";
 import { getUserScope, scopeTickets } from "@/lib/supabase/scope";
 import { resolveTicketQuery } from "@/lib/tickets/lookup";
 import { isAdminRole } from "@/lib/roles";
@@ -401,6 +402,16 @@ export default async function TicketDetailPage({ params }: Props) {
 
         {/* Sidebar */}
         <div className="space-y-6">
+          {/* SLA — shown for everyone. Customers can see their own
+              ticket's status, internal users see the breach alarm. */}
+          <SLABadge
+            severity={ticket.severity as Severity}
+            status={ticket.status as TicketStatus}
+            first_response_due_at={ticket.first_response_due_at as string | null}
+            resolve_due_at={ticket.resolve_due_at as string | null}
+            first_response_at={ticket.first_response_at as string | null}
+            sla_breached={!!ticket.sla_breached}
+          />
           <div className="rounded-xl border border-border p-6 space-y-3">
             <h2 className="text-sm font-semibold text-foreground">Details</h2>
             <dl className="space-y-2 text-sm">
