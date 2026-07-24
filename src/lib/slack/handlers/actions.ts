@@ -30,16 +30,39 @@ export async function handleBlockAction(
 
   const supabase = createAdminClient();
 
-  // Find or create internal user from Slack user_id
+  // Find the internal user from the Slack user_id. Slack signs the
+  // request, so the payload is authentic — but that only proves the
+  // request came from Slack, not that the user is one of our
+  // engineers. We must gate by DB membership: only users who have
+  // been provisioned in public.users with a matching slack_user_id
+  // can mutate tickets. Without this gate, any Slack member of the
+  // channel could fire a block_action and the audit log would write
+  // a row with actor_id=NULL and actor_role='engineer' (a lie).
   const { data: internalUser } = await supabase
     .from("users")
-    .select("id")
+    .select("id, role")
     .eq("slack_user_id", userId)
     .single();
 
+  if (!internalUser) {
+    // Not an internal user. Reply ephemerally and skip the action.
+    if (channelId) {
+      try {
+        await client.chat.postEphemeral({
+          channel: channelId,
+          user: userId,
+          text: "❌ Your Slack account isn't linked to a Ripple user. Ask an admin to map it under Admin → Users.",
+        });
+      } catch (e) {
+        console.warn("[slack/handlers] ephemeral reply failed (non-fatal):", e instanceof Error ? e.message : e);
+      }
+    }
+    return;
+  }
+
   switch (action.action_id) {
     case "assign_to_me": {
-      if (!internalUser || !ticketNo) break;
+      if (!ticketNo) break;
 
       // Update ticket owner and status
       const { data: ticket } = await supabase
@@ -105,9 +128,9 @@ export async function handleBlockAction(
 
       if (ticket) {
         await logAudit({
-          actorId: internalUser?.id ?? null,
+          actorId: internalUser.id,
           actorEmail: null,
-          actorRole: "engineer",
+          actorRole: internalUser.role,
           entityType: "ticket",
           entityId: ticket.id,
           action: "status_changed",
@@ -139,9 +162,9 @@ export async function handleBlockAction(
 
       if (ticket) {
         await logAudit({
-          actorId: internalUser?.id ?? null,
+          actorId: internalUser.id,
           actorEmail: null,
-          actorRole: "engineer",
+          actorRole: internalUser.role,
           entityType: "ticket",
           entityId: ticket.id,
           action: "status_changed",
@@ -250,6 +273,33 @@ export async function handleViewSubmission(
   const state = payload.view.state.values;
   const supabase = createAdminClient();
 
+  // Find the internal user from Slack user_id. See the same gate
+  // in handleBlockAction for the rationale: only internal users
+  // (admin / engineer) can mutate tickets or post engineer-attributed
+  // comments. The /ticket modal path is the exception (anyone in a
+  // channel can file a ticket for that site), but the ticket is
+  // created with created_by=null and the source is 'slack' so the
+  // audit log + UI make it clear it came from a customer.
+  //
+  // For non-ticket_form_submit callbacks, missing internalUser is
+  // a hard reject — they all post engineer-attributed content.
+  const { data: internalUser } = await supabase
+    .from("users")
+    .select("id, role")
+    .eq("slack_user_id", payload.user.id)
+    .single();
+
+  if (callbackId !== "ticket_form_submit" && !internalUser) {
+    return {
+      response_action: "errors",
+      errors: {
+        // Slack renders this against the first block of the modal.
+        title_block:
+          "Your Slack account isn't linked to a Ripple user. Ask an admin to map it under Admin → Users.",
+      },
+    };
+  }
+
   switch (callbackId) {
     case "ticket_form_submit": {
       // Extract form values
@@ -260,13 +310,6 @@ export async function handleViewSubmission(
       const description = state.description_block?.description?.value || "";
       const assetId = state.asset_block?.asset_id?.value || "";
       const area = state.area_block?.area?.value || "";
-
-      // Get or create user
-      const { data: internalUser } = await supabase
-        .from("users")
-        .select("id")
-        .eq("slack_user_id", payload.user.id)
-        .single();
 
       // Determine site: prefer metadata from the modal's private_metadata
       // (set when the modal was opened in a known-bound channel), fall
@@ -375,23 +418,16 @@ export async function handleViewSubmission(
         .single();
 
       if (ticket) {
-        // Look up the internal user once for the audit log actor.
-        // The view_submission already came in signed, so the slack
-        // user_id is authentic.
-        let actorId: string | null = null;
-        if (payload.user.id) {
-          const { data: actor } = await supabase
-            .from("users")
-            .select("id, role")
-            .eq("slack_user_id", payload.user.id)
-            .maybeSingle();
-          actorId = actor?.id ?? null;
-        }
+        // internalUser was verified at the top of the function — we
+        // know it's non-null for this callback_id. Use its real id +
+        // role so the audit log accurately attributes the resolve.
+        const actorId = internalUser!.id;
+        const actorRole = internalUser!.role;
 
         await logAudit({
           actorId,
           actorEmail: null,
-          actorRole: "engineer",
+          actorRole,
           entityType: "ticket",
           entityId: ticket.id,
           action: "status_changed",
@@ -403,7 +439,7 @@ export async function handleViewSubmission(
           await logAudit({
             actorId,
             actorEmail: null,
-            actorRole: "engineer",
+            actorRole,
             entityType: "ticket",
             entityId: ticket.id,
             action: "resolved",

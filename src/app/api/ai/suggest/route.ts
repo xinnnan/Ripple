@@ -30,6 +30,19 @@ export async function POST(request: NextRequest) {
     if ("error" in auth) {
       return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
+    // Internal-only. The AI suggestions panel on the ticket page
+    // is only rendered for internal users, and the ai_suggestions
+    // list is gated to internal via the page; this endpoint
+    // matches that gate so a customer can't burn paid tokens
+    // through the API directly. (See ticket detail page comment
+    // for the rationale: troubleshooting + customer-reply drafts
+    // are engineer-only material.)
+    if (!auth.isInternal) {
+      return NextResponse.json(
+        { error: "Forbidden: AI suggestions are internal-only" },
+        { status: 403 }
+      );
+    }
 
     // Rate limit per user. The AI provider charges per call; an
     // internal user hammering this endpoint could burn the
