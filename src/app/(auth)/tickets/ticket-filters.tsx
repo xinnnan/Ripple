@@ -15,8 +15,6 @@ export type TicketFiltersState = {
   site_id?: string;
   owner_id?: string;
   range?: "7d" | "30d" | "90d" | "all";
-  /** SLA bucket. "all" / "breached" / "breaching" / "on_track" / "no_sla". */
-  sla?: "all" | "breached" | "breaching" | "on_track" | "no_sla";
   page?: number;
 };
 
@@ -37,7 +35,6 @@ function parseFilters(params: URLSearchParams): TicketFiltersState {
       .filter(Boolean);
 
   const range = get("range") as TicketFiltersState["range"];
-  const slaRaw = get("sla") as TicketFiltersState["sla"];
   const page = parseInt(get("page") || "1", 10);
   return {
     q: get("q"),
@@ -47,7 +44,6 @@ function parseFilters(params: URLSearchParams): TicketFiltersState {
     site_id: get("site"),
     owner_id: get("owner"),
     range: range && ["7d", "30d", "90d", "all"].includes(range) ? range : undefined,
-    sla: slaRaw && ["all", "breached", "breaching", "on_track", "no_sla"].includes(slaRaw) ? slaRaw : undefined,
     page: Number.isFinite(page) && page > 0 ? page : 1,
   };
 }
@@ -63,7 +59,6 @@ function buildParams(filters: TicketFiltersState): string {
   if (filters.site_id) p.set("site", filters.site_id);
   if (filters.owner_id) p.set("owner", filters.owner_id);
   if (filters.range) p.set("range", filters.range);
-  if (filters.sla) p.set("sla", filters.sla);
   if (filters.page && filters.page > 1) p.set("page", String(filters.page));
   const s = p.toString();
   return s ? `?${s}` : "";
@@ -126,8 +121,7 @@ export function TicketFilters({
     !!filters.customer_id ||
     !!filters.site_id ||
     !!filters.owner_id ||
-    (filters.range && filters.range !== "all") ||
-    !!filters.sla;
+    (filters.range && filters.range !== "all");
 
   const start = (filters.page || 1) * PAGE_SIZE - PAGE_SIZE + 1;
   const end = Math.min((filters.page || 1) * PAGE_SIZE, totalCount);
@@ -299,30 +293,6 @@ export function TicketFilters({
             <option value="90d">Last 90 days</option>
           </select>
         </div>
-
-        {/* SLA bucket — internal-only. The other views don't need
-            it because customers / managers don't manage SLAs. */}
-        {options.canFilterByOwner && (
-          <div>
-            <label className="block text-xs font-medium text-muted-foreground mb-1">
-              SLA
-            </label>
-            <select
-              value={filters.sla || "all"}
-              onChange={(e) => {
-                const v = e.target.value as TicketFiltersState["sla"];
-                update({ sla: v === "all" ? undefined : v });
-              }}
-              className="rounded-lg border border-border px-3 py-1.5 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/20"
-            >
-              <option value="all">All</option>
-              <option value="breached">⚠ Breached</option>
-              <option value="breaching">Breaching soon</option>
-              <option value="on_track">On track</option>
-              <option value="no_sla">No SLA</option>
-            </select>
-          </div>
-        )}
 
         {/* Clear */}
         {hasActiveFilters && (

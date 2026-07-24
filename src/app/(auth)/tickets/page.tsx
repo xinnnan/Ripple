@@ -25,7 +25,6 @@ interface Props {
     site?: string;
     owner?: string;
     range?: string;
-    sla?: string;
     page?: string;
   }>;
 }
@@ -52,7 +51,6 @@ export default async function TicketsPage({ searchParams }: Props) {
     .select(
       `
       ticket_no, title, severity, status, request_type, created_at,
-      sla_policy_id, sla_breached, first_response_due_at, resolve_due_at, first_response_at,
       customer:customers(id, name),
       site:sites(id, site_name),
       owner:users!tickets_owner_id_fkey(id, full_name)
@@ -68,33 +66,6 @@ export default async function TicketsPage({ searchParams }: Props) {
   }
   if (filters.severity && filters.severity.length > 0) {
     query = query.in("severity", filters.severity);
-  }
-  // SLA bucket filter (internal-only). The bucket logic:
-  //   breached    → sla_breached = true
-  //   breaching   → sla_breached = false AND resolve_due_at < now() AND not resolved/closed
-  //   on_track    → sla_policy_id NOT NULL AND not breaching/breached
-  //   no_sla      → sla_policy_id IS NULL
-  // The "breaching" set is approximated by
-  //   sla_breached=false AND resolve_due_at<now AND status NOT IN (resolved, closed)
-  // which is close enough for a filter (a P1 might be "breaching" by
-  // response but not by resolution; we count resolution for the bucket).
-  if (filters.sla && scope.isInternal) {
-    const now = new Date().toISOString();
-    if (filters.sla === "breached") {
-      query = query.eq("sla_breached", true);
-    } else if (filters.sla === "breaching") {
-      query = query
-        .eq("sla_breached", false)
-        .lt("resolve_due_at", now)
-        .not("status", "in", "(resolved,closed)");
-    } else if (filters.sla === "on_track") {
-      query = query
-        .not("sla_policy_id", "is", null)
-        .eq("sla_breached", false)
-        .or(`resolve_due_at.gte.${now},resolve_due_at.is.null`);
-    } else if (filters.sla === "no_sla") {
-      query = query.is("sla_policy_id", null);
-    }
   }
   if (filters.customer_id) {
     // Either the caller's scope allows this customer, or we bail with 403-shaped empty result

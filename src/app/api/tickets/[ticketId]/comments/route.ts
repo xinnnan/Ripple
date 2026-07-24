@@ -3,10 +3,6 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthUser } from "@/lib/supabase/auth-helpers";
 import { getUserScope, scopeTickets } from "@/lib/supabase/scope";
 import { resolveTicketQuery } from "@/lib/tickets/lookup";
-import {
-  computeSlaBreached,
-  isFirstResponseEvent,
-} from "@/lib/sla";
 import { z } from "zod";
 
 interface RouteContext {
@@ -104,9 +100,7 @@ export async function POST(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     const { data: ticket, error: ticketErr } = await resolveTicketQuery(
-      supabase.from("tickets").select(
-        "id, site_id, status, first_response_due_at, resolve_due_at, first_response_at, sla_breached"
-      ),
+      supabase.from("tickets").select("id, site_id"),
       ticketId
     ).maybeSingle();
     if (ticketErr) {
@@ -174,37 +168,6 @@ export async function POST(
       new_value: safeVisibility,
       actor_id: authorId,
     });
-
-    // SLA: stamp first_response_at on the first internal comment
-    // and recompute sla_breached. The customer replying to their
-    // own ticket is NOT a "first response" — only an internal
-    // user's comment counts.
-    if (
-      isFirstResponseEvent({
-        isInternalComment: safeVisibility === "internal",
-        statusChanged: false,
-        oldStatus: null,
-        newStatus: null,
-        hadFirstResponse: !!ticket.first_response_at,
-      })
-    ) {
-      const now = new Date();
-      // With first_response_at set, the response window is met.
-      // Recompute breach based on the resolution window only.
-      const breached = computeSlaBreached({
-        status: ticket.status as "new" | "assigned" | "in_progress" | "waiting_customer" | "waiting_droplet" | "resolved" | "closed" | "reopened",
-        first_response_due_at: null, // already responded
-        resolve_due_at: ticket.resolve_due_at,
-        first_response_at: now.toISOString(),
-      });
-      await supabase
-        .from("tickets")
-        .update({
-          first_response_at: now.toISOString(),
-          sla_breached: breached,
-        })
-        .eq("id", ticket.id);
-    }
 
     return NextResponse.json({ comment }, { status: 201 });
   } catch (error) {
