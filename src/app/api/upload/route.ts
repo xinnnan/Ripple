@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthUser } from "@/lib/supabase/auth-helpers";
+import { getUserScope } from "@/lib/supabase/scope";
+import { resolveTicketQuery } from "@/lib/tickets/lookup";
 
 export async function POST(request: NextRequest) {
   try {
@@ -24,6 +26,39 @@ export async function POST(request: NextRequest) {
 
     if (!file) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 });
+    }
+
+    const supabase = createAdminClient();
+
+    // If ticket_id is provided, verify the caller can see this
+    // ticket. Without this check, a customer from org A could
+    // upload attachments to any ticket across any customer.
+    // (The bug was caught by /tmp/ripple-e2e/18_visibility.mjs
+    // case 6.)
+    if (ticketId) {
+      const scope = await getUserScope();
+      if (!scope) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      }
+      const { data: ticket, error: ticketErr } = await resolveTicketQuery(
+        supabase.from("tickets").select("id, site_id"),
+        ticketId
+      ).maybeSingle();
+      if (ticketErr) {
+        console.error("Upload: ticket lookup failed:", ticketErr);
+        return NextResponse.json({ error: "Failed to load ticket" }, { status: 500 });
+      }
+      if (!ticket) {
+        return NextResponse.json({ error: "Ticket not found" }, { status: 404 });
+      }
+      // Non-internal callers can only upload to tickets in their scope.
+      const ticketSite = (ticket as { site_id?: string }).site_id;
+      if (!isInternal && (!ticketSite || !scope.siteIds.includes(ticketSite))) {
+        return NextResponse.json(
+          { error: "Ticket not in your scope" },
+          { status: 403 }
+        );
+      }
     }
 
     // Validate file size (50MB max)
@@ -56,8 +91,6 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
-
-    const supabase = createAdminClient();
 
     // Generate unique storage path
     const timestamp = Date.now();
