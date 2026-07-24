@@ -284,7 +284,38 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    return NextResponse.json({ tickets });
+    // Strip internal-only / PII fields from non-internal callers.
+    // The list endpoint uses select(*) which includes
+    //   secure_token (public ticket URL token — would let a
+    //     customer bookmark another customer's ticket if leaked),
+    //   submitter_email / submitter_phone (PII),
+    //   internal_summary, root_cause_category, follow_up_needed
+    //     (engineer-only).
+    // The single-ticket endpoint at /api/tickets/[id] already
+    // strips these; the list endpoint was missed in the original
+    // fix (commit f59ea68) and the gap was caught by
+    // /tmp/ripple-e2e/22_list_pii.mjs.
+    //
+    // (We strip in code rather than the SELECT so the same code
+    // path works for both internal and non-internal callers — the
+    // internal branch is a no-op.)
+    const STRIPPED_FIELDS = [
+      "secure_token",
+      "submitter_email",
+      "submitter_phone",
+      "internal_summary",
+      "root_cause_category",
+      "follow_up_needed",
+    ];
+    const safeTickets = scope.isInternal
+      ? tickets
+      : (tickets ?? []).map((t) => {
+          const copy: Record<string, unknown> = { ...t };
+          for (const f of STRIPPED_FIELDS) delete copy[f];
+          return copy;
+        });
+
+    return NextResponse.json({ tickets: safeTickets });
   } catch (error) {
     console.error("Get tickets error:", error);
     return NextResponse.json(
