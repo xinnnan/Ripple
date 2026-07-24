@@ -15,6 +15,7 @@ const ENTITY_LABELS: Record<string, string> = {
   spare_part: "Spare part",
   part_request: "Part request",
   field_service_order: "Field service",
+  sla_policy: "SLA policy",
   comment: "Comment",
   attachment: "Attachment",
   auth: "Auth",

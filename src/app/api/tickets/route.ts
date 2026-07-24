@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthUser } from "@/lib/supabase/auth-helpers";
 import { getUserScope, scopeTickets } from "@/lib/supabase/scope";
 import { sendTicketConfirmation } from "@/lib/email/send";
+import { rateLimit, getClientIp } from "@/lib/rate-limit";
 import {
   createTicketCore,
   resolveSiteByCode,
@@ -45,9 +46,6 @@ const createTicketSchema = z.object({
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
-    const data = createTicketSchema.parse(body);
-
     // Auth is optional here: the public /submit form is unauthed.
     // But if the caller IS logged in, we MUST use auth.userId as
     // created_by, never the body's value. A customer could otherwise
@@ -59,8 +57,39 @@ export async function POST(request: NextRequest) {
     // response there is a real auth failure (which shouldn't happen
     // for a guest submit, but if it does we fall through to null).
     const auth = await getAuthUser();
-    const createdBy =
-      !("error" in auth) && auth.userId ? auth.userId : null;
+    const isAuthed = !("error" in auth);
+
+    // Rate-limit unauthed submissions. Authed users go through
+    // the full RBAC path; their volume is bounded by the org
+    // size. The submit form is open to anyone with a browser, so
+    // we cap at 10 / minute / IP. (Catches accidental double-
+    // clicks + naive bot scripts; NOT a CAPTCHA substitute. See
+    // AGENTS.md "Known issues" for the path to a hardened
+    // solution.)
+    if (!isAuthed) {
+      const ip = getClientIp(request.headers);
+      const rl = rateLimit({
+        key: `submit:${ip}`,
+        limit: 10,
+        windowMs: 60_000,
+      });
+      if (!rl.allowed) {
+        return NextResponse.json(
+          { error: "Too many submissions. Please try again in a minute." },
+          {
+            status: 429,
+            headers: {
+              "Retry-After": String(Math.ceil((rl.resetAt - Date.now()) / 1000)),
+            },
+          }
+        );
+      }
+    }
+
+    const body = await request.json();
+    const data = createTicketSchema.parse(body);
+
+    const createdBy = isAuthed && !("error" in auth) ? auth.userId : null;
 
     const supabase = createAdminClient();
 
