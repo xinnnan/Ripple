@@ -190,6 +190,10 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(
       {
+        // `id` is the UUID — the form needs it to attach files via
+        // /api/upload. `secure_token` is the unauthed proof-of-ownership
+        // token for the attachment upload (and for the /t/[token] page).
+        id: result.ticket.id,
         ticket_no: result.ticket_no,
         secure_token: result.secure_token,
         message: "Ticket created successfully",

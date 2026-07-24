@@ -1,4 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin";
+import { rateLimit, getClientIp } from "@/lib/rate-limit";
+import { headers } from "next/headers";
 
 export const dynamic = "force-dynamic";
 import { STATUS_LABELS, SEVERITY_LABELS, IMPACT_LABELS } from "@/types/ticket";
@@ -13,6 +15,29 @@ interface Props {
 export default async function TicketViewPage({ params, searchParams }: Props) {
   const { ticketId } = await params;
   const { token } = await searchParams;
+
+  // Rate limit: this page is unauthed and gated by a 32-byte
+  // secure_token. The token is unguessable in practice, but a
+  // determined attacker could still hammer the page with random
+  // tokens to probe the system or to extract timing info. Cap
+  // unauthed lookups at 30/min/IP. (The token itself limits who
+  // actually sees a ticket; this just blocks the brute-force
+  // surface area.)
+  const hdrs = await headers();
+  const ip = getClientIp(hdrs);
+  const rl = rateLimit({ key: `t-page:${ip}`, limit: 30, windowMs: 60_000 });
+  if (!rl.allowed) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-6">
+        <div className="max-w-md w-full text-center">
+          <h1 className="text-xl font-bold text-foreground mb-2">Too Many Requests</h1>
+          <p className="text-muted-foreground">
+            You have exceeded the rate limit for ticket lookups. Please try again later.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   if (!token) {
     return (

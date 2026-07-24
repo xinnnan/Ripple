@@ -260,7 +260,7 @@ export default async function AdminUserDetailPage({ params, searchParams }: Prop
                   className="rounded-lg border border-border px-3 py-2 text-sm text-foreground bg-background"
                 >
                   <option value="member">Member</option>
-                  <option value="admin">Admin</option>
+                  <option value="viewer">Viewer</option>
                 </select>
               </div>
               <button

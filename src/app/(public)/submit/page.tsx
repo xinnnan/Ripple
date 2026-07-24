@@ -206,6 +206,13 @@ export default function SubmitTicketPage() {
           const uploadForm = new FormData();
           uploadForm.append("file", file);
           uploadForm.append("ticket_id", data.id);
+          // Unauthed guests use secure_token to prove they own the
+          // ticket (the token was just returned by /api/tickets).
+          // Logged-in users can skip this — the route uses their
+          // auth.userId instead.
+          if (!isLoggedIn && data.secure_token) {
+            uploadForm.append("secure_token", data.secure_token);
+          }
           uploadForm.append("visibility", "customer");
           // Fire and forget — don't block the success state on upload failures
           fetch("/api/upload", {
