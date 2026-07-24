@@ -11,7 +11,7 @@ import {
   parseFilters,
   buildParams,
   type TicketFilterOptions,
-} from "./ticket-filters";
+} from "./ticket-filters.shared";
 import { TicketListControls } from "./ticket-list-controls";
 
 export const dynamic = "force-dynamic";

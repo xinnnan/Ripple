@@ -4,13 +4,13 @@ import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useCallback, useTransition } from "react";
 import { Pagination } from "@/components/pagination";
 import {
-  TicketFilters,
   PAGE_SIZE,
   parseFilters,
   buildParams,
   type TicketFiltersState,
   type TicketFilterOptions,
-} from "./ticket-filters";
+} from "./ticket-filters.shared";
+import { TicketFilters } from "./ticket-filters";
 
 /**
  * Client wrapper that owns the URL <-> filter state for the tickets list.

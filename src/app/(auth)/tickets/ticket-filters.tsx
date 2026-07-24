@@ -4,65 +4,16 @@ import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { useCallback, useMemo, useState, useTransition } from "react";
 import { STATUS_LABELS, type TicketStatus, type Severity } from "@/types/ticket";
 import { cn } from "@/lib/utils";
+import {
+  PAGE_SIZE,
+  parseFilters,
+  buildParams,
+  type TicketFiltersState,
+  type TicketFilterOptions,
+} from "./ticket-filters.shared";
 
-const PAGE_SIZE = 20;
-
-export type TicketFiltersState = {
-  q?: string;
-  status?: TicketStatus[];
-  severity?: Severity[];
-  customer_id?: string;
-  site_id?: string;
-  owner_id?: string;
-  range?: "7d" | "30d" | "90d" | "all";
-  page?: number;
-};
-
-export type TicketFilterOptions = {
-  customers: { id: string; name: string }[];
-  sites: { id: string; site_name: string; site_code: string; customer_id: string }[];
-  owners: { id: string; full_name: string }[];
-  canFilterByCustomer: boolean;
-  canFilterByOwner: boolean;
-};
-
-function parseFilters(params: URLSearchParams): TicketFiltersState {
-  const get = (k: string) => params.get(k) ?? undefined;
-  const list = (k: string) =>
-    (params.get(k) || "")
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean);
-
-  const range = get("range") as TicketFiltersState["range"];
-  const page = parseInt(get("page") || "1", 10);
-  return {
-    q: get("q"),
-    status: list("status") as TicketStatus[],
-    severity: list("severity") as Severity[],
-    customer_id: get("customer"),
-    site_id: get("site"),
-    owner_id: get("owner"),
-    range: range && ["7d", "30d", "90d", "all"].includes(range) ? range : undefined,
-    page: Number.isFinite(page) && page > 0 ? page : 1,
-  };
-}
-
-function buildParams(filters: TicketFiltersState): string {
-  const p = new URLSearchParams();
-  if (filters.q) p.set("q", filters.q);
-  if (filters.status && filters.status.length > 0)
-    p.set("status", filters.status.join(","));
-  if (filters.severity && filters.severity.length > 0)
-    p.set("severity", filters.severity.join(","));
-  if (filters.customer_id) p.set("customer", filters.customer_id);
-  if (filters.site_id) p.set("site", filters.site_id);
-  if (filters.owner_id) p.set("owner", filters.owner_id);
-  if (filters.range) p.set("range", filters.range);
-  if (filters.page && filters.page > 1) p.set("page", String(filters.page));
-  const s = p.toString();
-  return s ? `?${s}` : "";
-}
+export { PAGE_SIZE, parseFilters, buildParams };
+export type { TicketFiltersState, TicketFilterOptions };
 
 const QUICK_STATUSES: TicketStatus[] = [
   "new",
@@ -321,5 +272,3 @@ export function TicketFilters({
     </div>
   );
 }
-
-export { PAGE_SIZE, parseFilters, buildParams };
