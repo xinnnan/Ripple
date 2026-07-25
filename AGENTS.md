@@ -389,8 +389,29 @@ The `plans/e2e-audit-and-test-plan.md` from 2026-05-23 was the most productive d
   - **/api/admin/site-members POST** (commit `cdf8895`): no Zod, no audit log, bare .delete() with no row-existence check, unbounded role field. Fix: Zod (UUID + role enum), pre-lookup of user + site for clean 400s, audit log per add and per remove, .select() on the delete, 409 on duplicate, 400 when adding a customer_manager. Kept the legacy form-encoded `?action=remove&membershipId=…` and `?userId=…` contracts so the existing /admin/users/[id] and /admin/sites/[id] forms keep working.
   - **/t/[secure_token] page rate limit** (commit `cdf8895`): unauthed page gated by a 32-byte token, no rate limit. 30/min/IP cap with a clear "Too Many Requests" page. The token is unguessable but capping the request rate blocks the DoS-style probing surface.
   - **AI endpoint internal-only** (commit `5097f8d`): POST /api/ai/suggest was open to any logged-in user. The AI panel on the ticket detail page is internal-only, but a customer could call the API directly to burn paid tokens on suggestions they'd never see. Now: `auth.isInternal` check → 403.
+  - **Web e2e sweep** (commits `2387757`+): added a Playwright-based
+    page-visit + feature-flow test that covers every web page × every
+    role. Found and fixed 2 more real bugs:
+    - **Role gates missing on 17 admin pages** (commit `2387757`):
+      the middleware only checked "is user authenticated", not
+      "what role". Any logged-in user (engineer, customer_manager,
+      customer) could directly visit /admin/audit, /admin/users,
+      /admin/spare-parts, /admin/sla-policies, /admin/audit (the
+      most sensitive view in the app) and read the data. The
+      sidebar hid the link, but the page rendered. Fix: middleware
+      now does a role lookup on gated paths and redirects
+      non-permitted roles to /dashboard. /admin/* → admin only,
+      /team + /team/* → customer_manager only, /sites →
+      customer + customer_manager.
+    - **`getCurrentTab()` server/client error** (commit `2387757`):
+      the helper was defined in detail-tabs.tsx, which is a
+      "use client" module. Server components (admin/customers/[id],
+      admin/sites/[id], admin/users/[id]) imported it and called
+      it on the server, throwing "client function called from
+      server" on every detail-page render. Fix: moved the helper
+      to detail-tabs-helpers.ts (no "use client" directive).
   - **Helper upgrade**: `requireAdmin()` now also returns `email` (it was already selecting it — just not exposing).
-  - **New tests**: 3 new e2e scripts (21_audit_fixes, 22_list_pii, plus the lost 10–16 recovered as 21), 60 new test cases. Full suite: 7 e2e mjs (182) + 7 unit (83) = **265 tests, all green**.
+  - **New tests**: 4 new e2e scripts (21_audit_fixes, 22_list_pii, 23_web_pages_full, 24_feature_flows), 272 new test cases. Full suite: 7 e2e mjs (182) + 2 e2e Python (187) + 7 unit (83) = **452 tests, all green**.
 
 ### Known issues / open work
 | Priority | Item | Where | Notes |
