@@ -66,15 +66,9 @@ export function DetailTabs({
   );
 }
 
-/**
- * Helper for server components to read the current tab from the URL.
- * Defaults to the first tab.
- */
-export function getCurrentTab(
-  searchParams: { tab?: string | string[] } | undefined,
-  fallback: string
-): string {
-  const t = searchParams?.tab;
-  if (typeof t === "string") return t;
-  return fallback;
-}
+// NOTE: getCurrentTab() used to live here, but this file is a
+// "use client" module. Server components importing the helper
+// from a client file triggers Next.js's "client function called
+// from server" error. The helper has been moved to
+// `detail-tabs-helpers.ts` (a plain server-safe module) —
+// import from there instead.

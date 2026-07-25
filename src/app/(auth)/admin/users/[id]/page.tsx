@@ -3,7 +3,8 @@ import Link from "next/link";
 import { formatDate } from "@/lib/utils";
 import { ROLE_LABELS } from "@/lib/roles";
 import { EditUserForm } from "./edit-user-form";
-import { DetailTabs, getCurrentTab } from "@/components/detail-tabs";
+import { DetailTabs } from "@/components/detail-tabs";
+import { getCurrentTab } from "@/components/detail-tabs-helpers";
 import { TableEmpty } from "@/components/empty-state";
 
 export const dynamic = "force-dynamic";

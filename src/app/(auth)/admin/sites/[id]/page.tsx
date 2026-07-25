@@ -9,7 +9,8 @@ import {
   type TicketStatus,
 } from "@/types/ticket";
 import { EditSiteForm } from "./edit-site-form";
-import { DetailTabs, getCurrentTab } from "@/components/detail-tabs";
+import { DetailTabs } from "@/components/detail-tabs";
+import { getCurrentTab } from "@/components/detail-tabs-helpers";
 import { TableEmpty } from "@/components/empty-state";
 
 export const dynamic = "force-dynamic";

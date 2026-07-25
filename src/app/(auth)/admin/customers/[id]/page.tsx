@@ -10,7 +10,8 @@ import {
 } from "@/types/ticket";
 import { EditCustomerForm } from "./edit-customer-form";
 import { CreateSiteForm } from "../../sites/create-site-form";
-import { DetailTabs, getCurrentTab } from "@/components/detail-tabs";
+import { DetailTabs } from "@/components/detail-tabs";
+import { getCurrentTab } from "@/components/detail-tabs-helpers";
 import { TableEmpty } from "@/components/empty-state";
 
 export const dynamic = "force-dynamic";
