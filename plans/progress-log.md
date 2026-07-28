@@ -8,8 +8,8 @@ meaningful change and before ending a work session. Newest entries go first.
 - **Branch:** `codex/prd-v1-1-gap-closure`
 - **Active phase:** Phase 0 — Containment and reproducible baseline
 - **Active work item:** P0-G production hard-delete containment
-- **Last verified commit:** `ef5c9e8` (baseline inherited from `main`)
-- **Uncommitted work:** completed P0-A through P0-F; ready for a verified commit
+- **Last verified commit:** `9083ece` (`fix: contain cross-tenant service data leaks`)
+- **Uncommitted work:** none expected; verify with `git status` before resuming
 - **Exact next step:** disable production customer/site/user hard-delete routes,
   replace the UI actions with archive/retire semantics, and add negative tests
 - **Primary plan:** [`plans/prd-v1.1-gap-closure-plan.md`](./prd-v1.1-gap-closure-plan.md)
@@ -122,7 +122,7 @@ integration harness so this check is reproducible without production access.
 
 ### Commit
 
-- Hash: pending
+- Hash: `9083ece`
 - Message: `fix: contain cross-tenant service data leaks`
 
 ## Entry template
