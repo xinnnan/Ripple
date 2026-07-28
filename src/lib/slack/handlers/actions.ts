@@ -5,6 +5,7 @@ import { buildAskRippleAssistModal } from "../blocks/ai-modal";
 import { createTicketCore, resolveSiteBySlackChannel } from "@/lib/tickets/create";
 import { updateMasterMessage } from "../sync";
 import { logAudit } from "@/lib/audit";
+import { INTERNAL_ROLES } from "@/lib/roles";
 import type { Ticket } from "@/types/ticket";
 
 interface ActionPayload {
@@ -42,7 +43,9 @@ export async function handleBlockAction(
     .from("users")
     .select("id, role")
     .eq("slack_user_id", userId)
-    .single();
+    .in("role", INTERNAL_ROLES)
+    .eq("status", "active")
+    .maybeSingle();
 
   if (!internalUser) {
     // Not an internal user. Reply ephemerally and skip the action.
@@ -51,7 +54,7 @@ export async function handleBlockAction(
         await client.chat.postEphemeral({
           channel: channelId,
           user: userId,
-          text: "❌ Your Slack account isn't linked to a Ripple user. Ask an admin to map it under Admin → Users.",
+          text: "❌ Your Slack account isn't linked to an active internal Ripple user. Ask an admin to verify the Slack mapping, role, and account status.",
         });
       } catch (e) {
         console.warn("[slack/handlers] ephemeral reply failed (non-fatal):", e instanceof Error ? e.message : e);
@@ -85,7 +88,7 @@ export async function handleBlockAction(
         await logAudit({
           actorId: internalUser.id,
           actorEmail: null,
-          actorRole: "engineer",
+          actorRole: internalUser.role,
           entityType: "ticket",
           entityId: ticket.id,
           action: "owner_assigned",
@@ -96,7 +99,7 @@ export async function handleBlockAction(
         await logAudit({
           actorId: internalUser.id,
           actorEmail: null,
-          actorRole: "engineer",
+          actorRole: internalUser.role,
           entityType: "ticket",
           entityId: ticket.id,
           action: "status_changed",
@@ -287,7 +290,9 @@ export async function handleViewSubmission(
     .from("users")
     .select("id, role")
     .eq("slack_user_id", payload.user.id)
-    .single();
+    .in("role", INTERNAL_ROLES)
+    .eq("status", "active")
+    .maybeSingle();
 
   if (callbackId !== "ticket_form_submit" && !internalUser) {
     return {
@@ -295,7 +300,7 @@ export async function handleViewSubmission(
       errors: {
         // Slack renders this against the first block of the modal.
         title_block:
-          "Your Slack account isn't linked to a Ripple user. Ask an admin to map it under Admin → Users.",
+          "Your Slack account isn't linked to an active internal Ripple user. Ask an admin to verify the mapping, role, and status.",
       },
     };
   }
@@ -529,12 +534,6 @@ export async function handleViewSubmission(
         .from("tickets")
         .select("id")
         .eq("ticket_no", ticketNo)
-        .single();
-
-      const { data: internalUser } = await supabase
-        .from("users")
-        .select("id")
-        .eq("slack_user_id", payload.user.id)
         .single();
 
       if (ticket && internalUser) {

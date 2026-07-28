@@ -2,7 +2,7 @@
 
 > DropletAI's Slack-native support portal. Lightweight ticket system, web portal, and AI-assisted troubleshooting for industrial automation deployments (AMR / AGV / conveyor / sortation / RCS / WCS).
 
-This file is the **single source of truth for project context** — read it before touching anything. It also serves as the lessons-learned notebook and progress tracker. Last updated 2026-07-13.
+This file is the **single source of truth for project context** — read it before touching anything. It also serves as the lessons-learned notebook and progress tracker. Last updated 2026-07-28.
 
 ---
 
@@ -366,6 +366,17 @@ The `plans/e2e-audit-and-test-plan.md` from 2026-05-23 was the most productive d
 ---
 
 ## 10. Current State & Roadmap
+
+### Active PRD v1.1 execution records
+
+- Gap assessment and delivery plan:
+  [`plans/prd-v1.1-gap-closure-plan.md`](plans/prd-v1.1-gap-closure-plan.md)
+- Durable session/commit handoff:
+  [`plans/progress-log.md`](plans/progress-log.md)
+
+Future work must update the progress log after each meaningful change and before
+ending a session. The log's **Current checkpoint** is the authoritative place to
+resume work; this section remains the broader historical summary.
 
 ### What's done (commits, oldest → newest)
 - **Phase 1** (foundation): Next.js + Supabase + Slack Bolt skeleton

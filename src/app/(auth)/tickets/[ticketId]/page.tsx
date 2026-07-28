@@ -1,5 +1,4 @@
 import { createAdminClient } from "@/lib/supabase/admin";
-import { createClient } from "@/lib/supabase/server";
 import {
   STATUS_LABELS,
   SEVERITY_LABELS,
@@ -17,6 +16,7 @@ import { SLABadge } from "./sla-badge";
 import { getUserScope, scopeTickets } from "@/lib/supabase/scope";
 import { resolveTicketQuery } from "@/lib/tickets/lookup";
 import { isAdminRole } from "@/lib/roles";
+import { redirect } from "next/navigation";
 
 interface Props {
   params: Promise<{ ticketId: string }>;
@@ -26,33 +26,34 @@ export default async function TicketDetailPage({ params }: Props) {
   const { ticketId } = await params;
   const supabase = createAdminClient();
 
-  const serverSupabase = await createClient();
-  const {
-    data: { user: authUser },
-  } = await serverSupabase.auth.getUser();
-
   const scope = await getUserScope();
-  const currentUserId = authUser?.id || "";
-  const isInternal = scope?.isInternal ?? false;
-  const isAdmin = scope ? isAdminRole(scope.role) : false;
+  if (!scope) redirect("/login");
+  const currentUserId = scope.userId;
+  const isInternal = scope.isInternal;
+  const isAdmin = isAdminRole(scope.role);
 
   // Fetch ticket by ID or ticket_no, scoped so non-internal users can't see
   // tickets outside their tenant.
-  let ticketQuery = supabase
-    .from("tickets")
-    .select(
-      `
-      *,
+  // Keep a static, explicit projection so Supabase's generated query type
+  // remains valid. Internal-only fields are guarded at every render site
+  // below; unlike the old `*`, this list also excludes secure_token.
+  const ticketSelect = `
+      id, ticket_no, customer_id, site_id, source, title, description,
+      request_type, severity, impact, status, asset_id, area, owner_id,
+      created_by, submitter_name, customer_visible_summary, resolved_at,
+      closed_at, created_at, updated_at, sla_policy_id, sla_breached,
+      first_response_due_at, resolve_due_at, first_response_at,
+      submitter_email, submitter_phone, internal_summary,
+      root_cause_category, follow_up_needed,
       customer:customers(id, name),
       site:sites(id, site_name, site_code, slack_channel_id, timezone),
-      owner:users!tickets_owner_id_fkey(id, full_name, email),
-      creator:users!tickets_created_by_fkey(id, full_name, email)
-    `
-    );
+      owner:users!tickets_owner_id_fkey(id, full_name, email)
+    ` as const;
+  let ticketQuery = supabase
+    .from("tickets")
+    .select(ticketSelect);
   ticketQuery = resolveTicketQuery(ticketQuery, ticketId);
-  if (scope) {
-    ticketQuery = scopeTickets(ticketQuery, scope);
-  }
+  ticketQuery = scopeTickets(ticketQuery, scope);
   const { data: ticket } = await ticketQuery.maybeSingle();
 
   if (!ticket) {
@@ -177,7 +178,7 @@ export default async function TicketDetailPage({ params }: Props) {
           </div>
           <h1 className="text-2xl font-bold text-foreground">{ticket.title}</h1>
         </div>
-        <AIAssistButton ticketId={ticket.id} />
+        {isInternal && <AIAssistButton ticketId={ticket.id} />}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
@@ -198,7 +199,7 @@ export default async function TicketDetailPage({ params }: Props) {
           )}
 
           {/* Internal Summary */}
-          {ticket.internal_summary && (
+          {isInternal && ticket.internal_summary && (
             <div className="rounded-xl border border-amber-200 bg-amber-50 p-6">
               <h2 className="text-sm font-semibold text-amber-800 mb-3">🔒 Internal Summary</h2>
               <p className="text-sm text-amber-700 whitespace-pre-wrap">{ticket.internal_summary}</p>
@@ -323,23 +324,35 @@ export default async function TicketDetailPage({ params }: Props) {
                 {partRequests.map((req: Record<string, unknown>) => {
                   const statusColor = SPR_STATUS_COLORS[req.status as keyof typeof SPR_STATUS_COLORS] || "bg-gray-100 text-gray-800";
                   const itemCount = Array.isArray(req.items) ? req.items.length : 0;
-                  return (
-                    <Link
-                      key={req.id as string}
-                      href={`/admin/part-requests/${req.id as string}`}
-                      className="flex items-center justify-between p-3 hover:bg-muted/50 transition-colors"
-                    >
+                  const content = (
+                    <>
                       <div className="flex items-center gap-3">
                         <span className="text-xs font-mono font-medium text-primary">{req.request_no as string}</span>
                         <span className="text-xs text-muted-foreground">{itemCount} items</span>
                       </div>
                       <div className="flex items-center gap-3">
-                        {req.total_cost ? <span className="text-xs text-muted-foreground">${Number(req.total_cost).toFixed(2)}</span> : null}
+                        {isInternal && req.total_cost ? <span className="text-xs text-muted-foreground">${Number(req.total_cost).toFixed(2)}</span> : null}
                         <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${statusColor}`}>
                           {SPR_STATUS_LABELS[req.status as keyof typeof SPR_STATUS_LABELS] || req.status as string}
                         </span>
                       </div>
+                    </>
+                  );
+                  return isInternal ? (
+                    <Link
+                      key={req.id as string}
+                      href={`/admin/part-requests/${req.id as string}`}
+                      className="flex items-center justify-between p-3 hover:bg-muted/50 transition-colors"
+                    >
+                      {content}
                     </Link>
+                  ) : (
+                    <div
+                      key={req.id as string}
+                      className="flex items-center justify-between p-3"
+                    >
+                      {content}
+                    </div>
                   );
                 })}
               </div>
@@ -369,17 +382,8 @@ export default async function TicketDetailPage({ params }: Props) {
               <div className="divide-y divide-border">
                 {fieldServiceOrders.map((order: Record<string, unknown>) => {
                   const statusColor = FSO_STATUS_COLORS[order.status as keyof typeof FSO_STATUS_COLORS] || "bg-gray-100 text-gray-800";
-                  const engineers = (order.engineers as Record<string, unknown>[]) || [];
-                  const engineerNames = engineers.map((e) => {
-                    const eng = e.engineer as Record<string, unknown> | null;
-                    return eng?.full_name as string || "";
-                  }).filter(Boolean).join(", ");
-                  return (
-                    <Link
-                      key={order.id as string}
-                      href={`/admin/field-service/${order.id as string}`}
-                      className="flex items-center justify-between p-3 hover:bg-muted/50 transition-colors"
-                    >
+                  const content = (
+                    <>
                       <div className="flex items-center gap-3">
                         <span className="text-xs font-mono font-medium text-primary">{order.order_no as string}</span>
                         <span className="text-xs text-foreground">{order.title as string}</span>
@@ -392,7 +396,23 @@ export default async function TicketDetailPage({ params }: Props) {
                           {FSO_STATUS_LABELS[order.status as keyof typeof FSO_STATUS_LABELS] || order.status as string}
                         </span>
                       </div>
+                    </>
+                  );
+                  return isInternal ? (
+                    <Link
+                      key={order.id as string}
+                      href={`/admin/field-service/${order.id as string}`}
+                      className="flex items-center justify-between p-3 hover:bg-muted/50 transition-colors"
+                    >
+                      {content}
                     </Link>
+                  ) : (
+                    <div
+                      key={order.id as string}
+                      className="flex items-center justify-between p-3"
+                    >
+                      {content}
+                    </div>
                   );
                 })}
               </div>
@@ -424,7 +444,7 @@ export default async function TicketDetailPage({ params }: Props) {
               {ticket.area && <div><dt className="text-xs text-muted-foreground">Area</dt><dd className="font-medium">{ticket.area}</dd></div>}
               <div><dt className="text-xs text-muted-foreground">Source</dt><dd className="font-medium">{ticket.source}</dd></div>
               <div><dt className="text-xs text-muted-foreground">Owner</dt><dd className="font-medium">{ticket.owner?.[0]?.full_name || "Unassigned"}</dd></div>
-              {ticket.submitter_name && <div><dt className="text-xs text-muted-foreground">Submitter</dt><dd className="font-medium">{ticket.submitter_name} ({ticket.submitter_email})</dd></div>}
+              {isInternal && ticket.submitter_name && <div><dt className="text-xs text-muted-foreground">Submitter</dt><dd className="font-medium">{ticket.submitter_name} ({ticket.submitter_email})</dd></div>}
               <div>
                 <dt className="text-xs text-muted-foreground">Created</dt>
                 <dd className="font-medium">{formatDate(ticket.created_at, userTimezone)}</dd>

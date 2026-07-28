@@ -161,12 +161,28 @@ export function scopeTickets<Q extends { in: Function; eq: Function }>(
   query: Q,
   scope: UserScope
 ): Q {
+  return scopeSiteRows(query, scope);
+}
+
+/**
+ * Apply the caller's visible-site set to any table whose tenant boundary is a
+ * `site_id` column (tickets, work orders, part requests, and similar rows).
+ */
+export function scopeSiteRows<Q extends { in: Function; eq: Function }>(
+  query: Q,
+  scope: UserScope
+): Q {
   if (scope.isInternal) return query;
 
   if (scope.siteIds.length === 0) {
     return query.eq("site_id", EMPTY_GUID) as Q;
   }
   return query.in("site_id", scope.siteIds) as Q;
+}
+
+/** Fast in-memory check for a site-owned row that has already been loaded. */
+export function canAccessSite(scope: UserScope, siteId: string): boolean {
+  return scope.isInternal || scope.siteIds.includes(siteId);
 }
 
 /**

@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
+import { getUserScope, scopeSiteRows } from "@/lib/supabase/scope";
 import type { UserRole } from "@/types/ticket";
 import { isInternalUser } from "@/lib/roles";
 import { logDiff } from "@/lib/audit";
+import { sparePartRequestForExternal } from "@/lib/resource-visibility";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -29,17 +31,15 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const supabase = await createClient();
-    const { data: { user: authUser } } = await supabase.auth.getUser();
-
-    if (!authUser) {
+    const scope = await getUserScope();
+    if (!scope) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const { id } = await params;
     const admin = createAdminClient();
 
-    const { data, error } = await admin
+    let query = admin
       .from("spare_part_requests")
       .select(`
         *,
@@ -49,14 +49,18 @@ export async function GET(
         approver:users!spare_part_requests_approved_by_fkey(id, full_name),
         items:spare_part_request_items(*, spare_part:spare_parts(*))
       `)
-      .eq("id", id)
-      .single();
+      .eq("id", id);
+    query = scopeSiteRows(query, scope);
+    const { data, error } = await query.maybeSingle();
 
-    if (error) {
+    if (error || !data) {
       return NextResponse.json({ error: "Spare part request not found" }, { status: 404 });
     }
 
-    return NextResponse.json({ data });
+    const responseData = scope.isInternal
+      ? data
+      : sparePartRequestForExternal(data as unknown as Record<string, unknown>);
+    return NextResponse.json({ data: responseData });
   } catch (e) {
     console.error("GET /api/spare-part-requests/[id] error:", e);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
