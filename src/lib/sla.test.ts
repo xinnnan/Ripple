@@ -2,8 +2,8 @@ import { describe, it, expect } from "vitest";
 import {
   computeSlaTargets,
   computeSLAState,
-  isFirstResponseEvent,
-  computeSlaBreached,
+  isFirstHumanCustomerVisibleResponse,
+  isMilestoneLate,
   addMinutes,
   getResponseMinutes,
   getResolutionMinutes,
@@ -62,131 +62,103 @@ describe("computeSlaTargets", () => {
   });
 });
 
-describe("isFirstResponseEvent", () => {
-  it("is the first internal comment", () => {
-    expect(
-      isFirstResponseEvent({
-        isInternalComment: true,
-        statusChanged: false,
-        oldStatus: null,
-        newStatus: null,
-        hadFirstResponse: false,
-      })
-    ).toBe(true);
+describe("first-response truth table", () => {
+  const cases = [
+    {
+      name: "admin human customer-visible response",
+      args: {
+        authorRole: "admin",
+        visibility: "customer",
+        isAutomated: false,
+        alreadyAchieved: false,
+      },
+      qualifies: true,
+    },
+    {
+      name: "engineer human customer-visible response",
+      args: {
+        authorRole: "engineer",
+        visibility: "customer",
+        isAutomated: false,
+        alreadyAchieved: false,
+      },
+      qualifies: true,
+    },
+    {
+      name: "internal-only engineer note",
+      args: {
+        authorRole: "engineer",
+        visibility: "internal",
+        isAutomated: false,
+        alreadyAchieved: false,
+      },
+      qualifies: false,
+    },
+    {
+      name: "customer reply",
+      args: {
+        authorRole: "customer",
+        visibility: "customer",
+        isAutomated: false,
+        alreadyAchieved: false,
+      },
+      qualifies: false,
+    },
+    {
+      name: "customer manager reply",
+      args: {
+        authorRole: "customer_manager",
+        visibility: "customer",
+        isAutomated: false,
+        alreadyAchieved: false,
+      },
+      qualifies: false,
+    },
+    {
+      name: "automated engineer acknowledgement",
+      args: {
+        authorRole: "engineer",
+        visibility: "customer",
+        isAutomated: true,
+        alreadyAchieved: false,
+      },
+      qualifies: false,
+    },
+    {
+      name: "second customer-visible engineer response",
+      args: {
+        authorRole: "engineer",
+        visibility: "customer",
+        isAutomated: false,
+        alreadyAchieved: true,
+      },
+      qualifies: false,
+    },
+  ] as const;
+
+  it.each(cases)("$name => $qualifies", ({ args, qualifies }) => {
+    expect(isFirstHumanCustomerVisibleResponse(args)).toBe(qualifies);
   });
 
-  it("is the first time the status leaves `new`", () => {
-    expect(
-      isFirstResponseEvent({
-        isInternalComment: false,
-        statusChanged: true,
-        oldStatus: "new",
-        newStatus: "in_progress",
-        hadFirstResponse: false,
-      })
-    ).toBe(true);
-  });
-
-  it("is NOT a customer comment", () => {
-    expect(
-      isFirstResponseEvent({
-        isInternalComment: false,
-        statusChanged: false,
-        oldStatus: null,
-        newStatus: null,
-        hadFirstResponse: false,
-      })
-    ).toBe(false);
-  });
-
-  it("is NOT a second internal comment after the first one", () => {
-    expect(
-      isFirstResponseEvent({
-        isInternalComment: true,
-        statusChanged: false,
-        oldStatus: null,
-        newStatus: null,
-        hadFirstResponse: true,
-      })
-    ).toBe(false);
-  });
-
-  it("is NOT a status change that didn't leave `new`", () => {
-    expect(
-      isFirstResponseEvent({
-        isInternalComment: false,
-        statusChanged: true,
-        oldStatus: "in_progress",
-        newStatus: "waiting_customer",
-        hadFirstResponse: false,
-      })
-    ).toBe(false);
+  it("does not have a status-change input, so assignment cannot qualify", () => {
+    expect(isFirstHumanCustomerVisibleResponse).toHaveLength(1);
   });
 });
 
-describe("computeSlaBreached", () => {
-  const now = new Date("2026-07-19T12:00:00.000Z");
-  const respDue = new Date("2026-07-19T10:15:00.000Z");
-  const resoDue = new Date("2026-07-19T18:00:00.000Z");
+describe("milestone completion truth table", () => {
+  const dueAt = "2026-07-19T12:00:00.000Z";
 
-  it("is not breached if both deadlines are in the future", () => {
-    expect(
-      computeSlaBreached({
-        status: "in_progress",
-        first_response_due_at: new Date("2026-07-19T13:00:00.000Z").toISOString(),
-        resolve_due_at: new Date("2026-07-19T18:00:00.000Z").toISOString(),
-        first_response_at: null,
-        now,
-      })
-    ).toBe(false);
+  it.each([
+    ["before due", "2026-07-19T11:59:59.999Z", false],
+    ["exactly at due", dueAt, false],
+    ["after due", "2026-07-19T12:00:00.001Z", true],
+  ])("%s", (_name, achievedAt, breached) => {
+    expect(isMilestoneLate({ dueAt, achievedAt })).toBe(breached);
   });
 
-  it("is breached on response when due passes with no first response", () => {
-    expect(
-      computeSlaBreached({
-        status: "new",
-        first_response_due_at: respDue.toISOString(),
-        resolve_due_at: resoDue.toISOString(),
-        first_response_at: null,
-        now,
-      })
-    ).toBe(true);
-  });
-
-  it("is NOT breached on response if first_response_at is set", () => {
-    expect(
-      computeSlaBreached({
-        status: "in_progress",
-        first_response_due_at: respDue.toISOString(),
-        resolve_due_at: resoDue.toISOString(),
-        first_response_at: new Date("2026-07-19T10:00:00.000Z").toISOString(),
-        now,
-      })
-    ).toBe(false);
-  });
-
-  it("is breached on resolution when resolve due passes and ticket is still open", () => {
-    expect(
-      computeSlaBreached({
-        status: "in_progress",
-        first_response_due_at: new Date("2026-07-19T13:00:00.000Z").toISOString(),
-        resolve_due_at: new Date("2026-07-19T11:00:00.000Z").toISOString(),
-        first_response_at: new Date("2026-07-19T10:00:00.000Z").toISOString(),
-        now,
-      })
-    ).toBe(true);
-  });
-
-  it("is NOT breached on resolution once the ticket is resolved", () => {
-    expect(
-      computeSlaBreached({
-        status: "resolved",
-        first_response_due_at: new Date("2026-07-19T13:00:00.000Z").toISOString(),
-        resolve_due_at: new Date("2026-07-19T11:00:00.000Z").toISOString(),
-        first_response_at: new Date("2026-07-19T10:00:00.000Z").toISOString(),
-        now,
-      })
-    ).toBe(false);
+  it("does not invent a breach without both timestamps", () => {
+    expect(isMilestoneLate({ dueAt: null, achievedAt: dueAt })).toBe(false);
+    expect(isMilestoneLate({ dueAt, achievedAt: null })).toBe(false);
   });
 });
 
@@ -201,7 +173,9 @@ describe("computeSLAState", () => {
         first_response_due_at: null,
         resolve_due_at: null,
         first_response_at: null,
-        sla_breached: false,
+        resolved_at: null,
+        first_response_breached_at: null,
+        resolution_breached_at: null,
       },
       now,
     });
@@ -217,7 +191,9 @@ describe("computeSLAState", () => {
         first_response_due_at: new Date("2026-07-19T12:15:00.000Z").toISOString(),
         resolve_due_at: new Date("2026-07-19T18:00:00.000Z").toISOString(),
         first_response_at: null,
-        sla_breached: false,
+        resolved_at: null,
+        first_response_breached_at: null,
+        resolution_breached_at: null,
       },
       now,
     });
@@ -235,7 +211,9 @@ describe("computeSLAState", () => {
         first_response_due_at: new Date("2026-07-19T10:00:00.000Z").toISOString(),
         resolve_due_at: new Date("2026-07-19T18:00:00.000Z").toISOString(),
         first_response_at: null,
-        sla_breached: true,
+        resolved_at: null,
+        first_response_breached_at: new Date("2026-07-19T10:00:00.000Z").toISOString(),
+        resolution_breached_at: null,
       },
       now,
     });
@@ -251,7 +229,9 @@ describe("computeSLAState", () => {
         first_response_due_at: new Date("2026-07-19T10:00:00.000Z").toISOString(),
         resolve_due_at: new Date("2026-07-19T11:00:00.000Z").toISOString(),
         first_response_at: new Date("2026-07-19T09:30:00.000Z").toISOString(),
-        sla_breached: true,
+        resolved_at: null,
+        first_response_breached_at: null,
+        resolution_breached_at: new Date("2026-07-19T11:00:00.000Z").toISOString(),
       },
       now,
     });
@@ -266,7 +246,9 @@ describe("computeSLAState", () => {
         first_response_due_at: new Date("2026-07-19T10:00:00.000Z").toISOString(),
         resolve_due_at: new Date("2026-07-19T18:00:00.000Z").toISOString(),
         first_response_at: new Date("2026-07-19T09:30:00.000Z").toISOString(),
-        sla_breached: false,
+        resolved_at: new Date("2026-07-19T17:00:00.000Z").toISOString(),
+        first_response_breached_at: null,
+        resolution_breached_at: null,
       },
       now,
     });
@@ -281,7 +263,62 @@ describe("computeSLAState", () => {
         first_response_due_at: new Date("2026-07-19T10:00:00.000Z").toISOString(),
         resolve_due_at: new Date("2026-07-19T11:00:00.000Z").toISOString(),
         first_response_at: null,
-        sla_breached: true,
+        resolved_at: new Date("2026-07-19T12:00:00.000Z").toISOString(),
+        first_response_breached_at: new Date("2026-07-19T10:00:00.000Z").toISOString(),
+        resolution_breached_at: new Date("2026-07-19T11:00:00.000Z").toISOString(),
+      },
+      now,
+    });
+    expect(s.status).toBe("resolution_breached");
+  });
+
+  it("persists a late resolution as breached using resolved_at", () => {
+    const s = computeSLAState({
+      ticket: {
+        severity: "P1",
+        status: "resolved",
+        first_response_due_at: new Date("2026-07-19T10:00:00.000Z").toISOString(),
+        resolve_due_at: new Date("2026-07-19T11:00:00.000Z").toISOString(),
+        first_response_at: new Date("2026-07-19T09:30:00.000Z").toISOString(),
+        resolved_at: new Date("2026-07-19T11:01:00.000Z").toISOString(),
+        first_response_breached_at: null,
+        resolution_breached_at: new Date("2026-07-19T11:00:00.000Z").toISOString(),
+      },
+      now,
+    });
+    expect(s.status).toBe("resolution_breached");
+    expect(s.resolutionDeltaMinutes).toBe(-1);
+  });
+
+  it("keeps first-response and resolution outcomes independent", () => {
+    const s = computeSLAState({
+      ticket: {
+        severity: "P1",
+        status: "resolved",
+        first_response_due_at: new Date("2026-07-19T10:00:00.000Z").toISOString(),
+        resolve_due_at: new Date("2026-07-19T18:00:00.000Z").toISOString(),
+        first_response_at: new Date("2026-07-19T10:01:00.000Z").toISOString(),
+        resolved_at: new Date("2026-07-19T17:00:00.000Z").toISOString(),
+        first_response_breached_at: new Date("2026-07-19T10:00:00.000Z").toISOString(),
+        resolution_breached_at: null,
+      },
+      now,
+    });
+    expect(s.status).toBe("response_breached");
+    expect(s.responseDeltaMinutes).toBe(-1);
+  });
+
+  it("never reports closed without a resolution timestamp as met", () => {
+    const s = computeSLAState({
+      ticket: {
+        severity: "P1",
+        status: "closed",
+        first_response_due_at: new Date("2026-07-19T10:00:00.000Z").toISOString(),
+        resolve_due_at: new Date("2026-07-19T18:00:00.000Z").toISOString(),
+        first_response_at: new Date("2026-07-19T09:30:00.000Z").toISOString(),
+        resolved_at: null,
+        first_response_breached_at: null,
+        resolution_breached_at: null,
       },
       now,
     });

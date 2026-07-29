@@ -99,6 +99,21 @@ async function expectUnauthorized(path) {
   process.stdout.write(`PASS unauthenticated lifecycle denial ${path}\n`);
 }
 
+async function expectUnauthorizedTicketMutation(path, method, body) {
+  const response = await fetch(`${baseUrl}${path}`, {
+    method,
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(5000),
+  });
+  if (response.status !== 401) {
+    throw new Error(
+      `${method} ${path} expected 401, received ${response.status}`
+    );
+  }
+  process.stdout.write(`PASS unauthenticated ticket mutation denial ${method} ${path}\n`);
+}
+
 async function expectLoginRedirect(path) {
   const response = await fetch(`${baseUrl}${path}`, {
     redirect: "manual",
@@ -138,6 +153,16 @@ try {
   await expectUnauthorized("/api/admin/customers/bulk-archive");
   await expectUnauthorized("/api/admin/sites/bulk-archive");
   await expectUnauthorized("/api/admin/users/bulk-deactivate");
+  await expectUnauthorizedTicketMutation(
+    "/api/tickets/11111111-1111-4111-8111-111111111111",
+    "PATCH",
+    { status: "resolved" }
+  );
+  await expectUnauthorizedTicketMutation(
+    "/api/tickets/11111111-1111-4111-8111-111111111111/comments",
+    "POST",
+    { body: "unauthorized response", visibility: "customer" }
+  );
   await expectLoginRedirect("/admin/users");
   process.stdout.write("Production HTTP end-to-end smoke passed.\n");
 } catch (error) {

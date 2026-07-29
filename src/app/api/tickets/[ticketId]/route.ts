@@ -6,9 +6,9 @@ import { updateMasterMessage } from "@/lib/slack/sync";
 import { sendTicketResolved } from "@/lib/email/send";
 import { resolveTicketQuery } from "@/lib/tickets/lookup";
 import {
-  computeSlaBreached,
-  isFirstResponseEvent,
-} from "@/lib/sla";
+  applyTicketPatchWithSla,
+  type TicketPatch,
+} from "@/lib/tickets/mutations";
 import { z } from "zod";
 
 interface RouteContext {
@@ -39,6 +39,8 @@ const patchTicketSchema = z.object({
   // by passing actor_id=<other_user_id>. The UI used to send
   // currentUserId; that's still the value, it just comes from the
   // JWT now instead of the body.
+}).refine((data) => Object.keys(data).length > 0, {
+  message: "At least one ticket field is required",
 });
 
 export async function GET(
@@ -138,13 +140,11 @@ export async function PATCH(
 
     const supabase = createAdminClient();
 
-    // Fetch current ticket for event logging AND SLA recompute.
-    // We need a few extra fields: the SLA columns + status, plus
-    // owner_id for the events. (The `select` below mirrors the
-    // audit log + SLA compute needs.)
+    // Resolve the ticket once so the database command receives the UUID even
+    // when the URL uses a human-readable RPL- ticket number.
     const { data: currentTicket } = await resolveTicketQuery(
       supabase.from("tickets").select(
-        "id, status, severity, owner_id, first_response_due_at, resolve_due_at, first_response_at, sla_breached"
+        "id, status, severity, owner_id"
       ),
       ticketId
     ).maybeSingle();
@@ -154,7 +154,7 @@ export async function PATCH(
     }
 
     // Build update object
-    const update: Record<string, unknown> = {};
+    const update: TicketPatch = {};
     if (data.status !== undefined) update.status = data.status;
     if (data.severity !== undefined) update.severity = data.severity;
     if (data.owner_id !== undefined) update.owner_id = data.owner_id;
@@ -167,69 +167,19 @@ export async function PATCH(
     if (data.follow_up_needed !== undefined)
       update.follow_up_needed = data.follow_up_needed;
 
-    // Set resolved_at when resolving
-    if (data.status === "resolved" && currentTicket.status !== "resolved") {
-      update.resolved_at = new Date().toISOString();
-    }
-    // Set closed_at when closing
-    if (data.status === "closed" && currentTicket.status !== "closed") {
-      update.closed_at = new Date().toISOString();
-    }
+    // Migration 026 owns the transaction boundary: ticket data, milestone
+    // timestamps, ticket_events, and audit_logs either all commit or all roll
+    // back. Status changes intentionally never satisfy First Response.
+    await applyTicketPatchWithSla({
+      supabase,
+      ticketId: currentTicket.id,
+      actorId: auth.userId,
+      patch: update,
+      source: "web",
+    });
 
-    // SLA bookkeeping. Two things can move here:
-    //   1. Status leaving `new` counts as a "first response" event
-    //      (assign_to_me, mark_in_progress, etc.) — stamp
-    //      first_response_at.
-    //   2. The new status + new first_response_at feeds
-    //      computeSlaBreached for the resolved-state / still-open
-    //      branch. `sla_breached` is sticky (never cleared once
-    //      true) so we only OR the new value with the existing one.
-    const statusChanged = data.status !== undefined && data.status !== currentTicket.status;
-    if (
-      statusChanged &&
-      isFirstResponseEvent({
-        isInternalComment: false,
-        statusChanged: true,
-        oldStatus: currentTicket.status as "new" | "assigned" | "in_progress" | "waiting_customer" | "waiting_droplet" | "resolved" | "closed" | "reopened" | null,
-        newStatus: data.status as "new" | "assigned" | "in_progress" | "waiting_customer" | "waiting_droplet" | "resolved" | "closed" | "reopened",
-        hadFirstResponse: !!currentTicket.first_response_at,
-      })
-    ) {
-      const now = new Date();
-      const firstResponseAt = now.toISOString();
-      // With first_response_at set, the response window is met.
-      // Recompute breach based on the resolution window + the
-      // new status. A status of "resolved" / "closed" means the
-      // resolution clock is satisfied (otherwise it would have
-      // been a breach — computeSlaBreached handles that).
-      const breached = computeSlaBreached({
-        status: (data.status ?? currentTicket.status) as "new" | "assigned" | "in_progress" | "waiting_customer" | "waiting_droplet" | "resolved" | "closed" | "reopened",
-        first_response_due_at: null,
-        resolve_due_at: currentTicket.resolve_due_at,
-        first_response_at: firstResponseAt,
-      });
-      update.first_response_at = firstResponseAt;
-      // OR with existing — sla_breached is sticky.
-      update.sla_breached = !!(currentTicket.sla_breached || breached);
-    } else if (statusChanged || data.severity !== undefined) {
-      // No first_response stamp, but a status / severity change
-      // can still flip sla_breached (e.g. resolving right at the
-      // buzzer). Recompute.
-      const effectiveStatus = (data.status ?? currentTicket.status) as "new" | "assigned" | "in_progress" | "waiting_customer" | "waiting_droplet" | "resolved" | "closed" | "reopened";
-      const breached = computeSlaBreached({
-        status: effectiveStatus,
-        first_response_due_at: currentTicket.first_response_due_at,
-        resolve_due_at: currentTicket.resolve_due_at,
-        first_response_at: currentTicket.first_response_at,
-      });
-      update.sla_breached = !!(currentTicket.sla_breached || breached);
-    }
-
-    // Use the same id-or-ticket_no lookup that we did above.
-    const { data: ticket, error } = await resolveTicketQuery(
-      supabase.from("tickets").update(update),
-      ticketId
-    )
+    const { data: ticket, error } = await supabase
+      .from("tickets")
       .select(
         `
         *,
@@ -238,52 +188,12 @@ export async function PATCH(
         owner:users!tickets_owner_id_fkey(id, full_name)
       `
       )
+      .eq("id", currentTicket.id)
       .single();
 
     if (error) {
       console.error("Failed to update ticket:", error);
       return NextResponse.json({ error: "Failed to update ticket" }, { status: 500 });
-    }
-
-    // Log events for changes. The events.ticket_id column is a UUID FK
-    // to tickets.id, so we must use the resolved UUID (not the URL
-    // param, which might be a human-readable ticket_no like RPL-000005).
-    // The actor_id is always auth.userId — never the body, which would
-    // let an internal user blame someone else in the audit log.
-    const ticketUuid = ticket.id as string;
-    const actorId = auth.userId;
-    const events: { ticket_id: string; event_type: string; old_value: string | null; new_value: string | null; actor_id: string | null }[] = [];
-
-    if (data.status && data.status !== currentTicket.status) {
-      events.push({
-        ticket_id: ticketUuid,
-        event_type: "status_changed",
-        old_value: currentTicket.status,
-        new_value: data.status,
-        actor_id: actorId,
-      });
-    }
-    if (data.severity && data.severity !== currentTicket.severity) {
-      events.push({
-        ticket_id: ticketUuid,
-        event_type: "severity_changed",
-        old_value: currentTicket.severity,
-        new_value: data.severity,
-        actor_id: actorId,
-      });
-    }
-    if (data.owner_id && data.owner_id !== currentTicket.owner_id) {
-      events.push({
-        ticket_id: ticketUuid,
-        event_type: "owner_assigned",
-        old_value: currentTicket.owner_id,
-        new_value: data.owner_id,
-        actor_id: actorId,
-      });
-    }
-
-    if (events.length > 0) {
-      await supabase.from("ticket_events").insert(events);
     }
 
     // Sync the change back to Slack so the master card in the channel

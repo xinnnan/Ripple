@@ -43,6 +43,7 @@ export default async function TicketDetailPage({ params }: Props) {
       created_by, submitter_name, customer_visible_summary, resolved_at,
       closed_at, created_at, updated_at, sla_policy_id, sla_breached,
       first_response_due_at, resolve_due_at, first_response_at,
+      first_response_breached_at, resolution_breached_at,
       submitter_email, submitter_phone, internal_summary,
       root_cause_category, follow_up_needed,
       customer:customers(id, name),
@@ -430,7 +431,9 @@ export default async function TicketDetailPage({ params }: Props) {
             first_response_due_at={ticket.first_response_due_at as string | null}
             resolve_due_at={ticket.resolve_due_at as string | null}
             first_response_at={ticket.first_response_at as string | null}
-            sla_breached={!!ticket.sla_breached}
+            resolved_at={ticket.resolved_at as string | null}
+            first_response_breached_at={ticket.first_response_breached_at as string | null}
+            resolution_breached_at={ticket.resolution_breached_at as string | null}
           />
           <div className="rounded-xl border border-border p-6 space-y-3">
             <h2 className="text-sm font-semibold text-foreground">Details</h2>

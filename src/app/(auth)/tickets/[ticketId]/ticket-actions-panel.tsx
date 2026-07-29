@@ -227,7 +227,7 @@ export function TicketActionsPanel({
       )}
 
       {/* Add Comment */}
-      <CommentForm ticketId={ticketId} isInternal={isInternal} currentUserId={currentUserId} />
+      <CommentForm ticketId={ticketId} isInternal={isInternal} />
 
       {/* Upload Attachment */}
       <AttachmentUpload ticketId={ticketId} isInternal={isInternal} currentUserId={currentUserId} />
@@ -411,11 +411,9 @@ function ResolveCard({
 function CommentForm({
   ticketId,
   isInternal,
-  currentUserId,
 }: {
   ticketId: string;
   isInternal: boolean;
-  currentUserId: string;
 }) {
   const [body, setBody] = useState("");
   const [visibility, setVisibility] = useState<"customer" | "internal">(
@@ -441,8 +439,6 @@ function CommentForm({
         body: JSON.stringify({
           body: body.trim(),
           visibility,
-          source: "web",
-          author_id: currentUserId,
         }),
       });
       if (!res.ok) {

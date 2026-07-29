@@ -8,21 +8,21 @@
 //   tickets.sla_policy_id           — which policy was applied
 //   tickets.first_response_due_at   — computed at create time
 //   tickets.resolve_due_at          — computed at create time
-//   tickets.first_response_at       — stamped by the API on the
-//                                     first internal comment / status
-//                                     change
-//   tickets.sla_breached            — true once any SLA is missed
+//   tickets.first_response_at       — first human, customer-visible response
+//   tickets.first_response_breached_at
+//   tickets.resolution_breached_at  — milestone-specific breach timestamps
+//   tickets.sla_breached            — compatibility aggregate
 //
 // Wall-clock for now (no business-hours). The hook is here for
 // later: swap `addMinutes(date, minutes)` for a business-hours
 // calendar without changing the call sites.
 //
-// The helpers are pure functions of the policy + ticket; they
-// don't touch the DB. The API layer is responsible for writing the
-// computed values back.
+// The helpers below are the executable UI/test specification. Migration 026
+// mirrors these rules in row-locked database commands, which are authoritative
+// for persistence across web and Slack.
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Severity, TicketStatus } from "@/types/ticket";
+import type { Severity, TicketStatus, UserRole } from "@/types/ticket";
 
 export interface SLAPolicy {
   id: string;
@@ -130,9 +130,9 @@ export type SLAStatus =
 
 export interface SLAState {
   status: SLAStatus;
-  /** Minutes until / since the response due. Positive = remaining. */
+  /** Minutes until due, or margin at achievement. Positive = on time. */
   responseDeltaMinutes: number | null;
-  /** Minutes until / since the resolve due. Positive = remaining. */
+  /** Minutes until due, or margin at achievement. Positive = on time. */
   resolutionDeltaMinutes: number | null;
   /** The earlier of responseDueAt / resolveDueAt — used by lists. */
   earliestDueAt: Date | null;
@@ -145,7 +145,9 @@ export function computeSLAState(args: {
     first_response_due_at: string | null;
     resolve_due_at: string | null;
     first_response_at: string | null;
-    sla_breached: boolean;
+    resolved_at: string | null;
+    first_response_breached_at: string | null;
+    resolution_breached_at: string | null;
   };
   /** Optional override (for tests); defaults to now. */
   now?: Date;
@@ -166,47 +168,66 @@ export function computeSLAState(args: {
     };
   }
 
-  // Resolved/closed tickets report on whether the SLA was met.
-  if (ticket.status === "resolved" || ticket.status === "closed") {
-    return {
-      status: ticket.sla_breached ? "resolution_breached" : "met",
-      responseDeltaMinutes: null,
-      resolutionDeltaMinutes: null,
-      earliestDueAt: null,
-    };
-  }
-
-  // Open ticket. Compare each deadline to now.
   let status: SLAStatus = "on_track";
   let responseDelta: number | null = null;
   let resolutionDelta: number | null = null;
+  const isComplete =
+    ticket.status === "resolved" || ticket.status === "closed";
+  const responseBreached =
+    ticket.first_response_breached_at !== null ||
+    isMilestoneLate({
+      dueAt: ticket.first_response_due_at,
+      achievedAt: ticket.first_response_at,
+    }) ||
+    (
+      !ticket.first_response_at &&
+      !!ticket.first_response_due_at &&
+      new Date(ticket.first_response_due_at).getTime() < now.getTime()
+    );
+  const resolutionBreached =
+    ticket.resolution_breached_at !== null ||
+    isMilestoneLate({
+      dueAt: ticket.resolve_due_at,
+      achievedAt: ticket.resolved_at,
+    }) ||
+    (
+      !isComplete &&
+      !!ticket.resolve_due_at &&
+      new Date(ticket.resolve_due_at).getTime() < now.getTime()
+    );
 
   if (ticket.first_response_due_at) {
     const due = new Date(ticket.first_response_due_at);
-    responseDelta = (due.getTime() - now.getTime()) / 60_000;
-    // Breached when due has passed AND no first response was given.
-    if (!ticket.first_response_at && responseDelta < 0) {
-      status = "response_breached";
-    }
+    const reference = ticket.first_response_at
+      ? new Date(ticket.first_response_at)
+      : now;
+    responseDelta = (due.getTime() - reference.getTime()) / 60_000;
   }
 
   if (ticket.resolve_due_at) {
     const due = new Date(ticket.resolve_due_at);
-    resolutionDelta = (due.getTime() - now.getTime()) / 60_000;
-    // Resolution breach dominates response breach in display —
-    // a P1 that's about to be late on response AND is already past
-    // its resolve due is a bigger alarm than just response-late.
-    if (resolutionDelta < 0) {
-      status = "resolution_breached";
-    }
+    const reference = ticket.resolved_at ? new Date(ticket.resolved_at) : now;
+    resolutionDelta = (due.getTime() - reference.getTime()) / 60_000;
+  }
+
+  if (resolutionBreached) {
+    status = "resolution_breached";
+  } else if (responseBreached) {
+    status = "response_breached";
+  } else if (isComplete && ticket.resolved_at) {
+    status = "met";
+  } else if (isComplete) {
+    // Closing without an achieved Resolution milestone must never be
+    // represented as "met". INT-001 will separately prevent this transition.
+    status = "resolution_breached";
   }
 
   // Earliest deadline for list-view "next milestone" rendering.
   let earliest: Date | null = null;
-  if (ticket.first_response_due_at && (!ticket.first_response_at)) {
+  if (!isComplete && ticket.first_response_due_at && !ticket.first_response_at) {
     earliest = new Date(ticket.first_response_due_at);
   }
-  if (ticket.resolve_due_at) {
+  if (!isComplete && ticket.resolve_due_at) {
     const r = new Date(ticket.resolve_due_at);
     if (!earliest || r < earliest) earliest = r;
   }
@@ -220,72 +241,43 @@ export function computeSLAState(args: {
 }
 
 // ---------------------------------------------------------------------------
-// Apply helpers — the API calls these to decide what to stamp on
-// the row at each transition.
+// Milestone truth-table helpers
 // ---------------------------------------------------------------------------
 
 /**
- * Should we set first_response_at on this transition? Returns
- * true the first time we see a non-`new` event (engineer action)
- * for a ticket that doesn't already have a first_response_at.
+ * PRD v1.1 metric definition:
+ * Ticket Created -> First Human Customer-Visible Response.
  *
- * What counts as a "response":
- *   1. A new internal comment (the caller passes a flag for this)
- *   2. The status leaving `new` (someone took ownership / changed
- *      severity / opened the AI assist / whatever)
- *
- * Customer-visible comments do NOT count — the customer talking
- * back to us isn't us responding to them.
+ * The author must be internal, the message must be customer-visible, and it
+ * must not be automated. Assignment, status changes, internal notes, customer
+ * replies, and automated acknowledgements are therefore excluded.
  */
-export function isFirstResponseEvent(args: {
-  isInternalComment: boolean;
-  statusChanged: boolean;
-  oldStatus: TicketStatus | null;
-  newStatus: TicketStatus | null;
-  hadFirstResponse: boolean;
+export function isFirstHumanCustomerVisibleResponse(args: {
+  authorRole: UserRole;
+  visibility: "customer" | "internal";
+  isAutomated: boolean;
+  alreadyAchieved: boolean;
 }): boolean {
-  if (args.hadFirstResponse) return false;
-  if (args.isInternalComment) return true;
-  if (
-    args.statusChanged &&
-    args.oldStatus === "new" &&
-    args.newStatus !== "new" &&
-    args.newStatus !== undefined
-  ) {
-    return true;
-  }
-  return false;
+  return (
+    !args.alreadyAchieved &&
+    !args.isAutomated &&
+    args.visibility === "customer" &&
+    (args.authorRole === "admin" || args.authorRole === "engineer")
+  );
 }
 
 /**
- * Compute sla_breached for an in-flight ticket. Returns the
- * boolean that should be written to tickets.sla_breached.
- *
- *   - response breach: now > first_response_due_at AND no first response
- *   - resolution breach: now > resolve_due_at AND still open
- *
- * The caller passes `now` (so tests can drive the clock); in
- * production `undefined` -> Date.now().
+ * A milestone completed exactly at its due timestamp is met. Only an actual
+ * completion later than the due timestamp is breached.
  */
-export function computeSlaBreached(args: {
-  status: TicketStatus;
-  first_response_due_at: string | null;
-  resolve_due_at: string | null;
-  first_response_at: string | null;
-  now?: Date;
+export function isMilestoneLate(args: {
+  dueAt: string | null;
+  achievedAt: string | null;
 }): boolean {
-  const now = args.now ?? new Date();
-  if (args.first_response_due_at && !args.first_response_at) {
-    if (new Date(args.first_response_due_at).getTime() < now.getTime()) {
-      return true;
-    }
-  }
-  if (args.resolve_due_at && args.status !== "resolved" && args.status !== "closed") {
-    if (new Date(args.resolve_due_at).getTime() < now.getTime()) {
-      return true;
-    }
-  }
-  return false;
+  if (!args.dueAt || !args.achievedAt) return false;
+  return (
+    new Date(args.achievedAt).getTime() > new Date(args.dueAt).getTime()
+  );
 }
 
 // ---------------------------------------------------------------------------
