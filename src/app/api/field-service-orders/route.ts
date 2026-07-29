@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { createClient } from "@/lib/supabase/server";
+import { requireInternal } from "@/lib/supabase/auth-helpers";
 import { getUserScope, scopeSiteRows } from "@/lib/supabase/scope";
-import type { UserRole } from "@/types/ticket";
-import { isInternalUser } from "@/lib/roles";
 import { logAudit } from "@/lib/audit";
 import { fieldServiceOrderForExternal } from "@/lib/resource-visibility";
 import { z } from "zod";
@@ -97,25 +95,9 @@ export async function GET(request: NextRequest) {
 // POST /api/field-service-orders — Create a field service order
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await createClient();
-    const { data: { user: authUser } } = await supabase.auth.getUser();
-
-    if (!authUser) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const { data: userProfile } = await supabase
-      .from("users")
-      .select("role, email")
-      .eq("id", authUser.id)
-      .single();
-
-    const role = userProfile?.role as UserRole | undefined;
-    const email = userProfile?.email as string | undefined;
-    const isInternal = isInternalUser({ role, email });
-
-    if (!isInternal) {
-      return NextResponse.json({ error: "Forbidden: Internal access required" }, { status: 403 });
+    const auth = await requireInternal();
+    if ("error" in auth) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
 
     let body: unknown;
@@ -153,7 +135,7 @@ export async function POST(request: NextRequest) {
         estimated_hours: data.estimated_hours ?? null,
         travel_required: data.travel_required !== undefined ? data.travel_required : true,
         travel_from: data.travel_from ?? null,
-        requested_by: authUser.id,
+        requested_by: auth.userId,
       })
       .select(`
         *,
@@ -186,9 +168,9 @@ export async function POST(request: NextRequest) {
     }
 
     await logAudit({
-      actorId: authUser.id,
-      actorEmail: email,
-      actorRole: role,
+      actorId: auth.userId,
+      actorEmail: auth.email,
+      actorRole: auth.role,
       entityType: "field_service_order",
       entityId: order.id,
       action: "created",

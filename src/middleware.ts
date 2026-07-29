@@ -72,6 +72,38 @@ export async function middleware(request: NextRequest) {
     (route) => pathname === route || pathname.startsWith(`${route}/`)
   );
 
+  // Account state is authorization state, not merely a display field. Check
+  // it for every authenticated app-page request so inactive/suspended/invited
+  // users cannot continue through an existing Supabase session.
+  let profile: { role: string; status: string } | null = null;
+  if (user && (isProtected || isAuthRoute)) {
+    const { data } = await supabase
+      .from("users")
+      .select("role, status")
+      .eq("id", user.id)
+      .maybeSingle();
+    profile = (data as { role: string; status: string } | null) ?? null;
+
+    if (!profile || profile.status !== "active") {
+      // RLS also denies this account immediately. Sign-out removes its refresh
+      // token/cookie so the browser does not keep presenting a stale session.
+      await supabase.auth.signOut();
+
+      if (isAuthRoute) {
+        return supabaseResponse;
+      }
+
+      const url = request.nextUrl.clone();
+      url.pathname = "/login";
+      url.searchParams.set("account", "inactive");
+      const response = NextResponse.redirect(url);
+      for (const cookie of supabaseResponse.cookies.getAll()) {
+        response.cookies.set(cookie);
+      }
+      return response;
+    }
+  }
+
   // Redirect to login if not authenticated and trying to access protected route
   if (isProtected && !user) {
     const url = request.nextUrl.clone();
@@ -100,12 +132,7 @@ export async function middleware(request: NextRequest) {
       pathname.startsWith("/team/") ||
       NON_INTERNAL.has(pathname);
     if (needsRole) {
-      const { data: profile } = await supabase
-        .from("users")
-        .select("role")
-        .eq("id", user.id)
-        .maybeSingle();
-      const role = (profile?.role as string | undefined) ?? "";
+      const role = profile?.role ?? "";
 
       // Admin-only routes
       if (

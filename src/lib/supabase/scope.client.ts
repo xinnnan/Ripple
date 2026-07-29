@@ -19,10 +19,10 @@ export async function getCurrentSiteIds(): Promise<string[]> {
 
   const { data: profile } = await supabase
     .from("users")
-    .select("role, email, customer_id")
+    .select("role, email, customer_id, status")
     .eq("id", authUser.id)
     .single();
-  if (!profile) return [];
+  if (!profile || profile.status !== "active") return [];
 
   const role = (profile.role as UserRole | null) ?? "customer";
   const email = profile.email as string;
@@ -53,6 +53,13 @@ export async function getCurrentSites(): Promise<
     data: { user: authUser },
   } = await supabase.auth.getUser();
   if (!authUser) return [];
+
+  const { data: profile } = await supabase
+    .from("users")
+    .select("status")
+    .eq("id", authUser.id)
+    .single();
+  if (!profile || profile.status !== "active") return [];
 
   type SiteRow = {
     id: string;

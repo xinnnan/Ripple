@@ -62,7 +62,7 @@ export default async function AdminUsersPage() {
       <CreateUserForm />
 
       <div className="mt-6">
-        <UsersTable users={typedUsers} />
+        <UsersTable users={typedUsers} currentUserId={authUser.id} />
       </div>
     </div>
   );

@@ -24,6 +24,8 @@ const ENTITY_LABELS: Record<string, string> = {
 const ACTION_LABELS: Record<string, string> = {
   created: "Created",
   updated: "Updated",
+  archived: "Archived",
+  deactivated: "Deactivated",
   deleted: "Deleted",
   status_changed: "Status changed",
   severity_changed: "Severity changed",

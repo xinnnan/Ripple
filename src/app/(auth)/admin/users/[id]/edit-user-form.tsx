@@ -33,7 +33,11 @@ export function EditUserForm({ user }: { user: UserData }) {
       const res = await fetch(`/api/admin/users/${user.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ full_name: fullName, role, status }),
+        body: JSON.stringify({
+          full_name: fullName,
+          role,
+          ...(status !== user.status ? { status } : {}),
+        }),
       });
 
       if (!res.ok) {
@@ -119,9 +123,17 @@ export function EditUserForm({ user }: { user: UserData }) {
             className="w-full rounded-lg border border-border px-3 py-2 text-sm text-foreground bg-background"
           >
             <option value="active">Active</option>
-            <option value="inactive">Inactive</option>
             <option value="suspended">Suspended</option>
+            {user.status === "inactive" && (
+              <option value="inactive" disabled>
+                Inactive (deactivated)
+              </option>
+            )}
           </select>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Deactivate accounts from the user list so identity and attribution
+            records are preserved.
+          </p>
         </div>
 
         <button
