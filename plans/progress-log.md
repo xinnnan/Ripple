@@ -7,12 +7,117 @@ meaningful change and before ending a work session. Newest entries go first.
 
 - **Branch:** `codex/prd-v1-1-gap-closure`
 - **Active phase:** Phase 0 — Containment and reproducible baseline
-- **Active work item:** P0-H SLA milestone correctness
-- **Last verified implementation commit:** `211843e` (`fix: replace hard deletes with archival lifecycle`)
+- **Active work item:** P0-I credentialed role/tenant browser and API matrix
+- **Last verified implementation commit:** `b71b3d7` (`fix: correct SLA milestone persistence`)
 - **Uncommitted work:** none expected; verify with `git status` before resuming
-- **Exact next step:** turn first-response and resolution-breach definitions
-  into truth-table tests, then correct calculation and persistence paths
+- **Exact next step:** define environment-safe credential fixtures for admin,
+  engineer, customer manager, two customer tenants, inactive user, and archived
+  site; then commit positive/negative browser + API probes that skip with an
+  explicit reason when the credentialed test environment is unavailable
 - **Primary plan:** [`plans/prd-v1.1-gap-closure-plan.md`](./prd-v1.1-gap-closure-plan.md)
+
+## Session record — 2026-07-29 (P0-H)
+
+### Objective
+
+Resume after migration 025 was applied, implement the PRD v1.1 definition of
+First Human Response, make late Resolution persistence correct, and keep web
+and Slack behavior transactionally consistent.
+
+### Deployment confirmation
+
+- The user confirmed migration
+  `025_archive_lifecycle_and_active_account_guards.sql` was applied on
+  2026-07-29. Its prior deployment blocker is closed.
+- Migration `026_correct_sla_milestones.sql` is new in this checkpoint and must
+  be applied before deploying commit `b71b3d7`.
+
+### Changes
+
+- **INT-002 / P0-H closed:** First Response now means the first
+  customer-visible, non-automated message authored by an active `admin` or
+  `engineer`. Internal notes, customer replies, automated acknowledgements,
+  assignment, and status changes do not qualify.
+- **INT-003 / P0-H closed:** Resolution records one actual event timestamp and
+  compares `resolved_at` with `resolve_due_at`; resolving late can no longer be
+  reported as met.
+- Added separate `first_response_breached_at` and
+  `resolution_breached_at` fields while retaining `sla_breached` as a
+  compatibility aggregate.
+- Added row-locked, service-role-only PostgreSQL commands for ticket patches
+  and comments. Business rows, ticket events, cross-entity audit rows, and SLA
+  milestones now commit or roll back together.
+- Routed web PATCH, web comments, Slack assignment/status/resolve, and Slack
+  customer updates through the same commands. Browser comment source and actor
+  attribution now come from the trusted route/session, not request JSON.
+- Added historical repair for incorrect first-response stamps and late
+  resolution state without advancing historical `tickets.updated_at`.
+  Recalculated rows receive a system audit record.
+- **SEC-009 discovered and closed:** permissive legacy RLS policies were
+  OR-combining so customer users could directly query internal comments,
+  internal attachments, and raw ticket events through PostgREST. Migration 026
+  replaces them with customer-visible artifact policies and internal-only raw
+  event access.
+- SLA UI state now distinguishes response breach from resolution breach and
+  reports completion lateness against the actual achievement timestamp.
+- Expanded production HTTP E2E with unauthenticated ticket PATCH/comment
+  denial probes.
+
+### Industry guidance applied
+
+- PRD v1.1 metric contract: First Response is the first human,
+  customer-visible response, excluding automated acknowledgement.
+- PostgreSQL row locking: `SELECT ... FOR UPDATE` serializes competing
+  milestone writes; the event timestamp is captured after the lock.
+- Supabase database-function guidance: required `SECURITY DEFINER` commands
+  use an empty `search_path`, fully qualified relations, revoked default
+  execute privileges, and explicit role grants.
+- RLS permissive policies are treated as OR-composed; visibility constraints
+  are present on every customer-access path rather than assumed from another
+  policy.
+
+### Verification before implementation commit
+
+| Command | Result |
+|---|---|
+| `npm ci` | Passed; 528 packages installed from the lockfile |
+| `npm test` | Passed; 13 files, 120 tests including SLA truth tables, RPC contracts, migration/RLS guards |
+| `npm run lint` | Passed; no warnings/errors |
+| `npm run build` | Passed on Next.js 15.5.22 |
+| `npm run test:e2e` | Passed; 3 public pages, 3 hard-delete tombstones, 3 archive auth denials, 2 ticket-mutation auth denials, 1 protected redirect |
+| `npm audit` | Passed; 0 vulnerabilities (production and development) |
+| `git diff --check` | Passed |
+
+The repository has no Supabase test credentials and no local
+Postgres/Supabase runtime, so migration execution and credentialed positive
+role/tenant flows could not run here. Static migration/security tests, command
+contract tests, application build, and production HTTP negative flows passed.
+P0-I remains the credentialed release gate.
+
+### Decisions and rollback
+
+- A milestone completed exactly at its due timestamp is met; only a later
+  timestamp breaches.
+- `*_breached_at` records when the due boundary was crossed; `first_response_at`
+  and `resolved_at` retain the actual completion time.
+- The current single-cycle SLA model remains for compatibility. Business
+  calendars, pause/resume, policy versions, and reopen cycles remain later
+  platform work.
+- Apply migration 026 before application deployment. Rolling application code
+  back should leave the additive columns, repaired history, restricted RLS,
+  and audit records intact. Do not restore the permissive legacy policies or
+  the status-change first-response rule.
+
+### Commit
+
+- Hash: `b71b3d7`
+- Message: `fix: correct SLA milestone persistence`
+
+### Exact next step
+
+- P0-I: commit a credential-driven browser/API matrix for positive and negative
+  admin, engineer, customer-manager, cross-tenant customer, inactive-account,
+  and archived-site scenarios.
 
 ## Session record — 2026-07-28 (P0-G / P0-J)
 
@@ -73,8 +178,8 @@ auditability, lifecycle retention, and dependency security.
 | `git diff --check` | Passed |
 
 Credentialed positive archive/RLS probes remain pending because this workspace
-has no Supabase test credentials or local Postgres/Supabase runtime. Migration
-025 must be applied before deploying the archive UI.
+has no Supabase test credentials or local Postgres/Supabase runtime. The user
+confirmed migration 025 was applied on 2026-07-29.
 
 ### Decisions and rollback
 

@@ -33,7 +33,7 @@ Ripple is a useful support-ticket prototype with meaningful Phase 1–4 work:
 - spare-parts and field-service skeletons
 - simple wall-clock SLA targets
 - email and AI integrations with graceful failure
-- 104 committed unit tests and a production HTTP end-to-end smoke
+- 120 committed unit tests and a production HTTP end-to-end smoke
 
 It is not yet the operations platform described by PRD v1.1. The old
 `scope-vs-prd.md` assessment targets PRD v0.9 and should not be used as the
@@ -63,14 +63,14 @@ The correct approach is therefore:
 
 ## 3. Current baseline
 
-| Gate | Result on 2026-07-28 | Meaning |
+| Gate | Result through 2026-07-29 | Meaning |
 |---|---|---|
-| Unit tests | 104/104 passed | Scope, lifecycle, visibility, Slack, filters, SLA, and audit coverage is green |
+| Unit tests | 120/120 passed | Scope, lifecycle, visibility, Slack, filters, SLA truth tables/RPC contracts, and audit coverage is green |
 | Lint | Passed, no warnings | `next lint` is deprecated and must be migrated |
 | Production build | Passed on Next.js 15.5.22 | Environment-free build is reproducible |
 | Dependency audit | 0 vulnerabilities | Patched direct/transitive versions are lockfile-pinned and compatibility-tested |
 | Worktree | Clean at baseline | Work started on `codex/prd-v1-1-gap-closure` |
-| Committed end-to-end tests | Production HTTP smoke present | Public pages, protected redirect, retired deletes, and archive auth denial run against `next start`; credentialed role/tenant matrix remains pending |
+| Committed end-to-end tests | 12 production HTTP checks | Public pages, protected redirect, retired deletes, archive denials, and unauthenticated ticket-mutation denials run against `next start`; credentialed role/tenant matrix remains pending |
 
 ## 4. PRD capability gap map
 
@@ -87,7 +87,7 @@ has a release-blocking security or integrity problem.
 | Ticket Core | Partial | No guarded transition service, visibility scopes, merge/relations, versioning, concurrency control, or required resolution rules |
 | Workflow / Automation | Absent | No rule definitions, versions, outbox, idempotent execution, retry, or dead-letter handling |
 | Queues / Routing | Absent | No queue, membership, skill, region, workload, routing, or fallback models |
-| SLA / Business Calendar | Unsafe/Partial | Wall-clock-only policy; first-response semantics and late-resolution breach persistence are incorrect |
+| SLA / Business Calendar | Partial | First-response and late-resolution persistence are corrected in `b71b3d7`; business calendars, independent clock rows, pause/resume, versioning, thresholds, and reopen cycles remain |
 | Remote Support | Absent | No diagnosis record, structured information request, remote access approval, or onsite handover |
 | Field Service / Work Orders | Partial | Simple order/status table only; no readiness gate, visit lifecycle, checklist, evidence, mobile flow, or report versioning |
 | Appointment / Dispatch | Absent | No appointment object, preferred windows, conflict checks, reminders, reschedule/no-show logic, or dispatch calendar engine |
@@ -103,7 +103,7 @@ has a release-blocking security or integrity problem.
 | External API / Webhooks | Absent | Unversioned internal REST only; no client credentials, scopes, idempotency, concurrency, stable errors, signed webhooks, or docs |
 | Security / Privacy | Unsafe/Partial | Weak attachment controls, fail-open Slack configuration, incomplete audit guarantees outside the archive commands, and other authorization gaps remain |
 | SRE / Operations | Absent | No structured observability, SLOs, alerting, runbooks, tested recovery, capacity/performance evidence, or release automation |
-| Testing / Quality Gates | Partial | Unit + production HTTP smoke are in repo; no committed credentialed tenant matrix, workflow/SLA truth tables, browser feature E2E, recovery, i18n, or performance suites |
+| Testing / Quality Gates | Partial | Unit, SLA truth tables, RPC/migration guards, and production HTTP smoke are in repo; no committed credentialed tenant matrix, browser feature E2E, recovery, i18n, or performance suites |
 
 ## 5. Confirmed bug and risk register
 
@@ -119,22 +119,23 @@ has a release-blocking security or integrity problem.
 | SEC-006 | Admin bulk delete physically cascades customer/site/ticket history | **Closed in `211843e`:** hard-delete tombstones, transactional archive/deactivate commands, active-account/lifecycle RLS |
 | SEC-007 | Slack signature verification succeeds when the signing secret is missing | Fail closed in production; expose a health/configuration error |
 | SEC-008 | Runtime dependency audit reports six high-severity production advisories | **Closed in `211843e`:** Next 15.5.22 + patched overrides/transitives; full `npm audit` reports 0 |
+| SEC-009 | Permissive legacy RLS allows customer roles to query internal comments/attachments and raw ticket events directly | **Closed in `b71b3d7`:** migration 026 replaces the OR-composed policies with customer-visible artifact scope and internal-only raw events |
 
 ### High-priority integrity defects
 
 | ID | Finding | Required mitigation |
 |---|---|---|
 | INT-001 | Ticket statuses can jump to any state; domain guards exist only in UI convention | Introduce a single ticket transition service and truth-table tests |
-| INT-002 | Internal-only comments count as first response while customer-visible engineer comments do not; status changes can also count | Implement the PRD metric definition exactly |
-| INT-003 | A ticket resolved after its due time can be recorded as SLA met | Persist milestone breach using the actual completion timestamp |
+| INT-002 | Internal-only comments count as first response while customer-visible engineer comments do not; status changes can also count | **Closed in `b71b3d7`:** human + internal author + customer visibility + non-automated truth table and atomic persistence |
+| INT-003 | A ticket resolved after its due time can be recorded as SLA met | **Closed in `b71b3d7`:** actual `resolved_at` is compared with the due timestamp and milestone breach is persisted |
 | INT-004 | Part-request header and items, and field order plus engineer assignments, are non-atomic | Move mutations into transactional RPC/domain commands |
 | INT-005 | Part fulfillment updates do not verify the item belongs to the request in the URL | Constrain updates by both `request_id` and item ID |
 | INT-006 | Team site assignments are delete-all then insert, so a failed insert removes all access | Replace with a transaction and set-diff mutation |
-| INT-007 | Audit writes are best-effort and separate from the business transaction | Emit append-only audit/domain events in the same transaction |
+| INT-007 | Audit writes are best-effort and separate from the business transaction | Partially closed for ticket patch/comment commands in `b71b3d7`; migrate remaining domains and add the platform outbox |
 | INT-008 | Site detail assigns the inventory query to an unused tuple slot and always renders empty inventory | Correct the parallel query result wiring and cover it |
 | INT-009 | `/sites` links to `?site_id=...`, while the ticket parser expects `?site=...` | Use one canonical query contract |
 | INT-010 | Slack Ripple Assist calls an internal authenticated HTTP API without a session cookie | Call the domain service directly after Slack user authorization |
-| INT-011 | Slack mutations bypass ticket events, SLA stamping, state guards, and some notification paths | Route every channel through the same domain command layer |
+| INT-011 | Slack mutations bypass ticket events, SLA stamping, state guards, and some notification paths | SLA/ticket/audit parity is closed for current Slack patch/comment actions in `b71b3d7`; state guards, AI direct service, and notification parity remain |
 | INT-012 | Clean builds fail on `/login` without Supabase env because the client is created during prerender | Construct the browser client only inside the submit action |
 
 ### Platform gaps that become risks at scale
@@ -338,7 +339,8 @@ Every implementation slice must:
    import boundaries.
 7. **P0-G — completed in `211843e`:** Disable production hard deletes and
    replace them with archive/deactivate lifecycle commands.
-8. **P0-H:** Correct SLA milestone definitions and persistence.
+8. **P0-H — completed in `b71b3d7`:** Correct SLA milestone definitions and
+   persistence; migration 026 must be applied before application deployment.
 9. **P0-I:** Commit a role/tenant browser and API matrix.
 10. **P0-J — completed early in `211843e`:** Upgrade vulnerable runtime
     dependencies under full gates.
