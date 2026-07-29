@@ -33,7 +33,7 @@ export default async function CustomersSitesPage() {
   const [customersRes, sitesRes] = await Promise.all([
     admin
       .from("customers")
-      .select("id, name, domain, status, sites(id, site_name, site_code, project_status)")
+      .select("id, name, domain, status, sites(id, site_name, site_code, project_status, status)")
       .order("name"),
     admin
       .from("sites")
@@ -41,10 +41,10 @@ export default async function CustomersSitesPage() {
       .order("site_name"),
   ]);
 
-  // Use the customer-embedded sites for the bulk-delete UI (the
-  // card layout) so the site checkboxes are nested under their
+  // Use the customer-embedded sites for the lifecycle UI (the card layout)
+  // so the site checkboxes are nested under their
   // customer. The flat `sitesRes` is still useful for the create-site
-  // form's options, but the bulk-delete UI only needs the
+  // form's options, but the archive UI only needs the
   // customer-grouped data.
   const customers = customersRes.data || [];
   const customerOptions = customers.map((c: { id: string; name: string }) => ({

@@ -80,11 +80,11 @@ export async function getUserScope(): Promise<UserScope | null> {
 
   const { data: profile } = await supabase
     .from("users")
-    .select("role, email, customer_id, full_name")
+    .select("role, email, customer_id, full_name, status")
     .eq("id", authUser.id)
     .single();
 
-  if (!profile) return null;
+  if (!profile || profile.status !== "active") return null;
 
   const role = (profile.role as UserRole | null) ?? ("customer" as UserRole);
   const email = profile.email as string;
@@ -112,7 +112,18 @@ export async function getUserScope(): Promise<UserScope | null> {
       .from("site_members")
       .select("site_id")
       .eq("user_id", authUser.id);
-    siteIds = (memberships || []).map((m) => m.site_id as string);
+    const memberSiteIds = (memberships || []).map((m) => m.site_id as string);
+    if (memberSiteIds.length > 0) {
+      // Membership history is retained when a site is decommissioned. Filter
+      // the set through active sites before it becomes an authorization scope.
+      const admin = createAdminClient();
+      const { data: activeSites } = await admin
+        .from("sites")
+        .select("id")
+        .in("id", memberSiteIds)
+        .eq("status", "active");
+      siteIds = (activeSites || []).map((site) => site.id as string);
+    }
   }
 
   return {
@@ -161,12 +172,28 @@ export function scopeTickets<Q extends { in: Function; eq: Function }>(
   query: Q,
   scope: UserScope
 ): Q {
+  return scopeSiteRows(query, scope);
+}
+
+/**
+ * Apply the caller's visible-site set to any table whose tenant boundary is a
+ * `site_id` column (tickets, work orders, part requests, and similar rows).
+ */
+export function scopeSiteRows<Q extends { in: Function; eq: Function }>(
+  query: Q,
+  scope: UserScope
+): Q {
   if (scope.isInternal) return query;
 
   if (scope.siteIds.length === 0) {
     return query.eq("site_id", EMPTY_GUID) as Q;
   }
   return query.in("site_id", scope.siteIds) as Q;
+}
+
+/** Fast in-memory check for a site-owned row that has already been loaded. */
+export function canAccessSite(scope: UserScope, siteId: string): boolean {
+  return scope.isInternal || scope.siteIds.includes(siteId);
 }
 
 /**

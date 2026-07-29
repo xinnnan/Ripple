@@ -68,7 +68,7 @@ export function EditSiteForm({
           timezone,
           address: address || null,
           project_status: projectStatus,
-          status,
+          ...(status !== site.status ? { status } : {}),
         }),
       });
 
@@ -176,8 +176,16 @@ export function EditSiteForm({
               className="w-full rounded-lg border border-border px-3 py-2 text-sm text-foreground bg-background"
             >
               <option value="active">Active</option>
-              <option value="inactive">Inactive</option>
+              <option value="commissioning">Commissioning</option>
+              {site.status !== "active" && site.status !== "commissioning" && (
+                <option value={site.status} disabled>
+                  {site.status} (archived)
+                </option>
+              )}
             </select>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Archive sites from Customers &amp; Sites to preserve service history.
+            </p>
           </div>
         </div>
 

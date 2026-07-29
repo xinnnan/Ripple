@@ -97,6 +97,13 @@ export interface Ticket {
   updated_at: string;
   resolved_at: string | null;
   closed_at: string | null;
+  sla_policy_id: string | null;
+  first_response_due_at: string | null;
+  resolve_due_at: string | null;
+  first_response_at: string | null;
+  first_response_breached_at: string | null;
+  resolution_breached_at: string | null;
+  sla_breached: boolean;
   // Joined relations
   customer?: Customer;
   site?: Site;
@@ -168,6 +175,7 @@ export interface TicketComment {
   body: string;
   visibility: CommentVisibility;
   source: "slack" | "web" | "email";
+  is_automated: boolean;
   created_at: string;
   author?: User;
 }

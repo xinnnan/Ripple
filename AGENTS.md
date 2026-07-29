@@ -2,7 +2,7 @@
 
 > DropletAI's Slack-native support portal. Lightweight ticket system, web portal, and AI-assisted troubleshooting for industrial automation deployments (AMR / AGV / conveyor / sortation / RCS / WCS).
 
-This file is the **single source of truth for project context** — read it before touching anything. It also serves as the lessons-learned notebook and progress tracker. Last updated 2026-07-13.
+This file is the **single source of truth for project context** — read it before touching anything. It also serves as the lessons-learned notebook and progress tracker. Last updated 2026-07-29.
 
 ---
 
@@ -16,7 +16,9 @@ This file is the **single source of truth for project context** — read it befo
 - **Internal users** (DropletAI staff): admins + field/solution engineers
 - **External users** (customers): customer admins (manage their org's team + sites) + regular customers (submit + view their tickets)
 
-**Status** — Phase 1–3 complete (foundation, auth + user mgmt, spare parts + field service). Phase 4 not yet planned. Branch `main` is green; live on Vercel.
+**Status** — Phase 1–4 foundation is present; PRD v1.1 gap closure and security
+containment are active on `codex/prd-v1-1-gap-closure`. `main` is live on
+Vercel.
 
 ---
 
@@ -24,7 +26,7 @@ This file is the **single source of truth for project context** — read it befo
 
 | Layer | Choice | Why |
 |---|---|---|
-| Framework | **Next.js 15** (App Router) + React 19 + TypeScript | RSC + server actions simplify the Supabase cookie flow |
+| Framework | **Next.js 15.5.22** (App Router) + React 19 + TypeScript | RSC + server actions simplify the Supabase cookie flow |
 | Styling | **Tailwind CSS v4** + shadcn/ui patterns | Fast, consistent, no design-system build |
 | Database | **Supabase Postgres** | Single source of truth; RLS handles row scoping |
 | Auth | **Supabase Auth** (email + password) | `@supabase/ssr` cookie flow; `handle_new_user()` trigger mirrors `auth.users` → `public.users` |
@@ -84,7 +86,7 @@ This file is the **single source of truth for project context** — read it befo
 │   │   ├── ticket.ts                    # ⭐ All domain enums + labels
 │   │   └── spare-parts.ts               # ⭐ Spare parts + field service enums
 │   └── middleware.ts                    # ⭐ Route guard + session refresh
-├── supabase/migrations/                 # 001–017, apply in order
+├── supabase/migrations/                 # 001–026, apply in order
 ├── plans/                               # Architecture + phase planning docs
 │   ├── architecture.md
 │   ├── phase2-customer-auth-and-user-management.md
@@ -103,7 +105,7 @@ This file is the **single source of truth for project context** — read it befo
 - Ticket detail UI → `src/app/(auth)/tickets/[ticketId]/page.tsx` (server) + `ticket-actions-panel.tsx` (client)
 - Slack ticket creation → `src/app/api/slack/command/ticket/route.ts` + `src/lib/slack/blocks/ticket-form.ts`
 - AI assist → `src/app/api/ai/suggest/route.ts` + `src/lib/ai/suggest.ts`
-- DB schema → `supabase/migrations/001_*.sql` … `017_consolidate_roles.sql`
+- DB schema → `supabase/migrations/001_*.sql` … `026_correct_sla_milestones.sql`
 
 ---
 
@@ -141,7 +143,7 @@ const isInternal = role ? INTERNAL_ROLES.includes(role) : email ? isInternalEmai
 
 ## 5. Database Schema (Supabase)
 
-17 migrations, applied in order. Key tables:
+26 migrations, applied in order. Key tables:
 
 | Table | Purpose | Notes |
 |---|---|---|
@@ -149,8 +151,8 @@ const isInternal = role ? INTERNAL_ROLES.includes(role) : email ? isInternalEmai
 | `sites` | Customer locations | `site_code` (unique), `slack_channel_id`, `project_status` (pre_signoff / in_warranty / full_coverage / essential_coverage / out_of_service) |
 | `users` | All users (internal + external) | `role` (4 values, see §4), `customer_id`, `slack_user_id` |
 | `site_members` | User ↔ Site (M:N) | customers join via this; customer_manager bypasses |
-| `tickets` | Core ticket entity | `ticket_no` (RPL-XXXXXX), `secure_token` (32-byte hex), `severity` (P1–P4), 8-state `status` enum |
-| `ticket_comments` | Discussion, `visibility: customer\|internal` | Internal comments hidden from customer |
+| `tickets` | Core ticket entity | `ticket_no` (RPL-XXXXXX), `secure_token` (32-byte hex), `severity` (P1–P4), 8-state `status`, response/resolution due/achieved/breached timestamps |
+| `ticket_comments` | Discussion, `visibility: customer\|internal` | `is_automated`; only human internal-authored customer-visible messages satisfy First Response |
 | `ticket_attachments` | File refs (storage_path) | Bucket `ripple-attachments`, 50MB cap |
 | `ticket_events` | Audit log | `actor_id`, `event_type`, `old_value`/`new_value` |
 | `ai_suggestions` | Ripple Assist outputs | `model_name`, `confidence_level`, accept/dismiss feedback |
@@ -165,7 +167,9 @@ const isInternal = role ? INTERNAL_ROLES.includes(role) : email ? isInternalEmai
 
 **⚠️ Known trigger issue (M3 in audit):** `create_ticket_status_event()` in DB fires on status/severity/owner changes AND `PATCH /api/tickets/[id]/route.ts` also inserts events manually → **double event rows**. Fixed in `015_remove_duplicate_event_trigger.sql` (one direction was removed) but verify which path is active before re-enabling the other.
 
-**Migration safety:** all migrations are additive + `IF NOT EXISTS` / `IF EXISTS` — safe to re-apply. But the role consolidation (`017`) does `UPDATE` — don't run twice without resetting.
+**Migration safety:** later migrations intentionally replace functions and
+policies. Apply them once in order. The role consolidation (`017`) performs
+data updates and must not be re-run blindly.
 
 ---
 
@@ -249,7 +253,7 @@ if ("error" in auth) return NextResponse.json({ error: auth.error }, { status: a
 npm install
 cp .env.local.example .env.local   # fill in real values
 # Run migrations in Supabase SQL editor (or `supabase db push` if using CLI):
-#   001 → 017 in order
+#   001 → 026 in order
 # Enable pgvector: CREATE EXTENSION IF NOT EXISTS vector;
 npm run dev
 ```
@@ -259,7 +263,8 @@ npm run dev
 - `npm run build` — production build
 - `npm run start` — production server
 - `npm run lint` — `next lint` (ESLint, default Next.js config)
-- No test runner configured (no Jest/Vitest). Manual e2e checklist in `plans/e2e-audit-and-test-plan.md`.
+- `npm test` — Vitest unit suite (120 tests)
+- `npm run test:e2e` — 12-check production HTTP end-to-end smoke; requires a successful build
 
 ### Required env vars (`.env.local.example`)
 ```
@@ -284,8 +289,12 @@ NEXT_PUBLIC_APP_URL=
 - Push: `git push origin main`
 
 ### Quality gates
+- `npm ci` must pass from the lockfile
+- `npm test` must pass
 - `npm run lint` must pass
 - `npm run build` must pass (0 errors)
+- `npm run test:e2e` must pass before every commit
+- `npm audit` must report 0 known vulnerabilities
 - Manual e2e flow per `plans/e2e-audit-and-test-plan.md` for any change touching ticket creation, auth, or admin
 
 ---
@@ -363,9 +372,59 @@ Tailwind v4 uses `@theme` in CSS instead of `tailwind.config.ts`. Color tokens (
 ### Audit-driven fixes work
 The `plans/e2e-audit-and-test-plan.md` from 2026-05-23 was the most productive doc — surfaced 12 issues (2 critical, 5 medium, 4 low) and we shipped 7 fixes in commit `a62c043`. **Run a similar audit before any major phase** (Phase 4, etc.).
 
+### Deactivation is an authorization state, not a UI label
+Found 2026-07-28 while replacing hard deletes. Setting
+`public.users.status='inactive'` did not stop a still-valid Supabase JWT from
+calling direct PostgREST or Storage policies. Migration 025 adds
+`current_user_is_active()` and a restrictive policy across every authenticated
+table, while middleware and API auth helpers enforce the same state. Site
+archive also requires lifecycle-aware RLS so retained memberships cannot expose
+decommissioned-site history to customers.
+
+**Lesson:** archive/deactivate operations must preserve history, update audit in
+the same transaction, and enforce the lifecycle at UI, API, scope, RLS, and
+storage boundaries. A status badge by itself is not access control.
+
+### Permissive RLS policies are OR-composed
+Found 2026-07-29 during the SLA milestone audit. Migration 010 correctly
+required `ticket_comments.visibility='customer'`, but migration 013 later added
+a second permissive SELECT policy that checked only site membership. PostgreSQL
+OR-combined them, so customers could query internal comments directly. The same
+pattern exposed internal attachments and raw ticket events. Migration 026
+replaces the legacy policies with one scope helper, explicit customer-visible
+predicates, and internal-only raw event access.
+
+**Lesson:** review the complete policy set on a table, not policies one at a
+time. A restrictive condition in one permissive policy does not constrain
+another permissive policy.
+
+### SLA milestones are communication facts, not workflow activity
+Found 2026-07-29. The old code counted internal notes and status changes as
+First Response, ignored customer-visible engineer messages, and considered any
+resolved ticket met even when `resolved_at` was after `resolve_due_at`.
+Migration 026 and `src/lib/tickets/mutations.ts` make web and Slack use the same
+row-locked commands. First Response now requires an internal human,
+customer-visible, non-automated message. Resolution breach compares the actual
+completion timestamp with the due timestamp.
+
+**Lesson:** encode metric definitions as truth tables, persist independent
+milestone timestamps, and commit business data, timeline, and audit together.
+Do not infer customer communication from assignment or status changes.
+
 ---
 
 ## 10. Current State & Roadmap
+
+### Active PRD v1.1 execution records
+
+- Gap assessment and delivery plan:
+  [`plans/prd-v1.1-gap-closure-plan.md`](plans/prd-v1.1-gap-closure-plan.md)
+- Durable session/commit handoff:
+  [`plans/progress-log.md`](plans/progress-log.md)
+
+Future work must update the progress log after each meaningful change and before
+ending a session. The log's **Current checkpoint** is the authoritative place to
+resume work; this section remains the broader historical summary.
 
 ### What's done (commits, oldest → newest)
 - **Phase 1** (foundation): Next.js + Supabase + Slack Bolt skeleton
@@ -412,6 +471,14 @@ The `plans/e2e-audit-and-test-plan.md` from 2026-05-23 was the most productive d
       to detail-tabs-helpers.ts (no "use client" directive).
   - **Helper upgrade**: `requireAdmin()` now also returns `email` (it was already selecting it — just not exposing).
   - **New tests**: 4 new e2e scripts (21_audit_fixes, 22_list_pii, 23_web_pages_full, 24_feature_flows), 272 new test cases. Full suite: 7 e2e mjs (182) + 2 e2e Python (187) + 7 unit (83) = **452 tests, all green**.
+- **PRD v1.1 Phase 0 containment** (`9083ece`, `211843e`, `b71b3d7`): centralized
+  tenant scoping and response shaping; removed client service-role imports;
+  restricted Slack actions; hid customer-internal ticket fields; retired
+  customer/site/user hard delete; added transactional archive/deactivation,
+  active-account and lifecycle RLS; corrected First Response/Resolution
+  milestones across web and Slack; closed legacy artifact-policy leaks; added
+  production HTTP E2E, 120 unit tests, and a zero-vulnerability dependency
+  baseline.
 
 ### Known issues / open work
 | Priority | Item | Where | Notes |
@@ -423,8 +490,8 @@ The `plans/e2e-audit-and-test-plan.md` from 2026-05-23 was the most productive d
 | 🟡 Med | In-memory rate limit not production-grade | `src/lib/rate-limit.ts` | Fine for now (Vercel cold starts reset the counter, but worst case is a fresh window per cold start). Swap for Upstash/Redis when traffic warrants. |
 | 🟢 Low | Ticket number sequence is in place (migration 020/021) but not used by all create paths | `src/lib/tickets/create.ts:generateNextTicketNo` | `next_ticket_no()` RPC exists; the create flow should switch from MAX+1 to the sequence. |
 | 🟢 Low | Slack `events` route doesn't route customer messages to a ticket comment yet | `src/app/api/slack/events/route.ts` | Sprint 3 — bidirectional thread sync (SLK-008) |
-| 🟢 Low | Hard delete missing — only soft-delete via `status='inactive'` | n/a | Accepted convention |
-| 🟢 Low | E2E scripts live in `/tmp/ripple-e2e/` (artifacts, not committed) | n/a | Lost on reboot; need to be regenerated. The 21_audit_fixes and 22_list_pii scripts cover the new fixes but are not checked in. |
+| 🔴 Deploy | Migration 026 must be applied before `b71b3d7` is released | `supabase/migrations/026_correct_sla_milestones.sql` | Migration 025 was confirmed applied on 2026-07-29. The new app paths call migration-026 RPCs and require its SLA columns/policies |
+| 🟡 Med | Credentialed role/tenant browser matrix is not committed | `scripts/production-smoke.mjs` | Environment-safe HTTP smoke is committed; P0-I still needs real login/site fixtures and positive/negative tenant flows |
 
 ### Next priorities (Sprint 3, in proposed order)
 1. **Apply migration 019** ✅ done (2026-07-14).
@@ -447,11 +514,16 @@ The `plans/e2e-audit-and-test-plan.md` from 2026-05-23 was the most productive d
 
 **Run quality checks:**
 ```bash
-npm run lint && npm run build
+npm ci
+npm test
+npm run lint
+npm run build
+npm run test:e2e
+npm audit
 ```
 
 **Apply a new migration:**
-1. Create `supabase/migrations/018_xxx.sql` (next number)
+1. Create `supabase/migrations/026_xxx.sql` (next number)
 2. Test locally: `supabase db reset` (drops + re-applies all)
 3. Apply to prod via Supabase SQL editor
 4. Document in this file's §5 + §10

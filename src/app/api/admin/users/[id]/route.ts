@@ -7,7 +7,7 @@ import { z } from "zod";
 const updateUserSchema = z.object({
   full_name: z.string().trim().min(1).max(200).optional(),
   role: z.enum(["admin", "engineer", "customer_manager", "customer"]).optional(),
-  status: z.enum(["active", "inactive", "invited"]).optional(),
+  status: z.enum(["active", "inactive", "invited", "suspended"]).optional(),
 });
 
 export async function PATCH(
@@ -24,9 +24,31 @@ export async function PATCH(
     const body = await request.json();
     const data = updateUserSchema.parse(body);
 
+    if (data.status === "inactive") {
+      return NextResponse.json(
+        {
+          error: "Use the deactivation workflow to make a user inactive.",
+          code: "DEACTIVATION_REQUIRED",
+          replacement: "/api/admin/users/bulk-deactivate",
+        },
+        { status: 409 }
+      );
+    }
+
     if (Object.keys(data).length === 0) {
       return NextResponse.json(
         { error: "No fields to update" },
+        { status: 400 }
+      );
+    }
+
+    if (
+      id === auth.userId &&
+      ((data.status && data.status !== "active") ||
+        (data.role && data.role !== "admin"))
+    ) {
+      return NextResponse.json(
+        { error: "You cannot deactivate, suspend, or demote your own admin account." },
         { status: 400 }
       );
     }

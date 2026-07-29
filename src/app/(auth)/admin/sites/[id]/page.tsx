@@ -64,7 +64,7 @@ export default async function AdminSiteDetailPage({ params, searchParams }: Prop
   }
 
   // Run all per-tab data fetches in parallel
-  const [membersRes, customersRes, ticketsRes, auditRes, partRequestsRes, inventoryRes] =
+  const [membersRes, customersRes, ticketsRes, auditRes, inventoryRes] =
     await Promise.all([
       supabase
         .from("site_members")
@@ -92,8 +92,6 @@ export default async function AdminSiteDetailPage({ params, searchParams }: Prop
           "id, quantity, location, spare_part:spare_parts(id, part_name, part_number, category)"
         )
         .eq("site_id", id),
-      // no-op placeholder, kept parallel; part_requests without site link
-      Promise.resolve({ data: [] }),
     ]);
 
   const members = (membersRes.data || []) as unknown as {

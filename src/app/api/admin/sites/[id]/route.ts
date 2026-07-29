@@ -35,6 +35,17 @@ export async function PATCH(
     const body = await request.json();
     const data = updateSiteSchema.parse(body);
 
+    if (data.status === "inactive" || data.status === "decommissioned") {
+      return NextResponse.json(
+        {
+          error: "Use the archive workflow to decommission a site.",
+          code: "ARCHIVE_REQUIRED",
+          replacement: "/api/admin/sites/bulk-archive",
+        },
+        { status: 409 }
+      );
+    }
+
     if (Object.keys(data).length === 0) {
       return NextResponse.json(
         { error: "No fields to update" },

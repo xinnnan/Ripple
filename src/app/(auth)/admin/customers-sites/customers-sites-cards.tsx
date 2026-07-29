@@ -12,6 +12,7 @@ interface SiteRow {
   site_name: string;
   site_code: string;
   project_status: string;
+  status: string;
 }
 
 interface CustomerRow {
@@ -39,14 +40,15 @@ export function CustomersSitesCards({
   const [error, setError] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<null | "customers" | "sites">(null);
 
-  // When a customer is selected, its sites are NOT auto-selected —
-  // deleting a customer cascades, so we don't need to also delete
-  // the sites. UI shows the cascade via the "All sites under this
-  // customer will also be deleted" hint.
+  // Customer archive already decommissions its sites, so child sites do not
+  // need to be selected separately.
 
-  const customerOptions: CustomerOption[] = customers.map((c) => ({ id: c.id, name: c.name }));
+  const customerOptions: CustomerOption[] = customers
+    .filter((customer) => customer.status !== "inactive")
+    .map((customer) => ({ id: customer.id, name: customer.name }));
 
   function toggleCustomer(id: string) {
+    if (customers.find((customer) => customer.id === id)?.status === "inactive") return;
     setSelectedCustomers((s) => {
       const next = new Set(s);
       if (next.has(id)) next.delete(id);
@@ -56,14 +58,19 @@ export function CustomersSitesCards({
   }
 
   function toggleSite(id: string, customerId: string) {
+    const site = customers
+      .find((customer) => customer.id === customerId)
+      ?.sites?.find((candidate) => candidate.id === id);
+    if (!site || site.status === "decommissioned") return;
+
     setSelectedSites((s) => {
       const next = new Set(s);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
-    // If a site is selected, deselect the parent customer (don't
-    // double-delete).
+    // If a site is selected, deselect its parent customer so one operation
+    // does not archive the same lifecycle twice.
     setSelectedCustomers((cs) => {
       if (cs.has(customerId)) {
         const next = new Set(cs);
@@ -74,52 +81,48 @@ export function CustomersSitesCards({
     });
   }
 
-  async function performCustomersDelete() {
+  async function performCustomersArchive() {
     if (selectedCustomers.size === 0) return;
     setError(null);
     setConfirming(null);
-    const res = await fetch("/api/admin/customers/bulk-delete", {
+    const res = await fetch("/api/admin/customers/bulk-archive", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ids: Array.from(selectedCustomers) }),
     });
     const data = await res.json();
     if (!res.ok) {
-      setError(data.error || "Bulk delete failed");
+      setError(data.error || "Bulk archive failed");
       return;
     }
     setSelectedCustomers(new Set());
     setSelectedSites(new Set());
     if (data.failed && data.failed.length > 0) {
       setError(
-        `Deleted ${data.deleted} customer(s); ${data.failed.length} failed: ${data.failed
-          .map((f: { id: string; reason: string }) => `${f.id.slice(0, 8)}…: ${f.reason}`)
-          .join("; ")}`
+        "Some customers could not be archived. Refresh and retry."
       );
     }
     startTransition(() => router.refresh());
   }
 
-  async function performSitesDelete() {
+  async function performSitesArchive() {
     if (selectedSites.size === 0) return;
     setError(null);
     setConfirming(null);
-    const res = await fetch("/api/admin/sites/bulk-delete", {
+    const res = await fetch("/api/admin/sites/bulk-archive", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ids: Array.from(selectedSites) }),
     });
     const data = await res.json();
     if (!res.ok) {
-      setError(data.error || "Bulk delete failed");
+      setError(data.error || "Bulk archive failed");
       return;
     }
     setSelectedSites(new Set());
     if (data.failed && data.failed.length > 0) {
       setError(
-        `Deleted ${data.deleted} site(s); ${data.failed.length} failed: ${data.failed
-          .map((f: { id: string; reason: string }) => `${f.id.slice(0, 8)}…: ${f.reason}`)
-          .join("; ")}`
+        "Some sites could not be archived. Refresh and retry."
       );
     }
     startTransition(() => router.refresh());
@@ -168,51 +171,51 @@ export function CustomersSitesCards({
             <button
               onClick={() => setConfirming("sites")}
               disabled={pending}
-              className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700 transition-colors disabled:opacity-40"
+              className="rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-700 transition-colors disabled:opacity-40"
             >
-              Delete {selectedSites.size} site{selectedSites.size === 1 ? "" : "s"}
+              Archive {selectedSites.size} site{selectedSites.size === 1 ? "" : "s"}
             </button>
           )}
           {selectedCustomers.size > 0 && (
             <button
               onClick={() => setConfirming("customers")}
               disabled={pending}
-              className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700 transition-colors disabled:opacity-40"
+              className="rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-700 transition-colors disabled:opacity-40"
             >
-              Delete {selectedCustomers.size} customer{selectedCustomers.size === 1 ? "" : "s"}
+              Archive {selectedCustomers.size} customer{selectedCustomers.size === 1 ? "" : "s"}
             </button>
           )}
         </div>
       </div>
 
       {confirming && (
-        <div className="rounded-lg border border-red-300 bg-red-50 p-4 text-sm text-red-800">
+        <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
           {confirming === "customers" ? (
             <>
-              <p className="font-semibold mb-1">Delete {selectedCustomers.size} customer{selectedCustomers.size === 1 ? "" : "s"}?</p>
+              <p className="font-semibold mb-1">Archive {selectedCustomers.size} customer{selectedCustomers.size === 1 ? "" : "s"}?</p>
               <p className="text-xs mb-3">
-                This cascades: every site under each deleted customer and every ticket
-                in those sites will be deleted. SLA policies scoped to these customers
-                will be removed too. This action cannot be undone.
+                The customers become inactive, their sites are decommissioned, and
+                their customer accounts are deactivated. Tickets, service records,
+                memberships, and audit history are preserved for internal review.
               </p>
             </>
           ) : (
             <>
-              <p className="font-semibold mb-1">Delete {selectedSites.size} site{selectedSites.size === 1 ? "" : "s"}?</p>
+              <p className="font-semibold mb-1">Archive {selectedSites.size} site{selectedSites.size === 1 ? "" : "s"}?</p>
               <p className="text-xs mb-3">
-                This cascades: every ticket in the deleted site will be deleted. Site
-                memberships for the deleted site are also removed. This action
-                cannot be undone.
+                The sites are decommissioned and removed from customer access.
+                Tickets, memberships, parts, field-service records, and audit history
+                remain intact.
               </p>
             </>
           )}
           <div className="flex gap-2">
             <button
-              onClick={confirming === "customers" ? performCustomersDelete : performSitesDelete}
+              onClick={confirming === "customers" ? performCustomersArchive : performSitesArchive}
               disabled={pending}
-              className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700 transition-colors disabled:opacity-40"
+              className="rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-700 transition-colors disabled:opacity-40"
             >
-              {pending ? "Deleting…" : "Yes, delete"}
+              {pending ? "Archiving…" : "Yes, archive"}
             </button>
             <button
               onClick={() => setConfirming(null)}
@@ -237,7 +240,7 @@ export function CustomersSitesCards({
               <div
                 key={customer.id}
                 className={`rounded-xl border overflow-hidden transition-colors ${
-                  isCustSelected ? "border-red-300 bg-red-50/30" : "border-border"
+                  isCustSelected ? "border-amber-300 bg-amber-50/30" : "border-border"
                 }`}
               >
                 <div className="flex items-center justify-between p-4 bg-muted/30 border-b border-border">
@@ -246,8 +249,9 @@ export function CustomersSitesCards({
                       type="checkbox"
                       aria-label={`Select ${customer.name}`}
                       checked={isCustSelected}
+                      disabled={customer.status === "inactive"}
                       onChange={() => toggleCustomer(customer.id)}
-                      className="h-4 w-4 rounded border-border"
+                      className="h-4 w-4 rounded border-border disabled:opacity-40"
                     />
                     <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center">
                       <span className="text-xs font-bold text-primary">
@@ -306,7 +310,7 @@ export function CustomersSitesCards({
                             key={site.id}
                             className={`flex items-center gap-2 rounded-lg border px-3 py-2 transition-colors ${
                               isSiteSelected
-                                ? "border-red-300 bg-red-50"
+                                ? "border-amber-300 bg-amber-50"
                                 : customerSelected
                                   ? "border-border bg-muted/50 opacity-50"
                                   : "border-border hover:bg-muted/50"
@@ -316,7 +320,7 @@ export function CustomersSitesCards({
                               type="checkbox"
                               aria-label={`Select ${site.site_name}`}
                               checked={isSiteSelected}
-                              disabled={customerSelected}
+                              disabled={customerSelected || site.status === "decommissioned"}
                               onChange={() => toggleSite(site.id, customer.id)}
                               className="h-4 w-4 rounded border-border disabled:opacity-50"
                             />
@@ -336,6 +340,11 @@ export function CustomersSitesCards({
                             >
                               {statusLabel}
                             </span>
+                            {site.status !== "active" && (
+                              <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700">
+                                {site.status}
+                              </span>
+                            )}
                           </div>
                         );
                       })}

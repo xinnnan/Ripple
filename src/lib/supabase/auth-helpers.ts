@@ -20,9 +20,13 @@ export async function requireAdmin() {
 
   const { data: userProfile } = await supabase
     .from("users")
-    .select("role, email, customer_id")
+    .select("role, email, customer_id, status")
     .eq("id", authUser.id)
     .single();
+
+  if (!userProfile || userProfile.status !== "active") {
+    return { error: "Forbidden: Account is not active", status: 403 } as const;
+  }
 
   const role = userProfile?.role as UserRole | undefined;
   const email = userProfile?.email as string | undefined;
@@ -49,9 +53,13 @@ export async function requireInternal() {
 
   const { data: userProfile } = await supabase
     .from("users")
-    .select("role, email, customer_id")
+    .select("role, email, customer_id, status")
     .eq("id", authUser.id)
     .single();
+
+  if (!userProfile || userProfile.status !== "active") {
+    return { error: "Forbidden: Account is not active", status: 403 } as const;
+  }
 
   const role = userProfile?.role as UserRole | undefined;
   const email = userProfile?.email as string | undefined;
@@ -81,9 +89,13 @@ export async function getAuthUser() {
 
   const { data: userProfile } = await supabase
     .from("users")
-    .select("role, email, customer_id, full_name")
+    .select("role, email, customer_id, full_name, status")
     .eq("id", authUser.id)
     .single();
+
+  if (!userProfile || userProfile.status !== "active") {
+    return { error: "Forbidden: Account is not active", status: 403 } as const;
+  }
 
   const role = userProfile?.role as UserRole | undefined;
   const email = userProfile?.email as string | undefined;

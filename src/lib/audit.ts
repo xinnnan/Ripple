@@ -37,6 +37,8 @@ export type AuditEntity =
 export type AuditAction =
   | "created"
   | "updated"
+  | "archived"
+  | "deactivated"
   | "deleted"
   | "status_changed"
   | "severity_changed"

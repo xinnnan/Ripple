@@ -23,6 +23,17 @@ export async function PATCH(
     const body = await request.json();
     const data = updateCustomerSchema.parse(body);
 
+    if (data.status === "inactive") {
+      return NextResponse.json(
+        {
+          error: "Use the archive workflow to make a customer inactive.",
+          code: "ARCHIVE_REQUIRED",
+          replacement: "/api/admin/customers/bulk-archive",
+        },
+        { status: 409 }
+      );
+    }
+
     if (Object.keys(data).length === 0) {
       return NextResponse.json(
         { error: "No fields to update" },

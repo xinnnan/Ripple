@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "next lint",
     "test": "vitest run",
+    "test:e2e": "node scripts/production-smoke.mjs",
     "test:watch": "vitest",
     "test:ui": "vitest --ui"
   },
@@ -19,7 +20,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^0.510.0",
-    "next": "^15.3.0",
+    "next": "^15.5.22",
     "openai": "^4.97.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
@@ -35,9 +36,14 @@
     "@types/react-dom": "^19.1.0",
     "@vitest/ui": "^3.2.7",
     "eslint": "^9.0.0",
-    "eslint-config-next": "^15.3.0",
+    "eslint-config-next": "^15.5.22",
     "tailwindcss": "^4.1.0",
     "typescript": "^5.8.0",
     "vitest": "^3.2.7"
+  },
+  "overrides": {
+    "brace-expansion": "5.0.8",
+    "postcss": "8.5.24",
+    "sharp": "0.35.3"
   }
 }

@@ -7,7 +7,9 @@ interface SLABadgeProps {
   first_response_due_at: string | null;
   resolve_due_at: string | null;
   first_response_at: string | null;
-  sla_breached: boolean;
+  resolved_at: string | null;
+  first_response_breached_at: string | null;
+  resolution_breached_at: string | null;
 }
 
 function formatDelta(min: number | null): string {
@@ -85,14 +87,27 @@ export function SLABadge(props: SLABadgeProps) {
       )}
       {state.status === "response_breached" && state.responseDeltaMinutes != null && (
         <p className={`text-xs mt-1 ${style.text}`}>
-          Response due {formatDelta(state.responseDeltaMinutes)} ago
+          {props.first_response_at
+            ? `First response ${formatDelta(state.responseDeltaMinutes)} late`
+            : `Response due ${formatDelta(state.responseDeltaMinutes)} ago`}
         </p>
       )}
-      {state.status === "resolution_breached" && state.resolutionDeltaMinutes != null && (
+      {state.status === "resolution_breached" &&
+        state.resolutionDeltaMinutes != null &&
+        state.resolutionDeltaMinutes < 0 && (
         <p className={`text-xs mt-1 ${style.text}`}>
-          Resolution due {formatDelta(state.resolutionDeltaMinutes)} ago
+          {props.resolved_at
+            ? `Resolved ${formatDelta(state.resolutionDeltaMinutes)} late`
+            : `Resolution due ${formatDelta(state.resolutionDeltaMinutes)} ago`}
         </p>
       )}
+      {state.status === "resolution_breached" &&
+        (state.resolutionDeltaMinutes == null ||
+          state.resolutionDeltaMinutes >= 0) && (
+          <p className={`text-xs mt-1 ${style.text}`}>
+            Resolution milestone was not achieved
+          </p>
+        )}
       {state.status === "met" && props.first_response_at && (
         <p className="text-xs mt-1 text-blue-700">
           First response at {new Date(props.first_response_at).toLocaleString()}

@@ -32,7 +32,7 @@ export function EditCustomerForm({ customer }: { customer: CustomerData }) {
         body: JSON.stringify({
           name,
           domain: domain || null,
-          status,
+          ...(status !== customer.status ? { status } : {}),
         }),
       });
 
@@ -106,9 +106,17 @@ export function EditCustomerForm({ customer }: { customer: CustomerData }) {
             className="w-full rounded-lg border border-border px-3 py-2 text-sm text-foreground bg-background max-w-xs"
           >
             <option value="active">Active</option>
-            <option value="inactive">Inactive</option>
             <option value="trial">Trial</option>
+            {customer.status === "inactive" && (
+              <option value="inactive" disabled>
+                Inactive (archived)
+              </option>
+            )}
           </select>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Archive customers from Customers &amp; Sites so related access is
+            retired without deleting history.
+          </p>
         </div>
         <button
           type="submit"

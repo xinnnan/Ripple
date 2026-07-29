@@ -3,10 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthUser } from "@/lib/supabase/auth-helpers";
 import { getUserScope, scopeTickets } from "@/lib/supabase/scope";
 import { resolveTicketQuery } from "@/lib/tickets/lookup";
-import {
-  computeSlaBreached,
-  isFirstResponseEvent,
-} from "@/lib/sla";
+import { recordTicketCommentWithSla } from "@/lib/tickets/mutations";
 import { z } from "zod";
 
 interface RouteContext {
@@ -19,7 +16,6 @@ const createCommentSchema = z.object({
   // handler for the full reasoning.
   body: z.string().min(1).max(10000),
   visibility: z.enum(["customer", "internal"]).default("customer"),
-  source: z.enum(["slack", "web", "email"]).default("web"),
 });
 
 export async function GET(
@@ -105,7 +101,7 @@ export async function POST(
     }
     const { data: ticket, error: ticketErr } = await resolveTicketQuery(
       supabase.from("tickets").select(
-        "id, site_id, status, first_response_due_at, resolve_due_at, first_response_at, sla_breached"
+        "id, site_id"
       ),
       ticketId
     ).maybeSingle();
@@ -149,61 +145,30 @@ export async function POST(
     // ticketId might be a human-readable ticket_no like RPL-000005.
     // We resolved it to `ticket.id` (UUID) above for the scope check.
     // The insert needs the UUID, not the URL param.
+    // Migration 026 commits the comment, ticket timeline, audit entry, and
+    // first-response milestone together under a row lock. Only a human,
+    // internal-authored, customer-visible response can satisfy the milestone.
+    const commentId = await recordTicketCommentWithSla({
+      supabase,
+      ticketId: (ticket as { id: string }).id,
+      actorId: authorId,
+      body: data.body,
+      visibility: safeVisibility,
+      // The route, not the caller, owns attribution. A browser request cannot
+      // claim to be a Slack or email message.
+      source: "web",
+      isAutomated: false,
+    });
+
     const { data: comment, error } = await supabase
       .from("ticket_comments")
-      .insert({
-        ticket_id: (ticket as { id: string }).id,
-        author_id: authorId,
-        body: data.body,
-        visibility: safeVisibility,
-        source: data.source,
-      })
       .select("*, author:users(full_name, email)")
+      .eq("id", commentId)
       .single();
 
     if (error) {
       console.error("Failed to create comment:", error);
       return NextResponse.json({ error: "Failed to create comment" }, { status: 500 });
-    }
-
-    // Log event
-    await supabase.from("ticket_events").insert({
-      ticket_id: (ticket as { id: string }).id,
-      event_type: "comment_added",
-      old_value: null,
-      new_value: safeVisibility,
-      actor_id: authorId,
-    });
-
-    // SLA: stamp first_response_at on the first internal comment
-    // and recompute sla_breached. The customer replying to their
-    // own ticket is NOT a "first response" — only an internal
-    // user's comment counts.
-    if (
-      isFirstResponseEvent({
-        isInternalComment: safeVisibility === "internal",
-        statusChanged: false,
-        oldStatus: null,
-        newStatus: null,
-        hadFirstResponse: !!ticket.first_response_at,
-      })
-    ) {
-      const now = new Date();
-      // With first_response_at set, the response window is met.
-      // Recompute breach based on the resolution window only.
-      const breached = computeSlaBreached({
-        status: ticket.status as "new" | "assigned" | "in_progress" | "waiting_customer" | "waiting_droplet" | "resolved" | "closed" | "reopened",
-        first_response_due_at: null,
-        resolve_due_at: ticket.resolve_due_at,
-        first_response_at: now.toISOString(),
-      });
-      await supabase
-        .from("tickets")
-        .update({
-          first_response_at: now.toISOString(),
-          sla_breached: breached,
-        })
-        .eq("id", ticket.id);
     }
 
     return NextResponse.json({ comment }, { status: 201 });

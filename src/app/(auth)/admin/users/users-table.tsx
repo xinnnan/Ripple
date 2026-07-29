@@ -19,7 +19,13 @@ interface UserRow {
   }[];
 }
 
-export function UsersTable({ users }: { users: UserRow[] }) {
+export function UsersTable({
+  users,
+  currentUserId,
+}: {
+  users: UserRow[];
+  currentUserId: string;
+}) {
   const router = useRouter();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [pending, startTransition] = useTransition();
@@ -27,6 +33,8 @@ export function UsersTable({ users }: { users: UserRow[] }) {
   const [confirming, setConfirming] = useState(false);
 
   function toggle(id: string) {
+    const user = users.find((candidate) => candidate.id === id);
+    if (!user || user.id === currentUserId || user.status === "inactive") return;
     setSelected((s) => {
       const next = new Set(s);
       if (next.has(id)) next.delete(id);
@@ -36,32 +44,33 @@ export function UsersTable({ users }: { users: UserRow[] }) {
   }
 
   function toggleAll() {
+    const eligibleIds = users
+      .filter((user) => user.id !== currentUserId && user.status !== "inactive")
+      .map((user) => user.id);
     setSelected((s) =>
-      s.size === users.length ? new Set() : new Set(users.map((u) => u.id))
+      s.size === eligibleIds.length ? new Set() : new Set(eligibleIds)
     );
   }
 
-  async function performDelete() {
+  async function performDeactivate() {
     if (selected.size === 0) return;
     setError(null);
     setConfirming(false);
     const ids = Array.from(selected);
-    const res = await fetch("/api/admin/users/bulk-delete", {
+    const res = await fetch("/api/admin/users/bulk-deactivate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ids }),
     });
     const data = await res.json();
     if (!res.ok) {
-      setError(data.error || "Bulk delete failed");
+      setError(data.error || "Bulk deactivation failed");
       return;
     }
     setSelected(new Set());
     if (data.failed && data.failed.length > 0) {
       setError(
-        `Deleted ${data.deleted} user(s); ${data.failed.length} failed: ${data.failed
-          .map((f: { id: string; reason: string }) => `${f.id.slice(0, 8)}…: ${f.reason}`)
-          .join("; ")}`
+        "Some users could not be deactivated. Refresh and retry."
       );
     }
     startTransition(() => {
@@ -69,8 +78,11 @@ export function UsersTable({ users }: { users: UserRow[] }) {
     });
   }
 
-  const allSelected = users.length > 0 && selected.size === users.length;
-  const someSelected = selected.size > 0 && selected.size < users.length;
+  const eligibleCount = users.filter(
+    (user) => user.id !== currentUserId && user.status !== "inactive"
+  ).length;
+  const allSelected = eligibleCount > 0 && selected.size === eligibleCount;
+  const someSelected = selected.size > 0 && selected.size < eligibleCount;
 
   return (
     <div className="space-y-3">
@@ -97,27 +109,27 @@ export function UsersTable({ users }: { users: UserRow[] }) {
           <button
             onClick={() => setConfirming(true)}
             disabled={selected.size === 0 || pending}
-            className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            className="rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            Delete selected ({selected.size})
+            Deactivate selected ({selected.size})
           </button>
         </div>
       </div>
 
       {confirming && (
-        <div className="rounded-lg border border-red-300 bg-red-50 p-4 text-sm text-red-800">
-          <p className="font-semibold mb-1">Delete {selected.size} user{selected.size === 1 ? "" : "s"}?</p>
+        <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+          <p className="font-semibold mb-1">Deactivate {selected.size} user{selected.size === 1 ? "" : "s"}?</p>
           <p className="text-xs mb-3">
-            Most audit fields are set to NULL (history preserved), but <code>site_members</code> and
-            field-service engineer assignments will cascade. This action cannot be undone.
+            Access stops on the next request. The auth identity, memberships,
+            field-service assignments, and attributable audit history are preserved.
           </p>
           <div className="flex gap-2">
             <button
-              onClick={performDelete}
+              onClick={performDeactivate}
               disabled={pending}
-              className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700 transition-colors disabled:opacity-40"
+              className="rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-700 transition-colors disabled:opacity-40"
             >
-              {pending ? "Deleting…" : "Yes, delete"}
+              {pending ? "Deactivating…" : "Yes, deactivate"}
             </button>
             <button
               onClick={() => setConfirming(false)}
@@ -165,15 +177,16 @@ export function UsersTable({ users }: { users: UserRow[] }) {
               users.map((u) => (
                 <tr
                   key={u.id}
-                  className={`hover:bg-muted/30 transition-colors ${selected.has(u.id) ? "bg-blue-50/30" : ""}`}
+                  className={`hover:bg-muted/30 transition-colors ${selected.has(u.id) ? "bg-amber-50/40" : ""}`}
                 >
                   <td className="p-3">
                     <input
                       type="checkbox"
                       aria-label={`Select ${u.email}`}
                       checked={selected.has(u.id)}
+                      disabled={u.id === currentUserId || u.status === "inactive"}
                       onChange={() => toggle(u.id)}
-                      className="h-4 w-4 rounded border-border"
+                      className="h-4 w-4 rounded border-border disabled:opacity-40"
                     />
                   </td>
                   <td className="p-3">

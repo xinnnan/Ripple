@@ -3,8 +3,7 @@
 // Re-exported from `scope.ts` for a single import path on the client.
 
 import { createClient } from "./client";
-import { createAdminClient } from "./admin";
-import { isCustomerManager, isInternalUser } from "@/lib/roles";
+import { isInternalUser } from "@/lib/roles";
 import type { UserRole } from "@/types/ticket";
 
 /**
@@ -20,34 +19,24 @@ export async function getCurrentSiteIds(): Promise<string[]> {
 
   const { data: profile } = await supabase
     .from("users")
-    .select("role, email, customer_id")
+    .select("role, email, customer_id, status")
     .eq("id", authUser.id)
     .single();
-  if (!profile) return [];
+  if (!profile || profile.status !== "active") return [];
 
   const role = (profile.role as UserRole | null) ?? "customer";
   const email = profile.email as string;
-  const customerId = (profile.customer_id as string | null) ?? null;
   const isInternal = isInternalUser({ role, email });
-  const isManager = isCustomerManager(role);
 
   if (isInternal) return []; // empty = no filter (sees all)
 
-  if (isManager && customerId) {
-    const admin = createAdminClient();
-    const { data: sites } = await admin
-      .from("sites")
-      .select("id")
-      .eq("customer_id", customerId)
-      .eq("status", "active");
-    return (sites || []).map((s) => s.id as string);
-  }
-
-  const { data: memberships } = await supabase
-    .from("site_members")
-    .select("site_id")
-    .eq("user_id", authUser.id);
-  return (memberships || []).map((m) => m.site_id as string);
+  // The browser must never construct a service-role client. RLS already
+  // returns manager/customer sites according to the caller's JWT.
+  const { data: sites } = await supabase
+    .from("sites")
+    .select("id")
+    .eq("status", "active");
+  return (sites || []).map((s) => s.id as string);
 }
 
 /**
@@ -67,59 +56,25 @@ export async function getCurrentSites(): Promise<
 
   const { data: profile } = await supabase
     .from("users")
-    .select("role, email, customer_id")
+    .select("status")
     .eq("id", authUser.id)
     .single();
-  if (!profile) return [];
+  if (!profile || profile.status !== "active") return [];
 
-  const role = (profile.role as UserRole | null) ?? "customer";
-  const email = profile.email as string;
-  const customerId = (profile.customer_id as string | null) ?? null;
-  const isInternal = isInternalUser({ role, email });
-  const isManager = isCustomerManager(role);
-
-  const admin = createAdminClient();
   type SiteRow = {
     id: string;
     site_code: string;
     site_name: string;
     customer: { name: string } | { name: string }[] | null;
   };
-  let sites: SiteRow[] = [];
-
-  if (isInternal) {
-    const { data } = await admin
-      .from("sites")
-      .select("id, site_code, site_name, customer:customers(name)")
-      .eq("status", "active")
-      .order("site_name");
-    sites = (data || []) as SiteRow[];
-  } else if (isManager && customerId) {
-    const { data } = await admin
-      .from("sites")
-      .select("id, site_code, site_name, customer:customers(name)")
-      .eq("customer_id", customerId)
-      .eq("status", "active")
-      .order("site_name");
-    sites = (data || []) as SiteRow[];
-  } else {
-    const { data: memberships } = await supabase
-      .from("site_members")
-      .select("site_id, sites(id, site_code, site_name, customer:customers(name))")
-      .eq("user_id", authUser.id);
-    sites = (memberships || []).map((m) => {
-      const s = (Array.isArray(m.sites) ? m.sites[0] : m.sites) as unknown as {
-        id: string; site_code: string; site_name: string;
-        customer: { name: string }[] | null;
-      };
-      return {
-        id: s.id,
-        site_code: s.site_code,
-        site_name: s.site_name,
-        customer: s.customer as { name: string } | { name: string }[] | null,
-      };
-    });
-  }
+  // One RLS-scoped query covers internal users, customer managers, and
+  // assigned customers without exposing the server-only secret key.
+  const { data } = await supabase
+    .from("sites")
+    .select("id, site_code, site_name, customer:customers(name)")
+    .eq("status", "active")
+    .order("site_name");
+  const sites = (data || []) as SiteRow[];
 
   return sites.map((s) => {
     const customerData = Array.isArray(s.customer) ? s.customer[0] : s.customer;

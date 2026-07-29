@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { createClient } from "@/lib/supabase/server";
-import type { UserRole } from "@/types/ticket";
-import { isInternalUser } from "@/lib/roles";
+import { requireInternal } from "@/lib/supabase/auth-helpers";
+import { getUserScope, scopeSiteRows } from "@/lib/supabase/scope";
 import { logDiff } from "@/lib/audit";
+import { fieldServiceOrderForExternal } from "@/lib/resource-visibility";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -41,17 +41,15 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const supabase = await createClient();
-    const { data: { user: authUser } } = await supabase.auth.getUser();
-
-    if (!authUser) {
+    const scope = await getUserScope();
+    if (!scope) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const { id } = await params;
     const admin = createAdminClient();
 
-    const { data, error } = await admin
+    let query = admin
       .from("field_service_orders")
       .select(`
         *,
@@ -61,14 +59,18 @@ export async function GET(
         completer:users!field_service_orders_completed_by_fkey(id, full_name),
         engineers:field_service_engineers(*, engineer:users(id, full_name, email))
       `)
-      .eq("id", id)
-      .single();
+      .eq("id", id);
+    query = scopeSiteRows(query, scope);
+    const { data, error } = await query.maybeSingle();
 
-    if (error) {
+    if (error || !data) {
       return NextResponse.json({ error: "Field service order not found" }, { status: 404 });
     }
 
-    return NextResponse.json({ data });
+    const responseData = scope.isInternal
+      ? data
+      : fieldServiceOrderForExternal(data as unknown as Record<string, unknown>);
+    return NextResponse.json({ data: responseData });
   } catch (e) {
     console.error("GET /api/field-service-orders/[id] error:", e);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
@@ -81,25 +83,9 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const supabase = await createClient();
-    const { data: { user: authUser } } = await supabase.auth.getUser();
-
-    if (!authUser) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const { data: userProfile } = await supabase
-      .from("users")
-      .select("role, email")
-      .eq("id", authUser.id)
-      .single();
-
-    const role = userProfile?.role as UserRole | undefined;
-    const email = userProfile?.email as string | undefined;
-    const isInternal = isInternalUser({ role, email });
-
-    if (!isInternal) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    const auth = await requireInternal();
+    if ("error" in auth) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
 
     const { id } = await params;
@@ -138,7 +124,7 @@ export async function PATCH(
     if (data.status) {
       updateFields.status = data.status;
       if (data.status === "completed") {
-        updateFields.completed_by = authUser.id;
+        updateFields.completed_by = auth.userId;
         updateFields.completed_at = new Date().toISOString();
       }
     }
@@ -197,12 +183,12 @@ export async function PATCH(
       auditAfter[k] = (data as Record<string, unknown>)[k];
     }
     if (data.status === "completed") {
-      auditAfter.completed_by = authUser.id;
+      auditAfter.completed_by = auth.userId;
     }
     await logDiff({
-      actorId: authUser.id,
-      actorEmail: email,
-      actorRole: role,
+      actorId: auth.userId,
+      actorEmail: auth.email,
+      actorRole: auth.role,
       entityType: "field_service_order",
       entityId: id,
       before: before.data as Record<string, unknown>,

@@ -190,7 +190,7 @@ export default async function SitesPage() {
 
                 <div className="mt-4 pt-4 border-t border-border">
                   <Link
-                    href={`/tickets?site_id=${site.id}`}
+                    href={`/tickets?site=${site.id}`}
                     className="text-sm font-medium text-primary hover:text-primary/80 transition-colors"
                   >
                     View Tickets →

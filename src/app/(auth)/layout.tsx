@@ -23,9 +23,13 @@ export default async function AuthLayout({
   // Get user profile for role-based nav
   const { data: userProfile } = await supabase
     .from("users")
-    .select("role, email, customer_id")
+    .select("role, email, customer_id, status")
     .eq("id", authUser.id)
     .single();
+
+  if (!userProfile || userProfile.status !== "active") {
+    redirect("/login?account=inactive");
+  }
 
   const role = userProfile?.role as UserRole | undefined;
   const email = userProfile?.email as string | undefined;

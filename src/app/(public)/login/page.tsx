@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
-import { createBrowserClient } from "@supabase/ssr";
+import { createClient } from "@/lib/supabase/client";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -13,16 +13,23 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
-  );
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("account") === "inactive") {
+      setError(
+        "This account is inactive or suspended. Contact a Ripple administrator for access."
+      );
+    }
+  }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
 
+    // Construct the browser client only when the user submits. Creating it
+    // while rendering makes an environment-free `next build` fail while
+    // prerendering /login.
+    const supabase = createClient();
     const { error } = await supabase.auth.signInWithPassword({
       email,
       password,

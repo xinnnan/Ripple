@@ -4,8 +4,14 @@ import { buildResolveModal } from "../blocks/resolve-modal";
 import { buildAskRippleAssistModal } from "../blocks/ai-modal";
 import { createTicketCore, resolveSiteBySlackChannel } from "@/lib/tickets/create";
 import { updateMasterMessage } from "../sync";
-import { logAudit } from "@/lib/audit";
+import { INTERNAL_ROLES } from "@/lib/roles";
 import type { Ticket } from "@/types/ticket";
+import {
+  applyTicketPatchWithSla,
+  recordTicketCommentWithSla,
+  type TicketPatch,
+} from "@/lib/tickets/mutations";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 interface ActionPayload {
   actions: { action_id: string; value?: string; selected_option?: { value: string } }[];
@@ -14,6 +20,54 @@ interface ActionPayload {
   message?: { ts: string; thread_ts?: string };
   trigger_id: string;
   response_url: string;
+}
+
+const SLACK_TICKET_SELECT = `
+  *,
+  customer:customers(name),
+  site:sites(site_name, site_code),
+  owner:users!tickets_owner_id_fkey(full_name)
+`;
+
+async function applySlackTicketPatch(args: {
+  supabase: SupabaseClient;
+  ticketNo: string;
+  actorId: string;
+  patch: TicketPatch;
+}) {
+  const { data: currentTicket, error: lookupError } = await args.supabase
+    .from("tickets")
+    .select("id")
+    .eq("ticket_no", args.ticketNo)
+    .maybeSingle();
+
+  if (lookupError || !currentTicket) {
+    throw new Error(
+      `Slack ticket lookup failed: ${lookupError?.message ?? "ticket not found"}`
+    );
+  }
+
+  await applyTicketPatchWithSla({
+    supabase: args.supabase,
+    ticketId: currentTicket.id,
+    actorId: args.actorId,
+    patch: args.patch,
+    source: "slack",
+  });
+
+  const { data: ticket, error } = await args.supabase
+    .from("tickets")
+    .select(SLACK_TICKET_SELECT)
+    .eq("id", currentTicket.id)
+    .single();
+
+  if (error || !ticket) {
+    throw new Error(
+      `Slack ticket refresh failed: ${error?.message ?? "ticket not found"}`
+    );
+  }
+
+  return ticket;
 }
 
 export async function handleBlockAction(
@@ -42,7 +96,9 @@ export async function handleBlockAction(
     .from("users")
     .select("id, role")
     .eq("slack_user_id", userId)
-    .single();
+    .in("role", INTERNAL_ROLES)
+    .eq("status", "active")
+    .maybeSingle();
 
   if (!internalUser) {
     // Not an internal user. Reply ephemerally and skip the action.
@@ -51,7 +107,7 @@ export async function handleBlockAction(
         await client.chat.postEphemeral({
           channel: channelId,
           user: userId,
-          text: "❌ Your Slack account isn't linked to a Ripple user. Ask an admin to map it under Admin → Users.",
+          text: "❌ Your Slack account isn't linked to an active internal Ripple user. Ask an admin to verify the Slack mapping, role, and account status.",
         });
       } catch (e) {
         console.warn("[slack/handlers] ephemeral reply failed (non-fatal):", e instanceof Error ? e.message : e);
@@ -64,47 +120,17 @@ export async function handleBlockAction(
     case "assign_to_me": {
       if (!ticketNo) break;
 
-      // Update ticket owner and status
-      const { data: ticket } = await supabase
-        .from("tickets")
-        .update({
+      const ticket = await applySlackTicketPatch({
+        supabase,
+        ticketNo,
+        actorId: internalUser.id,
+        patch: {
           owner_id: internalUser.id,
           status: "assigned",
-        })
-        .eq("ticket_no", ticketNo)
-        .select(
-          `*, customer:customers(name), site:sites(site_name, site_code), owner:users!tickets_owner_id_fkey(full_name)`
-        )
-        .single();
+        },
+      });
 
       if (ticket) {
-        // Log status + owner change to audit_logs.
-        // We do this here (not via a DB trigger) so the actor_id
-        // is the actual Slack user, not "NEW.owner_id" (which is
-        // the old DB-trigger default; see migration 015).
-        await logAudit({
-          actorId: internalUser.id,
-          actorEmail: null,
-          actorRole: "engineer",
-          entityType: "ticket",
-          entityId: ticket.id,
-          action: "owner_assigned",
-          fieldName: "owner_id",
-          newValue: internalUser.id,
-          metadata: { source: "slack", trigger: "assign_to_me" },
-        });
-        await logAudit({
-          actorId: internalUser.id,
-          actorEmail: null,
-          actorRole: "engineer",
-          entityType: "ticket",
-          entityId: ticket.id,
-          action: "status_changed",
-          fieldName: "status",
-          newValue: "assigned",
-          metadata: { source: "slack", trigger: "assign_to_me" },
-        });
-
         await updateMasterMessage(ticket as unknown as Ticket, {
           channelId,
           messageTs,
@@ -117,28 +143,14 @@ export async function handleBlockAction(
     case "mark_in_progress": {
       if (!ticketNo) break;
 
-      const { data: ticket } = await supabase
-        .from("tickets")
-        .update({ status: "in_progress" })
-        .eq("ticket_no", ticketNo)
-        .select(
-          `*, customer:customers(name), site:sites(site_name, site_code), owner:users!tickets_owner_id_fkey(full_name)`
-        )
-        .single();
+      const ticket = await applySlackTicketPatch({
+        supabase,
+        ticketNo,
+        actorId: internalUser.id,
+        patch: { status: "in_progress" },
+      });
 
       if (ticket) {
-        await logAudit({
-          actorId: internalUser.id,
-          actorEmail: null,
-          actorRole: internalUser.role,
-          entityType: "ticket",
-          entityId: ticket.id,
-          action: "status_changed",
-          fieldName: "status",
-          newValue: "in_progress",
-          metadata: { source: "slack", trigger: "mark_in_progress" },
-        });
-
         await updateMasterMessage(ticket as unknown as Ticket, {
           channelId,
           messageTs,
@@ -151,27 +163,14 @@ export async function handleBlockAction(
     case "request_info": {
       if (!ticketNo) break;
 
-      const { data: ticket } = await supabase
-        .from("tickets")
-        .update({ status: "waiting_customer" })
-        .eq("ticket_no", ticketNo)
-        .select(
-          `*, customer:customers(name), site:sites(site_name, site_code), owner:users!tickets_owner_id_fkey(full_name)`
-        )
-        .single();
+      const ticket = await applySlackTicketPatch({
+        supabase,
+        ticketNo,
+        actorId: internalUser.id,
+        patch: { status: "waiting_customer" },
+      });
 
       if (ticket) {
-        await logAudit({
-          actorId: internalUser.id,
-          actorEmail: null,
-          actorRole: internalUser.role,
-          entityType: "ticket",
-          entityId: ticket.id,
-          action: "status_changed",
-          fieldName: "status",
-          newValue: "waiting_customer",
-          metadata: { source: "slack", trigger: "request_info" },
-        });
         await updateMasterMessage(ticket as unknown as Ticket, {
           channelId,
           messageTs,
@@ -196,7 +195,6 @@ export async function handleBlockAction(
               ticket_no: ticketNo,
               channel_id: channelId,
               message_ts: messageTs,
-              user_id: internalUser?.id,
             }),
             blocks: [
               {
@@ -235,7 +233,6 @@ export async function handleBlockAction(
               ticket_no: ticketNo,
               channel_id: channelId,
               message_ts: messageTs,
-              user_id: internalUser?.id,
             }),
           },
         });
@@ -287,7 +284,9 @@ export async function handleViewSubmission(
     .from("users")
     .select("id, role")
     .eq("slack_user_id", payload.user.id)
-    .single();
+    .in("role", INTERNAL_ROLES)
+    .eq("status", "active")
+    .maybeSingle();
 
   if (callbackId !== "ticket_form_submit" && !internalUser) {
     return {
@@ -295,7 +294,7 @@ export async function handleViewSubmission(
       errors: {
         // Slack renders this against the first block of the modal.
         title_block:
-          "Your Slack account isn't linked to a Ripple user. Ask an admin to map it under Admin → Users.",
+          "Your Slack account isn't linked to an active internal Ripple user. Ask an admin to verify the mapping, role, and status.",
       },
     };
   }
@@ -387,68 +386,23 @@ export async function handleViewSubmission(
       const followUp = state.follow_up_block?.follow_up?.selected_option?.value || "no";
       const internalNotes = state.internal_notes_block?.internal_notes?.value || "";
 
-      // Update ticket. Match the PATCH /api/tickets/[id] route:
-      // when status transitions to "resolved", set resolved_at so
-      // the column is consistent regardless of which path the
-      // resolve came from (web vs Slack modal).
-      const { data: currentTicket } = await supabase
-        .from("tickets")
-        .select("status")
-        .eq("ticket_no", ticketNo)
-        .maybeSingle();
-
-      const updateObj: Record<string, unknown> = {
-        status: "resolved",
-        customer_visible_summary: customerSummary,
-        root_cause_category: rootCause,
-        follow_up_needed: followUp === "yes",
-        internal_summary: internalNotes || null,
-      };
-      if (currentTicket && currentTicket.status !== "resolved") {
-        updateObj.resolved_at = new Date().toISOString();
-      }
-
-      const { data: ticket } = await supabase
-        .from("tickets")
-        .update(updateObj)
-        .eq("ticket_no", ticketNo)
-        .select(
-          `*, customer:customers(name), site:sites(site_name, site_code), owner:users!tickets_owner_id_fkey(full_name)`
-        )
-        .single();
+      // The same row-locked command used by the web PATCH path records the
+      // actual resolution time, compares it to resolve_due_at, and commits
+      // the ticket + milestone + timeline + audit rows together.
+      const ticket = await applySlackTicketPatch({
+        supabase,
+        ticketNo,
+        actorId: internalUser!.id,
+        patch: {
+          status: "resolved",
+          customer_visible_summary: customerSummary,
+          root_cause_category: rootCause,
+          follow_up_needed: followUp === "yes",
+          internal_summary: internalNotes || null,
+        },
+      });
 
       if (ticket) {
-        // internalUser was verified at the top of the function — we
-        // know it's non-null for this callback_id. Use its real id +
-        // role so the audit log accurately attributes the resolve.
-        const actorId = internalUser!.id;
-        const actorRole = internalUser!.role;
-
-        await logAudit({
-          actorId,
-          actorEmail: null,
-          actorRole,
-          entityType: "ticket",
-          entityId: ticket.id,
-          action: "status_changed",
-          fieldName: "status",
-          newValue: "resolved",
-          metadata: { source: "slack", trigger: "resolve_form_submit" },
-        });
-        if (customerSummary) {
-          await logAudit({
-            actorId,
-            actorEmail: null,
-            actorRole,
-            entityType: "ticket",
-            entityId: ticket.id,
-            action: "resolved",
-            fieldName: "customer_visible_summary",
-            newValue: customerSummary,
-            metadata: { source: "slack" },
-          });
-        }
-
         await updateMasterMessage(ticket as unknown as Ticket, {
           channelId: metadata.channel_id,
           messageTs: metadata.message_ts,
@@ -483,20 +437,29 @@ export async function handleViewSubmission(
       const updateText = state.update_text_block?.update_text?.value || "";
       const ticketNo = metadata.ticket_no;
 
-      // Add comment
-      const { data: ticket } = await supabase
+      const { data: ticket, error: lookupError } = await supabase
         .from("tickets")
         .select("id")
         .eq("ticket_no", ticketNo)
         .single();
 
+      if (lookupError || !ticket) {
+        throw new Error(
+          `Slack customer-update lookup failed: ${
+            lookupError?.message ?? "ticket not found"
+          }`
+        );
+      }
+
       if (ticket) {
-        await supabase.from("ticket_comments").insert({
-          ticket_id: ticket.id,
-          author_id: metadata.user_id || null,
+        await recordTicketCommentWithSla({
+          supabase,
+          ticketId: ticket.id,
+          actorId: internalUser!.id,
           body: updateText,
           visibility: "customer",
           source: "slack",
+          isAutomated: false,
         });
 
         // Post in thread. Best-effort: a Slack API failure must
@@ -529,12 +492,6 @@ export async function handleViewSubmission(
         .from("tickets")
         .select("id")
         .eq("ticket_no", ticketNo)
-        .single();
-
-      const { data: internalUser } = await supabase
-        .from("users")
-        .select("id")
-        .eq("slack_user_id", payload.user.id)
         .single();
 
       if (ticket && internalUser) {

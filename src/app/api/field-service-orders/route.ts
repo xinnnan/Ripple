@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { createClient } from "@/lib/supabase/server";
-import type { UserRole } from "@/types/ticket";
-import { isInternalUser } from "@/lib/roles";
+import { requireInternal } from "@/lib/supabase/auth-helpers";
+import { getUserScope, scopeSiteRows } from "@/lib/supabase/scope";
 import { logAudit } from "@/lib/audit";
+import { fieldServiceOrderForExternal } from "@/lib/resource-visibility";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -36,22 +36,10 @@ const createFSOSchema = z.object({
 // GET /api/field-service-orders — List field service orders
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await createClient();
-    const { data: { user: authUser } } = await supabase.auth.getUser();
-
-    if (!authUser) {
+    const scope = await getUserScope();
+    if (!scope) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-
-    const { data: userProfile } = await supabase
-      .from("users")
-      .select("role, email")
-      .eq("id", authUser.id)
-      .single();
-
-    const role = userProfile?.role as UserRole | undefined;
-    const email = userProfile?.email as string | undefined;
-    const isInternal = isInternalUser({ role, email });
 
     const admin = createAdminClient();
     const { searchParams } = new URL(request.url);
@@ -68,19 +56,7 @@ export async function GET(request: NextRequest) {
       `)
       .order("created_at", { ascending: false });
 
-    // Customer users can only see their site's orders
-    if (!isInternal) {
-      const { data: memberships } = await supabase
-        .from("site_members")
-        .select("site_id")
-        .eq("user_id", authUser.id);
-
-      const siteIds = (memberships || []).map((m) => m.site_id);
-      if (siteIds.length === 0) {
-        return NextResponse.json({ data: [] });
-      }
-      query = query.in("site_id", siteIds);
-    }
+    query = scopeSiteRows(query, scope);
 
     // Filters
     const status = searchParams.get("status");
@@ -102,7 +78,14 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Failed to fetch field service orders" }, { status: 500 });
     }
 
-    return NextResponse.json({ data });
+    const responseData = scope.isInternal
+      ? data
+      : (data || []).map((row) =>
+          fieldServiceOrderForExternal(
+            row as unknown as Record<string, unknown>
+          )
+        );
+    return NextResponse.json({ data: responseData });
   } catch (e) {
     console.error("GET /api/field-service-orders error:", e);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
@@ -112,25 +95,9 @@ export async function GET(request: NextRequest) {
 // POST /api/field-service-orders — Create a field service order
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await createClient();
-    const { data: { user: authUser } } = await supabase.auth.getUser();
-
-    if (!authUser) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const { data: userProfile } = await supabase
-      .from("users")
-      .select("role, email")
-      .eq("id", authUser.id)
-      .single();
-
-    const role = userProfile?.role as UserRole | undefined;
-    const email = userProfile?.email as string | undefined;
-    const isInternal = isInternalUser({ role, email });
-
-    if (!isInternal) {
-      return NextResponse.json({ error: "Forbidden: Internal access required" }, { status: 403 });
+    const auth = await requireInternal();
+    if ("error" in auth) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
 
     let body: unknown;
@@ -168,7 +135,7 @@ export async function POST(request: NextRequest) {
         estimated_hours: data.estimated_hours ?? null,
         travel_required: data.travel_required !== undefined ? data.travel_required : true,
         travel_from: data.travel_from ?? null,
-        requested_by: authUser.id,
+        requested_by: auth.userId,
       })
       .select(`
         *,
@@ -201,9 +168,9 @@ export async function POST(request: NextRequest) {
     }
 
     await logAudit({
-      actorId: authUser.id,
-      actorEmail: email,
-      actorRole: role,
+      actorId: auth.userId,
+      actorEmail: auth.email,
+      actorRole: auth.role,
       entityType: "field_service_order",
       entityId: order.id,
       action: "created",

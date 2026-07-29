@@ -1,5 +1,11 @@
 import { describe, it, expect, vi } from "vitest";
-import { scopeTickets, scopeSites, scopeCustomers } from "./scope";
+import {
+  canAccessSite,
+  scopeCustomers,
+  scopeSiteRows,
+  scopeSites,
+  scopeTickets,
+} from "./scope";
 import type { UserScope } from "./scope";
 
 // Loose mock — we just need the .eq / .in / .gte / .lte to be callable
@@ -90,6 +96,25 @@ describe("scopeTickets", () => {
     scopeTickets(q, scope);
     expect(q.eq).toHaveBeenCalledWith("site_id", EMPTY_GUID);
     expect(q.in).not.toHaveBeenCalled();
+  });
+});
+
+describe("scopeSiteRows", () => {
+  it("applies the same site boundary to non-ticket resources", () => {
+    const q = mockQuery();
+    scopeSiteRows(q, managerScope);
+    expect(q.in).toHaveBeenCalledWith("site_id", ["site-a", "site-b"]);
+  });
+});
+
+describe("canAccessSite", () => {
+  it("allows internal users regardless of site", () => {
+    expect(canAccessSite(internalScope, "site-z")).toBe(true);
+  });
+
+  it("allows only an explicitly visible site for external users", () => {
+    expect(canAccessSite(customerScope, "site-a")).toBe(true);
+    expect(canAccessSite(customerScope, "site-b")).toBe(false);
   });
 });
 
