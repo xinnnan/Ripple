@@ -17,15 +17,15 @@ A Slack-native support portal for DropletAI Services. Centralises customer suppo
 
 | Layer | Tool |
 |-------|------|
-| Frontend | Next.js 15 (App Router) + React 19 + TypeScript + Tailwind CSS v4 |
-| Database | Supabase Postgres (24 migrations, see `supabase/migrations/`) |
+| Frontend | Next.js 15.5.22 (App Router) + React 19 + TypeScript + Tailwind CSS v4 |
+| Database | Supabase Postgres (25 migrations, see `supabase/migrations/`) |
 | Auth | Supabase Auth (email + password) + new `sb_publishable_` / `sb_secret_` key format |
 | Storage | Supabase Storage — bucket `ripple-attachments`, **50 MB cap per file** |
 | Slack | `@slack/bolt` + `@slack/web-api` (runs inside Next.js API routes, no separate process) |
 | AI | **MiniMax AI** (OpenAI-compatible) — was OpenAI → Zhipu → MiniMax. **See "AI provider" section below.** |
 | Email | Resend (transactional: ticket confirmation, resolution notice) |
 | Validation | Zod (all API request bodies) |
-| Testing | Vitest (90 unit tests, see `npm test`) |
+| Testing | Vitest (104 unit tests) + production HTTP E2E smoke |
 | Hosting | Vercel (serverless API routes) |
 
 ## Phases
@@ -60,7 +60,7 @@ cp .env.local.example .env.local
 
 ### Run database migrations
 
-Apply the SQL files in `supabase/migrations/` **in order** (001 → 024) via the Supabase SQL editor or `supabase db push`:
+Apply the SQL files in `supabase/migrations/` **in order** (001 → 025) via the Supabase SQL editor or `supabase db push`:
 
 ```
 001_create_customers.sql
@@ -87,6 +87,7 @@ Apply the SQL files in `supabase/migrations/` **in order** (001 → 024) via the
 022_site_members_self_select.sql
 023_fix_site_members_recursion.sql
 024_create_sla_policies.sql
+025_archive_lifecycle_and_active_account_guards.sql
 ```
 
 Migrations are additive + idempotent (`IF NOT EXISTS`), safe to re-apply, **except** `017` which does `UPDATE`.
@@ -109,7 +110,9 @@ npm run dev
 ```bash
 npm run lint       # ESLint (next lint, 0 warnings/errors required)
 npm run build      # Next.js production build (0 errors)
-npm test           # Vitest unit tests (90 tests across 9 files)
+npm test           # Vitest unit tests (104 tests across 11 files)
+npm run test:e2e   # Black-box production HTTP smoke (run after build)
+npm audit          # 0 known dependency vulnerabilities required
 ```
 
 ## Slack App Setup
@@ -178,7 +181,7 @@ src/
 │   ├── ticket.ts                # ⭐ all ticket domain enums + labels
 │   └── spare-parts.ts
 └── middleware.ts                # ⭐ route guard + session refresh
-supabase/migrations/             # 001-024
+supabase/migrations/             # 001-025
 plans/                           # Architecture + phase planning docs
 AGENTS.md                        # ⭐ project context, lessons learned, roadmap
 ```
@@ -189,7 +192,7 @@ AGENTS.md                        # ⭐ project context, lessons learned, roadmap
 - Ticket detail → `app/(auth)/tickets/[ticketId]/page.tsx` + `ticket-actions-panel.tsx`
 - Slack actions → `lib/slack/handlers/actions.ts` + `app/api/slack/interactive/route.ts`
 - AI assist → `app/api/ai/suggest/route.ts` + `lib/ai/suggest.ts`
-- DB schema → `supabase/migrations/001_*.sql` … `024_create_sla_policies.sql`
+- DB schema → `supabase/migrations/001_*.sql` … `025_archive_lifecycle_and_active_account_guards.sql`
 
 ## Ticket Lifecycle
 
@@ -220,6 +223,8 @@ AGENTS.md                        # ⭐ project context, lessons learned, roadmap
 ## Documentation
 
 - **[`AGENTS.md`](./AGENTS.md)** — Single source of truth for project context, lessons learned, and current roadmap. **Read this first.**
+- [`plans/prd-v1.1-gap-closure-plan.md`](./plans/prd-v1.1-gap-closure-plan.md) — Active PRD v1.1 delivery plan
+- [`plans/progress-log.md`](./plans/progress-log.md) — Durable session/commit checkpoint
 - [`plans/architecture.md`](./plans/architecture.md) — Overall architecture
 - [`plans/phase4-complete-ticket-system.md`](./plans/phase4-complete-ticket-system.md) — Phase 4 scope and delivery
 - [`plans/e2e-audit-and-test-plan.md`](./plans/e2e-audit-and-test-plan.md) — E2E audit template

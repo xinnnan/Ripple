@@ -33,7 +33,7 @@ Ripple is a useful support-ticket prototype with meaningful Phase 1–4 work:
 - spare-parts and field-service skeletons
 - simple wall-clock SLA targets
 - email and AI integrations with graceful failure
-- 83 committed unit tests
+- 104 committed unit tests and a production HTTP end-to-end smoke
 
 It is not yet the operations platform described by PRD v1.1. The old
 `scope-vs-prd.md` assessment targets PRD v0.9 and should not be used as the
@@ -65,12 +65,12 @@ The correct approach is therefore:
 
 | Gate | Result on 2026-07-28 | Meaning |
 |---|---|---|
-| Unit tests | 83/83 passed | Existing pure-function coverage is green |
+| Unit tests | 104/104 passed | Scope, lifecycle, visibility, Slack, filters, SLA, and audit coverage is green |
 | Lint | Passed, no warnings | `next lint` is deprecated and must be migrated |
-| Production build | Failed while prerendering `/login` | Supabase client is constructed during render and requires absent build-time env |
-| Runtime dependency audit | 6 high, 1 low | Next.js, Axios, PostCSS, Sharp, `ws`, and transitive dependencies require a controlled upgrade |
+| Production build | Passed on Next.js 15.5.22 | Environment-free build is reproducible |
+| Dependency audit | 0 vulnerabilities | Patched direct/transitive versions are lockfile-pinned and compatibility-tested |
 | Worktree | Clean at baseline | Work started on `codex/prd-v1-1-gap-closure` |
-| Committed end-to-end tests | None found | AGENTS records prior `/tmp` E2E suites, but those tests are not reproducible from this repository |
+| Committed end-to-end tests | Production HTTP smoke present | Public pages, protected redirect, retired deletes, and archive auth denial run against `next start`; credentialed role/tenant matrix remains pending |
 
 ## 4. PRD capability gap map
 
@@ -101,9 +101,9 @@ has a release-blocking security or integrity problem.
 | Internationalization | Absent | English strings are embedded in code; no locale resolution, translation catalog, formatting rules, or four-language QA |
 | Administration | Partial | CRUD exists; no configuration hierarchy, form/custom-field builder, workflow publishing, feature flags, retention, or integration console |
 | External API / Webhooks | Absent | Unversioned internal REST only; no client credentials, scopes, idempotency, concurrency, stable errors, signed webhooks, or docs |
-| Security / Privacy | Unsafe/Partial | Authorization gaps, hard deletes, weak attachment controls, fail-open Slack configuration, dependency advisories, and incomplete audit guarantees |
+| Security / Privacy | Unsafe/Partial | Weak attachment controls, fail-open Slack configuration, incomplete audit guarantees outside the archive commands, and other authorization gaps remain |
 | SRE / Operations | Absent | No structured observability, SLOs, alerting, runbooks, tested recovery, capacity/performance evidence, or release automation |
-| Testing / Quality Gates | Partial | Unit suite only in repo; no committed tenant matrix, workflow/SLA truth tables, browser E2E, security, recovery, i18n, or performance suites |
+| Testing / Quality Gates | Partial | Unit + production HTTP smoke are in repo; no committed credentialed tenant matrix, workflow/SLA truth tables, browser feature E2E, recovery, i18n, or performance suites |
 
 ## 5. Confirmed bug and risk register
 
@@ -116,9 +116,9 @@ has a release-blocking security or integrity problem.
 | SEC-003 | Slack actions accept any linked Ripple user, including customer roles, as an engineer | Require an active `admin` or `engineer` account for every internal Slack action and modal |
 | SEC-004 | Authenticated ticket detail renders `internal_summary`, AI controls, submitter contact, and linked-request cost/navigation to customer roles | Make the page response and rendering visibility-aware |
 | SEC-005 | Browser code imports the service-role client in `scope.client.ts` | Remove the server-only import and use RLS-scoped browser queries |
-| SEC-006 | Admin bulk delete physically cascades customer/site/ticket history | Disable production hard-delete paths and replace them with archive/retire workflows |
+| SEC-006 | Admin bulk delete physically cascades customer/site/ticket history | **Closed in `211843e`:** hard-delete tombstones, transactional archive/deactivate commands, active-account/lifecycle RLS |
 | SEC-007 | Slack signature verification succeeds when the signing secret is missing | Fail closed in production; expose a health/configuration error |
-| SEC-008 | Runtime dependency audit reports six high-severity production advisories | Upgrade in a dedicated compatibility-tested dependency slice |
+| SEC-008 | Runtime dependency audit reports six high-severity production advisories | **Closed in `211843e`:** Next 15.5.22 + patched overrides/transitives; full `npm audit` reports 0 |
 
 ### High-priority integrity defects
 
@@ -321,6 +321,9 @@ Every implementation slice must:
 7. update [`plans/progress-log.md`](./progress-log.md) with commands, results,
    commit, decision, and exact next step;
 8. update this plan when priority, scope, or acceptance criteria change.
+9. run the repository end-to-end suite before every commit; implementation
+   commits additionally require a clean install, unit tests, lint, production
+   build, dependency audit, and diff hygiene.
 
 ## 8. Immediate execution queue
 
@@ -330,9 +333,12 @@ Every implementation slice must:
 3. **P0-C — completed 2026-07-28:** Restrict Slack internal actions to active internal users.
 4. **P0-D — completed 2026-07-28:** Remove internal ticket fields and controls from customer rendering.
 5. **P0-E — completed 2026-07-28:** Fix clean-build `/login` failure.
-6. **P0-F — unit layer completed; integration layer pending:** Add regression
-   tests for resource scoping and client/server import boundaries.
-7. **P0-G:** Disable production hard deletes.
+6. **P0-F — unit + HTTP integration layers completed; credentialed matrix
+   pending:** Add regression tests for resource scoping and client/server
+   import boundaries.
+7. **P0-G — completed in `211843e`:** Disable production hard deletes and
+   replace them with archive/deactivate lifecycle commands.
 8. **P0-H:** Correct SLA milestone definitions and persistence.
 9. **P0-I:** Commit a role/tenant browser and API matrix.
-10. **P0-J:** Upgrade vulnerable runtime dependencies under full gates.
+10. **P0-J — completed early in `211843e`:** Upgrade vulnerable runtime
+    dependencies under full gates.

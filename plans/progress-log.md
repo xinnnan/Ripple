@@ -7,12 +7,95 @@ meaningful change and before ending a work session. Newest entries go first.
 
 - **Branch:** `codex/prd-v1-1-gap-closure`
 - **Active phase:** Phase 0 — Containment and reproducible baseline
-- **Active work item:** P0-G production hard-delete containment
-- **Last verified commit:** `9083ece` (`fix: contain cross-tenant service data leaks`)
+- **Active work item:** P0-H SLA milestone correctness
+- **Last verified implementation commit:** `211843e` (`fix: replace hard deletes with archival lifecycle`)
 - **Uncommitted work:** none expected; verify with `git status` before resuming
-- **Exact next step:** disable production customer/site/user hard-delete routes,
-  replace the UI actions with archive/retire semantics, and add negative tests
+- **Exact next step:** turn first-response and resolution-breach definitions
+  into truth-table tests, then correct calculation and persistence paths
 - **Primary plan:** [`plans/prd-v1.1-gap-closure-plan.md`](./prd-v1.1-gap-closure-plan.md)
+
+## Session record — 2026-07-28 (P0-G / P0-J)
+
+### Objective
+
+Continue from the hard-delete checkpoint, require end-to-end testing before
+every commit, and apply current industry practices for authorization,
+auditability, lifecycle retention, and dependency security.
+
+### Changes
+
+- **SEC-006 / P0-G:** Replaced customer, site, and user hard-delete handlers
+  with explicit HTTP 410 tombstones and machine-readable replacement routes.
+- Added admin-only bulk archive/deactivate APIs with Zod validation, generic
+  failure responses, self-deactivation prevention, and transactional RPCs.
+- Added migration 025:
+  - customer archive makes the customer inactive, decommissions its sites, and
+    deactivates its customer users without deleting history;
+  - site archive decommissions the site without deleting tickets,
+    memberships, parts, or field-service records;
+  - user deactivation retains auth identity and historical attribution;
+  - every lifecycle mutation writes attributable audit entries in the same
+    PostgreSQL transaction;
+  - restrictive active-account and retired-site RLS closes existing-session
+    and direct PostgREST access;
+  - direct anonymous/authenticated ticket inserts were removed;
+  - authenticated profile updates are column-limited to name, phone, avatar.
+- Updated middleware, auth helpers, scopes, browser helpers, and internal
+  FSO/SPR writes so inactive accounts fail closed consistently.
+- Replaced destructive UI language/actions with archive/deactivate semantics.
+- Added the repository-owned production HTTP E2E harness and negative route
+  tests. Test baseline is now 104 unit tests across 11 files.
+- **SEC-008 / P0-J:** Upgraded to Next.js 15.5.22 and patched Axios,
+  `ws`, form-data, body-parser, PostCSS, Sharp, YAML, and brace-expansion
+  dependency lines. Full production + development audit is clean.
+
+### Industry guidance applied
+
+- OWASP authorization guidance: deny by default and validate permissions on
+  every request.
+- OWASP logging guidance: preserve attributable audit trails for
+  administrative data changes.
+- OWASP logging vocabulary: archive users rather than delete except where
+  deletion is required.
+- Supabase RLS/session guidance: JWT access tokens can remain valid after
+  session revocation, so database policy must enforce current account state.
+
+### Verification before implementation commit
+
+| Command | Result |
+|---|---|
+| `npm ci` | Passed; reproducible lockfile install |
+| `npm test` | Passed; 11 files, 104 tests |
+| `npm run lint` | Passed; no warnings/errors |
+| `npm run build` | Passed on Next.js 15.5.22 |
+| `npm run test:e2e` | Passed; 3 public pages, 3 hard-delete tombstones, 3 unauthenticated archive denials, 1 protected-page redirect |
+| `npm audit` | Passed; 0 vulnerabilities (production and development) |
+| `git diff --check` | Passed |
+
+Credentialed positive archive/RLS probes remain pending because this workspace
+has no Supabase test credentials or local Postgres/Supabase runtime. Migration
+025 must be applied before deploying the archive UI.
+
+### Decisions and rollback
+
+- Historical service records are retained; production hard-delete is no longer
+  an admin workflow.
+- Status enforcement is layered across UI, app auth, scope, RLS, and Storage.
+- Archive commands are service-role RPCs that re-check an active admin in SQL;
+  public/authenticated execution is revoked.
+- Rollback should restore application code only after a data-retention review.
+  Archived rows remain intact and can be reactivated explicitly. Do not restore
+  the former cascade-delete handlers in production.
+
+### Commit
+
+- Hash: `211843e`
+- Message: `fix: replace hard deletes with archival lifecycle`
+
+### Exact next step
+
+- P0-H: encode SLA first-response and resolution-completion definitions as
+  truth tables, then fix calculation and persisted breach behavior.
 
 ## Session record — 2026-07-28
 
