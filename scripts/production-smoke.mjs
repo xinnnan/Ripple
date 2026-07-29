@@ -22,6 +22,10 @@ const server = spawn(
         process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || "e2e-placeholder",
       SUPABASE_SECRET_KEY:
         process.env.SUPABASE_SECRET_KEY || "e2e-placeholder",
+      // Keep configuration-readiness and Slack fail-closed probes
+      // deterministic even if the developer shell has real credentials.
+      SLACK_BOT_TOKEN: "",
+      SLACK_SIGNING_SECRET: "",
       NEXT_PUBLIC_APP_URL: baseUrl,
     },
     stdio: ["ignore", "pipe", "pipe"],
@@ -132,6 +136,45 @@ async function expectLoginRedirect(path) {
   process.stdout.write(`PASS protected-page redirect ${path}\n`);
 }
 
+async function expectHealth(path, expectedStatus, expectedBodyStatus) {
+  const response = await fetch(`${baseUrl}${path}`, {
+    signal: AbortSignal.timeout(5000),
+  });
+  const body = await response.json();
+  if (
+    response.status !== expectedStatus ||
+    body.status !== expectedBodyStatus ||
+    response.headers.get("cache-control") !== "no-store"
+  ) {
+    throw new Error(
+      `${path} expected ${expectedStatus}/${expectedBodyStatus}/no-store, ` +
+        `received ${response.status}/${body.status}/` +
+        `${response.headers.get("cache-control")}`
+    );
+  }
+  process.stdout.write(`PASS health ${path}\n`);
+}
+
+async function expectSlackConfigurationDenial(path, body, contentType) {
+  const response = await fetch(`${baseUrl}${path}`, {
+    method: "POST",
+    headers: { "content-type": contentType },
+    body,
+    signal: AbortSignal.timeout(5000),
+  });
+  const responseBody = await response.json();
+  if (
+    response.status !== 503 ||
+    responseBody.code !== "SLACK_CONFIGURATION_ERROR"
+  ) {
+    throw new Error(
+      `${path} expected fail-closed 503, received ` +
+        `${response.status} ${JSON.stringify(responseBody)}`
+    );
+  }
+  process.stdout.write(`PASS Slack configuration denial ${path}\n`);
+}
+
 let failed = false;
 try {
   await waitForServer();
@@ -164,6 +207,23 @@ try {
     { body: "unauthorized response", visibility: "customer" }
   );
   await expectLoginRedirect("/admin/users");
+  await expectHealth("/api/health/live", 200, "live");
+  await expectHealth("/api/health/ready", 503, "not_ready");
+  await expectSlackConfigurationDenial(
+    "/api/slack/command/ticket",
+    "command=%2Fticket",
+    "application/x-www-form-urlencoded"
+  );
+  await expectSlackConfigurationDenial(
+    "/api/slack/interactive",
+    "payload=%7B%22type%22%3A%22block_actions%22%7D",
+    "application/x-www-form-urlencoded"
+  );
+  await expectSlackConfigurationDenial(
+    "/api/slack/events",
+    JSON.stringify({ type: "url_verification", challenge: "not-returned" }),
+    "application/json"
+  );
   process.stdout.write("Production HTTP end-to-end smoke passed.\n");
 } catch (error) {
   failed = true;
