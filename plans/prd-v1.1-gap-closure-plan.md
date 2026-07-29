@@ -71,7 +71,7 @@ The correct approach is therefore:
 | Production build | Passed on Next.js 15.5.22 | Environment-free build is reproducible |
 | Dependency audit | 0 vulnerabilities | Patched direct/transitive versions are lockfile-pinned and compatibility-tested |
 | Worktree | Clean at baseline | Work started on `codex/prd-v1-1-gap-closure` |
-| Committed end-to-end tests | 18 production HTTP checks + credentialed Playwright/API/RLS matrix | Public/negative/configuration smoke always runs; migrations 001–027 are applied, migration 028 awaits deployment, and the six-account two-tenant matrix awaits the secret staging fixture |
+| Committed end-to-end tests | 18 production HTTP checks + credentialed Playwright/API/RLS matrix | Public/negative/configuration smoke always runs; migrations 001–028 are applied, while the fulfillment runtime probes and six-account two-tenant matrix await staging credentials/fixtures |
 | Hosted CI | Workflow committed in `4ceacd0`; first hosted run pending | Read-only, SHA-pinned quality job is reproducible; repository branch protection and the protected staging environment still require activation |
 
 ## 4. PRD capability gap map
@@ -131,8 +131,8 @@ has a release-blocking security or integrity problem.
 | INT-001 | Ticket statuses can jump to any state; domain guards exist only in UI convention | Introduce a single ticket transition service and truth-table tests |
 | INT-002 | Internal-only comments count as first response while customer-visible engineer comments do not; status changes can also count | **Closed in `b71b3d7`:** human + internal author + customer visibility + non-automated truth table and atomic persistence |
 | INT-003 | A ticket resolved after its due time can be recorded as SLA met | **Closed in `b71b3d7`:** actual `resolved_at` is compared with the due timestamp and milestone breach is persisted |
-| INT-004 | Part-request header and items, and field order plus engineer assignments, are non-atomic | **Update half code-closed in `1f49ecc`, migration 028 pending:** request header, fulfillment items, and audits update atomically; creation and field-order assignments still require transactional commands |
-| INT-005 | Part fulfillment updates do not verify the item belongs to the request in the URL | **Code closed in `1f49ecc`, migration 028 pending:** the row-locked command constrains every item by both `request_id` and item ID and rejects invalid quantity bounds |
+| INT-004 | Part-request header and items, and field order plus engineer assignments, are non-atomic | **Update half deployed in `1f49ecc` + migration 028:** request header, fulfillment items, and audits update atomically; creation and field-order assignments still require transactional commands |
+| INT-005 | Part fulfillment updates do not verify the item belongs to the request in the URL | **Closed in `1f49ecc`; migration 028 confirmed applied 2026-07-29:** the row-locked command constrains every item by both `request_id` and item ID and rejects invalid quantity bounds; protected runtime probes remain |
 | INT-006 | Team site assignments are delete-all then insert, so a failed insert removes all access | Replace with a transaction and set-diff mutation |
 | INT-007 | Audit writes are best-effort and separate from the business transaction | Partially closed for ticket patch/comment commands in `b71b3d7`; migrate remaining domains and add the platform outbox |
 | INT-008 | Site detail assigns the inventory query to an unused tuple slot and always renders empty inventory | Correct the parallel query result wiring and cover it |
@@ -359,7 +359,9 @@ Every implementation slice must:
     manual protected-staging credentialed job. First hosted run, branch
     protection, environment reviewers, and secret configuration remain
     operator actions.
-13. **P0-M — code complete in `1f49ecc`, deployment pending:** Migration 028
+13. **P0-M — deployed:** Migration 028
     makes request-header, fulfillment-item, and audit writes atomic; enforces
-    request/item containment and quantity bounds. Apply the migration and run
-    the three positive/negative runtime probes before application deployment.
+    request/item containment and quantity bounds. Migration application was
+    confirmed 2026-07-29; the three protected runtime probes remain pending.
+14. **Next local integrity work:** Complete INT-004 by making spare-part
+    request creation and field-service engineer-assignment mutations atomic.

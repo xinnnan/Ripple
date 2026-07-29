@@ -7,13 +7,12 @@ meaningful change and before ending a work session. Newest entries go first.
 
 - **Branch:** `codex/prd-v1-1-gap-closure`
 - **Active phase:** Phase 0 — Containment and reproducible baseline
-- **Active work item:** P0-M / INT-005 deployment verification plus the P0-I
+- **Active work item:** INT-004 remaining transaction gaps plus the P0-I
   external staging execution gate
 - **Last verified implementation commit:** `1f49ecc` (`fix: make part fulfillment updates atomic`)
 - **Uncommitted work:** none expected; verify with `git status` before resuming
-- **Deployment gate:** apply
-  `028_atomic_spare_part_request_updates.sql` after the user-confirmed
-  migrations 001–027 and before deploying `1f49ecc`
+- **Deployment gate:** migrations 001–028 are user-confirmed applied; no
+  migration currently awaits deployment
 - **External validation gate:** populate the gitignored credential fixture with six
   dedicated staging accounts, two tenants, a decommissioned site/ticket, and
   real internal artifact IDs; then run
@@ -22,9 +21,23 @@ meaningful change and before ending a work session. Newest entries go first.
   protection; create a reviewer-protected `staging` environment with the
   `RIPPLE_E2E_FIXTURES_JSON` secret before manually enabling the credentialed
   matrix
-- **Exact next step:** apply migration 028, then test an internal request
-  fulfillment update plus a foreign-item and over-fulfillment rejection
+- **Runtime verification debt:** when staging credentials become available,
+  test an internal request fulfillment update plus foreign-item and
+  over-fulfillment rejection
+- **Exact next local step:** close INT-004's remaining non-atomic spare-part
+  request creation and field-service engineer-assignment paths
 - **Primary plan:** [`plans/prd-v1.1-gap-closure-plan.md`](./prd-v1.1-gap-closure-plan.md)
+
+## Deployment confirmation — 2026-07-29 (migration 028)
+
+- The user confirmed
+  `028_atomic_spare_part_request_updates.sql` was applied on 2026-07-29.
+- Migrations 001–028 are therefore confirmed applied in order, and application
+  commit `1f49ecc` no longer has a migration-order deployment blocker.
+- Runtime RPC probes are not claimed: this workspace has no `.env.local`, no
+  Supabase URL/publishable/secret keys, and no credentialed staging fixture.
+- The exact positive/negative fulfillment probes remain part of the protected
+  staging validation debt alongside the six-account role/tenant matrix.
 
 ## Session record — 2026-07-29 (P0-M / INT-005)
 
@@ -111,7 +124,8 @@ so migration execution and positive RPC behavior are not claimed as tested.
 
 ### Exact next step
 
-- Apply migration 028, then verify:
+- Migration 028 was subsequently confirmed applied. When staging credentials
+  are available, verify:
   1. an owned item can update within its ordered quantity;
   2. an item from another request is rejected with no header/item change;
   3. an over-fulfilled quantity is rejected with no partial audit row.

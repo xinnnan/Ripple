@@ -143,9 +143,8 @@ const isInternal = role ? INTERNAL_ROLES.includes(role) : email ? isInternalEmai
 
 ## 5. Database Schema (Supabase)
 
-28 migrations, to be applied in order. Migrations 001–027 are confirmed
-applied as of 2026-07-29; migration 028 is committed and pending application.
-Key tables:
+28 migrations, to be applied in order. Migrations 001–028 are confirmed
+applied as of 2026-07-29. Key tables:
 
 | Table | Purpose | Notes |
 |---|---|---|
@@ -576,24 +575,25 @@ resume work; this section remains the broader historical summary.
 | 🟢 Low | Slack `events` route doesn't route customer messages to a ticket comment yet | `src/app/api/slack/events/route.ts` | Sprint 3 — bidirectional thread sync (SLK-008) |
 | 🟡 Med | Credentialed role/tenant matrix has not had its first staging execution | `scripts/credentialed-role-matrix.mjs` | Harness, fixture validation, and Chromium launch are committed/green; provision six dedicated accounts and non-vacuous two-tenant/archive/internal-artifact IDs, then run with required credentials |
 | 🟡 Activate | Hosted quality workflow and protected staging job are not activated yet | `.github/workflows/ci.yml` | After pushing, require `Quality gates`; create a reviewer-protected `staging` environment and add only `RIPPLE_E2E_FIXTURES_JSON` there |
-| 🔴 Deploy | Migration 028 must be applied before `1f49ecc` is deployed | `supabase/migrations/028_atomic_spare_part_request_updates.sql` | Adds the atomic RPC and an immediately enforced but historically unvalidated fulfillment-bounds check |
 
 ### Next priorities (Sprint 3, in proposed order)
-1. **Apply migration 028 and run its positive/negative fulfillment probes.**
-2. **Run the required credentialed staging matrix.** Migration 027 is applied;
+1. **Run migration 028's positive/negative fulfillment probes.** Migration 028
+   is applied; staging credentials are not present in this workspace.
+2. **Run the required credentialed staging matrix.** Migrations 027–028 are applied;
    the secret six-account/two-tenant fixture is the remaining external gate.
 3. **Apply migration 019** ✅ done (2026-07-14).
 4. **Migrate `next lint` and add protected CI quality gates.** ✅ code done
    (`4ceacd0`); hosted activation remains.
-5. **Close INT-005 part-item parent containment.** ✅ code done
-   (`1f49ecc`); migration 028 deployment/runtime verification remains.
-6. **Fix MiniMax AI key** (or swap provider in `.env`). Verify `/api/ai/suggest` returns a real model response, not a mock.
-7. **Verify Resend sender domain** so confirmation / resolution emails actually send.
-8. **Ticket number sequence migration** (020) ✅ done (2026-07-14) — `next_ticket_no()` RPC + 021 volatility fix.
-9. **Collapse Slack handlers to `updateMasterMessage()`** — 4 inline `chat.update` calls become 4 one-liners. (Done in 3af10c6 actually — handlers now use `updateMasterMessage` everywhere; further collapse of the 4 audit calls per action is a follow-up.)
-10. **Dashboard timezone** — derive from user or first site.
-11. **Sprint 3 feature work** — Kanban view (INT-5), SLA monitoring (INT-6), notifications center (INT-7).
-12. **Start real Slack Connect work** — see PRD §8.5 / SLK-015.
+5. **Close INT-005 part-item parent containment.** ✅ deployed
+   (`1f49ecc` + migration 028); protected runtime verification remains.
+6. **Complete INT-004 atomic creation and engineer assignments.**
+7. **Fix MiniMax AI key** (or swap provider in `.env`). Verify `/api/ai/suggest` returns a real model response, not a mock.
+8. **Verify Resend sender domain** so confirmation / resolution emails actually send.
+9. **Ticket number sequence migration** (020) ✅ done (2026-07-14) — `next_ticket_no()` RPC + 021 volatility fix.
+10. **Collapse Slack handlers to `updateMasterMessage()`** — 4 inline `chat.update` calls become 4 one-liners. (Done in 3af10c6 actually — handlers now use `updateMasterMessage` everywhere; further collapse of the 4 audit calls per action is a follow-up.)
+11. **Dashboard timezone** — derive from user or first site.
+12. **Sprint 3 feature work** — Kanban view (INT-5), SLA monitoring (INT-6), notifications center (INT-7).
+13. **Start real Slack Connect work** — see PRD §8.5 / SLK-015.
 
 ### Open architectural questions
 - The RLS recursion bug surfaces a bigger question: do we keep `createAdminClient() + code filter` (the current pattern in `lib/supabase/scope.ts`) or move back to proper RLS once migration 019 + similar fixes are in place? The current pattern scales fine but has a lower safety margin for new queries.

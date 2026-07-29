@@ -95,8 +95,7 @@ Apply the SQL files in `supabase/migrations/` **in order** (001 → 028) via the
 
 Later migrations replace policies/functions and should be applied once in
 order. Migration `017` also performs role data updates and must not be re-run
-blindly. Migrations 001–027 are confirmed applied; migration 028 must be
-applied before deploying application commit `1f49ecc`.
+blindly. Migrations 001–028 are confirmed applied as of 2026-07-29.
 
 ### Enable pgvector (for AI features)
 
