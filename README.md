@@ -18,14 +18,14 @@ A Slack-native support portal for DropletAI Services. Centralises customer suppo
 | Layer | Tool |
 |-------|------|
 | Frontend | Next.js 15.5.22 (App Router) + React 19 + TypeScript + Tailwind CSS v4 |
-| Database | Supabase Postgres (25 migrations, see `supabase/migrations/`) |
+| Database | Supabase Postgres (27 migrations, see `supabase/migrations/`) |
 | Auth | Supabase Auth (email + password) + new `sb_publishable_` / `sb_secret_` key format |
 | Storage | Supabase Storage — bucket `ripple-attachments`, **50 MB cap per file** |
 | Slack | `@slack/bolt` + `@slack/web-api` (runs inside Next.js API routes, no separate process) |
 | AI | **MiniMax AI** (OpenAI-compatible) — was OpenAI → Zhipu → MiniMax. **See "AI provider" section below.** |
 | Email | Resend (transactional: ticket confirmation, resolution notice) |
 | Validation | Zod (all API request bodies) |
-| Testing | Vitest (104 unit tests) + production HTTP E2E smoke |
+| Testing | Vitest (136 unit/contract tests) + production HTTP smoke + credentialed Playwright/API/RLS matrix |
 | Hosting | Vercel (serverless API routes) |
 
 ## Phases
@@ -60,7 +60,7 @@ cp .env.local.example .env.local
 
 ### Run database migrations
 
-Apply the SQL files in `supabase/migrations/` **in order** (001 → 025) via the Supabase SQL editor or `supabase db push`:
+Apply the SQL files in `supabase/migrations/` **in order** (001 → 027) via the Supabase SQL editor or `supabase db push`:
 
 ```
 001_create_customers.sql
@@ -88,9 +88,13 @@ Apply the SQL files in `supabase/migrations/` **in order** (001 → 025) via the
 023_fix_site_members_recursion.sql
 024_create_sla_policies.sql
 025_archive_lifecycle_and_active_account_guards.sql
+026_correct_sla_milestones.sql
+027_restrict_ticket_columns_and_storage.sql
 ```
 
-Migrations are additive + idempotent (`IF NOT EXISTS`), safe to re-apply, **except** `017` which does `UPDATE`.
+Later migrations replace policies/functions and should be applied once in
+order. Migration `017` also performs role data updates and must not be re-run
+blindly.
 
 ### Enable pgvector (for AI features)
 
@@ -110,10 +114,35 @@ npm run dev
 ```bash
 npm run lint       # ESLint (next lint, 0 warnings/errors required)
 npm run build      # Next.js production build (0 errors)
-npm test           # Vitest unit tests (104 tests across 11 files)
-npm run test:e2e   # Black-box production HTTP smoke (run after build)
+npm test           # Vitest unit/contract tests
+npm run test:e2e   # Production HTTP smoke + optional credentialed matrix
 npm audit          # 0 known dependency vulnerabilities required
 ```
+
+### Credentialed role/tenant E2E
+
+The default E2E command always runs the local production HTTP smoke. It then
+runs a real-login browser, API, PostgREST, and Storage authorization matrix
+when `RIPPLE_E2E_FIXTURES_FILE` points to a secret JSON fixture.
+
+```bash
+npm run test:e2e:install-browser
+cp scripts/credentialed-role-matrix.example.json \
+  scripts/credentialed-role-matrix.local.json
+chmod 600 scripts/credentialed-role-matrix.local.json
+# Populate six dedicated test accounts, two tenants, one archived site/ticket,
+# and the non-vacuous internal artifact IDs. Never use personal accounts.
+RIPPLE_E2E_FIXTURES_FILE="$PWD/scripts/credentialed-role-matrix.local.json" \
+RIPPLE_E2E_REQUIRE_CREDENTIALS=1 \
+npm run test:e2e:credentialed
+```
+
+The local fixture filename is gitignored. The JSON requires admin, engineer,
+customer-manager, two cross-tenant customer, and inactive users. Its resource
+IDs must identify active tickets in two different tenants, an archived
+site/ticket, and real internal comment/attachment/event rows. The suite is
+read-only. A missing fixture prints an explicit skip for local development;
+protected CI should set `RIPPLE_E2E_REQUIRE_CREDENTIALS=1` so it fails closed.
 
 ## Slack App Setup
 
@@ -181,7 +210,7 @@ src/
 │   ├── ticket.ts                # ⭐ all ticket domain enums + labels
 │   └── spare-parts.ts
 └── middleware.ts                # ⭐ route guard + session refresh
-supabase/migrations/             # 001-025
+supabase/migrations/             # 001-027
 plans/                           # Architecture + phase planning docs
 AGENTS.md                        # ⭐ project context, lessons learned, roadmap
 ```
@@ -192,7 +221,7 @@ AGENTS.md                        # ⭐ project context, lessons learned, roadmap
 - Ticket detail → `app/(auth)/tickets/[ticketId]/page.tsx` + `ticket-actions-panel.tsx`
 - Slack actions → `lib/slack/handlers/actions.ts` + `app/api/slack/interactive/route.ts`
 - AI assist → `app/api/ai/suggest/route.ts` + `lib/ai/suggest.ts`
-- DB schema → `supabase/migrations/001_*.sql` … `025_archive_lifecycle_and_active_account_guards.sql`
+- DB schema → `supabase/migrations/001_*.sql` … `027_restrict_ticket_columns_and_storage.sql`
 
 ## Ticket Lifecycle
 
