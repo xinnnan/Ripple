@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "eslint . --max-warnings=0",
     "test": "vitest run",
     "test:e2e": "node scripts/production-smoke.mjs && node scripts/credentialed-role-matrix.mjs",
     "test:e2e:credentialed": "node scripts/credentialed-role-matrix.mjs",
