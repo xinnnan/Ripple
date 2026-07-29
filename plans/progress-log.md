@@ -7,12 +7,12 @@ meaningful change and before ending a work session. Newest entries go first.
 
 - **Branch:** `codex/prd-v1-1-gap-closure`
 - **Active phase:** Phase 0 — Containment and reproducible baseline
-- **Active work item:** INT-004 remaining transaction gaps plus the P0-I
+- **Active work item:** INT-004 field-service transaction gaps plus the P0-I
   external staging execution gate
-- **Last verified implementation commit:** `1f49ecc` (`fix: make part fulfillment updates atomic`)
+- **Last verified implementation commit:** `64cee3d` (`fix: create part requests atomically`)
 - **Uncommitted work:** none expected; verify with `git status` before resuming
-- **Deployment gate:** migrations 001–028 are user-confirmed applied; no
-  migration currently awaits deployment
+- **Deployment gate:** migrations 001–028 are user-confirmed applied;
+  `029_atomic_spare_part_request_creation.sql` awaits application
 - **External validation gate:** populate the gitignored credential fixture with six
   dedicated staging accounts, two tenants, a decommissioned site/ticket, and
   real internal artifact IDs; then run
@@ -22,11 +22,114 @@ meaningful change and before ending a work session. Newest entries go first.
   `RIPPLE_E2E_FIXTURES_JSON` secret before manually enabling the credentialed
   matrix
 - **Runtime verification debt:** when staging credentials become available,
-  test an internal request fulfillment update plus foreign-item and
-  over-fulfillment rejection
-- **Exact next local step:** close INT-004's remaining non-atomic spare-part
-  request creation and field-service engineer-assignment paths
+  test request creation plus fulfillment positive/negative cases, including
+  cross-site ticket, inactive part, foreign item, and over-fulfillment
+- **Exact next local step:** after migration 029 is applied, make field-service
+  order creation and engineer-assignment replacement atomic and correct the
+  `YYYY-MM-DD` API contract for database `DATE` fields
 - **Primary plan:** [`plans/prd-v1.1-gap-closure-plan.md`](./prd-v1.1-gap-closure-plan.md)
+
+## Session record — 2026-07-29 (P0-N / INT-004 create path)
+
+### Objective
+
+Prevent a spare-part request header from committing without its items, move
+request-number allocation and total-cost calculation into the same database
+command, and close public access to number-minting RPCs.
+
+### Confirmed defects
+
+- `POST /api/spare-part-requests` inserted the request header first and then
+  inserted items in a separate call.
+- Item insert errors were logged and ignored, leaving a durable request that
+  could never be reconstructed safely from the failed client operation.
+- Request number generation and the audit row were also outside the business
+  transaction.
+- Migration 020 granted its three `SECURITY DEFINER` number functions to
+  `service_role` but did not revoke PostgreSQL's default `PUBLIC` execute
+  privilege. The two legacy part/field-service number RPCs were broad as well.
+
+### Changes
+
+- Added migration `029_atomic_spare_part_request_creation.sql` with
+  `create_spare_part_request_atomic`.
+- The command verifies and locks an active internal actor, active site/customer,
+  optional ticket at the same site, and each active catalog part.
+- It rejects unknown JSON fields, empty/oversized item sets, duplicate parts,
+  invalid quantities, long notes, negative/overflowing prices, and totals that
+  exceed the database column precision.
+- Request item prices are normalized to two decimal places and `total_cost` is
+  derived in the database; the header, all items, and the audit row commit or
+  roll back together.
+- Added a `NOT VALID` nonnegative/precision constraint for request-item prices.
+  It protects new and changed rows without claiming that historical rows were
+  scanned.
+- Revoked `PUBLIC`, `anon`, and `authenticated` execution from all five current
+  number-minting functions, explicitly granted `service_role`, and moved the
+  three `SECURITY DEFINER` sequence functions to an empty search path.
+- Replaced the route's direct writes with a typed RPC wrapper. Validation
+  failures map to generic client errors, database messages remain private, and
+  a failed post-commit hydration returns the durable request ID as success
+  instead of inviting a duplicate retry.
+- Made line items required and unique at the Zod boundary.
+- Added eight wrapper and migration/route contract tests plus a production
+  HTTP denial probe for unauthenticated request creation.
+
+### Industry guidance applied
+
+- One business operation has one transactional commit boundary; audit evidence
+  is part of that boundary rather than best-effort follow-up work.
+- Shared row locks preserve the actor, tenant lifecycle, ticket linkage, and
+  catalog state while the request is being created. Parts lock in stable UUID
+  order.
+- Security-definer functions use a safe search path, fully qualified objects,
+  independently verify attributed actors, and are executable only by the
+  server-side service role.
+- Sequence allocation is concurrency-safe. Rolled-back transactions may leave
+  harmless number gaps, but they cannot mint duplicate request numbers.
+
+### Verification before implementation commit
+
+| Command | Result |
+|---|---|
+| `npm ci` | Passed; 532 packages installed from the lockfile |
+| `npm test` | Passed; 20 files, 174 tests |
+| `npm run lint` | Passed via ESLint CLI; 0 warnings/errors |
+| `npm run build` | Passed on Next.js 15.5.22 |
+| `npm run test:e2e` | Passed 19 production HTTP checks; credentialed matrix explicitly skipped because the secret fixture is unavailable |
+| `npm audit` | Passed; 0 vulnerabilities |
+| `git diff --check` | Passed |
+| Staged secret-pattern scan | Passed |
+
+The implementation was committed only after the full gate and a second
+`npm run test:e2e` in the same command immediately before commit. No PostgreSQL
+server, Supabase CLI, runtime credentials, or credential fixture is available
+in this workspace, so migration execution and positive/negative RPC behavior
+are not claimed as tested.
+
+### Decisions and rollback
+
+- Migration 029 must be applied before deploying the route because the route
+  now calls its RPC.
+- The price constraint remains `NOT VALID` until historical item prices are
+  audited. Do not validate it based only on application tests.
+- If rollback is required, roll back the application route first. Keeping the
+  restricted number functions, constraint, and unused atomic command is safe;
+  do not restore the partial-success write path.
+
+### Commit
+
+- Hash: `64cee3d`
+- Message: `fix: create part requests atomically`
+
+### Exact next step
+
+1. Apply migration `029_atomic_spare_part_request_creation.sql` in order.
+2. With protected staging credentials, verify successful creation plus
+   rejection of a cross-site ticket, inactive part, duplicate part, and
+   overflowing total with no partial header/item/audit rows.
+3. Continue INT-004 with one atomic field-service order/engineer-assignment
+   command and align its `DATE` schemas with the UI's `YYYY-MM-DD` values.
 
 ## Deployment confirmation — 2026-07-29 (migration 028)
 

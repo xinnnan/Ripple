@@ -86,7 +86,7 @@ Vercel.
 │   │   ├── ticket.ts                    # ⭐ All domain enums + labels
 │   │   └── spare-parts.ts               # ⭐ Spare parts + field service enums
 │   └── middleware.ts                    # ⭐ Route guard + session refresh
-├── supabase/migrations/                 # 001–028, apply in order
+├── supabase/migrations/                 # 001–029, apply in order
 ├── plans/                               # Architecture + phase planning docs
 │   ├── architecture.md
 │   ├── phase2-customer-auth-and-user-management.md
@@ -105,7 +105,7 @@ Vercel.
 - Ticket detail UI → `src/app/(auth)/tickets/[ticketId]/page.tsx` (server) + `ticket-actions-panel.tsx` (client)
 - Slack ticket creation → `src/app/api/slack/command/ticket/route.ts` + `src/lib/slack/blocks/ticket-form.ts`
 - AI assist → `src/app/api/ai/suggest/route.ts` + `src/lib/ai/suggest.ts`
-- DB schema → `supabase/migrations/001_*.sql` … `028_atomic_spare_part_request_updates.sql`
+- DB schema → `supabase/migrations/001_*.sql` … `029_atomic_spare_part_request_creation.sql`
 
 ---
 
@@ -143,8 +143,8 @@ const isInternal = role ? INTERNAL_ROLES.includes(role) : email ? isInternalEmai
 
 ## 5. Database Schema (Supabase)
 
-28 migrations, to be applied in order. Migrations 001–028 are confirmed
-applied as of 2026-07-29. Key tables:
+29 migrations, to be applied in order. Migrations 001–028 are confirmed
+applied as of 2026-07-29; migration 029 awaits application. Key tables:
 
 | Table | Purpose | Notes |
 |---|---|---|
@@ -161,7 +161,10 @@ applied as of 2026-07-29. Key tables:
 | `spare_parts` / `spare_part_inventory` / `spare_part_requests` / `spare_part_request_items` | Phase 3 catalog + per-site stock + request workflow | `request_no` SPR-XXXX |
 | `field_service_orders` / `field_service_engineers` | Phase 3 dispatch | `order_no` FSO-XXXX, M:N engineers |
 
-**Auto-numbering** — `ticket_no` (RPL-XXXXXX), `request_no` (SPR-XXXX), `order_no` (FSO-XXXX) are computed in API code by `SELECT MAX + 1`. **Not** a Postgres sequence. Race conditions possible under high write concurrency — accept for now, see §10.
+**Auto-numbering** — sequence-backed RPCs allocate `ticket_no` (RPL-XXXXXX),
+`request_no` (SPR-XXXX), and `order_no` (FSO-XXXX). Migration 029 restricts
+all current number-minting RPCs to `service_role`; the ticket helper retains a
+MAX+1 availability fallback only when its RPC is missing or unavailable.
 
 **Important functions** in `011_create_functions_and_triggers.sql`:
 - `generate_ticket_no()`, `update_ticket_updated_at()`, `create_ticket_status_event()`, `match_site_by_code()`, `handle_new_user()` (auth.users → public.users sync)
@@ -254,7 +257,7 @@ if ("error" in auth) return NextResponse.json({ error: auth.error }, { status: a
 npm install
 cp .env.local.example .env.local   # fill in real values
 # Run migrations in Supabase SQL editor (or `supabase db push` if using CLI):
-#   001 → 028 in order
+#   001 → 029 in order
 # Enable pgvector: CREATE EXTENSION IF NOT EXISTS vector;
 npm run dev
 ```
@@ -264,8 +267,8 @@ npm run dev
 - `npm run build` — production build
 - `npm run start` — production server
 - `npm run lint` — direct ESLint CLI across the repository; warnings fail the gate
-- `npm test` — Vitest unit/contract suite (166 tests)
-- `npm run test:e2e` — 18-check production HTTP smoke plus optional credentialed Playwright/API/RLS matrix; requires a successful build
+- `npm test` — Vitest unit/contract suite (174 tests)
+- `npm run test:e2e` — 19-check production HTTP smoke plus optional credentialed Playwright/API/RLS matrix; requires a successful build
 - `npm run test:e2e:credentialed` — real six-account/two-tenant matrix; set `RIPPLE_E2E_FIXTURES_FILE`
 - `npm run test:e2e:install-browser` — install the pinned Chromium runtime
 
@@ -490,6 +493,25 @@ final write predicate, even after a parent lookup. Do not ignore child-write
 results or return pre-write joins. When multiple related writes express one
 business action, use one database transaction and a stable row-lock order.
 
+### Grants do not replace revokes on new PostgreSQL functions
+Found 2026-07-29 while moving spare-part request creation into one command.
+Migration 020 said its `SECURITY DEFINER` sequence functions were service-role
+only and granted `service_role`, but PostgreSQL grants function execution to
+`PUBLIC` by default. Without an explicit revoke, authenticated and anonymous
+API roles could still invoke those functions and consume sequence values.
+
+Commit `64cee3d` and migration 029 revoke `PUBLIC`, `anon`, and
+`authenticated` from all five current number-minting RPCs, explicitly grant
+`service_role`, and give the security-definer sequence functions an empty
+search path. The same migration makes request header, item, cost, number, and
+audit creation one database transaction with actor, tenant, ticket, and part
+validation.
+
+**Lesson:** treat function privilege setup as `REVOKE` then `GRANT`, not
+`GRANT` alone. Every security-definer command must have a safe search path,
+independent actor checks, explicit execution roles, and one transactional
+boundary for the complete business action.
+
 ---
 
 ## 10. Current State & Roadmap
@@ -550,7 +572,7 @@ resume work; this section remains the broader historical summary.
       to detail-tabs-helpers.ts (no "use client" directive).
   - **Helper upgrade**: `requireAdmin()` now also returns `email` (it was already selecting it — just not exposing).
   - **New tests**: 4 new e2e scripts (21_audit_fixes, 22_list_pii, 23_web_pages_full, 24_feature_flows), 272 new test cases. Full suite: 7 e2e mjs (182) + 2 e2e Python (187) + 7 unit (83) = **452 tests, all green**.
-- **PRD v1.1 Phase 0 containment** (`9083ece`, `211843e`, `b71b3d7`, `b9a7a12`, `e83156f`, `4ceacd0`, `1f49ecc`): centralized
+- **PRD v1.1 Phase 0 containment** (`9083ece`, `211843e`, `b71b3d7`, `b9a7a12`, `e83156f`, `4ceacd0`, `1f49ecc`, `64cee3d`): centralized
   tenant scoping and response shaping; removed client service-role imports;
   restricted Slack actions; hid customer-internal ticket fields; retired
   customer/site/user hard delete; added transactional archive/deactivation,
@@ -559,8 +581,9 @@ resume work; this section remains the broader historical summary.
   direct ticket-column/Storage exposure; made Slack request authentication fail
   closed; added liveness/readiness, production HTTP E2E, an opt-in six-account
   Playwright/API/RLS matrix, direct ESLint enforcement, SHA-pinned GitHub
-  Actions quality gates; made spare-part fulfillment updates parent-contained,
-  quantity-bounded, atomic, and transactionally audited; added 166
+  Actions quality gates; made spare-part creation and fulfillment changes
+  parent-contained, quantity-bounded, atomic, and transactionally audited;
+  restricted number-minting RPCs to the service role; added 174
   unit/contract tests and a zero-vulnerability dependency baseline.
 
 ### Known issues / open work
@@ -571,7 +594,8 @@ resume work; this section remains the broader historical summary.
 | 🟡 Med | Dashboard timezone hardcoded to `America/New_York` for some widgets | `src/app/(auth)/dashboard/page.tsx` | Should derive from user or first site; ticket detail already uses `site.timezone` |
 | 🟡 Med | `/settings` page is a placeholder | `src/app/(auth)/settings/page.tsx` | Notification preferences, timezone, theme |
 | 🟡 Med | In-memory rate limit not production-grade | `src/lib/rate-limit.ts` | Fine for now (Vercel cold starts reset the counter, but worst case is a fresh window per cold start). Swap for Upstash/Redis when traffic warrants. |
-| 🟢 Low | Ticket number sequence is in place (migration 020/021) but not used by all create paths | `src/lib/tickets/create.ts:generateNextTicketNo` | `next_ticket_no()` RPC exists; the create flow should switch from MAX+1 to the sequence. |
+| 🟡 Deploy | Migration 029 awaits application | `supabase/migrations/029_atomic_spare_part_request_creation.sql` | Apply before deploying `64cee3d`; then run the protected request-creation positive/negative probes |
+| 🟢 Low | Field-service numbering still uses the legacy sequence RPC | `src/app/api/field-service-orders/route.ts` | Consolidate on `next_order_no()` inside the planned atomic field-order command; both current paths are sequence-backed |
 | 🟢 Low | Slack `events` route doesn't route customer messages to a ticket comment yet | `src/app/api/slack/events/route.ts` | Sprint 3 — bidirectional thread sync (SLK-008) |
 | 🟡 Med | Credentialed role/tenant matrix has not had its first staging execution | `scripts/credentialed-role-matrix.mjs` | Harness, fixture validation, and Chromium launch are committed/green; provision six dedicated accounts and non-vacuous two-tenant/archive/internal-artifact IDs, then run with required credentials |
 | 🟡 Activate | Hosted quality workflow and protected staging job are not activated yet | `.github/workflows/ci.yml` | After pushing, require `Quality gates`; create a reviewer-protected `staging` environment and add only `RIPPLE_E2E_FIXTURES_JSON` there |
@@ -579,21 +603,23 @@ resume work; this section remains the broader historical summary.
 ### Next priorities (Sprint 3, in proposed order)
 1. **Run migration 028's positive/negative fulfillment probes.** Migration 028
    is applied; staging credentials are not present in this workspace.
-2. **Run the required credentialed staging matrix.** Migrations 027–028 are applied;
+2. **Apply migration 029, then run its request-creation probes.** Code is
+   committed in `64cee3d`; database execution is not yet claimed.
+3. **Run the required credentialed staging matrix.** Migrations 027–028 are applied;
    the secret six-account/two-tenant fixture is the remaining external gate.
-3. **Apply migration 019** ✅ done (2026-07-14).
-4. **Migrate `next lint` and add protected CI quality gates.** ✅ code done
+4. **Apply migration 019** ✅ done (2026-07-14).
+5. **Migrate `next lint` and add protected CI quality gates.** ✅ code done
    (`4ceacd0`); hosted activation remains.
-5. **Close INT-005 part-item parent containment.** ✅ deployed
+6. **Close INT-005 part-item parent containment.** ✅ deployed
    (`1f49ecc` + migration 028); protected runtime verification remains.
-6. **Complete INT-004 atomic creation and engineer assignments.**
-7. **Fix MiniMax AI key** (or swap provider in `.env`). Verify `/api/ai/suggest` returns a real model response, not a mock.
-8. **Verify Resend sender domain** so confirmation / resolution emails actually send.
-9. **Ticket number sequence migration** (020) ✅ done (2026-07-14) — `next_ticket_no()` RPC + 021 volatility fix.
-10. **Collapse Slack handlers to `updateMasterMessage()`** — 4 inline `chat.update` calls become 4 one-liners. (Done in 3af10c6 actually — handlers now use `updateMasterMessage` everywhere; further collapse of the 4 audit calls per action is a follow-up.)
-11. **Dashboard timezone** — derive from user or first site.
-12. **Sprint 3 feature work** — Kanban view (INT-5), SLA monitoring (INT-6), notifications center (INT-7).
-13. **Start real Slack Connect work** — see PRD §8.5 / SLK-015.
+7. **Complete INT-004 field-service order/engineer atomicity and date contract.**
+8. **Fix MiniMax AI key** (or swap provider in `.env`). Verify `/api/ai/suggest` returns a real model response, not a mock.
+9. **Verify Resend sender domain** so confirmation / resolution emails actually send.
+10. **Ticket number sequence migration** (020) ✅ done (2026-07-14) — `next_ticket_no()` RPC + 021 volatility fix.
+11. **Collapse Slack handlers to `updateMasterMessage()`** — 4 inline `chat.update` calls become 4 one-liners. (Done in 3af10c6 actually — handlers now use `updateMasterMessage` everywhere; further collapse of the 4 audit calls per action is a follow-up.)
+12. **Dashboard timezone** — derive from user or first site.
+13. **Sprint 3 feature work** — Kanban view (INT-5), SLA monitoring (INT-6), notifications center (INT-7).
+14. **Start real Slack Connect work** — see PRD §8.5 / SLK-015.
 
 ### Open architectural questions
 - The RLS recursion bug surfaces a bigger question: do we keep `createAdminClient() + code filter` (the current pattern in `lib/supabase/scope.ts`) or move back to proper RLS once migration 019 + similar fixes are in place? The current pattern scales fine but has a lower safety margin for new queries.
@@ -615,7 +641,7 @@ npm audit
 ```
 
 **Apply a new migration:**
-1. Create `supabase/migrations/029_xxx.sql` (next number)
+1. Create `supabase/migrations/030_xxx.sql` (next number)
 2. Test locally: `supabase db reset` (drops + re-applies all)
 3. Apply to prod via Supabase SQL editor
 4. Document in this file's §5 + §10
