@@ -7,9 +7,9 @@ meaningful change and before ending a work session. Newest entries go first.
 
 - **Branch:** `codex/prd-v1-1-gap-closure`
 - **Active phase:** Phase 0 — Containment and reproducible baseline
-- **Active work item:** P0-L lint/CI reproducibility while P0-I awaits its
-  protected staging fixture
-- **Last verified implementation commit:** `e83156f` (`fix: fail closed on Slack configuration`)
+- **Active work item:** P0-I external staging execution gate; INT-005 is the
+  next locally actionable integrity defect
+- **Last verified implementation commit:** `4ceacd0` (`ci: enforce reproducible quality gates`)
 - **Uncommitted work:** none expected; verify with `git status` before resuming
 - **Deployment gate:** migrations 001–027 are confirmed applied; no pending
   database migration from this branch
@@ -17,9 +17,93 @@ meaningful change and before ending a work session. Newest entries go first.
   dedicated staging accounts, two tenants, a decommissioned site/ticket, and
   real internal artifact IDs; then run
   `RIPPLE_E2E_REQUIRE_CREDENTIALS=1 npm run test:e2e:credentialed`
-- **Exact next local step:** migrate `next lint` to the ESLint CLI and add a
-  protected CI workflow for install, unit, lint, build, E2E, and audit gates
+- **Hosted CI activation:** require the `Quality gates` check in branch
+  protection; create a reviewer-protected `staging` environment with the
+  `RIPPLE_E2E_FIXTURES_JSON` secret before manually enabling the credentialed
+  matrix
+- **Exact next local step:** inspect and close INT-005 so part-fulfillment item
+  updates are constrained by both the request URL and item ID
 - **Primary plan:** [`plans/prd-v1.1-gap-closure-plan.md`](./prd-v1.1-gap-closure-plan.md)
+
+## Session record — 2026-07-29 (P0-L)
+
+### Objective
+
+Replace the deprecated Next.js lint wrapper and make the repository's complete
+quality policy executable in GitHub Actions without exposing staging
+credentials to ordinary pushes or pull requests.
+
+### Changes
+
+- Replaced `next lint` with `eslint . --max-warnings=0`.
+- Added explicit flat-config ignores for `.next`, `out`, `build`, `coverage`,
+  and generated `next-env.d.ts`; source rules remain unchanged.
+- Added `.github/workflows/ci.yml` with:
+  - pull-request and `main` push gates;
+  - read-only repository permissions and cancelled superseded runs;
+  - SHA-pinned official checkout/setup actions;
+  - Node 22 npm caching and `npm ci`;
+  - unit, lint, production build, production HTTP E2E, and dependency-audit
+    gates in the same order as the local implementation policy.
+- Added a separate manual credentialed-authorization job behind the GitHub
+  `staging` environment. It requires `RIPPLE_E2E_FIXTURES_JSON`, materializes
+  it with owner-only permissions, installs Chromium, forces
+  `RIPPLE_E2E_REQUIRE_CREDENTIALS=1`, and removes the fixture even on failure.
+- Added contract tests that prevent regression to `next lint`, unpinned action
+  references, incomplete/out-of-order quality commands, or an unprotected
+  credentialed job.
+
+### Industry guidance applied
+
+- GitHub Actions least privilege: workflow-level `contents: read`, no persisted
+  checkout credentials, and no secrets in the default pull-request job.
+- Supply-chain determinism: official actions are pinned to reviewed full
+  commit SHAs, while dependencies continue to install from `package-lock.json`.
+- Protected-environment separation: the real staging matrix is opt-in and
+  environment-gated; missing fixture material fails instead of skipping.
+- ESLint flat-config guidance: generated directories are global ignores so the
+  CLI lints project sources rather than compiled bundles.
+
+### Verification before implementation commit
+
+| Command | Result |
+|---|---|
+| `npm ci` | Passed; 532 packages installed from the lockfile |
+| `npm test` | Passed; 17 files, 159 tests |
+| `npm run lint` | Passed via ESLint CLI; 0 warnings/errors |
+| `npm run build` | Passed on Next.js 15.5.22 |
+| `npm run test:e2e` | Passed 17 production HTTP checks; credentialed matrix explicitly skipped because the secret fixture is unavailable |
+| `npm audit` | Passed; 0 vulnerabilities |
+| `git diff --check` | Passed |
+| Workflow YAML parse | Passed |
+| Staged secret-pattern scan | Passed |
+
+The implementation was committed only after the full gate and a second
+`npm run test:e2e` in the same command immediately before commit. The hosted
+workflow is committed but has not yet been pushed or observed on GitHub, and
+the credentialed matrix still has no protected fixture in this workspace.
+
+### Decisions and activation
+
+- Ordinary CI intentionally runs the deterministic negative/public HTTP suite;
+  it does not receive staging credentials.
+- The real matrix is manual because it targets persistent staging identities
+  and resources. Configure required reviewers on the `staging` environment
+  before adding its fixture secret.
+- A repository administrator must make the `Quality gates` check required in
+  branch protection after the workflow has run once.
+
+### Commit
+
+- Hash: `4ceacd0`
+- Message: `ci: enforce reproducible quality gates`
+
+### Exact next step
+
+- External: push the branch, observe `Quality gates`, enable branch protection,
+  and configure/run the protected staging matrix.
+- Local: audit INT-005 and constrain every part-request item mutation by both
+  its parent request ID and its own item ID.
 
 ## Session record — 2026-07-29 (P0-K)
 

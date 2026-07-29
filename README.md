@@ -25,7 +25,7 @@ A Slack-native support portal for DropletAI Services. Centralises customer suppo
 | AI | **MiniMax AI** (OpenAI-compatible) — was OpenAI → Zhipu → MiniMax. **See "AI provider" section below.** |
 | Email | Resend (transactional: ticket confirmation, resolution notice) |
 | Validation | Zod (all API request bodies) |
-| Testing | Vitest (155 unit/contract tests) + 17-check production HTTP smoke + credentialed Playwright/API/RLS matrix |
+| Testing | Vitest (159 unit/contract tests) + 17-check production HTTP smoke + credentialed Playwright/API/RLS matrix |
 | Hosting | Vercel (serverless API routes) |
 
 ## Phases
@@ -112,7 +112,7 @@ npm run dev
 ### Quality gates
 
 ```bash
-npm run lint       # ESLint (next lint, 0 warnings/errors required)
+npm run lint       # Direct ESLint CLI (0 warnings/errors required)
 npm run build      # Next.js production build (0 errors)
 npm test           # Vitest unit/contract tests
 npm run test:e2e   # Production HTTP smoke + optional credentialed matrix
@@ -150,6 +150,20 @@ IDs must identify active tickets in two different tenants, an archived
 site/ticket, and real internal comment/attachment/event rows. The suite is
 read-only. A missing fixture prints an explicit skip for local development;
 protected CI should set `RIPPLE_E2E_REQUIRE_CREDENTIALS=1` so it fails closed.
+
+### GitHub Actions
+
+`.github/workflows/ci.yml` runs the locked install, 159 unit/contract tests,
+lint, production build, 17-check HTTP E2E, and dependency audit for pull
+requests and pushes to `main`. GitHub-owned actions are pinned to full commit
+SHAs and the workflow has read-only repository permissions.
+
+After its first hosted run, make `Quality gates` a required branch-protection
+check. For the real tenant matrix, create a reviewer-protected GitHub
+environment named `staging`, add one secret named
+`RIPPLE_E2E_FIXTURES_JSON` containing the complete fixture JSON, then manually
+dispatch the workflow with `run_credentialed_matrix` enabled. Ordinary pull
+requests never receive this secret.
 
 ## Slack App Setup
 

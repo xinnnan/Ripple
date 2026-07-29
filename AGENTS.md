@@ -263,8 +263,8 @@ npm run dev
 - `npm run dev` — Next.js dev server (port 3000)
 - `npm run build` — production build
 - `npm run start` — production server
-- `npm run lint` — `next lint` (ESLint, default Next.js config)
-- `npm test` — Vitest unit/contract suite (155 tests)
+- `npm run lint` — direct ESLint CLI across the repository; warnings fail the gate
+- `npm test` — Vitest unit/contract suite (159 tests)
 - `npm run test:e2e` — 17-check production HTTP smoke plus optional credentialed Playwright/API/RLS matrix; requires a successful build
 - `npm run test:e2e:credentialed` — real six-account/two-tenant matrix; set `RIPPLE_E2E_FIXTURES_FILE`
 - `npm run test:e2e:install-browser` — install the pinned Chromium runtime
@@ -453,6 +453,24 @@ boundary. Separate liveness from readiness, distinguish unavailable server
 configuration from bad caller authentication, and keep probes fast,
 non-cacheable, and free of credential material.
 
+### CI secrets belong behind a protected environment, not normal PR jobs
+Found 2026-07-29 while making Phase 0 gates reproducible. The credentialed
+tenant matrix needs six real accounts and persistent staging resource IDs, but
+giving that fixture to every pull request would expose high-value credentials
+and let untrusted changes exercise them.
+
+Commit `4ceacd0` keeps the ordinary `Quality gates` job secret-free and
+read-only, pins GitHub-owned actions to full commit SHAs, and runs the locked
+install, unit, ESLint, build, HTTP E2E, and audit sequence. A separate manual
+job uses the reviewer-protected `staging` environment, requires
+`RIPPLE_E2E_FIXTURES_JSON`, forces fail-closed fixture handling, and deletes the
+materialized file even after failure.
+
+**Lesson:** do not solve a missing end-to-end fixture by broadening secret
+availability. Separate deterministic PR checks from privileged staging probes,
+use least-privilege permissions and immutable action references, and make
+branch/environment protection an explicit activation step.
+
 ---
 
 ## 10. Current State & Roadmap
@@ -513,7 +531,7 @@ resume work; this section remains the broader historical summary.
       to detail-tabs-helpers.ts (no "use client" directive).
   - **Helper upgrade**: `requireAdmin()` now also returns `email` (it was already selecting it — just not exposing).
   - **New tests**: 4 new e2e scripts (21_audit_fixes, 22_list_pii, 23_web_pages_full, 24_feature_flows), 272 new test cases. Full suite: 7 e2e mjs (182) + 2 e2e Python (187) + 7 unit (83) = **452 tests, all green**.
-- **PRD v1.1 Phase 0 containment** (`9083ece`, `211843e`, `b71b3d7`, `b9a7a12`, `e83156f`): centralized
+- **PRD v1.1 Phase 0 containment** (`9083ece`, `211843e`, `b71b3d7`, `b9a7a12`, `e83156f`, `4ceacd0`): centralized
   tenant scoping and response shaping; removed client service-role imports;
   restricted Slack actions; hid customer-internal ticket fields; retired
   customer/site/user hard delete; added transactional archive/deactivation,
@@ -521,7 +539,8 @@ resume work; this section remains the broader historical summary.
   milestones across web and Slack; closed legacy artifact-policy leaks and
   direct ticket-column/Storage exposure; made Slack request authentication fail
   closed; added liveness/readiness, production HTTP E2E, an opt-in six-account
-  Playwright/API/RLS matrix, 155 unit/contract tests, and a zero-vulnerability
+  Playwright/API/RLS matrix, direct ESLint enforcement, SHA-pinned GitHub
+  Actions quality gates, 159 unit/contract tests, and a zero-vulnerability
   dependency baseline.
 
 ### Known issues / open work
@@ -535,19 +554,22 @@ resume work; this section remains the broader historical summary.
 | 🟢 Low | Ticket number sequence is in place (migration 020/021) but not used by all create paths | `src/lib/tickets/create.ts:generateNextTicketNo` | `next_ticket_no()` RPC exists; the create flow should switch from MAX+1 to the sequence. |
 | 🟢 Low | Slack `events` route doesn't route customer messages to a ticket comment yet | `src/app/api/slack/events/route.ts` | Sprint 3 — bidirectional thread sync (SLK-008) |
 | 🟡 Med | Credentialed role/tenant matrix has not had its first staging execution | `scripts/credentialed-role-matrix.mjs` | Harness, fixture validation, and Chromium launch are committed/green; provision six dedicated accounts and non-vacuous two-tenant/archive/internal-artifact IDs, then run with required credentials |
+| 🟡 Activate | Hosted quality workflow and protected staging job are not activated yet | `.github/workflows/ci.yml` | After pushing, require `Quality gates`; create a reviewer-protected `staging` environment and add only `RIPPLE_E2E_FIXTURES_JSON` there |
 
 ### Next priorities (Sprint 3, in proposed order)
 1. **Run the required credentialed staging matrix.** Migration 027 is applied;
    the secret six-account/two-tenant fixture is the remaining external gate.
 2. **Apply migration 019** ✅ done (2026-07-14).
-3. **Migrate `next lint` and add protected CI quality gates.**
-4. **Fix MiniMax AI key** (or swap provider in `.env`). Verify `/api/ai/suggest` returns a real model response, not a mock.
-5. **Verify Resend sender domain** so confirmation / resolution emails actually send.
-6. **Ticket number sequence migration** (020) ✅ done (2026-07-14) — `next_ticket_no()` RPC + 021 volatility fix.
-7. **Collapse Slack handlers to `updateMasterMessage()`** — 4 inline `chat.update` calls become 4 one-liners. (Done in 3af10c6 actually — handlers now use `updateMasterMessage` everywhere; further collapse of the 4 audit calls per action is a follow-up.)
-8. **Dashboard timezone** — derive from user or first site.
-9. **Sprint 3 feature work** — Kanban view (INT-5), SLA monitoring (INT-6), notifications center (INT-7).
-10. **Start real Slack Connect work** — see PRD §8.5 / SLK-015.
+3. **Migrate `next lint` and add protected CI quality gates.** ✅ code done
+   (`4ceacd0`); hosted activation remains.
+4. **Close INT-005 part-item parent containment.**
+5. **Fix MiniMax AI key** (or swap provider in `.env`). Verify `/api/ai/suggest` returns a real model response, not a mock.
+6. **Verify Resend sender domain** so confirmation / resolution emails actually send.
+7. **Ticket number sequence migration** (020) ✅ done (2026-07-14) — `next_ticket_no()` RPC + 021 volatility fix.
+8. **Collapse Slack handlers to `updateMasterMessage()`** — 4 inline `chat.update` calls become 4 one-liners. (Done in 3af10c6 actually — handlers now use `updateMasterMessage` everywhere; further collapse of the 4 audit calls per action is a follow-up.)
+9. **Dashboard timezone** — derive from user or first site.
+10. **Sprint 3 feature work** — Kanban view (INT-5), SLA monitoring (INT-6), notifications center (INT-7).
+11. **Start real Slack Connect work** — see PRD §8.5 / SLK-015.
 
 ### Open architectural questions
 - The RLS recursion bug surfaces a bigger question: do we keep `createAdminClient() + code filter` (the current pattern in `lib/supabase/scope.ts`) or move back to proper RLS once migration 019 + similar fixes are in place? The current pattern scales fine but has a lower safety margin for new queries.

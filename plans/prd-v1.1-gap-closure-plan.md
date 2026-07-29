@@ -66,12 +66,13 @@ The correct approach is therefore:
 
 | Gate | Result through 2026-07-29 | Meaning |
 |---|---|---|
-| Unit tests | 155/155 passed | Scope, lifecycle, visibility, Slack authentication/configuration, readiness, filters, SLA, fixture validation, migration/RPC contracts, and audit coverage is green |
-| Lint | Passed, no warnings | `next lint` is deprecated and must be migrated |
+| Unit tests | 159/159 passed | Scope, lifecycle, visibility, Slack authentication/configuration, readiness, CI policy, filters, SLA, fixture validation, migration/RPC contracts, and audit coverage is green |
+| Lint | Passed, no warnings | Direct ESLint CLI with zero-warning enforcement and generated-artifact ignores |
 | Production build | Passed on Next.js 15.5.22 | Environment-free build is reproducible |
 | Dependency audit | 0 vulnerabilities | Patched direct/transitive versions are lockfile-pinned and compatibility-tested |
 | Worktree | Clean at baseline | Work started on `codex/prd-v1-1-gap-closure` |
 | Committed end-to-end tests | 17 production HTTP checks + credentialed Playwright/API/RLS matrix | Public/negative/configuration smoke always runs; migration 027 is applied, while six-account two-tenant positive/negative execution remains fail-closed in protected CI and awaits the secret staging fixture |
+| Hosted CI | Workflow committed in `4ceacd0`; first hosted run pending | Read-only, SHA-pinned quality job is reproducible; repository branch protection and the protected staging environment still require activation |
 
 ## 4. PRD capability gap map
 
@@ -174,9 +175,10 @@ Deliverables:
 5. Fail-closed production integration configuration.
 6. Commit browser E2E and API authorization probes to the repository.
 7. Upgrade vulnerable runtime dependencies and migrate from `next lint` to the
-   ESLint CLI.
+   ESLint CLI. **Code complete in `211843e` and `4ceacd0`.**
 8. Make `test`, `lint`, `build`, tenant probes, and a dependency policy
-   reproducible in CI.
+   reproducible in CI. **Workflow complete in `4ceacd0`; hosted branch
+   protection/staging activation remains external.**
 
 Exit criteria:
 
@@ -352,6 +354,10 @@ Every implementation slice must:
 11. **P0-K — completed in `e83156f`:** Fail closed on missing Slack
     request-verification configuration and expose separate liveness and
     secret-safe configuration readiness.
-12. **P0-L — next local work:** Migrate deprecated `next lint` to the ESLint
-    CLI and make install, unit, lint, build, E2E, and audit gates reproducible
-    in protected CI.
+12. **P0-L — completed in `4ceacd0`:** Migrated to the direct ESLint CLI and
+    committed read-only, SHA-pinned install/unit/lint/build/E2E/audit CI plus a
+    manual protected-staging credentialed job. First hosted run, branch
+    protection, environment reviewers, and secret configuration remain
+    operator actions.
+13. **Next local integrity work:** Close INT-005 by constraining part-request
+    item mutations to both the request in the URL and the item ID.
