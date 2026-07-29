@@ -103,7 +103,7 @@ async function expectUnauthorized(path) {
   process.stdout.write(`PASS unauthenticated lifecycle denial ${path}\n`);
 }
 
-async function expectUnauthorizedTicketMutation(path, method, body) {
+async function expectUnauthorizedMutation(path, method, body) {
   const response = await fetch(`${baseUrl}${path}`, {
     method,
     headers: { "content-type": "application/json" },
@@ -115,7 +115,9 @@ async function expectUnauthorizedTicketMutation(path, method, body) {
       `${method} ${path} expected 401, received ${response.status}`
     );
   }
-  process.stdout.write(`PASS unauthenticated ticket mutation denial ${method} ${path}\n`);
+  process.stdout.write(
+    `PASS unauthenticated mutation denial ${method} ${path}\n`
+  );
 }
 
 async function expectLoginRedirect(path) {
@@ -196,15 +198,27 @@ try {
   await expectUnauthorized("/api/admin/customers/bulk-archive");
   await expectUnauthorized("/api/admin/sites/bulk-archive");
   await expectUnauthorized("/api/admin/users/bulk-deactivate");
-  await expectUnauthorizedTicketMutation(
+  await expectUnauthorizedMutation(
     "/api/tickets/11111111-1111-4111-8111-111111111111",
     "PATCH",
     { status: "resolved" }
   );
-  await expectUnauthorizedTicketMutation(
+  await expectUnauthorizedMutation(
     "/api/tickets/11111111-1111-4111-8111-111111111111/comments",
     "POST",
     { body: "unauthorized response", visibility: "customer" }
+  );
+  await expectUnauthorizedMutation(
+    "/api/spare-part-requests/11111111-1111-4111-8111-111111111111",
+    "PATCH",
+    {
+      items: [
+        {
+          id: "22222222-2222-4222-8222-222222222222",
+          fulfilled_quantity: 1,
+        },
+      ],
+    }
   );
   await expectLoginRedirect("/admin/users");
   await expectHealth("/api/health/live", 200, "live");
