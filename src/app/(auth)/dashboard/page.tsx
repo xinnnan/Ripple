@@ -108,7 +108,7 @@ async function InternalDashboard() {
   ];
 
   return (
-    <div className="p-8">
+    <div className="p-5 sm:p-8">
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
         <p className="text-sm text-muted-foreground mt-1">
@@ -160,14 +160,14 @@ async function InternalDashboard() {
                 <Link
                   key={ticket.ticket_no}
                   href={`/tickets/${ticket.ticket_no}`}
-                  className="flex items-center justify-between p-4 hover:bg-muted/50 transition-colors"
+                  className="grid gap-3 p-4 transition-colors hover:bg-muted/50 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
                 >
-                  <div className="flex items-center gap-4">
-                    <span className="text-xs font-mono text-muted-foreground w-24">
+                  <div className="min-w-0 sm:flex sm:items-center sm:gap-4">
+                    <span className="mb-1 block shrink-0 text-xs font-mono text-muted-foreground sm:mb-0 sm:w-24">
                       {ticket.ticket_no}
                     </span>
-                    <div>
-                      <p className="text-sm font-medium text-foreground">
+                    <div className="min-w-0">
+                      <p className="break-words text-sm font-medium text-foreground">
                         {ticket.title}
                       </p>
                       <p className="text-xs text-muted-foreground">
@@ -176,11 +176,11 @@ async function InternalDashboard() {
                       </p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-4">
+                  <div className="flex items-center justify-between gap-3 sm:justify-end sm:gap-4">
                     <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-blue-50 text-blue-700">
                       {STATUS_LABELS[ticket.status as keyof typeof STATUS_LABELS] || ticket.status}
                     </span>
-                    <span className="text-xs text-muted-foreground w-28 text-right">
+                    <span className="text-right text-xs text-muted-foreground sm:w-28">
                       {formatDate(ticket.created_at)}
                     </span>
                   </div>
@@ -291,7 +291,7 @@ async function CustomerManagerDashboard({ customerId }: { userId: string; custom
     .eq("status", "active");
 
   return (
-    <div className="p-8">
+    <div className="p-5 sm:p-8">
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
         <p className="text-sm text-muted-foreground mt-1">
@@ -437,24 +437,24 @@ async function CustomerManagerDashboard({ customerId }: { userId: string; custom
               <Link
                 key={ticket.ticket_no}
                 href={`/tickets/${ticket.ticket_no}`}
-                className="flex items-center justify-between p-4 hover:bg-muted/50 transition-colors"
+                className="grid gap-3 p-4 transition-colors hover:bg-muted/50 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
               >
-                <div className="flex items-center gap-4">
-                  <span className="text-xs font-mono text-muted-foreground w-24">
+                <div className="min-w-0 sm:flex sm:items-center sm:gap-4">
+                  <span className="mb-1 block shrink-0 text-xs font-mono text-muted-foreground sm:mb-0 sm:w-24">
                     {ticket.ticket_no}
                   </span>
-                  <div>
-                    <p className="text-sm font-medium text-foreground">{ticket.title}</p>
+                  <div className="min-w-0">
+                    <p className="break-words text-sm font-medium text-foreground">{ticket.title}</p>
                     <p className="text-xs text-muted-foreground">
                       {ticket.site?.[0]?.site_name || "Unknown Site"}
                     </p>
                   </div>
                 </div>
-                <div className="flex items-center gap-4">
+                <div className="flex items-center justify-between gap-3 sm:justify-end sm:gap-4">
                   <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-blue-50 text-blue-700">
                     {STATUS_LABELS[ticket.status as keyof typeof STATUS_LABELS] || ticket.status}
                   </span>
-                  <span className="text-xs text-muted-foreground w-28 text-right">
+                  <span className="text-right text-xs text-muted-foreground sm:w-28">
                     {formatDate(ticket.created_at)}
                   </span>
                 </div>
@@ -547,7 +547,7 @@ async function CustomerDashboard({ userId }: { userId: string }) {
   }
 
   return (
-    <div className="p-8">
+    <div className="p-5 sm:p-8">
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
         <p className="text-sm text-muted-foreground mt-1">
@@ -683,14 +683,14 @@ async function CustomerDashboard({ userId }: { userId: string }) {
               <Link
                 key={ticket.ticket_no}
                 href={`/tickets/${ticket.ticket_no}`}
-                className="flex items-center justify-between p-4 hover:bg-muted/50 transition-colors"
+                className="grid gap-3 p-4 transition-colors hover:bg-muted/50 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
               >
-                <div className="flex items-center gap-4">
-                  <span className="text-xs font-mono text-muted-foreground w-24">
+                <div className="min-w-0 sm:flex sm:items-center sm:gap-4">
+                  <span className="mb-1 block shrink-0 text-xs font-mono text-muted-foreground sm:mb-0 sm:w-24">
                     {ticket.ticket_no}
                   </span>
-                  <div>
-                    <p className="text-sm font-medium text-foreground">
+                  <div className="min-w-0">
+                    <p className="break-words text-sm font-medium text-foreground">
                       {ticket.title}
                     </p>
                     <p className="text-xs text-muted-foreground">
@@ -698,13 +698,13 @@ async function CustomerDashboard({ userId }: { userId: string }) {
                     </p>
                   </div>
                 </div>
-                <div className="flex items-center gap-4">
+                <div className="flex items-center justify-between gap-3 sm:justify-end sm:gap-4">
                   <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-blue-50 text-blue-700">
                     {STATUS_LABELS[
                       ticket.status as keyof typeof STATUS_LABELS
                     ] || ticket.status}
                   </span>
-                  <span className="text-xs text-muted-foreground w-28 text-right">
+                  <span className="text-right text-xs text-muted-foreground sm:w-28">
                     {formatDate(ticket.created_at)}
                   </span>
                 </div>

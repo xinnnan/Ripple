@@ -113,9 +113,9 @@ export function TicketFilters({
       </div>
 
       {/* Detailed filters */}
-      <div className="rounded-lg border border-border bg-card p-3 flex flex-wrap items-end gap-3">
+      <div className="grid grid-cols-1 gap-3 rounded-lg border border-border bg-card p-3 sm:flex sm:flex-wrap sm:items-end">
         {/* Search */}
-        <div className="flex-1 min-w-[200px]">
+        <div className="min-w-0 sm:min-w-[200px] sm:flex-1">
           <label className="block text-xs font-medium text-muted-foreground mb-1">
             Search
           </label>
@@ -156,7 +156,7 @@ export function TicketFilters({
 
         {/* Customer — internal only */}
         {options.canFilterByCustomer && (
-          <div>
+          <div className="min-w-0">
             <label className="block text-xs font-medium text-muted-foreground mb-1">
               Customer
             </label>
@@ -168,7 +168,7 @@ export function TicketFilters({
                   site_id: undefined, // site filter is reset when customer changes
                 })
               }
-              className="rounded-lg border border-border px-3 py-1.5 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/20"
+              className="w-full max-w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 sm:w-auto"
             >
               <option value="">All customers</option>
               {options.customers.map((c) => (
@@ -182,7 +182,7 @@ export function TicketFilters({
 
         {/* Site — customer manager can filter their own, customer sees only their sites */}
         {options.sites.length > 0 && (
-          <div>
+          <div className="min-w-0">
             <label className="block text-xs font-medium text-muted-foreground mb-1">
               Site
             </label>
@@ -191,7 +191,7 @@ export function TicketFilters({
               onChange={(e) =>
                 update({ site_id: e.target.value || undefined })
               }
-              className="rounded-lg border border-border px-3 py-1.5 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/20"
+              className="w-full max-w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 sm:w-auto"
             >
               <option value="">All sites</option>
               {visibleSites.map((s) => (
@@ -205,7 +205,7 @@ export function TicketFilters({
 
         {/* Owner — internal only */}
         {options.canFilterByOwner && options.owners.length > 0 && (
-          <div>
+          <div className="min-w-0">
             <label className="block text-xs font-medium text-muted-foreground mb-1">
               Owner
             </label>
@@ -214,7 +214,7 @@ export function TicketFilters({
               onChange={(e) =>
                 update({ owner_id: e.target.value || undefined })
               }
-              className="rounded-lg border border-border px-3 py-1.5 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/20"
+              className="w-full max-w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 sm:w-auto"
             >
               <option value="">All owners</option>
               {options.owners.map((o) => (
@@ -227,7 +227,7 @@ export function TicketFilters({
         )}
 
         {/* Date range */}
-        <div>
+        <div className="min-w-0">
           <label className="block text-xs font-medium text-muted-foreground mb-1">
             Created
           </label>
@@ -237,7 +237,7 @@ export function TicketFilters({
               const v = e.target.value as TicketFiltersState["range"];
               update({ range: v === "all" ? undefined : v });
             }}
-            className="rounded-lg border border-border px-3 py-1.5 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/20"
+            className="w-full max-w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 sm:w-auto"
           >
             <option value="all">All time</option>
             <option value="7d">Last 7 days</option>
@@ -249,7 +249,7 @@ export function TicketFilters({
         {/* SLA bucket — internal-only. Customers / managers don't
             manage SLAs so the filter is hidden for them. */}
         {options.canFilterByOwner && (
-          <div>
+          <div className="min-w-0">
             <label className="block text-xs font-medium text-muted-foreground mb-1">
               SLA
             </label>
@@ -259,7 +259,7 @@ export function TicketFilters({
                 const v = e.target.value as TicketFiltersState["sla"];
                 update({ sla: v === "all" ? undefined : v });
               }}
-              className="rounded-lg border border-border px-3 py-1.5 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/20"
+              className="w-full max-w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 sm:w-auto"
             >
               <option value="all">All</option>
               <option value="breached">⚠ Breached</option>

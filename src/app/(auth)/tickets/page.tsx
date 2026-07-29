@@ -273,7 +273,7 @@ function renderTicketsPage(
   );
 
   return (
-    <div className="p-8">
+    <div className="p-5 sm:p-8">
       <TicketsPageHeader
         filterQuery={buildParams(filters)}
         isInternal={isInternal}
@@ -282,8 +282,8 @@ function renderTicketsPage(
       <TicketListControls totalCount={totalCount} options={options} />
 
       {/* Ticket Table */}
-      <div className="rounded-xl border border-border overflow-hidden">
-        <table className="w-full">
+      <div className="overflow-x-auto rounded-xl border border-border">
+        <table className="w-full min-w-[900px]">
           <thead>
             <tr className="border-b border-border bg-muted/50">
               <th className="text-left text-xs font-medium text-muted-foreground p-3">

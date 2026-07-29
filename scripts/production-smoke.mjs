@@ -138,6 +138,24 @@ async function expectLoginRedirect(path) {
   process.stdout.write(`PASS protected-page redirect ${path}\n`);
 }
 
+async function expectLogoutRedirect() {
+  const response = await fetch(`${baseUrl}/auth/logout`, {
+    method: "POST",
+    redirect: "manual",
+    signal: AbortSignal.timeout(5000),
+  });
+  if (
+    response.status !== 303 ||
+    response.headers.get("location") !== "/login"
+  ) {
+    throw new Error(
+      `/auth/logout expected relative 303 redirect, received ` +
+        `${response.status} ${response.headers.get("location")}`
+    );
+  }
+  process.stdout.write("PASS same-origin logout redirect\n");
+}
+
 async function expectHealth(path, expectedStatus, expectedBodyStatus) {
   const response = await fetch(`${baseUrl}${path}`, {
     signal: AbortSignal.timeout(5000),
@@ -180,8 +198,9 @@ async function expectSlackConfigurationDenial(path, body, contentType) {
 let failed = false;
 try {
   await waitForServer();
-  await expectPage("/", "DropletAI");
-  await expectPage("/login", "Sign in to Ripple");
+  await expectPage("/", "Keep your automation moving.");
+  await expectPage("/login", "Welcome back.");
+  await expectPage("/forgot-password", "Reset your password.");
   await expectPage("/submit", "Submit a Support Request");
   await expectHardDeleteDisabled(
     "/api/admin/customers/bulk-delete",
@@ -235,6 +254,7 @@ try {
     }
   );
   await expectLoginRedirect("/admin/users");
+  await expectLogoutRedirect();
   await expectHealth("/api/health/live", 200, "live");
   await expectHealth("/api/health/ready", 503, "not_ready");
   await expectSlackConfigurationDenial(
