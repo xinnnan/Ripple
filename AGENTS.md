@@ -86,7 +86,7 @@ Vercel.
 │   │   ├── ticket.ts                    # ⭐ All domain enums + labels
 │   │   └── spare-parts.ts               # ⭐ Spare parts + field service enums
 │   └── middleware.ts                    # ⭐ Route guard + session refresh
-├── supabase/migrations/                 # 001–027, apply in order
+├── supabase/migrations/                 # 001–028, apply in order
 ├── plans/                               # Architecture + phase planning docs
 │   ├── architecture.md
 │   ├── phase2-customer-auth-and-user-management.md
@@ -105,7 +105,7 @@ Vercel.
 - Ticket detail UI → `src/app/(auth)/tickets/[ticketId]/page.tsx` (server) + `ticket-actions-panel.tsx` (client)
 - Slack ticket creation → `src/app/api/slack/command/ticket/route.ts` + `src/lib/slack/blocks/ticket-form.ts`
 - AI assist → `src/app/api/ai/suggest/route.ts` + `src/lib/ai/suggest.ts`
-- DB schema → `supabase/migrations/001_*.sql` … `027_restrict_ticket_columns_and_storage.sql`
+- DB schema → `supabase/migrations/001_*.sql` … `028_atomic_spare_part_request_updates.sql`
 
 ---
 
@@ -143,8 +143,9 @@ const isInternal = role ? INTERNAL_ROLES.includes(role) : email ? isInternalEmai
 
 ## 5. Database Schema (Supabase)
 
-27 migrations, to be applied in order. Migrations 001–027 are confirmed
-applied as of 2026-07-29. Key tables:
+28 migrations, to be applied in order. Migrations 001–027 are confirmed
+applied as of 2026-07-29; migration 028 is committed and pending application.
+Key tables:
 
 | Table | Purpose | Notes |
 |---|---|---|
@@ -254,7 +255,7 @@ if ("error" in auth) return NextResponse.json({ error: auth.error }, { status: a
 npm install
 cp .env.local.example .env.local   # fill in real values
 # Run migrations in Supabase SQL editor (or `supabase db push` if using CLI):
-#   001 → 027 in order
+#   001 → 028 in order
 # Enable pgvector: CREATE EXTENSION IF NOT EXISTS vector;
 npm run dev
 ```
@@ -264,8 +265,8 @@ npm run dev
 - `npm run build` — production build
 - `npm run start` — production server
 - `npm run lint` — direct ESLint CLI across the repository; warnings fail the gate
-- `npm test` — Vitest unit/contract suite (159 tests)
-- `npm run test:e2e` — 17-check production HTTP smoke plus optional credentialed Playwright/API/RLS matrix; requires a successful build
+- `npm test` — Vitest unit/contract suite (166 tests)
+- `npm run test:e2e` — 18-check production HTTP smoke plus optional credentialed Playwright/API/RLS matrix; requires a successful build
 - `npm run test:e2e:credentialed` — real six-account/two-tenant matrix; set `RIPPLE_E2E_FIXTURES_FILE`
 - `npm run test:e2e:install-browser` — install the pinned Chromium runtime
 
@@ -471,6 +472,25 @@ availability. Separate deterministic PR checks from privileged staging probes,
 use least-privilege permissions and immutable action references, and make
 branch/environment protection an explicit activation step.
 
+### Child-row updates must carry their parent identity into the write
+Found 2026-07-29 in `PATCH /api/spare-part-requests/[id]`. The route fetched a
+request but updated fulfillment items using only the submitted item UUID. An
+internal caller could therefore attach an item from request B to a patch for
+request A; the route also ignored item errors and had already committed the
+header.
+
+Commit `1f49ecc` and migration 028 route the header and items through one
+row-locked command. Each item lookup and update uses both `item.id` and
+`item.request_id = p_request_id`; fulfillment must be between zero and ordered
+quantity; header, items, and audit rows share the transaction. A `NOT VALID`
+check protects new/changed rows without asserting that legacy rows were
+scanned.
+
+**Lesson:** authorization and integrity for a nested resource belong in the
+final write predicate, even after a parent lookup. Do not ignore child-write
+results or return pre-write joins. When multiple related writes express one
+business action, use one database transaction and a stable row-lock order.
+
 ---
 
 ## 10. Current State & Roadmap
@@ -531,7 +551,7 @@ resume work; this section remains the broader historical summary.
       to detail-tabs-helpers.ts (no "use client" directive).
   - **Helper upgrade**: `requireAdmin()` now also returns `email` (it was already selecting it — just not exposing).
   - **New tests**: 4 new e2e scripts (21_audit_fixes, 22_list_pii, 23_web_pages_full, 24_feature_flows), 272 new test cases. Full suite: 7 e2e mjs (182) + 2 e2e Python (187) + 7 unit (83) = **452 tests, all green**.
-- **PRD v1.1 Phase 0 containment** (`9083ece`, `211843e`, `b71b3d7`, `b9a7a12`, `e83156f`, `4ceacd0`): centralized
+- **PRD v1.1 Phase 0 containment** (`9083ece`, `211843e`, `b71b3d7`, `b9a7a12`, `e83156f`, `4ceacd0`, `1f49ecc`): centralized
   tenant scoping and response shaping; removed client service-role imports;
   restricted Slack actions; hid customer-internal ticket fields; retired
   customer/site/user hard delete; added transactional archive/deactivation,
@@ -540,8 +560,9 @@ resume work; this section remains the broader historical summary.
   direct ticket-column/Storage exposure; made Slack request authentication fail
   closed; added liveness/readiness, production HTTP E2E, an opt-in six-account
   Playwright/API/RLS matrix, direct ESLint enforcement, SHA-pinned GitHub
-  Actions quality gates, 159 unit/contract tests, and a zero-vulnerability
-  dependency baseline.
+  Actions quality gates; made spare-part fulfillment updates parent-contained,
+  quantity-bounded, atomic, and transactionally audited; added 166
+  unit/contract tests and a zero-vulnerability dependency baseline.
 
 ### Known issues / open work
 | Priority | Item | Where | Notes |
@@ -555,21 +576,24 @@ resume work; this section remains the broader historical summary.
 | 🟢 Low | Slack `events` route doesn't route customer messages to a ticket comment yet | `src/app/api/slack/events/route.ts` | Sprint 3 — bidirectional thread sync (SLK-008) |
 | 🟡 Med | Credentialed role/tenant matrix has not had its first staging execution | `scripts/credentialed-role-matrix.mjs` | Harness, fixture validation, and Chromium launch are committed/green; provision six dedicated accounts and non-vacuous two-tenant/archive/internal-artifact IDs, then run with required credentials |
 | 🟡 Activate | Hosted quality workflow and protected staging job are not activated yet | `.github/workflows/ci.yml` | After pushing, require `Quality gates`; create a reviewer-protected `staging` environment and add only `RIPPLE_E2E_FIXTURES_JSON` there |
+| 🔴 Deploy | Migration 028 must be applied before `1f49ecc` is deployed | `supabase/migrations/028_atomic_spare_part_request_updates.sql` | Adds the atomic RPC and an immediately enforced but historically unvalidated fulfillment-bounds check |
 
 ### Next priorities (Sprint 3, in proposed order)
-1. **Run the required credentialed staging matrix.** Migration 027 is applied;
+1. **Apply migration 028 and run its positive/negative fulfillment probes.**
+2. **Run the required credentialed staging matrix.** Migration 027 is applied;
    the secret six-account/two-tenant fixture is the remaining external gate.
-2. **Apply migration 019** ✅ done (2026-07-14).
-3. **Migrate `next lint` and add protected CI quality gates.** ✅ code done
+3. **Apply migration 019** ✅ done (2026-07-14).
+4. **Migrate `next lint` and add protected CI quality gates.** ✅ code done
    (`4ceacd0`); hosted activation remains.
-4. **Close INT-005 part-item parent containment.**
-5. **Fix MiniMax AI key** (or swap provider in `.env`). Verify `/api/ai/suggest` returns a real model response, not a mock.
-6. **Verify Resend sender domain** so confirmation / resolution emails actually send.
-7. **Ticket number sequence migration** (020) ✅ done (2026-07-14) — `next_ticket_no()` RPC + 021 volatility fix.
-8. **Collapse Slack handlers to `updateMasterMessage()`** — 4 inline `chat.update` calls become 4 one-liners. (Done in 3af10c6 actually — handlers now use `updateMasterMessage` everywhere; further collapse of the 4 audit calls per action is a follow-up.)
-9. **Dashboard timezone** — derive from user or first site.
-10. **Sprint 3 feature work** — Kanban view (INT-5), SLA monitoring (INT-6), notifications center (INT-7).
-11. **Start real Slack Connect work** — see PRD §8.5 / SLK-015.
+5. **Close INT-005 part-item parent containment.** ✅ code done
+   (`1f49ecc`); migration 028 deployment/runtime verification remains.
+6. **Fix MiniMax AI key** (or swap provider in `.env`). Verify `/api/ai/suggest` returns a real model response, not a mock.
+7. **Verify Resend sender domain** so confirmation / resolution emails actually send.
+8. **Ticket number sequence migration** (020) ✅ done (2026-07-14) — `next_ticket_no()` RPC + 021 volatility fix.
+9. **Collapse Slack handlers to `updateMasterMessage()`** — 4 inline `chat.update` calls become 4 one-liners. (Done in 3af10c6 actually — handlers now use `updateMasterMessage` everywhere; further collapse of the 4 audit calls per action is a follow-up.)
+10. **Dashboard timezone** — derive from user or first site.
+11. **Sprint 3 feature work** — Kanban view (INT-5), SLA monitoring (INT-6), notifications center (INT-7).
+12. **Start real Slack Connect work** — see PRD §8.5 / SLK-015.
 
 ### Open architectural questions
 - The RLS recursion bug surfaces a bigger question: do we keep `createAdminClient() + code filter` (the current pattern in `lib/supabase/scope.ts`) or move back to proper RLS once migration 019 + similar fixes are in place? The current pattern scales fine but has a lower safety margin for new queries.
@@ -591,7 +615,7 @@ npm audit
 ```
 
 **Apply a new migration:**
-1. Create `supabase/migrations/028_xxx.sql` (next number)
+1. Create `supabase/migrations/029_xxx.sql` (next number)
 2. Test locally: `supabase db reset` (drops + re-applies all)
 3. Apply to prod via Supabase SQL editor
 4. Document in this file's §5 + §10

@@ -7,12 +7,13 @@ meaningful change and before ending a work session. Newest entries go first.
 
 - **Branch:** `codex/prd-v1-1-gap-closure`
 - **Active phase:** Phase 0 — Containment and reproducible baseline
-- **Active work item:** P0-I external staging execution gate; INT-005 is the
-  next locally actionable integrity defect
-- **Last verified implementation commit:** `4ceacd0` (`ci: enforce reproducible quality gates`)
+- **Active work item:** P0-M / INT-005 deployment verification plus the P0-I
+  external staging execution gate
+- **Last verified implementation commit:** `1f49ecc` (`fix: make part fulfillment updates atomic`)
 - **Uncommitted work:** none expected; verify with `git status` before resuming
-- **Deployment gate:** migrations 001–027 are confirmed applied; no pending
-  database migration from this branch
+- **Deployment gate:** apply
+  `028_atomic_spare_part_request_updates.sql` after the user-confirmed
+  migrations 001–027 and before deploying `1f49ecc`
 - **External validation gate:** populate the gitignored credential fixture with six
   dedicated staging accounts, two tenants, a decommissioned site/ticket, and
   real internal artifact IDs; then run
@@ -21,9 +22,99 @@ meaningful change and before ending a work session. Newest entries go first.
   protection; create a reviewer-protected `staging` environment with the
   `RIPPLE_E2E_FIXTURES_JSON` secret before manually enabling the credentialed
   matrix
-- **Exact next local step:** inspect and close INT-005 so part-fulfillment item
-  updates are constrained by both the request URL and item ID
+- **Exact next step:** apply migration 028, then test an internal request
+  fulfillment update plus a foreign-item and over-fulfillment rejection
 - **Primary plan:** [`plans/prd-v1.1-gap-closure-plan.md`](./prd-v1.1-gap-closure-plan.md)
+
+## Session record — 2026-07-29 (P0-M / INT-005)
+
+### Objective
+
+Prevent a spare-part fulfillment request from updating an item owned by a
+different request, and remove the partial-commit/error-swallowing behavior from
+the request update path.
+
+### Confirmed defect
+
+- `PATCH /api/spare-part-requests/[id]` updated each submitted item with only
+  `.eq("id", item.id)`.
+- The URL request ID was not part of the item update predicate.
+- Item update errors were ignored, the request header could commit first, and
+  the response contained item values hydrated before the fulfillment writes.
+
+### Changes
+
+- Added migration `028_atomic_spare_part_request_updates.sql` with the
+  `apply_spare_part_request_patch` row-locked transaction.
+- The command independently verifies an active `admin`/`engineer` actor, locks
+  the parent request, locks supplied item rows in stable UUID order, and rejects
+  duplicates, foreign items, negative quantities, and fulfillment above the
+  ordered quantity.
+- Header changes, fulfillment changes, and per-field/per-item audit rows now
+  commit or roll back together.
+- Added a `NOT VALID` database check for
+  `0 <= fulfilled_quantity <= quantity`. It protects new/changed rows
+  immediately while honestly leaving historical validation for a later
+  data-audit migration.
+- Restricted the security-definer command to `service_role`, used an empty
+  search path with fully qualified objects, and wrapped create/revoke/grant in
+  one migration transaction.
+- Replaced direct route writes with a typed RPC wrapper and safe PostgreSQL
+  error-code mapping. The route hydrates after commit and returns the durable ID
+  as success if only the follow-up hydration query fails.
+- Added seven mutation/migration contract tests and a production HTTP denial
+  probe for unauthenticated spare-part request mutation.
+
+### Industry guidance applied
+
+- Parent-child containment is enforced in the database predicate, not inferred
+  from a previously fetched item.
+- `SELECT ... FOR UPDATE` serializes the parent and item rows; stable item lock
+  order limits deadlock risk for overlapping multi-item updates.
+- The security-definer function is transactionally permissioned, has no
+  untrusted search path, and re-verifies its attributed actor.
+- The non-blocking `NOT VALID` constraint does not scan or claim clean legacy
+  data but is enforced for subsequent inserts and updates.
+
+### Verification before implementation commit
+
+| Command | Result |
+|---|---|
+| `npm ci` | Passed; 532 packages installed from the lockfile |
+| `npm test` | Passed; 19 files, 166 tests |
+| `npm run lint` | Passed via ESLint CLI; 0 warnings/errors |
+| `npm run build` | Passed on Next.js 15.5.22 |
+| `npm run test:e2e` | Passed 18 production HTTP checks; credentialed matrix explicitly skipped because the secret fixture is unavailable |
+| `npm audit` | Passed; 0 vulnerabilities |
+| `git diff --check` | Passed |
+| Staged secret-pattern scan | Passed |
+
+The implementation was committed only after the full gate and a second
+`npm run test:e2e` in the same command immediately before commit. No PostgreSQL
+server, `psql`, Supabase CLI, or Docker runtime is connected in this workspace,
+so migration execution and positive RPC behavior are not claimed as tested.
+
+### Decisions and rollback
+
+- Migration 028 must precede the application commit because the route now calls
+  its RPC.
+- The constraint remains `NOT VALID` until existing rows are audited. Do not
+  mark it valid without first querying for negative or over-fulfilled history.
+- If rollback is required, roll back the application route first. Keeping the
+  database function and constraint is safe; do not restore the item-ID-only
+  update.
+
+### Commit
+
+- Hash: `1f49ecc`
+- Message: `fix: make part fulfillment updates atomic`
+
+### Exact next step
+
+- Apply migration 028, then verify:
+  1. an owned item can update within its ordered quantity;
+  2. an item from another request is rejected with no header/item change;
+  3. an over-fulfilled quantity is rejected with no partial audit row.
 
 ## Session record — 2026-07-29 (P0-L)
 
