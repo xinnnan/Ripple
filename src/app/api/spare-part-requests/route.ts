@@ -2,7 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireInternal } from "@/lib/supabase/auth-helpers";
 import { getUserScope, scopeSiteRows } from "@/lib/supabase/scope";
-import { logAudit } from "@/lib/audit";
+import {
+  createSparePartRequestAtomic,
+  SparePartRequestMutationError,
+} from "@/lib/spare-parts/mutations";
 import { sparePartRequestForExternal } from "@/lib/resource-visibility";
 import { z } from "zod";
 
@@ -10,18 +13,40 @@ export const dynamic = "force-dynamic";
 
 const PRIORITIES = ["low", "normal", "high", "urgent"] as const;
 
-const createSPRSchema = z.object({
-  ticket_id: z.string().uuid().nullable().optional(),
-  site_id: z.string().uuid(),
-  priority: z.enum(PRIORITIES).default("normal"),
-  notes: z.string().trim().max(5000).nullable().optional(),
-  items: z.array(z.object({
-    spare_part_id: z.string().uuid(),
-    quantity: z.number().int().positive(),
-    unit_price: z.number().nonnegative().finite().nullable().optional(),
-    notes: z.string().trim().max(500).nullable().optional(),
-  })).max(100).optional(),
-});
+const createSPRSchema = z
+  .object({
+    ticket_id: z.string().uuid().nullable().optional(),
+    site_id: z.string().uuid(),
+    priority: z.enum(PRIORITIES).default("normal"),
+    notes: z.string().trim().max(5000).nullable().optional(),
+    items: z
+      .array(
+        z.object({
+          spare_part_id: z.string().uuid(),
+          quantity: z.number().int().positive().max(2_147_483_647),
+          unit_price: z
+            .number()
+            .nonnegative()
+            .finite()
+            .max(99_999_999.99)
+            .nullable()
+            .optional(),
+          notes: z.string().trim().max(500).nullable().optional(),
+        })
+      )
+      .min(1)
+      .max(100),
+  })
+  .superRefine((value, context) => {
+    const partIds = value.items.map((item) => item.spare_part_id);
+    if (new Set(partIds).size !== partIds.length) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["items"],
+        message: "Duplicate spare parts are not allowed",
+      });
+    }
+  });
 
 // GET /api/spare-part-requests — List spare part requests
 export async function GET(request: NextRequest) {
@@ -95,90 +120,70 @@ export async function POST(request: NextRequest) {
     }
     const data = createSPRSchema.parse(body);
 
+    const { items, ...input } = data;
     const admin = createAdminClient();
+    let createdRequestId: string;
 
-    // Generate request number
-    const { data: seqData, error: seqErr } = await admin.rpc("generate_spr_number");
-    if (seqErr || typeof seqData !== "string") {
-      console.error("generate_spr_number RPC failed:", seqErr);
-      return NextResponse.json({ error: "Failed to generate request number" }, { status: 500 });
-    }
-    const requestNo = seqData;
-
-    // Calculate total cost from items (server-side, never trust body total)
-    let totalCost: number | null = null;
-    if (data.items && data.items.length > 0) {
-      totalCost = data.items.reduce(
-        (sum, item) => sum + (item.unit_price ?? 0) * item.quantity,
-        0
+    try {
+      createdRequestId = await createSparePartRequestAtomic({
+        supabase: admin,
+        actorId: auth.userId,
+        input,
+        items,
+      });
+    } catch (error) {
+      if (
+        error instanceof SparePartRequestMutationError &&
+        ["22003", "22023", "22P02", "23503", "23514"].includes(
+          error.code ?? ""
+        )
+      ) {
+        return NextResponse.json(
+          { error: "Invalid spare part request" },
+          { status: 400 }
+        );
+      }
+      if (
+        error instanceof SparePartRequestMutationError &&
+        error.code === "42501"
+      ) {
+        return NextResponse.json(
+          { error: "Forbidden: Active internal access required" },
+          { status: 403 }
+        );
+      }
+      console.error("POST /api/spare-part-requests command failed:", error);
+      return NextResponse.json(
+        { error: "Failed to create spare part request" },
+        { status: 500 }
       );
-      if (totalCost === 0) totalCost = null;
     }
 
-    // Create the request
+    // Hydration is intentionally outside the mutation transaction. A failed
+    // read must not make the caller retry a request that already committed.
     const { data: spr, error } = await admin
       .from("spare_part_requests")
-      .insert({
-        request_no: requestNo,
-        ticket_id: data.ticket_id ?? null,
-        site_id: data.site_id,
-        status: "requested",
-        priority: data.priority,
-        notes: data.notes ?? null,
-        requested_by: auth.userId,
-        total_cost: totalCost,
-      })
       .select(`
         *,
         site:sites(id, site_name, site_code),
         ticket:tickets(id, ticket_no, title),
-        requester:users!spare_part_requests_requested_by_fkey(id, full_name)
+        requester:users!spare_part_requests_requested_by_fkey(id, full_name),
+        items:spare_part_request_items(*, spare_part:spare_parts(*))
       `)
+      .eq("id", createdRequestId)
       .single();
 
     if (error) {
-      console.error("POST /api/spare-part-requests insert failed:", error);
-      return NextResponse.json({ error: "Failed to create spare part request" }, { status: 500 });
+      console.error("POST /api/spare-part-requests hydration failed:", error);
+      return NextResponse.json(
+        {
+          data: { id: createdRequestId },
+          warning:
+            "Request created; detail refresh is temporarily unavailable",
+        },
+        { status: 201 }
+      );
     }
-
-    // Create line items
-    if (data.items && data.items.length > 0) {
-      const items = data.items.map((item) => ({
-        request_id: spr.id,
-        spare_part_id: item.spare_part_id,
-        quantity: item.quantity,
-        fulfilled_quantity: 0,
-        unit_price: item.unit_price ?? null,
-        notes: item.notes ?? null,
-      }));
-
-      const { error: itemsError } = await admin
-        .from("spare_part_request_items")
-        .insert(items);
-
-      if (itemsError) {
-        console.error("Failed to create request items:", itemsError);
-        // The header is committed; this is a partial-success state.
-        // Caller can re-PATCH to add the items. Don't roll back.
-      }
-    }
-
-    await logAudit({
-      actorId: auth.userId,
-      actorEmail: auth.email,
-      actorRole: auth.role,
-      entityType: "part_request",
-      entityId: spr.id,
-      action: "created",
-      newValue: requestNo,
-      metadata: {
-        site_id: data.site_id,
-        priority: data.priority,
-        ticket_id: data.ticket_id ?? null,
-        item_count: data.items?.length ?? 0,
-        total_cost: totalCost,
-      },
-    });
 
     return NextResponse.json({ data: spr }, { status: 201 });
   } catch (error) {

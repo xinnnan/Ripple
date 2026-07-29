@@ -14,6 +14,20 @@ export interface SparePartFulfillmentPatch {
   fulfilled_quantity: number;
 }
 
+export interface SparePartRequestCreateInput {
+  ticket_id?: string | null;
+  site_id: string;
+  priority: SPRPriority;
+  notes?: string | null;
+}
+
+export interface SparePartRequestCreateItem {
+  spare_part_id: string;
+  quantity: number;
+  unit_price?: number | null;
+  notes?: string | null;
+}
+
 export class SparePartRequestMutationError extends Error {
   constructor(
     message: string,
@@ -49,6 +63,36 @@ export async function applySparePartRequestPatch(args: {
   if (error || typeof data !== "string") {
     throw new SparePartRequestMutationError(
       "Atomic spare part request update failed",
+      error?.code
+    );
+  }
+
+  return data;
+}
+
+/**
+ * Create a request, all of its items, and its audit entry in one database
+ * transaction. Migration 029 owns tenant containment, catalog validation,
+ * price calculation, sequence allocation, and active-actor attribution.
+ */
+export async function createSparePartRequestAtomic(args: {
+  supabase: SupabaseClient;
+  actorId: string;
+  input: SparePartRequestCreateInput;
+  items: SparePartRequestCreateItem[];
+}): Promise<string> {
+  const { data, error } = await args.supabase.rpc(
+    "create_spare_part_request_atomic",
+    {
+      p_actor_id: args.actorId,
+      p_input: args.input,
+      p_items: args.items,
+    }
+  );
+
+  if (error || typeof data !== "string") {
+    throw new SparePartRequestMutationError(
+      "Atomic spare part request creation failed",
       error?.code
     );
   }

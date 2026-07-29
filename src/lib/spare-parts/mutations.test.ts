@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   applySparePartRequestPatch,
+  createSparePartRequestAtomic,
   SparePartRequestMutationError,
 } from "./mutations";
 
@@ -18,6 +19,65 @@ function clientWithRpc(result: { data: unknown; error: null | { code?: string } 
 }
 
 describe("spare part request mutation contract", () => {
+  it("sends request creation and all line items to one atomic command", async () => {
+    const { client, rpc } = clientWithRpc({
+      data: REQUEST_ID,
+      error: null,
+    });
+    const input = {
+      site_id: "44444444-4444-4444-8444-444444444444",
+      ticket_id: null,
+      priority: "urgent" as const,
+      notes: "Line stopped",
+    };
+    const items = [
+      {
+        spare_part_id: ITEM_ID,
+        quantity: 2,
+        unit_price: 12.5,
+        notes: null,
+      },
+    ];
+
+    await expect(
+      createSparePartRequestAtomic({
+        supabase: client,
+        actorId: ACTOR_ID,
+        input,
+        items,
+      })
+    ).resolves.toBe(REQUEST_ID);
+
+    expect(rpc).toHaveBeenCalledWith("create_spare_part_request_atomic", {
+      p_actor_id: ACTOR_ID,
+      p_input: input,
+      p_items: items,
+    });
+  });
+
+  it("preserves creation error codes without exposing database messages", async () => {
+    const { client } = clientWithRpc({
+      data: null,
+      error: { code: "22023" },
+    });
+
+    const operation = createSparePartRequestAtomic({
+      supabase: client,
+      actorId: ACTOR_ID,
+      input: {
+        site_id: "44444444-4444-4444-8444-444444444444",
+        priority: "normal",
+      },
+      items: [{ spare_part_id: ITEM_ID, quantity: 1 }],
+    });
+
+    await expect(operation).rejects.toMatchObject({
+      name: "SparePartRequestMutationError",
+      message: "Atomic spare part request creation failed",
+      code: "22023",
+    } satisfies Partial<SparePartRequestMutationError>);
+  });
+
   it("sends header and fulfillment changes to one atomic command", async () => {
     const { client, rpc } = clientWithRpc({
       data: REQUEST_ID,
