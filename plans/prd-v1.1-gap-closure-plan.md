@@ -33,7 +33,8 @@ Ripple is a useful support-ticket prototype with meaningful Phase 1–4 work:
 - spare-parts and field-service skeletons
 - simple wall-clock SLA targets
 - email and AI integrations with graceful failure
-- 120 committed unit tests and a production HTTP end-to-end smoke
+- 136 committed unit/contract tests, production HTTP smoke, and an opt-in
+  credentialed browser/API/RLS matrix
 
 It is not yet the operations platform described by PRD v1.1. The old
 `scope-vs-prd.md` assessment targets PRD v0.9 and should not be used as the
@@ -65,12 +66,12 @@ The correct approach is therefore:
 
 | Gate | Result through 2026-07-29 | Meaning |
 |---|---|---|
-| Unit tests | 120/120 passed | Scope, lifecycle, visibility, Slack, filters, SLA truth tables/RPC contracts, and audit coverage is green |
+| Unit tests | 136/136 passed | Scope, lifecycle, visibility, Slack, filters, SLA, fixture validation, migration/RPC contracts, and audit coverage is green |
 | Lint | Passed, no warnings | `next lint` is deprecated and must be migrated |
 | Production build | Passed on Next.js 15.5.22 | Environment-free build is reproducible |
 | Dependency audit | 0 vulnerabilities | Patched direct/transitive versions are lockfile-pinned and compatibility-tested |
 | Worktree | Clean at baseline | Work started on `codex/prd-v1-1-gap-closure` |
-| Committed end-to-end tests | 12 production HTTP checks | Public pages, protected redirect, retired deletes, archive denials, and unauthenticated ticket-mutation denials run against `next start`; credentialed role/tenant matrix remains pending |
+| Committed end-to-end tests | 12 production HTTP checks + credentialed Playwright/API/RLS matrix | Public/negative smoke always runs; six-account two-tenant positive/negative execution is fail-closed in protected CI and awaits migration 027 plus the secret staging fixture |
 
 ## 4. PRD capability gap map
 
@@ -103,7 +104,7 @@ has a release-blocking security or integrity problem.
 | External API / Webhooks | Absent | Unversioned internal REST only; no client credentials, scopes, idempotency, concurrency, stable errors, signed webhooks, or docs |
 | Security / Privacy | Unsafe/Partial | Weak attachment controls, fail-open Slack configuration, incomplete audit guarantees outside the archive commands, and other authorization gaps remain |
 | SRE / Operations | Absent | No structured observability, SLOs, alerting, runbooks, tested recovery, capacity/performance evidence, or release automation |
-| Testing / Quality Gates | Partial | Unit, SLA truth tables, RPC/migration guards, and production HTTP smoke are in repo; no committed credentialed tenant matrix, browser feature E2E, recovery, i18n, or performance suites |
+| Testing / Quality Gates | Partial | Unit, SLA truth tables, RPC/migration guards, production HTTP smoke, and a credentialed tenant/browser matrix are committed; the credentialed matrix still needs its first staging run, and recovery, i18n, and performance suites remain |
 
 ## 5. Confirmed bug and risk register
 
@@ -120,6 +121,7 @@ has a release-blocking security or integrity problem.
 | SEC-007 | Slack signature verification succeeds when the signing secret is missing | Fail closed in production; expose a health/configuration error |
 | SEC-008 | Runtime dependency audit reports six high-severity production advisories | **Closed in `211843e`:** Next 15.5.22 + patched overrides/transitives; full `npm audit` reports 0 |
 | SEC-009 | Permissive legacy RLS allows customer roles to query internal comments/attachments and raw ticket events directly | **Closed in `b71b3d7`:** migration 026 replaces the OR-composed policies with customer-visible artifact scope and internal-only raw events |
+| SEC-010 | Authenticated PostgREST can request ticket secrets/PII columns and any active account can directly access the attachment bucket | **Code closed in `b9a7a12`, deployment pending:** migration 027 replaces broad ticket SELECT with a customer-safe column grant and removes direct authenticated Storage access |
 
 ### High-priority integrity defects
 
@@ -334,13 +336,16 @@ Every implementation slice must:
 3. **P0-C — completed 2026-07-28:** Restrict Slack internal actions to active internal users.
 4. **P0-D — completed 2026-07-28:** Remove internal ticket fields and controls from customer rendering.
 5. **P0-E — completed 2026-07-28:** Fix clean-build `/login` failure.
-6. **P0-F — unit + HTTP integration layers completed; credentialed matrix
-   pending:** Add regression tests for resource scoping and client/server
-   import boundaries.
+6. **P0-F — committed layers completed; staging execution pending:** Unit,
+   HTTP, credentialed browser/API/RLS, and client/server-boundary regression
+   suites are in the repository.
 7. **P0-G — completed in `211843e`:** Disable production hard deletes and
    replace them with archive/deactivate lifecycle commands.
 8. **P0-H — completed in `b71b3d7`:** Correct SLA milestone definitions and
-   persistence; migration 026 must be applied before application deployment.
-9. **P0-I:** Commit a role/tenant browser and API matrix.
+   persistence; migration 026 was confirmed applied on 2026-07-29.
+9. **P0-I — harness committed in `b9a7a12`; live gate pending:** Apply
+   migration 027, provision the secret six-account/two-tenant staging fixture,
+   and run the browser/API/PostgREST/Storage matrix with
+   `RIPPLE_E2E_REQUIRE_CREDENTIALS=1`.
 10. **P0-J — completed early in `211843e`:** Upgrade vulnerable runtime
     dependencies under full gates.

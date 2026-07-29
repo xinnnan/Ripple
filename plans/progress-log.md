@@ -7,14 +7,120 @@ meaningful change and before ending a work session. Newest entries go first.
 
 - **Branch:** `codex/prd-v1-1-gap-closure`
 - **Active phase:** Phase 0 — Containment and reproducible baseline
-- **Active work item:** P0-I credentialed role/tenant browser and API matrix
-- **Last verified implementation commit:** `b71b3d7` (`fix: correct SLA milestone persistence`)
+- **Active work item:** P0-I staging execution gate
+- **Last verified implementation commit:** `b9a7a12` (`test: add credentialed tenant authorization matrix`)
 - **Uncommitted work:** none expected; verify with `git status` before resuming
-- **Exact next step:** define environment-safe credential fixtures for admin,
-  engineer, customer manager, two customer tenants, inactive user, and archived
-  site; then commit positive/negative browser + API probes that skip with an
-  explicit reason when the credentialed test environment is unavailable
+- **Deployment gate:** migration
+  `027_restrict_ticket_columns_and_storage.sql` must be applied after the
+  user-confirmed migration 026
+- **Exact next step:** populate the gitignored credential fixture with six
+  dedicated staging accounts, two tenants, a decommissioned site/ticket, and
+  real internal artifact IDs; then run
+  `RIPPLE_E2E_REQUIRE_CREDENTIALS=1 npm run test:e2e:credentialed`
 - **Primary plan:** [`plans/prd-v1.1-gap-closure-plan.md`](./prd-v1.1-gap-closure-plan.md)
+
+## Session record — 2026-07-29 (P0-I harness)
+
+### Objective
+
+Record migration 026 as applied and commit a non-vacuous role/tenant browser,
+API, PostgREST, and Storage authorization matrix that is safe for local
+development and fail-closed in protected CI.
+
+### Deployment confirmation
+
+- The user confirmed migration `026_correct_sla_milestones.sql` was applied on
+  2026-07-29. Its prior deployment blocker is closed.
+- Migration `027_restrict_ticket_columns_and_storage.sql` is new in this
+  checkpoint and must be applied before the credentialed matrix or application
+  release.
+
+### Changes
+
+- Added a Playwright matrix for real UI login and page routing across admin,
+  engineer, customer manager, two separate customer tenants, and an inactive
+  account.
+- Added cookie-sharing API probes for vertical role denial, horizontal
+  cross-tenant denial, archived-ticket denial, customer response shaping,
+  internal archived-history access, and inactive-session rejection.
+- Added direct Supabase probes for RLS, ticket column privileges, internal
+  comment/attachment/event visibility, archived lifecycle, and private Storage
+  denial.
+- Made fixture assertions non-vacuous: the suite verifies role/status,
+  customer/site/ticket ownership, decommissioned site state, internal artifact
+  ownership/visibility, and the exact Storage path before trusting denial
+  results.
+- Added a secret-file contract and gitignored local fixture path. Missing
+  credentials explicitly skip in local runs; partial/invalid fixtures fail;
+  `RIPPLE_E2E_REQUIRE_CREDENTIALS=1` makes absence fail in protected CI.
+- Installed and launch-tested Playwright Chromium 1.62.0.
+- **SEC-010 discovered and code-closed:** RLS constrained ticket rows but not
+  ticket columns, and the attachment bucket allowed any active authenticated
+  user. Migration 027 revokes table-wide authenticated ticket SELECT, grants
+  only customer-safe columns, and removes direct authenticated Storage
+  read/upload policies so attachments remain server-mediated.
+
+### Industry guidance applied
+
+- OWASP authorization regression guidance: one central actor-resource-action
+  matrix covers vertical escalation, horizontal IDOR replay, tenant
+  boundaries, inactive identities, and field-level data exposure.
+- OWASP deny-by-default guidance: missing protected-CI credentials fail, direct
+  ticket secret columns are not granted, and private Storage has no general
+  authenticated policy.
+- Supabase SSR guidance: browser login exercises the real cookie session, API
+  calls reuse the browser cookie jar, and direct PostgREST probes use a separate
+  caller JWT to test RLS rather than the service role.
+- PostgreSQL privilege behavior: row security is not column security; a broad
+  table SELECT grant must be revoked before a safe column allow-list is
+  effective.
+
+### Verification before implementation commit
+
+| Command | Result |
+|---|---|
+| `npm ci` | Passed; 532 packages installed from the lockfile |
+| `npm test` | Passed; 15 files, 136 tests |
+| `npm run lint` | Passed; no warnings/errors |
+| `npm run build` | Passed on Next.js 15.5.22 |
+| `npm run test:e2e` | Passed 12 production HTTP checks; credentialed matrix explicitly skipped because the secret fixture is unavailable |
+| `npm run test:e2e:install-browser` | Passed; Chromium 151 / Playwright runtime 1.62.0 installed |
+| Chromium launch smoke | Passed; headless browser launched, rendered content, and closed |
+| `RIPPLE_E2E_REQUIRE_CREDENTIALS=1` negative gate | Passed; missing fixture exited non-zero |
+| `npm audit` | Passed; 0 vulnerabilities |
+| `git diff --check` | Passed |
+
+The implementation was committed only after the full gate and a second
+`npm run test:e2e` immediately before commit. The six-account staging matrix
+has not been claimed as passed: this workspace has no secret fixture, and
+migration 027 is not yet confirmed applied.
+
+### Decisions and rollback
+
+- The credential fixture contains passwords, so only an example is committed;
+  the local filename is ignored and CI must provide a protected file/secret.
+- The suite is read-only and requires existing rows for both tenants,
+  decommissioned history, and internal artifacts.
+- Direct authenticated attachment access is intentionally removed. The current
+  upload path already uses a trusted server route/service role; future
+  downloads must use an authorized server endpoint that mints a short-lived
+  URL.
+- Rollback of application/test code does not restore unsafe database grants.
+  If migration 027 must be rolled back, define a reviewed safe projection or
+  server endpoint; do not restore table-wide ticket SELECT or bucket-wide
+  authenticated access.
+
+### Commit
+
+- Hash: `b9a7a12`
+- Message: `test: add credentialed tenant authorization matrix`
+
+### Exact next step
+
+- Apply migration 027, create the dedicated staging fixture from
+  `scripts/credentialed-role-matrix.example.json`, install Chromium in the
+  runner, and execute the matrix with
+  `RIPPLE_E2E_REQUIRE_CREDENTIALS=1`.
 
 ## Session record — 2026-07-29 (P0-H)
 

@@ -86,7 +86,7 @@ Vercel.
 │   │   ├── ticket.ts                    # ⭐ All domain enums + labels
 │   │   └── spare-parts.ts               # ⭐ Spare parts + field service enums
 │   └── middleware.ts                    # ⭐ Route guard + session refresh
-├── supabase/migrations/                 # 001–026, apply in order
+├── supabase/migrations/                 # 001–027, apply in order
 ├── plans/                               # Architecture + phase planning docs
 │   ├── architecture.md
 │   ├── phase2-customer-auth-and-user-management.md
@@ -105,7 +105,7 @@ Vercel.
 - Ticket detail UI → `src/app/(auth)/tickets/[ticketId]/page.tsx` (server) + `ticket-actions-panel.tsx` (client)
 - Slack ticket creation → `src/app/api/slack/command/ticket/route.ts` + `src/lib/slack/blocks/ticket-form.ts`
 - AI assist → `src/app/api/ai/suggest/route.ts` + `src/lib/ai/suggest.ts`
-- DB schema → `supabase/migrations/001_*.sql` … `026_correct_sla_milestones.sql`
+- DB schema → `supabase/migrations/001_*.sql` … `027_restrict_ticket_columns_and_storage.sql`
 
 ---
 
@@ -143,7 +143,8 @@ const isInternal = role ? INTERNAL_ROLES.includes(role) : email ? isInternalEmai
 
 ## 5. Database Schema (Supabase)
 
-26 migrations, applied in order. Key tables:
+27 migrations, to be applied in order. Migrations 001–026 are confirmed;
+migration 027 is committed but not yet confirmed applied. Key tables:
 
 | Table | Purpose | Notes |
 |---|---|---|
@@ -151,9 +152,9 @@ const isInternal = role ? INTERNAL_ROLES.includes(role) : email ? isInternalEmai
 | `sites` | Customer locations | `site_code` (unique), `slack_channel_id`, `project_status` (pre_signoff / in_warranty / full_coverage / essential_coverage / out_of_service) |
 | `users` | All users (internal + external) | `role` (4 values, see §4), `customer_id`, `slack_user_id` |
 | `site_members` | User ↔ Site (M:N) | customers join via this; customer_manager bypasses |
-| `tickets` | Core ticket entity | `ticket_no` (RPL-XXXXXX), `secure_token` (32-byte hex), `severity` (P1–P4), 8-state `status`, response/resolution due/achieved/breached timestamps |
+| `tickets` | Core ticket entity | `ticket_no` (RPL-XXXXXX), `secure_token` (32-byte hex), `severity` (P1–P4), 8-state `status`, response/resolution due/achieved/breached timestamps; migration 027 column-limits direct authenticated SELECT |
 | `ticket_comments` | Discussion, `visibility: customer\|internal` | `is_automated`; only human internal-authored customer-visible messages satisfy First Response |
-| `ticket_attachments` | File refs (storage_path) | Bucket `ripple-attachments`, 50MB cap |
+| `ticket_attachments` | File refs (storage_path) | Bucket `ripple-attachments`, 50MB cap; direct authenticated bucket access is removed by migration 027 and app routes mediate objects |
 | `ticket_events` | Audit log | `actor_id`, `event_type`, `old_value`/`new_value` |
 | `ai_suggestions` | Ripple Assist outputs | `model_name`, `confidence_level`, accept/dismiss feedback |
 | `slack_channels` / `slack_messages` | Site ↔ Slack channel map, message tracking | |
@@ -253,7 +254,7 @@ if ("error" in auth) return NextResponse.json({ error: auth.error }, { status: a
 npm install
 cp .env.local.example .env.local   # fill in real values
 # Run migrations in Supabase SQL editor (or `supabase db push` if using CLI):
-#   001 → 026 in order
+#   001 → 027 in order
 # Enable pgvector: CREATE EXTENSION IF NOT EXISTS vector;
 npm run dev
 ```
@@ -263,8 +264,10 @@ npm run dev
 - `npm run build` — production build
 - `npm run start` — production server
 - `npm run lint` — `next lint` (ESLint, default Next.js config)
-- `npm test` — Vitest unit suite (120 tests)
-- `npm run test:e2e` — 12-check production HTTP end-to-end smoke; requires a successful build
+- `npm test` — Vitest unit/contract suite (136 tests)
+- `npm run test:e2e` — 12-check production HTTP smoke plus optional credentialed Playwright/API/RLS matrix; requires a successful build
+- `npm run test:e2e:credentialed` — real six-account/two-tenant matrix; set `RIPPLE_E2E_FIXTURES_FILE`
+- `npm run test:e2e:install-browser` — install the pinned Chromium runtime
 
 ### Required env vars (`.env.local.example`)
 ```
@@ -411,6 +414,26 @@ completion timestamp with the due timestamp.
 milestone timestamps, and commit business data, timeline, and audit together.
 Do not infer customer communication from assignment or status changes.
 
+### Row security does not hide sensitive columns or secure Storage by itself
+Found 2026-07-29 while designing the credentialed tenant matrix. Ticket RLS
+correctly constrained which rows a customer could read, but a direct
+PostgREST caller could still request `secure_token`, submitter PII, and
+internal-only ticket fields from an allowed row. Separately, the Storage policy
+checked only whether the account was active, so any active user could access
+the entire attachment bucket.
+
+Migration 027 revokes table-wide ticket SELECT before granting a customer-safe
+column allow-list, and removes general authenticated bucket read/upload
+policies. Application pages and APIs keep using explicit server-side
+projections; attachment objects remain server-mediated.
+
+**Lesson:** test row-, function-, field-, and object-level authorization as
+separate boundaries. PostgreSQL column grants do not override an existing
+table-wide grant, and an account-state Storage policy is not tenant
+authorization. Authorization fixtures must prove referenced resources and
+internal artifacts really exist so an empty result cannot produce a false
+green test.
+
 ---
 
 ## 10. Current State & Roadmap
@@ -471,14 +494,15 @@ resume work; this section remains the broader historical summary.
       to detail-tabs-helpers.ts (no "use client" directive).
   - **Helper upgrade**: `requireAdmin()` now also returns `email` (it was already selecting it — just not exposing).
   - **New tests**: 4 new e2e scripts (21_audit_fixes, 22_list_pii, 23_web_pages_full, 24_feature_flows), 272 new test cases. Full suite: 7 e2e mjs (182) + 2 e2e Python (187) + 7 unit (83) = **452 tests, all green**.
-- **PRD v1.1 Phase 0 containment** (`9083ece`, `211843e`, `b71b3d7`): centralized
+- **PRD v1.1 Phase 0 containment** (`9083ece`, `211843e`, `b71b3d7`, `b9a7a12`): centralized
   tenant scoping and response shaping; removed client service-role imports;
   restricted Slack actions; hid customer-internal ticket fields; retired
   customer/site/user hard delete; added transactional archive/deactivation,
   active-account and lifecycle RLS; corrected First Response/Resolution
-  milestones across web and Slack; closed legacy artifact-policy leaks; added
-  production HTTP E2E, 120 unit tests, and a zero-vulnerability dependency
-  baseline.
+  milestones across web and Slack; closed legacy artifact-policy leaks and
+  direct ticket-column/Storage exposure; added production HTTP E2E, an opt-in
+  six-account Playwright/API/RLS matrix, 136 unit/contract tests, and a
+  zero-vulnerability dependency baseline.
 
 ### Known issues / open work
 | Priority | Item | Where | Notes |
@@ -490,18 +514,19 @@ resume work; this section remains the broader historical summary.
 | 🟡 Med | In-memory rate limit not production-grade | `src/lib/rate-limit.ts` | Fine for now (Vercel cold starts reset the counter, but worst case is a fresh window per cold start). Swap for Upstash/Redis when traffic warrants. |
 | 🟢 Low | Ticket number sequence is in place (migration 020/021) but not used by all create paths | `src/lib/tickets/create.ts:generateNextTicketNo` | `next_ticket_no()` RPC exists; the create flow should switch from MAX+1 to the sequence. |
 | 🟢 Low | Slack `events` route doesn't route customer messages to a ticket comment yet | `src/app/api/slack/events/route.ts` | Sprint 3 — bidirectional thread sync (SLK-008) |
-| 🔴 Deploy | Migration 026 must be applied before `b71b3d7` is released | `supabase/migrations/026_correct_sla_milestones.sql` | Migration 025 was confirmed applied on 2026-07-29. The new app paths call migration-026 RPCs and require its SLA columns/policies |
-| 🟡 Med | Credentialed role/tenant browser matrix is not committed | `scripts/production-smoke.mjs` | Environment-safe HTTP smoke is committed; P0-I still needs real login/site fixtures and positive/negative tenant flows |
+| 🔴 Deploy | Migration 027 must be applied before `b9a7a12` is released or the credentialed matrix runs | `supabase/migrations/027_restrict_ticket_columns_and_storage.sql` | Migration 026 was confirmed applied on 2026-07-29. Migration 027 column-limits direct ticket reads and removes bucket-wide authenticated Storage access |
+| 🟡 Med | Credentialed role/tenant matrix has not had its first staging execution | `scripts/credentialed-role-matrix.mjs` | Harness, fixture validation, and Chromium launch are committed/green; provision six dedicated accounts and non-vacuous two-tenant/archive/internal-artifact IDs, then run with required credentials |
 
 ### Next priorities (Sprint 3, in proposed order)
-1. **Apply migration 019** ✅ done (2026-07-14).
-2. **Fix MiniMax AI key** (or swap provider in `.env`). Verify `/api/ai/suggest` returns a real model response, not a mock.
-3. **Verify Resend sender domain** so confirmation / resolution emails actually send.
-4. **Ticket number sequence migration** (020) ✅ done (2026-07-14) — `next_ticket_no()` RPC + 021 volatility fix.
-5. **Collapse Slack handlers to `updateMasterMessage()`** — 4 inline `chat.update` calls become 4 one-liners. (Done in 3af10c6 actually — handlers now use `updateMasterMessage` everywhere; further collapse of the 4 audit calls per action is a follow-up.)
-6. **Dashboard timezone** — derive from user or first site.
-7. **Sprint 3 feature work** — Kanban view (INT-5), SLA monitoring (INT-6), notifications center (INT-7).
-8. **Start real Slack Connect work** — see PRD §8.5 / SLK-015.
+1. **Apply migration 027 and run the required credentialed staging matrix.**
+2. **Apply migration 019** ✅ done (2026-07-14).
+3. **Fix MiniMax AI key** (or swap provider in `.env`). Verify `/api/ai/suggest` returns a real model response, not a mock.
+4. **Verify Resend sender domain** so confirmation / resolution emails actually send.
+5. **Ticket number sequence migration** (020) ✅ done (2026-07-14) — `next_ticket_no()` RPC + 021 volatility fix.
+6. **Collapse Slack handlers to `updateMasterMessage()`** — 4 inline `chat.update` calls become 4 one-liners. (Done in 3af10c6 actually — handlers now use `updateMasterMessage` everywhere; further collapse of the 4 audit calls per action is a follow-up.)
+7. **Dashboard timezone** — derive from user or first site.
+8. **Sprint 3 feature work** — Kanban view (INT-5), SLA monitoring (INT-6), notifications center (INT-7).
+9. **Start real Slack Connect work** — see PRD §8.5 / SLK-015.
 
 ### Open architectural questions
 - The RLS recursion bug surfaces a bigger question: do we keep `createAdminClient() + code filter` (the current pattern in `lib/supabase/scope.ts`) or move back to proper RLS once migration 019 + similar fixes are in place? The current pattern scales fine but has a lower safety margin for new queries.
@@ -523,7 +548,7 @@ npm audit
 ```
 
 **Apply a new migration:**
-1. Create `supabase/migrations/026_xxx.sql` (next number)
+1. Create `supabase/migrations/028_xxx.sql` (next number)
 2. Test locally: `supabase db reset` (drops + re-applies all)
 3. Apply to prod via Supabase SQL editor
 4. Document in this file's §5 + §10
