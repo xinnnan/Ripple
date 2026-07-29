@@ -25,7 +25,7 @@ A Slack-native support portal for DropletAI Services. Centralises customer suppo
 | AI | **MiniMax AI** (OpenAI-compatible) — was OpenAI → Zhipu → MiniMax. **See "AI provider" section below.** |
 | Email | Resend (transactional: ticket confirmation, resolution notice) |
 | Validation | Zod (all API request bodies) |
-| Testing | Vitest (136 unit/contract tests) + production HTTP smoke + credentialed Playwright/API/RLS matrix |
+| Testing | Vitest (155 unit/contract tests) + 17-check production HTTP smoke + credentialed Playwright/API/RLS matrix |
 | Hosting | Vercel (serverless API routes) |
 
 ## Phases
@@ -119,6 +119,13 @@ npm run test:e2e   # Production HTTP smoke + optional credentialed matrix
 npm audit          # 0 known dependency vulnerabilities required
 ```
 
+The production server exposes two non-cacheable operational probes:
+
+- `GET /api/health/live` — process liveness only; returns `200`.
+- `GET /api/health/ready` — required database/Slack configuration status;
+  returns `200` when configured or `503` when traffic should not be admitted.
+  It reports only component state and never environment values.
+
 ### Credentialed role/tenant E2E
 
 The default E2E command always runs the local production HTTP smoke. It then
@@ -154,6 +161,10 @@ protected CI should set `RIPPLE_E2E_REQUIRE_CREDENTIALS=1` so it fails closed.
    - **Bot Token Scopes**: `commands`, `chat:write`, `chat:write.public`, `channels:read`, `users:read`, `files:read`
 3. Install the app to your workspace.
 4. Copy the Bot Token (`xoxb-…`) and Signing Secret to `.env.local`.
+
+All three Slack ingress routes fail closed. Missing or template credentials
+return `503 SLACK_CONFIGURATION_ERROR`; requests with missing, stale, or invalid
+Slack signatures return `401 SLACK_SIGNATURE_INVALID`.
 
 ## AI Provider (Ripple Assist)
 

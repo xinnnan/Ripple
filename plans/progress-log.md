@@ -7,17 +7,102 @@ meaningful change and before ending a work session. Newest entries go first.
 
 - **Branch:** `codex/prd-v1-1-gap-closure`
 - **Active phase:** Phase 0 — Containment and reproducible baseline
-- **Active work item:** P0-I staging execution gate
-- **Last verified implementation commit:** `b9a7a12` (`test: add credentialed tenant authorization matrix`)
+- **Active work item:** P0-L lint/CI reproducibility while P0-I awaits its
+  protected staging fixture
+- **Last verified implementation commit:** `e83156f` (`fix: fail closed on Slack configuration`)
 - **Uncommitted work:** none expected; verify with `git status` before resuming
-- **Deployment gate:** migration
-  `027_restrict_ticket_columns_and_storage.sql` must be applied after the
-  user-confirmed migration 026
-- **Exact next step:** populate the gitignored credential fixture with six
+- **Deployment gate:** migrations 001–027 are confirmed applied; no pending
+  database migration from this branch
+- **External validation gate:** populate the gitignored credential fixture with six
   dedicated staging accounts, two tenants, a decommissioned site/ticket, and
   real internal artifact IDs; then run
   `RIPPLE_E2E_REQUIRE_CREDENTIALS=1 npm run test:e2e:credentialed`
+- **Exact next local step:** migrate `next lint` to the ESLint CLI and add a
+  protected CI workflow for install, unit, lint, build, E2E, and audit gates
 - **Primary plan:** [`plans/prd-v1.1-gap-closure-plan.md`](./prd-v1.1-gap-closure-plan.md)
+
+## Session record — 2026-07-29 (P0-K)
+
+### Objective
+
+Record migration 027 as applied and close SEC-007 by making every Slack ingress
+route fail closed when request-verification credentials are unavailable, while
+providing secret-safe liveness and readiness signals.
+
+### Deployment confirmation
+
+- The user confirmed migration
+  `027_restrict_ticket_columns_and_storage.sql` was applied on 2026-07-29.
+- Migrations 001–027 are therefore confirmed applied in order. The SEC-010
+  database deployment gate is closed.
+
+### Changes
+
+- Added one shared Slack configuration validator for bot-token and signing-secret
+  presence, format, minimum length, and known template values.
+- Removed the missing-signing-secret bypass from Slack request verification.
+  The slash command, interactive callback, and Events API routes now return:
+  - `503 SLACK_CONFIGURATION_ERROR` for unavailable server configuration;
+  - `401 SLACK_SIGNATURE_INVALID` for untrusted requests.
+- Hardened signature parsing with a strict numeric timestamp, a five-minute
+  replay window, a strict `v0=` SHA-256 signature shape, and timing-safe
+  comparison over the original body.
+- Added `/api/health/live` for process liveness and `/api/health/ready` for
+  configuration readiness. Responses are non-cacheable and expose only
+  `ready`/`not_ready` component state, never environment values.
+- Expanded production HTTP E2E from 12 to 17 checks with liveness, negative
+  readiness, and all three fail-closed Slack ingress probes.
+- Added 19 tests across the readiness and signature suites; the full
+  unit/contract baseline is now 155 tests.
+
+### Industry guidance applied
+
+- Slack request-authentication guidance: authenticate the untouched body with
+  the timestamped `v0` HMAC, reject replays older than five minutes, and use a
+  constant-time comparison.
+- Readiness-probe guidance: keep liveness independent of external configuration
+  and return non-success from readiness when the instance must not receive
+  integration traffic.
+- Fail-secure design: a missing credential is an unavailable server, not an
+  authenticated caller; production code has no environment-name-based bypass.
+
+### Verification before implementation commit
+
+| Command | Result |
+|---|---|
+| `npm ci` | Passed; 532 packages installed from the lockfile |
+| `npm test` | Passed; 16 files, 155 tests |
+| `npm run lint` | Passed; no warnings/errors |
+| `npm run build` | Passed on Next.js 15.5.22 |
+| `npm run test:e2e` | Passed 17 production HTTP checks; credentialed matrix explicitly skipped because the secret fixture is unavailable |
+| `npm audit` | Passed; 0 vulnerabilities |
+| `git diff --check` | Passed |
+| Staged secret-pattern scan | Passed |
+
+The implementation was committed only after the full gate and a second
+`npm run test:e2e` in the same command immediately before commit. The
+credentialed matrix is still not claimed as passed; this workspace does not
+have its protected six-account fixture.
+
+### Decisions and rollback
+
+- `503` distinguishes operator-remediable configuration absence from a `401`
+  request-authentication failure, without revealing credential material.
+- Readiness currently validates configuration shape rather than making
+  dependency network calls, so probes remain fast and do not amplify outages.
+- Rollback is the application commit only; no migration was introduced. Do not
+  restore the former signing-secret bypass.
+
+### Commit
+
+- Hash: `e83156f`
+- Message: `fix: fail closed on Slack configuration`
+
+### Exact next step
+
+- Migrate deprecated `next lint` to the ESLint CLI and add protected CI gates.
+  In parallel, an operator must provision the secret staging fixture and run
+  the required credentialed role/tenant matrix.
 
 ## Session record — 2026-07-29 (P0-I harness)
 
@@ -92,8 +177,8 @@ development and fail-closed in protected CI.
 
 The implementation was committed only after the full gate and a second
 `npm run test:e2e` immediately before commit. The six-account staging matrix
-has not been claimed as passed: this workspace has no secret fixture, and
-migration 027 is not yet confirmed applied.
+has not been claimed as passed: this workspace has no secret fixture. Migration
+027 was subsequently confirmed applied on 2026-07-29.
 
 ### Decisions and rollback
 
@@ -117,7 +202,7 @@ migration 027 is not yet confirmed applied.
 
 ### Exact next step
 
-- Apply migration 027, create the dedicated staging fixture from
+- Create the dedicated staging fixture from
   `scripts/credentialed-role-matrix.example.json`, install Chromium in the
   runner, and execute the matrix with
   `RIPPLE_E2E_REQUIRE_CREDENTIALS=1`.

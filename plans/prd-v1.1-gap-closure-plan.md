@@ -66,12 +66,12 @@ The correct approach is therefore:
 
 | Gate | Result through 2026-07-29 | Meaning |
 |---|---|---|
-| Unit tests | 136/136 passed | Scope, lifecycle, visibility, Slack, filters, SLA, fixture validation, migration/RPC contracts, and audit coverage is green |
+| Unit tests | 155/155 passed | Scope, lifecycle, visibility, Slack authentication/configuration, readiness, filters, SLA, fixture validation, migration/RPC contracts, and audit coverage is green |
 | Lint | Passed, no warnings | `next lint` is deprecated and must be migrated |
 | Production build | Passed on Next.js 15.5.22 | Environment-free build is reproducible |
 | Dependency audit | 0 vulnerabilities | Patched direct/transitive versions are lockfile-pinned and compatibility-tested |
 | Worktree | Clean at baseline | Work started on `codex/prd-v1-1-gap-closure` |
-| Committed end-to-end tests | 12 production HTTP checks + credentialed Playwright/API/RLS matrix | Public/negative smoke always runs; six-account two-tenant positive/negative execution is fail-closed in protected CI and awaits migration 027 plus the secret staging fixture |
+| Committed end-to-end tests | 17 production HTTP checks + credentialed Playwright/API/RLS matrix | Public/negative/configuration smoke always runs; migration 027 is applied, while six-account two-tenant positive/negative execution remains fail-closed in protected CI and awaits the secret staging fixture |
 
 ## 4. PRD capability gap map
 
@@ -102,8 +102,8 @@ has a release-blocking security or integrity problem.
 | Internationalization | Absent | English strings are embedded in code; no locale resolution, translation catalog, formatting rules, or four-language QA |
 | Administration | Partial | CRUD exists; no configuration hierarchy, form/custom-field builder, workflow publishing, feature flags, retention, or integration console |
 | External API / Webhooks | Absent | Unversioned internal REST only; no client credentials, scopes, idempotency, concurrency, stable errors, signed webhooks, or docs |
-| Security / Privacy | Unsafe/Partial | Weak attachment controls, fail-open Slack configuration, incomplete audit guarantees outside the archive commands, and other authorization gaps remain |
-| SRE / Operations | Absent | No structured observability, SLOs, alerting, runbooks, tested recovery, capacity/performance evidence, or release automation |
+| Security / Privacy | Unsafe/Partial | Slack request verification now fails closed and direct ticket-column/Storage exposure is contained; weak file validation, incomplete audit guarantees, and other authorization gaps remain |
+| SRE / Operations | Partial | Minimal liveness and configuration-readiness endpoints exist; structured observability, SLOs, alerting, runbooks, tested recovery, capacity/performance evidence, and release automation remain |
 | Testing / Quality Gates | Partial | Unit, SLA truth tables, RPC/migration guards, production HTTP smoke, and a credentialed tenant/browser matrix are committed; the credentialed matrix still needs its first staging run, and recovery, i18n, and performance suites remain |
 
 ## 5. Confirmed bug and risk register
@@ -118,10 +118,10 @@ has a release-blocking security or integrity problem.
 | SEC-004 | Authenticated ticket detail renders `internal_summary`, AI controls, submitter contact, and linked-request cost/navigation to customer roles | Make the page response and rendering visibility-aware |
 | SEC-005 | Browser code imports the service-role client in `scope.client.ts` | Remove the server-only import and use RLS-scoped browser queries |
 | SEC-006 | Admin bulk delete physically cascades customer/site/ticket history | **Closed in `211843e`:** hard-delete tombstones, transactional archive/deactivate commands, active-account/lifecycle RLS |
-| SEC-007 | Slack signature verification succeeds when the signing secret is missing | Fail closed in production; expose a health/configuration error |
+| SEC-007 | Slack signature verification succeeds when the signing secret is missing | **Closed in `e83156f`:** all three Slack ingress routes fail closed; liveness and secret-safe configuration readiness are exposed separately |
 | SEC-008 | Runtime dependency audit reports six high-severity production advisories | **Closed in `211843e`:** Next 15.5.22 + patched overrides/transitives; full `npm audit` reports 0 |
 | SEC-009 | Permissive legacy RLS allows customer roles to query internal comments/attachments and raw ticket events directly | **Closed in `b71b3d7`:** migration 026 replaces the OR-composed policies with customer-visible artifact scope and internal-only raw events |
-| SEC-010 | Authenticated PostgREST can request ticket secrets/PII columns and any active account can directly access the attachment bucket | **Code closed in `b9a7a12`, deployment pending:** migration 027 replaces broad ticket SELECT with a customer-safe column grant and removes direct authenticated Storage access |
+| SEC-010 | Authenticated PostgREST can request ticket secrets/PII columns and any active account can directly access the attachment bucket | **Closed in `b9a7a12`; deployment confirmed 2026-07-29:** migration 027 replaces broad ticket SELECT with a customer-safe column grant and removes direct authenticated Storage access |
 
 ### High-priority integrity defects
 
@@ -343,9 +343,15 @@ Every implementation slice must:
    replace them with archive/deactivate lifecycle commands.
 8. **P0-H — completed in `b71b3d7`:** Correct SLA milestone definitions and
    persistence; migration 026 was confirmed applied on 2026-07-29.
-9. **P0-I — harness committed in `b9a7a12`; live gate pending:** Apply
-   migration 027, provision the secret six-account/two-tenant staging fixture,
-   and run the browser/API/PostgREST/Storage matrix with
+9. **P0-I — harness committed in `b9a7a12`; migration 027 applied; live gate
+   pending:** Provision the secret six-account/two-tenant staging fixture and
+   run the browser/API/PostgREST/Storage matrix with
    `RIPPLE_E2E_REQUIRE_CREDENTIALS=1`.
 10. **P0-J — completed early in `211843e`:** Upgrade vulnerable runtime
     dependencies under full gates.
+11. **P0-K — completed in `e83156f`:** Fail closed on missing Slack
+    request-verification configuration and expose separate liveness and
+    secret-safe configuration readiness.
+12. **P0-L — next local work:** Migrate deprecated `next lint` to the ESLint
+    CLI and make install, unit, lint, build, E2E, and audit gates reproducible
+    in protected CI.

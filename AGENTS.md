@@ -143,8 +143,8 @@ const isInternal = role ? INTERNAL_ROLES.includes(role) : email ? isInternalEmai
 
 ## 5. Database Schema (Supabase)
 
-27 migrations, to be applied in order. Migrations 001–026 are confirmed;
-migration 027 is committed but not yet confirmed applied. Key tables:
+27 migrations, to be applied in order. Migrations 001–027 are confirmed
+applied as of 2026-07-29. Key tables:
 
 | Table | Purpose | Notes |
 |---|---|---|
@@ -264,8 +264,8 @@ npm run dev
 - `npm run build` — production build
 - `npm run start` — production server
 - `npm run lint` — `next lint` (ESLint, default Next.js config)
-- `npm test` — Vitest unit/contract suite (136 tests)
-- `npm run test:e2e` — 12-check production HTTP smoke plus optional credentialed Playwright/API/RLS matrix; requires a successful build
+- `npm test` — Vitest unit/contract suite (155 tests)
+- `npm run test:e2e` — 17-check production HTTP smoke plus optional credentialed Playwright/API/RLS matrix; requires a successful build
 - `npm run test:e2e:credentialed` — real six-account/two-tenant matrix; set `RIPPLE_E2E_FIXTURES_FILE`
 - `npm run test:e2e:install-browser` — install the pinned Chromium runtime
 
@@ -434,6 +434,25 @@ authorization. Authorization fixtures must prove referenced resources and
 internal artifacts really exist so an empty result cannot produce a false
 green test.
 
+### Request authentication must not have a local/development bypass
+Found 2026-07-29 while closing SEC-007. Slack signature verification returned
+success whenever `SLACK_SIGNING_SECRET` was missing. A deployed environment
+with an omitted variable was therefore indistinguishable from intentional
+local development, and every Slack webhook trusted arbitrary requests.
+
+Commit `e83156f` makes all Slack ingress fail closed. Missing/placeholder server
+credentials return `503 SLACK_CONFIGURATION_ERROR`; invalid signatures return
+`401 SLACK_SIGNATURE_INVALID`. Verification uses the untouched body, a strict
+timestamp, Slack's five-minute replay window, a strict `v0` SHA-256 signature,
+and timing-safe comparison. `/api/health/live` reports process liveness;
+`/api/health/ready` reports only database/Slack configuration state and never
+secret values.
+
+**Lesson:** never infer permission from an absent credential at a trust
+boundary. Separate liveness from readiness, distinguish unavailable server
+configuration from bad caller authentication, and keep probes fast,
+non-cacheable, and free of credential material.
+
 ---
 
 ## 10. Current State & Roadmap
@@ -494,15 +513,16 @@ resume work; this section remains the broader historical summary.
       to detail-tabs-helpers.ts (no "use client" directive).
   - **Helper upgrade**: `requireAdmin()` now also returns `email` (it was already selecting it — just not exposing).
   - **New tests**: 4 new e2e scripts (21_audit_fixes, 22_list_pii, 23_web_pages_full, 24_feature_flows), 272 new test cases. Full suite: 7 e2e mjs (182) + 2 e2e Python (187) + 7 unit (83) = **452 tests, all green**.
-- **PRD v1.1 Phase 0 containment** (`9083ece`, `211843e`, `b71b3d7`, `b9a7a12`): centralized
+- **PRD v1.1 Phase 0 containment** (`9083ece`, `211843e`, `b71b3d7`, `b9a7a12`, `e83156f`): centralized
   tenant scoping and response shaping; removed client service-role imports;
   restricted Slack actions; hid customer-internal ticket fields; retired
   customer/site/user hard delete; added transactional archive/deactivation,
   active-account and lifecycle RLS; corrected First Response/Resolution
   milestones across web and Slack; closed legacy artifact-policy leaks and
-  direct ticket-column/Storage exposure; added production HTTP E2E, an opt-in
-  six-account Playwright/API/RLS matrix, 136 unit/contract tests, and a
-  zero-vulnerability dependency baseline.
+  direct ticket-column/Storage exposure; made Slack request authentication fail
+  closed; added liveness/readiness, production HTTP E2E, an opt-in six-account
+  Playwright/API/RLS matrix, 155 unit/contract tests, and a zero-vulnerability
+  dependency baseline.
 
 ### Known issues / open work
 | Priority | Item | Where | Notes |
@@ -514,19 +534,20 @@ resume work; this section remains the broader historical summary.
 | 🟡 Med | In-memory rate limit not production-grade | `src/lib/rate-limit.ts` | Fine for now (Vercel cold starts reset the counter, but worst case is a fresh window per cold start). Swap for Upstash/Redis when traffic warrants. |
 | 🟢 Low | Ticket number sequence is in place (migration 020/021) but not used by all create paths | `src/lib/tickets/create.ts:generateNextTicketNo` | `next_ticket_no()` RPC exists; the create flow should switch from MAX+1 to the sequence. |
 | 🟢 Low | Slack `events` route doesn't route customer messages to a ticket comment yet | `src/app/api/slack/events/route.ts` | Sprint 3 — bidirectional thread sync (SLK-008) |
-| 🔴 Deploy | Migration 027 must be applied before `b9a7a12` is released or the credentialed matrix runs | `supabase/migrations/027_restrict_ticket_columns_and_storage.sql` | Migration 026 was confirmed applied on 2026-07-29. Migration 027 column-limits direct ticket reads and removes bucket-wide authenticated Storage access |
 | 🟡 Med | Credentialed role/tenant matrix has not had its first staging execution | `scripts/credentialed-role-matrix.mjs` | Harness, fixture validation, and Chromium launch are committed/green; provision six dedicated accounts and non-vacuous two-tenant/archive/internal-artifact IDs, then run with required credentials |
 
 ### Next priorities (Sprint 3, in proposed order)
-1. **Apply migration 027 and run the required credentialed staging matrix.**
+1. **Run the required credentialed staging matrix.** Migration 027 is applied;
+   the secret six-account/two-tenant fixture is the remaining external gate.
 2. **Apply migration 019** ✅ done (2026-07-14).
-3. **Fix MiniMax AI key** (or swap provider in `.env`). Verify `/api/ai/suggest` returns a real model response, not a mock.
-4. **Verify Resend sender domain** so confirmation / resolution emails actually send.
-5. **Ticket number sequence migration** (020) ✅ done (2026-07-14) — `next_ticket_no()` RPC + 021 volatility fix.
-6. **Collapse Slack handlers to `updateMasterMessage()`** — 4 inline `chat.update` calls become 4 one-liners. (Done in 3af10c6 actually — handlers now use `updateMasterMessage` everywhere; further collapse of the 4 audit calls per action is a follow-up.)
-7. **Dashboard timezone** — derive from user or first site.
-8. **Sprint 3 feature work** — Kanban view (INT-5), SLA monitoring (INT-6), notifications center (INT-7).
-9. **Start real Slack Connect work** — see PRD §8.5 / SLK-015.
+3. **Migrate `next lint` and add protected CI quality gates.**
+4. **Fix MiniMax AI key** (or swap provider in `.env`). Verify `/api/ai/suggest` returns a real model response, not a mock.
+5. **Verify Resend sender domain** so confirmation / resolution emails actually send.
+6. **Ticket number sequence migration** (020) ✅ done (2026-07-14) — `next_ticket_no()` RPC + 021 volatility fix.
+7. **Collapse Slack handlers to `updateMasterMessage()`** — 4 inline `chat.update` calls become 4 one-liners. (Done in 3af10c6 actually — handlers now use `updateMasterMessage` everywhere; further collapse of the 4 audit calls per action is a follow-up.)
+8. **Dashboard timezone** — derive from user or first site.
+9. **Sprint 3 feature work** — Kanban view (INT-5), SLA monitoring (INT-6), notifications center (INT-7).
+10. **Start real Slack Connect work** — see PRD §8.5 / SLK-015.
 
 ### Open architectural questions
 - The RLS recursion bug surfaces a bigger question: do we keep `createAdminClient() + code filter` (the current pattern in `lib/supabase/scope.ts`) or move back to proper RLS once migration 019 + similar fixes are in place? The current pattern scales fine but has a lower safety margin for new queries.
