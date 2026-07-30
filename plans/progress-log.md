@@ -7,13 +7,14 @@ meaningful change and before ending a work session. Newest entries go first.
 
 - **Branch:** `codex/prd-v1-1-gap-closure`
 - **Active phase:** Phase 0 — Containment and reproducible baseline
-- **Active work item:** INT-007 audit/outbox atomicity plus the P0-I external
-  staging execution gate
-- **Last verified implementation commit:** `4892dcb` (`fix: unify ticket resolution notifications`)
-- **Uncommitted work:** none expected; verify with `git status` before resuming
+- **Active work item:** deploy/probe INT-007 migration 033, then move ticket
+  creation delivery and remaining best-effort audit domains onto atomic seams
+- **Last verified implementation commit:** `a6ccd33` (`feat: add durable ticket notification outbox`)
+- **Uncommitted work:** documentation checkpoint only; verify with `git status`
+  before resuming
 - **Deployment gate:** migrations 001–032 are user-confirmed applied;
-  protected positive business probes for migrations 028–032 still require
-  staging fixtures
+  migration 033 and production `CRON_SECRET` are pending. Protected positive
+  business probes for migrations 028–033 still require staging fixtures
 - **External validation gate:** populate the gitignored credential fixture with six
   dedicated staging accounts, two tenants, a decommissioned site/ticket, and
   real internal artifact IDs; then run
@@ -33,10 +34,103 @@ meaningful change and before ending a work session. Newest entries go first.
   created for read-only protected-page visits and fully deleted afterward.
   Password-based login passed; recovery-email delivery and one-time link
   consumption still require a dedicated staging mailbox.
-- **Exact next local step:** inventory remaining best-effort audit and
-  integration-delivery writes, then design the first transactional outbox
-  migration and idempotent worker seam
+- **Exact next local step:** after the user applies migration 033, verify the
+  table/trigger/RPC surface and fail-closed worker authorization without
+  exposing secrets; then migrate ticket-create Slack/email effects onto the
+  outbox and continue the best-effort audit inventory
 - **Primary plan:** [`plans/prd-v1.1-gap-closure-plan.md`](./prd-v1.1-gap-closure-plan.md)
+
+## Session record — 2026-07-30 (P0-U / INT-007 durable ticket notifications)
+
+### Objective
+
+Replace post-commit-only ticket update notifications with the first reusable
+transactional outbox, including concurrency-safe claims, retry, idempotency,
+dead-letter evidence, and a protected recovery worker.
+
+### Audit findings
+
+- Ticket patch and comment commands already commit business state,
+  `ticket_events`, and `audit_logs` atomically through migration 026.
+- Web and signed Slack ticket updates still invoked external delivery only
+  after commit. A process crash or provider outage could permanently lose the
+  Slack/email effect even though the ticket mutation succeeded.
+- Ticket creation still uses separate ticket/event writes plus direct Slack
+  master posting and confirmation email. That path remains the next outbox
+  migration slice.
+- Several customer/site/user/inventory admin routes still call the explicitly
+  best-effort `logAudit()` / `logDiff()` helpers after their business write.
+  Those domains remain INT-007 audit work.
+
+### Changes completed
+
+- Added migration `033_ticket_notification_outbox.sql`:
+  - protected `integration_outbox` table with unique idempotency keys,
+    attempt bounds, availability timestamps, delivery evidence, and retained
+    dead-letter state;
+  - `AFTER UPDATE` ticket trigger that transactionally enqueues one Slack
+    master sync plus independent resolution Slack/email effects;
+  - bounded `FOR UPDATE SKIP LOCKED` claims with five-minute leases;
+  - stale-lease recovery, exponential retry from 30 seconds to one hour, and
+    terminal dead-letter behavior after five attempts;
+  - lock-token-guarded delivery/failure acknowledgements restricted to
+    `service_role`;
+  - Slack delivery-event identity stored on `slack_messages`.
+- Replaced the direct shared notifier with `tickets/outbox.ts`. Web and Slack
+  use the same immediate best-effort drain, but failed work remains durable
+  for later recovery rather than disappearing.
+- Slack master updates remain naturally repeatable. Resolution replies record
+  the outbox event id and attach Slack metadata so ordinary retries
+  deduplicate after the first local record.
+- Resolution email passes the stable event id through Resend's
+  `Idempotency-Key`.
+- Added a constant-time, fail-closed `CRON_SECRET` check and
+  `/api/internal/outbox/dispatch`. The Vercel recovery schedule is daily to
+  stay compatible with all plans; production can shorten it when the plan
+  supports higher frequency.
+- Configuration readiness now includes the outbox worker without exposing the
+  secret value.
+- Added five net-new unit/contract checks and one HTTP worker-configuration
+  check, bringing the suite to 251 tests and the production smoke to 22 checks.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| Focused outbox/readiness/cron checks | Passed; 27 tests |
+| `npm ci` | Passed; 533 packages installed, 0 vulnerabilities |
+| `npm test` | Passed; 37 files, 251 tests |
+| `npm run lint` | Passed; 0 warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build |
+| `npm run test:e2e` | Passed; 22 HTTP checks, credentialed matrix skipped explicitly because the secret fixture is unset |
+| `npm audit` | Passed; 0 vulnerabilities |
+| `git diff --check` | Passed |
+| Immediate pre-commit E2E rerun | Passed before `a6ccd33` |
+
+### Commit
+
+- `a6ccd33` — `feat: add durable ticket notification outbox`
+
+### Deployment gates and limitations
+
+- Apply migration 033 before deploying the implementation commit.
+- Set a long random `CRON_SECRET` in the production Vercel environment.
+  Readiness intentionally remains `503/not_ready` until it is configured.
+- The committed cron is a daily recovery sweep. Request-path dispatch is
+  immediate; use a supported 1–5 minute schedule or external scheduler when
+  operational requirements and the Vercel plan permit.
+- Delivery is at-least-once. Resend has provider idempotency and Slack retries
+  deduplicate after the local delivery record, but a process crash between a
+  successful Slack post and that record remains a narrow duplicate window.
+- Ticket creation confirmation/master posting and remaining best-effort admin
+  audit writes are not yet on this outbox.
+
+### Next
+
+1. Apply and safely verify migration 033 plus worker authorization/readiness.
+2. Move ticket creation, creation event/audit, Slack master post, and
+   confirmation email onto one atomic create/outbox seam.
+3. Convert the remaining best-effort audit domains to transactional commands.
 
 ## Session record — 2026-07-30 (P0-T / INT-011 notification parity)
 

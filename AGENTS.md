@@ -33,7 +33,8 @@ Vercel.
 | Storage | **Supabase Storage** | Bucket `ripple-attachments`, 50MB cap per file |
 | Slack | **@slack/bolt** + **@slack/web-api** | Bolt runs inside Next.js API routes (no separate process) |
 | AI | **MiniMax AI** (OpenAI-compatible) | Was OpenAI → Zhipu (BigModel GLM-4.7-FlashX) → now MiniMax. Model `M2.7-highspeed`. **Note:** base URL `https://api.minimax.chat/v1/` looks suspicious (not a known major LLM endpoint) — verify before deploy. See §9. |
-| Email | **Resend** (not yet wired) | Transactional: ticket confirmation, resolution notice |
+| Email | **Resend** | Transactional ticket confirmation and resolution notices |
+| Async delivery | **Postgres outbox + Vercel Cron** | Request-path fast drain plus lease/retry/dead-letter recovery |
 | Validation | **Zod** | All API request bodies |
 | Hosting | **Vercel** | Serverless API routes |
 
@@ -80,13 +81,15 @@ Vercel.
 │   │   ├── ai/
 │   │   │   ├── prompt.ts                # ⭐ System prompts (safety rules embedded)
 │   │   │   └── suggest.ts               # OpenAI-compatible client wrapper
+│   │   ├── tickets/
+│   │   │   └── outbox.ts                # ⭐ Durable ticket delivery worker
 │   │   └── email/
-│   │       └── send.ts                  # Resend templates (not yet called)
+│   │       └── send.ts                  # Resend templates + idempotency keys
 │   ├── types/
 │   │   ├── ticket.ts                    # ⭐ All domain enums + labels
 │   │   └── spare-parts.ts               # ⭐ Spare parts + field service enums
 │   └── middleware.ts                    # ⭐ Route guard + session refresh
-├── supabase/migrations/                 # 001–032, apply in order
+├── supabase/migrations/                 # 001–033, apply in order
 ├── plans/                               # Architecture + phase planning docs
 │   ├── architecture.md
 │   ├── phase2-customer-auth-and-user-management.md
@@ -105,7 +108,7 @@ Vercel.
 - Ticket detail UI → `src/app/(auth)/tickets/[ticketId]/page.tsx` (server) + `ticket-actions-panel.tsx` (client)
 - Slack ticket creation → `src/app/api/slack/command/ticket/route.ts` + `src/lib/slack/blocks/ticket-form.ts`
 - AI assist → `src/app/api/ai/suggest/route.ts` + `src/lib/ai/suggest.ts`
-- DB schema → `supabase/migrations/001_*.sql` … `032_guard_ticket_status_transitions.sql`
+- DB schema → `supabase/migrations/001_*.sql` … `033_ticket_notification_outbox.sql`
 
 ---
 
@@ -143,8 +146,8 @@ const isInternal = role ? INTERNAL_ROLES.includes(role) : email ? isInternalEmai
 
 ## 5. Database Schema (Supabase)
 
-32 migrations, to be applied in order. Migrations 001–032 are confirmed
-applied as of 2026-07-30. Key tables:
+33 migrations, to be applied in order. Migrations 001–032 are confirmed
+applied as of 2026-07-30; migration 033 awaits application. Key tables:
 
 | Table | Purpose | Notes |
 |---|---|---|
@@ -158,6 +161,7 @@ applied as of 2026-07-30. Key tables:
 | `ticket_events` | Audit log | `actor_id`, `event_type`, `old_value`/`new_value` |
 | `ai_suggestions` | Ripple Assist outputs | `model_name`, `confidence_level`, accept/dismiss feedback |
 | `slack_channels` / `slack_messages` | Site ↔ Slack channel map, message tracking | |
+| `integration_outbox` | Durable external delivery | Unique event keys, bounded leases, exponential backoff, delivery evidence, dead-letter retention |
 | `spare_parts` / `spare_part_inventory` / `spare_part_requests` / `spare_part_request_items` | Phase 3 catalog + per-site stock + request workflow | `request_no` SPR-XXXX |
 | `field_service_orders` / `field_service_engineers` | Phase 3 dispatch | `order_no` FSO-XXXX, M:N engineers |
 
@@ -259,7 +263,7 @@ if ("error" in auth) return NextResponse.json({ error: auth.error }, { status: a
 npm install
 cp .env.local.example .env.local   # fill in real values
 # Run migrations in Supabase SQL editor (or `supabase db push` if using CLI):
-#   001 → 032 in order
+#   001 → 033 in order
 # Enable pgvector: CREATE EXTENSION IF NOT EXISTS vector;
 npm run dev
 ```
@@ -269,8 +273,8 @@ npm run dev
 - `npm run build` — production build
 - `npm run start` — production server
 - `npm run lint` — direct ESLint CLI across the repository; warnings fail the gate
-- `npm test` — Vitest unit/contract suite (246 tests)
-- `npm run test:e2e` — 21-check production HTTP smoke plus optional credentialed Playwright/API/RLS matrix; requires a successful build
+- `npm test` — Vitest unit/contract suite (251 tests)
+- `npm run test:e2e` — 22-check production HTTP smoke plus optional credentialed Playwright/API/RLS matrix; requires a successful build
 - `npm run test:e2e:credentialed` — real six-account/two-tenant matrix; set `RIPPLE_E2E_FIXTURES_FILE`
 - `npm run test:e2e:install-browser` — install the pinned Chromium runtime
 
@@ -284,9 +288,10 @@ SLACK_SIGNING_SECRET=
 MINIMAX_API_KEY=
 MINIMAX_BASE_URL=https://api.minimax.chat/v1/
 MINIMAX_MODEL=M2.7-highspeed
-RESEND_API_KEY=                         # not yet wired
+RESEND_API_KEY=                         # optional until sender domain is verified
 EMAIL_FROM=support@dropletai.services
 NEXT_PUBLIC_APP_URL=
+CRON_SECRET=                           # long server-only outbox worker token
 ```
 
 ### Git
@@ -610,19 +615,26 @@ thread notice. Slack resolution updated the card and posted a thread notice
 but never emailed the submitter. The business event had different customer
 effects depending on which button the engineer used.
 
-Commit `4892dcb` introduces `notifyTicketMutation()`. Web and signed Slack
-mutations now pass the committed ticket and prior status to the same
-best-effort dispatcher. Every mutation refreshes the master card; a new
-resolution posts one plain-text Slack thread reply and attempts one resolution
-email when a submitter address exists. Resolved-to-resolved summary edits do
-not duplicate notices. Slack thread text disables mrkdwn so summaries cannot
-create mentions or formatting side effects.
+Commit `4892dcb` first unified web and signed Slack semantics. Commit
+`a6ccd33` and migration 033 then replaced the in-process-only path with a
+transactional ticket notification outbox. The ticket update, unique master
+sync event, and resolution Slack/email events now commit together. The
+request path tries an immediate lease for responsiveness; the protected cron
+route reclaims failures, applies exponential backoff, and retains exhausted
+work as a dead letter.
+
+Master-card updates are naturally repeatable, resolution email passes a stable
+Resend idempotency key, and Slack resolution replies record the outbox event id
+locally plus message metadata. Missing Slack targets are terminal skips;
+missing credentials/provider failures remain retryable. Readiness now fails
+closed when `CRON_SECRET` is absent.
 
 **Lesson:** a domain event should have one delivery policy regardless of
 ingress. Keep delivery failures non-fatal after the business commit, return
 structured evidence, and prevent duplicate semantics at the service seam.
-This in-process parity layer is not durable delivery: transactional outbox,
-worker retries, idempotency, and dead-letter handling remain INT-007 work.
+Outbox delivery is at-least-once. Slack has a narrow crash window after a
+successful post but before its local delivery record; metadata preserves the
+event identity for diagnosis, but exactly-once posting is not claimed.
 
 ### Supabase SSR auth cookies belong on the response you return
 Found 2026-07-29 while adding password recovery. The authorization-code
@@ -734,9 +746,11 @@ resume work; this section remains the broader historical summary.
   team access delete-all/reinsert with an atomic role-preserving set diff;
   routed Slack Ripple Assist through the shared, rate-limited AI service;
   added database-authoritative guarded ticket transitions and entry invariants;
-  unified resolution email and Slack-thread notification semantics;
+  unified resolution email and Slack-thread notification semantics and moved
+  ticket update notifications onto a transactional outbox with retry/dead-letter
+  recovery;
   added password recovery, fixed SSR auth-cookie propagation, rebuilt the
-  responsive support experience, and established 246 unit/contract tests plus
+  responsive support experience, and established 251 unit/contract tests plus
   a zero-vulnerability dependency baseline.
 
 ### Known issues / open work
@@ -749,6 +763,8 @@ resume work; this section remains the broader historical summary.
 | 🟡 Med | In-memory rate limit not production-grade | `src/lib/rate-limit.ts` | Fine for now (Vercel cold starts reset the counter, but worst case is a fresh window per cold start). Swap for Upstash/Redis when traffic warrants. |
 | 🟡 Verify | Migration 031 protected business probes remain | `supabase/migrations/031_atomic_team_site_assignment.sql` | RPC presence and validation behavior are confirmed; run same-tenant, cross-tenant, role-preservation, explicit-clear, and rollback probes with staging fixtures |
 | 🟡 Verify | Migration 032 positive business probe remains | `supabase/migrations/032_guard_ticket_status_transitions.sql` | Truth-table and three rollback guards are live/green; run one allowed transition and restore it on a disposable staging ticket |
+| 🟡 Apply | Migration 033 and `CRON_SECRET` are not deployed yet | `supabase/migrations/033_ticket_notification_outbox.sql` | Apply the migration before deploying `a6ccd33`, set a long production secret, then verify readiness and worker authorization |
+| 🟡 Med | Vercel recovery cron runs daily for plan compatibility | `vercel.json` | Request-path dispatch is immediate; use a supported 1–5 minute schedule or external scheduler when the production Vercel plan permits |
 | 🟢 Low | Slack `events` route doesn't route customer messages to a ticket comment yet | `src/app/api/slack/events/route.ts` | Sprint 3 — bidirectional thread sync (SLK-008) |
 | 🟡 Med | Credentialed role/tenant matrix has not had its first staging execution | `scripts/credentialed-role-matrix.mjs` | Harness, fixture validation, and Chromium launch are committed/green; provision six dedicated accounts and non-vacuous two-tenant/archive/internal-artifact IDs, then run with required credentials |
 | 🟡 Activate | Hosted quality workflow and protected staging job are not activated yet | `.github/workflows/ci.yml` | After pushing, require `Quality gates`; create a reviewer-protected `staging` environment and add only `RIPPLE_E2E_FIXTURES_JSON` there |
@@ -783,8 +799,11 @@ resume work; this section remains the broader historical summary.
     migration 032; truth table and rejected owner/summary/jump probes passed,
     while one disposable positive transition/restore remains.
 18. **Close current Slack mutation parity (INT-011).** ✅ code complete in
-    `4892dcb`; web and Slack share resolution email/thread/master-card effects.
-    Durable retries remain part of INT-007.
+    `4892dcb` and made durable for ticket updates in `a6ccd33`; web and Slack
+    share resolution email/thread/master-card effects through the outbox.
+19. **Deploy the first INT-007 outbox slice.** Apply migration 033, configure
+    `CRON_SECRET`, and verify lease/retry/dead-letter behavior with protected
+    staging delivery fixtures.
 
 ### Open architectural questions
 - The RLS recursion bug surfaces a bigger question: do we keep `createAdminClient() + code filter` (the current pattern in `lib/supabase/scope.ts`) or move back to proper RLS once migration 019 + similar fixes are in place? The current pattern scales fine but has a lower safety margin for new queries.
@@ -806,7 +825,7 @@ npm audit
 ```
 
 **Apply a new migration:**
-1. Create `supabase/migrations/033_xxx.sql` (next number)
+1. Create `supabase/migrations/034_xxx.sql` (next number)
 2. Test locally: `supabase db reset` (drops + re-applies all)
 3. Apply to prod via Supabase SQL editor
 4. Document in this file's §5 + §10

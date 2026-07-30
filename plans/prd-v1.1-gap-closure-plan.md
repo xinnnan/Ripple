@@ -33,7 +33,7 @@ Ripple is a useful support-ticket prototype with meaningful Phase 1–4 work:
 - spare-parts and field-service skeletons
 - simple wall-clock SLA targets
 - email and AI integrations with graceful failure
-- 246 committed unit/contract tests, production HTTP smoke, and an opt-in
+- 251 committed unit/contract tests, production HTTP smoke, and an opt-in
   credentialed browser/API/RLS matrix
 
 It is not yet the operations platform described by PRD v1.1. The old
@@ -66,12 +66,12 @@ The correct approach is therefore:
 
 | Gate | Result through 2026-07-30 | Meaning |
 |---|---|---|
-| Unit tests | 246/246 passed | Scope, lifecycle and exhaustive ticket-transition guards, notification parity/failure containment, visibility, auth recovery/redirects, public/responsive UI contracts, Slack authentication/configuration/action filtering and direct AI-service invocation, readiness, CI policy, filters, SLA, fixture validation, migration/RPC contracts, spare-part, field-service, and team-access transaction containment, DATE handling, and audit coverage is green |
+| Unit tests | 251/251 passed | Scope, lifecycle and exhaustive ticket-transition guards, notification outbox leases/idempotency/retry contracts, visibility, auth recovery/redirects, public/responsive UI contracts, Slack authentication/configuration/action filtering and direct AI-service invocation, readiness, CI policy, filters, SLA, fixture validation, migration/RPC contracts, spare-part, field-service, and team-access transaction containment, DATE handling, and audit coverage is green |
 | Lint | Passed, no warnings | Direct ESLint CLI with zero-warning enforcement and generated-artifact ignores |
 | Production build | Passed on Next.js 15.5.22 | Environment-free build is reproducible |
 | Dependency audit | 0 vulnerabilities | Patched direct/transitive versions are lockfile-pinned and compatibility-tested |
 | Worktree | Clean at baseline | Work started on `codex/prd-v1-1-gap-closure` |
-| Committed end-to-end tests | 21 production HTTP checks + credentialed Playwright/API/RLS matrix | Public/recovery/negative/configuration smoke always runs; migrations 001–032 are applied, while protected positive request/field-service/team/transition probes and the six-account two-tenant matrix await staging credentials/fixtures |
+| Committed end-to-end tests | 22 production HTTP checks + credentialed Playwright/API/RLS matrix | Public/recovery/negative/configuration smoke always runs, including fail-closed outbox-worker configuration; migrations 001–032 are applied and migration 033 awaits application, while protected positive request/field-service/team/transition/outbox probes and the six-account two-tenant matrix await staging credentials/fixtures |
 | Hosted CI | Workflow committed in `4ceacd0`; first hosted run pending | Read-only, SHA-pinned quality job is reproducible; repository branch protection and the protected staging environment still require activation |
 
 ## 4. PRD capability gap map
@@ -86,8 +86,8 @@ has a release-blocking security or integrity problem.
 | Membership and Site Assignment | Unsafe | Global `users.role` + `users.customer_id` conflicts with per-membership and per-site authorization |
 | Tenant isolation | Unsafe | Admin-client queries depend on manual filters; active cross-tenant detail leaks exist |
 | Customer Portal | Partial | Basic dashboard/tickets/sites/profile only; no onsite requests, assets, history, preferences, or PRD wizard |
-| Ticket Core | Partial | No guarded transition service, visibility scopes, merge/relations, versioning, concurrency control, or required resolution rules |
-| Workflow / Automation | Absent | No rule definitions, versions, outbox, idempotent execution, retry, or dead-letter handling |
+| Ticket Core | Partial | Current eight-state transitions and resolution entry rules are database-guarded; PRD states, merge/relations, visibility scopes, versioning, and optimistic concurrency remain |
+| Workflow / Automation | Partial | Ticket-update delivery now has an outbox, idempotency keys, leases, retry, and dead-letter handling; rule definitions/versioning and broader domain-event execution remain |
 | Queues / Routing | Absent | No queue, membership, skill, region, workload, routing, or fallback models |
 | SLA / Business Calendar | Partial | First-response and late-resolution persistence are corrected in `b71b3d7`; business calendars, independent clock rows, pause/resume, versioning, thresholds, and reopen cycles remain |
 | Remote Support | Absent | No diagnosis record, structured information request, remote access approval, or onsite handover |
@@ -95,10 +95,10 @@ has a release-blocking security or integrity problem.
 | Appointment / Dispatch | Absent | No appointment object, preferred windows, conflict checks, reminders, reschedule/no-show logic, or dispatch calendar engine |
 | Parts / RMA | Partial | Atomic request creation/update commands are deployed; guarded lifecycle, approval policy, reservations, consumption, and RMA remain |
 | Assets / Entitlements | Absent | Ticket `asset_id` is free text; no hierarchy, lifecycle, versions, contracts, or coverage decision |
-| Communication / Email | Partial | Two direct email templates; no unified communication/event model, recipient resolution, templates, preferences, retries, or delivery records |
+| Communication / Email | Partial | Resolution email is outbox-backed and provider-idempotent; ticket confirmation remains direct, and recipient resolution, versioned templates, preferences, localization, and a unified communication model remain |
 | File Service | Unsafe/Partial | Extension/MIME trust only; no magic-byte check, malware scan, quarantine, checksum, tenant key, retention, or atomic metadata handling |
 | Search / Knowledge | Absent | No permission-aware index, degradation mode, related history, KB lifecycle, or feedback |
-| Notifications / Templates | Absent | No notification event/record, template version, locale fallback, in-app inbox, retry, or dead-letter queue |
+| Notifications / Templates | Partial | Durable ticket-update delivery records/retry/dead-letter are committed; ticket creation, template versioning, locale fallback, preferences, and in-app inbox remain |
 | Reporting / Export | Partial | Ticket CSV and dashboard counts only; no metric contract, SLA/operations reports, scheduled generation, or permission-aware exports |
 | Internationalization | Absent | English strings are embedded in code; no locale resolution, translation catalog, formatting rules, or four-language QA |
 | Administration | Partial | CRUD exists; no configuration hierarchy, form/custom-field builder, workflow publishing, feature flags, retention, or integration console |
@@ -134,11 +134,11 @@ has a release-blocking security or integrity problem.
 | INT-004 | Part-request header and items, and field order plus engineer assignments, are non-atomic | **Deployed; protected verification pending:** part-request update/create are deployed in `1f49ecc`/`64cee3d` + migrations 028/029. `2557760` + migration 030 make field-order create/update, complete engineer assignment sets, numbering, and audit atomic; both RPCs are live and protected rollback probes remain |
 | INT-005 | Part fulfillment updates do not verify the item belongs to the request in the URL | **Closed in `1f49ecc`; migration 028 confirmed applied 2026-07-29:** the row-locked command constrains every item by both `request_id` and item ID and rejects invalid quantity bounds; protected runtime probes remain |
 | INT-006 | Team site assignments are delete-all then insert, so a failed insert removes all access | **Deployed; protected verification pending:** `c0c2354` + migration 031 atomically update profile/status, apply a role-preserving membership set diff, validate the manager/tenant/target/sites, and write audit evidence; RPC presence and non-writing validation behavior are confirmed |
-| INT-007 | Audit writes are best-effort and separate from the business transaction | Partially closed for ticket patch/comment commands in `b71b3d7`; migrate remaining domains and add the platform outbox |
+| INT-007 | Audit writes are best-effort and separate from the business transaction | **Platform foundation committed in `a6ccd33`, deployment pending:** migration 033 transactionally enqueues ticket-update notifications and adds unique keys, bounded leases, backoff, dead-letter retention, provider idempotency, and a protected worker. Ticket create notifications and remaining best-effort admin audit domains still need migration |
 | INT-008 | Site detail assigns the inventory query to an unused tuple slot and always renders empty inventory | **Closed in `9083ece`:** the inventory query result is wired to the inventory tab and covered by the external-resource containment regression checkpoint |
 | INT-009 | `/sites` links to `?site_id=...`, while the ticket parser expects `?site=...` | **Closed in `9083ece`:** site links and the ticket filter parser use the canonical `site` query key |
 | INT-010 | Slack Ripple Assist calls an internal authenticated HTTP API without a session cookie | **Closed in `3f7d296`:** web and signed Slack ingress authorize independently, then call the shared rate-limited AI application service; Slack preserves channel delivery context |
-| INT-011 | Slack mutations bypass ticket events, SLA stamping, state guards, and some notification paths | **Closed for current supported actions:** SLA/ticket/audit parity in `b71b3d7`, AI direct service in `3f7d296`, deployed state guards in `b344d18`, and shared resolution master/thread/email effects in `4892dcb`; durable delivery is tracked under INT-007 |
+| INT-011 | Slack mutations bypass ticket events, SLA stamping, state guards, and some notification paths | **Closed for current supported actions:** SLA/ticket/audit parity in `b71b3d7`, AI direct service in `3f7d296`, deployed state guards in `b344d18`, shared resolution effects in `4892dcb`, and durable ticket-update delivery in `a6ccd33` / migration 033 |
 | INT-012 | Clean builds fail on `/login` without Supabase env because the client is created during prerender | Construct the browser client only inside the submit action |
 
 ### Platform gaps that become risks at scale
@@ -410,6 +410,12 @@ Every implementation slice must:
     best-effort notification dispatcher. Both now refresh the master card; a
     new resolution posts the same plain-text Slack thread reply and attempts
     the same submitter email without duplicating resolved-summary edits.
-21. **Next local integrity work:** audit remaining best-effort audit/delivery
-    writes and establish INT-007's transactional outbox, idempotency, retry,
-    and dead-letter foundation.
+21. **P0-U — committed in `a6ccd33`; deployment pending:** Migration 033 adds
+    the first INT-007 platform outbox. Ticket update/resolution events enqueue
+    transactionally, workers use unique ids, `SKIP LOCKED` leases, exponential
+    retry, and dead-letter retention, Resend receives stable idempotency keys,
+    and Slack replies retain event identity. Web/Slack request paths drain
+    immediately; a `CRON_SECRET`-protected Vercel recovery route is scheduled.
+22. **Next local integrity work:** after migration 033 and `CRON_SECRET` are
+    deployed/probed, migrate ticket creation confirmation/master-post effects
+    and remaining best-effort audit domains onto atomic commands/outbox events.

@@ -12,6 +12,9 @@ A Slack-native support portal for DropletAI Services. Centralises customer suppo
 - **Ripple Assist (AI)** — Internal troubleshooting copilot. **Sprint 2: gracefully falls back to mock output if the AI provider key is invalid/missing** (does not block core ticket flow).
 - **Spare Parts + Field Service** — Phase 3 modules: catalog, per-site inventory, request workflow, dispatch.
 - **Audit Log** — Cross-entity audit trail (`audit_logs` table) covering tickets, customers, sites, users, security events.
+- **Durable Ticket Notifications** — Transactional outbox, lease-based dispatch,
+  exponential retry, dead-letter retention, and provider idempotency for ticket
+  update/resolution notifications.
 - **Role-Based Access** — 4 roles (admin / engineer / customer_manager / customer) consolidated in `017_consolidate_roles.sql`.
 - **Site Channel Model** — Each customer site has a dedicated Slack support channel, mapped via `slack_channels`.
 
@@ -20,14 +23,14 @@ A Slack-native support portal for DropletAI Services. Centralises customer suppo
 | Layer | Tool |
 |-------|------|
 | Frontend | Next.js 15.5.22 (App Router) + React 19 + TypeScript + Tailwind CSS v4 + self-hosted Inter |
-| Database | Supabase Postgres (32 migrations, see `supabase/migrations/`) |
+| Database | Supabase Postgres (33 migrations, see `supabase/migrations/`) |
 | Auth | Supabase Auth (email + password + recovery) + new `sb_publishable_` / `sb_secret_` key format |
 | Storage | Supabase Storage — bucket `ripple-attachments`, **50 MB cap per file** |
 | Slack | `@slack/bolt` + `@slack/web-api` (runs inside Next.js API routes, no separate process) |
 | AI | **MiniMax AI** (OpenAI-compatible) — was OpenAI → Zhipu → MiniMax. **See "AI provider" section below.** |
 | Email | Resend (transactional: ticket confirmation, resolution notice) |
 | Validation | Zod (all API request bodies) |
-| Testing | Vitest (246 unit/contract tests) + 21-check production HTTP smoke + credentialed Playwright/API/RLS matrix |
+| Testing | Vitest (251 unit/contract tests) + 22-check production HTTP smoke + credentialed Playwright/API/RLS matrix |
 | Hosting | Vercel (serverless API routes) |
 
 ## Phases
@@ -62,7 +65,7 @@ cp .env.local.example .env.local
 
 ### Run database migrations
 
-Apply the SQL files in `supabase/migrations/` **in order** (001 → 032) via the Supabase SQL editor or `supabase db push`:
+Apply the SQL files in `supabase/migrations/` **in order** (001 → 033) via the Supabase SQL editor or `supabase db push`:
 
 ```
 001_create_customers.sql
@@ -97,11 +100,13 @@ Apply the SQL files in `supabase/migrations/` **in order** (001 → 032) via the
 030_atomic_field_service_order_commands.sql
 031_atomic_team_site_assignment.sql
 032_guard_ticket_status_transitions.sql
+033_ticket_notification_outbox.sql
 ```
 
 Later migrations replace policies/functions and should be applied once in
 order. Migration `017` also performs role data updates and must not be re-run
-blindly. Migrations 001–032 are confirmed applied as of 2026-07-30.
+blindly. Migrations 001–032 are confirmed applied as of 2026-07-30;
+migration 033 is committed and awaiting application.
 
 ### Enable pgvector (for AI features)
 
@@ -132,6 +137,10 @@ The production server exposes two non-cacheable operational probes:
 - `GET /api/health/ready` — required database/Slack configuration status;
   returns `200` when configured or `503` when traffic should not be admitted.
   It reports only component state and never environment values.
+- `GET /api/internal/outbox/dispatch` — `CRON_SECRET`-protected durable
+  notification worker. Request-path dispatch handles the normal fast path;
+  Vercel Cron calls this recovery worker daily. On plans that support more
+  frequent cron jobs, shorten the schedule in `vercel.json`.
 
 ### Credentialed role/tenant E2E
 
@@ -160,8 +169,8 @@ protected CI should set `RIPPLE_E2E_REQUIRE_CREDENTIALS=1` so it fails closed.
 
 ### GitHub Actions
 
-`.github/workflows/ci.yml` runs the locked install, 246 unit/contract tests,
-lint, production build, 21-check HTTP E2E, and dependency audit for pull
+`.github/workflows/ci.yml` runs the locked install, 251 unit/contract tests,
+lint, production build, 22-check HTTP E2E, and dependency audit for pull
 requests and pushes to `main`. GitHub-owned actions are pinned to full commit
 SHAs and the workflow has read-only repository permissions.
 
@@ -225,7 +234,7 @@ src/
 │   │       ├── sites/
 │   │       ├── spare-parts/
 │   │       └── users/
-│   ├── api/                     # All REST routes (tickets, slack, admin, …)
+│   ├── api/                     # REST routes + protected outbox worker
 │   ├── auth/                    # callback, logout
 │   ├── error.tsx
 │   └── not-found.tsx
@@ -237,6 +246,7 @@ src/
 │   ├── email/                   # Resend templates
 │   ├── field-service/           # DATE contracts + atomic mutation wrappers
 │   ├── team/                    # team contracts + atomic set-diff wrapper
+│   ├── tickets/                 # lifecycle + durable notification outbox
 │   ├── audit.ts                 # logAudit / logDiff
 │   ├── roles.ts                 # ⭐ single source of role constants + helpers
 │   └── utils.ts                 # cn, tokens, instant + DATE-only formatting
@@ -244,7 +254,7 @@ src/
 │   ├── ticket.ts                # ⭐ all ticket domain enums + labels
 │   └── spare-parts.ts
 └── middleware.ts                # ⭐ route guard + session refresh
-supabase/migrations/             # 001-032
+supabase/migrations/             # 001-033
 plans/                           # Architecture + phase planning docs
 AGENTS.md                        # ⭐ project context, lessons learned, roadmap
 ```
@@ -255,7 +265,7 @@ AGENTS.md                        # ⭐ project context, lessons learned, roadmap
 - Ticket detail → `app/(auth)/tickets/[ticketId]/page.tsx` + `ticket-actions-panel.tsx`
 - Slack actions → `lib/slack/handlers/actions.ts` + `app/api/slack/interactive/route.ts`
 - AI assist → `app/api/ai/suggest/route.ts` + `lib/ai/suggest.ts`
-- DB schema → `supabase/migrations/001_*.sql` … `032_guard_ticket_status_transitions.sql`
+- DB schema → `supabase/migrations/001_*.sql` … `033_ticket_notification_outbox.sql`
 
 ## Ticket Lifecycle
 
@@ -281,6 +291,7 @@ AGENTS.md                        # ⭐ project context, lessons learned, roadmap
 | `RESEND_API_KEY` | Resend API key for transactional email |
 | `EMAIL_FROM` | Sender email address (default `support@dropletai.services`) |
 | `NEXT_PUBLIC_APP_URL` | Public app URL (default `http://localhost:3000`) |
+| `CRON_SECRET` | Long server-only bearer secret for the durable outbox recovery worker |
 
 ## Documentation
 
