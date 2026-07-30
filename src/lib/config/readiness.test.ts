@@ -12,6 +12,7 @@ const readyEnvironment = {
   SUPABASE_SECRET_KEY: "sb_secret_real_key",
   SLACK_BOT_TOKEN: "xoxb-real-token",
   SLACK_SIGNING_SECRET: "real-signing-secret",
+  CRON_SECRET: "a-real-cron-secret-with-32-bytes",
 };
 
 describe("Slack configuration status", () => {
@@ -52,6 +53,7 @@ describe("configuration readiness", () => {
       checks: {
         database: "ready",
         slack: "ready",
+        outbox: "ready",
       },
     });
   });
@@ -66,6 +68,7 @@ describe("configuration readiness", () => {
       checks: {
         database: "ready",
         slack: "not_ready",
+        outbox: "ready",
       },
     });
     expect(JSON.stringify(result)).not.toContain("xoxb-real-token");
@@ -89,5 +92,14 @@ describe("configuration readiness", () => {
       NEXT_PUBLIC_SUPABASE_URL: "http://127.0.0.1:54321",
     });
     expect(result.ready).toBe(true);
+  });
+
+  it("fails readiness when durable outbox recovery is not configured", () => {
+    const result = getConfigurationReadiness({
+      ...readyEnvironment,
+      CRON_SECRET: "",
+    });
+    expect(result.ready).toBe(false);
+    expect(result.checks.outbox).toBe("not_ready");
   });
 });

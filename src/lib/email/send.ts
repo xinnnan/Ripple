@@ -113,6 +113,8 @@ export interface TicketResolvedParams {
   title: string;
   secureToken: string;
   resolutionSummary: string;
+  /** Stable outbox delivery key forwarded to Resend's idempotency header. */
+  idempotencyKey?: string;
 }
 
 export async function sendTicketResolved(
@@ -127,11 +129,12 @@ export async function sendTicketResolved(
   const ticketUrl = `${APP_URL}/t/${params.ticketNo}?token=${params.secureToken}`;
 
   try {
-    const { data, error } = await resend.emails.send({
-      from: `Ripple Support <${FROM_EMAIL}>`,
-      to: params.to,
-      subject: `[${params.ticketNo}] Ticket Resolved — ${params.title}`,
-      html: `
+    const { data, error } = await resend.emails.send(
+      {
+        from: `Ripple Support <${FROM_EMAIL}>`,
+        to: params.to,
+        subject: `[${params.ticketNo}] Ticket Resolved — ${params.title}`,
+        html: `
         <div style="font-family: 'Inter', sans-serif; max-width: 600px; margin: 0 auto; color: #1a1a2e;">
           <div style="padding: 24px; border-bottom: 2px solid #22c55e;">
             <h1 style="margin: 0; font-size: 20px; color: #1a1a2e;">Ripple Support</h1>
@@ -157,7 +160,11 @@ export async function sendTicketResolved(
           </div>
         </div>
       `,
-    });
+      },
+      params.idempotencyKey
+        ? { idempotencyKey: params.idempotencyKey }
+        : undefined
+    );
     if (error || !data) {
       console.error("[email] resolution send failed:", error);
       return { sent: false, reason: "send_failed", error: error?.message };

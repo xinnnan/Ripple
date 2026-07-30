@@ -11,7 +11,7 @@ import {
   recordTicketCommentWithSla,
   type TicketPatch,
 } from "@/lib/tickets/mutations";
-import { notifyTicketMutation } from "@/lib/tickets/notifications";
+import { dispatchTicketOutboxBestEffort } from "@/lib/tickets/outbox";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   AiSuggestionRateLimitError,
@@ -85,9 +85,8 @@ async function applySlackTicketPatch(args: {
     );
   }
 
-  await notifyTicketMutation({
-    previousStatus: currentTicket.status as Ticket["status"],
-    ticket: ticket as unknown as Ticket,
+  await dispatchTicketOutboxBestEffort({
+    aggregateId: currentTicket.id,
     slackOptions: args.slackOptions,
   });
 

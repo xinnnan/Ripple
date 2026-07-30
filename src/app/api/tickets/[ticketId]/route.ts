@@ -9,10 +9,9 @@ import {
   type TicketPatch,
 } from "@/lib/tickets/mutations";
 import {
-  notifyTicketMutation,
-  type NotificationTicket,
-} from "@/lib/tickets/notifications";
-import { TICKET_STATUSES, type TicketStatus } from "@/types/ticket";
+  dispatchTicketOutboxBestEffort,
+} from "@/lib/tickets/outbox";
+import { TICKET_STATUSES } from "@/types/ticket";
 import { z } from "zod";
 
 interface RouteContext {
@@ -191,12 +190,11 @@ export async function PATCH(
       return NextResponse.json({ error: "Failed to update ticket" }, { status: 500 });
     }
 
-    // Web and signed Slack mutations share the same best-effort delivery
-    // service. A committed ticket update never rolls back because Slack or
-    // email is unavailable; the structured result is logged by the service.
-    await notifyTicketMutation({
-      previousStatus: currentTicket.status as TicketStatus,
-      ticket: ticket as NotificationTicket,
+    // Migration 033 enqueued delivery work in the same transaction as the
+    // ticket mutation. Try it immediately for responsive UI, while leaving
+    // any failure durable for the scheduled lease-based worker.
+    await dispatchTicketOutboxBestEffort({
+      aggregateId: currentTicket.id,
     });
 
     return NextResponse.json({ ticket });

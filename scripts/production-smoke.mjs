@@ -195,6 +195,24 @@ async function expectSlackConfigurationDenial(path, body, contentType) {
   process.stdout.write(`PASS Slack configuration denial ${path}\n`);
 }
 
+async function expectOutboxConfigurationDenial() {
+  const response = await fetch(`${baseUrl}/api/internal/outbox/dispatch`, {
+    signal: AbortSignal.timeout(5000),
+  });
+  const responseBody = await response.json();
+  if (
+    response.status !== 503 ||
+    responseBody.code !== "OUTBOX_CONFIGURATION_ERROR" ||
+    response.headers.get("cache-control") !== "no-store"
+  ) {
+    throw new Error(
+      `/api/internal/outbox/dispatch expected fail-closed 503, received ` +
+        `${response.status} ${JSON.stringify(responseBody)}`
+    );
+  }
+  process.stdout.write("PASS outbox worker configuration denial\n");
+}
+
 let failed = false;
 try {
   await waitForServer();
@@ -257,6 +275,7 @@ try {
   await expectLogoutRedirect();
   await expectHealth("/api/health/live", 200, "live");
   await expectHealth("/api/health/ready", 503, "not_ready");
+  await expectOutboxConfigurationDenial();
   await expectSlackConfigurationDenial(
     "/api/slack/command/ticket",
     "command=%2Fticket",
