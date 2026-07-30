@@ -86,7 +86,7 @@ Vercel.
 │   │   ├── ticket.ts                    # ⭐ All domain enums + labels
 │   │   └── spare-parts.ts               # ⭐ Spare parts + field service enums
 │   └── middleware.ts                    # ⭐ Route guard + session refresh
-├── supabase/migrations/                 # 001–029, apply in order
+├── supabase/migrations/                 # 001–030, apply in order
 ├── plans/                               # Architecture + phase planning docs
 │   ├── architecture.md
 │   ├── phase2-customer-auth-and-user-management.md
@@ -105,7 +105,7 @@ Vercel.
 - Ticket detail UI → `src/app/(auth)/tickets/[ticketId]/page.tsx` (server) + `ticket-actions-panel.tsx` (client)
 - Slack ticket creation → `src/app/api/slack/command/ticket/route.ts` + `src/lib/slack/blocks/ticket-form.ts`
 - AI assist → `src/app/api/ai/suggest/route.ts` + `src/lib/ai/suggest.ts`
-- DB schema → `supabase/migrations/001_*.sql` … `029_atomic_spare_part_request_creation.sql`
+- DB schema → `supabase/migrations/001_*.sql` … `030_atomic_field_service_order_commands.sql`
 
 ---
 
@@ -143,8 +143,8 @@ const isInternal = role ? INTERNAL_ROLES.includes(role) : email ? isInternalEmai
 
 ## 5. Database Schema (Supabase)
 
-29 migrations, to be applied in order. Migrations 001–028 are confirmed
-applied as of 2026-07-29; migration 029 awaits application. Key tables:
+30 migrations, to be applied in order. Migrations 001–029 are confirmed
+applied as of 2026-07-29; migration 030 awaits application. Key tables:
 
 | Table | Purpose | Notes |
 |---|---|---|
@@ -163,8 +163,10 @@ applied as of 2026-07-29; migration 029 awaits application. Key tables:
 
 **Auto-numbering** — sequence-backed RPCs allocate `ticket_no` (RPL-XXXXXX),
 `request_no` (SPR-XXXX), and `order_no` (FSO-XXXX). Migration 029 restricts
-all current number-minting RPCs to `service_role`; the ticket helper retains a
-MAX+1 availability fallback only when its RPC is missing or unavailable.
+all current number-minting RPCs to `service_role`; migration 030 consumes
+`next_order_no()` inside the atomic field-service create command. The ticket
+helper retains a MAX+1 availability fallback only when its RPC is missing or
+unavailable.
 
 **Important functions** in `011_create_functions_and_triggers.sql`:
 - `generate_ticket_no()`, `update_ticket_updated_at()`, `create_ticket_status_event()`, `match_site_by_code()`, `handle_new_user()` (auth.users → public.users sync)
@@ -257,7 +259,7 @@ if ("error" in auth) return NextResponse.json({ error: auth.error }, { status: a
 npm install
 cp .env.local.example .env.local   # fill in real values
 # Run migrations in Supabase SQL editor (or `supabase db push` if using CLI):
-#   001 → 029 in order
+#   001 → 030 in order
 # Enable pgvector: CREATE EXTENSION IF NOT EXISTS vector;
 npm run dev
 ```
@@ -267,7 +269,7 @@ npm run dev
 - `npm run build` — production build
 - `npm run start` — production server
 - `npm run lint` — direct ESLint CLI across the repository; warnings fail the gate
-- `npm test` — Vitest unit/contract suite (188 tests)
+- `npm test` — Vitest unit/contract suite (210 tests)
 - `npm run test:e2e` — 21-check production HTTP smoke plus optional credentialed Playwright/API/RLS matrix; requires a successful build
 - `npm run test:e2e:credentialed` — real six-account/two-tenant matrix; set `RIPPLE_E2E_FIXTURES_FILE`
 - `npm run test:e2e:install-browser` — install the pinned Chromium runtime
@@ -517,6 +519,26 @@ invariant and prevent future API/configuration changes from reopening them.
 independent actor checks, explicit execution roles, and one transactional
 boundary for the complete business action.
 
+### PostgreSQL DATE values are calendar labels, not JavaScript instants
+Found 2026-07-29 in field-service scheduling. The create form correctly emits
+`YYYY-MM-DD` from `<input type="date">`, but both APIs required a Zod
+`datetime()`, so valid browser submissions failed. The detail pages then used
+`new Date("YYYY-MM-DD")`; JavaScript interprets that string at UTC midnight,
+which can display the previous day in U.S. time zones.
+
+Commit `2557760` and migration 030 establish one DATE-only contract from form
+to database: strict real-calendar `YYYY-MM-DD` validation, final start/end
+ordering inside the row-locked command, and UTC-neutral calendar formatting.
+The same checkpoint moves order creation/assignment and order
+update/assignment replacement into service-role-only transactions. Active
+actors, sites/customers, same-site tickets, and active engineer assignees are
+verified before the order, child assignments, and audit rows commit.
+
+**Lesson:** model SQL `DATE` separately from `TIMESTAMPTZ`. Do not run a
+calendar date through the runtime timezone, and do not split a parent write,
+complete child-set replacement, or its required audit evidence across
+best-effort calls.
+
 ### Supabase SSR auth cookies belong on the response you return
 Found 2026-07-29 while adding password recovery. The authorization-code
 callback created a redirect inside the Supabase `setAll` callback, attached
@@ -611,7 +633,7 @@ resume work; this section remains the broader historical summary.
       to detail-tabs-helpers.ts (no "use client" directive).
   - **Helper upgrade**: `requireAdmin()` now also returns `email` (it was already selecting it — just not exposing).
   - **New tests**: 4 new e2e scripts (21_audit_fixes, 22_list_pii, 23_web_pages_full, 24_feature_flows), 272 new test cases. Full suite: 7 e2e mjs (182) + 2 e2e Python (187) + 7 unit (83) = **452 tests, all green**.
-- **PRD v1.1 Phase 0 containment** (`9083ece`, `211843e`, `b71b3d7`, `b9a7a12`, `e83156f`, `4ceacd0`, `1f49ecc`, `64cee3d`, `7cd876b`): centralized
+- **PRD v1.1 Phase 0 containment** (`9083ece`, `211843e`, `b71b3d7`, `b9a7a12`, `e83156f`, `4ceacd0`, `1f49ecc`, `64cee3d`, `7cd876b`, `2557760`): centralized
   tenant scoping and response shaping; removed client service-role imports;
   restricted Slack actions; hid customer-internal ticket fields; retired
   customer/site/user hard delete; added transactional archive/deactivation,
@@ -622,9 +644,10 @@ resume work; this section remains the broader historical summary.
   Playwright/API/RLS matrix, direct ESLint enforcement, SHA-pinned GitHub
   Actions quality gates; made spare-part creation and fulfillment changes
   parent-contained, quantity-bounded, atomic, and transactionally audited;
-  restricted number-minting RPCs to the service role; added password recovery,
-  fixed SSR auth-cookie propagation, rebuilt the responsive support
-  experience, and established 188 unit/contract tests plus a
+  restricted number-minting RPCs to the service role; made field-service
+  order/engineer writes atomic and aligned PostgreSQL DATE handling; added
+  password recovery, fixed SSR auth-cookie propagation, rebuilt the responsive
+  support experience, and established 210 unit/contract tests plus a
   zero-vulnerability dependency baseline.
 
 ### Known issues / open work
@@ -635,18 +658,17 @@ resume work; this section remains the broader historical summary.
 | 🟡 Med | Dashboard timezone hardcoded to `America/New_York` for some widgets | `src/app/(auth)/dashboard/page.tsx` | Should derive from user or first site; ticket detail already uses `site.timezone` |
 | 🟡 Med | `/settings` is read-only integration status | `src/app/(auth)/settings/page.tsx` | Add notification preferences, user timezone, and theme controls |
 | 🟡 Med | In-memory rate limit not production-grade | `src/lib/rate-limit.ts` | Fine for now (Vercel cold starts reset the counter, but worst case is a fresh window per cold start). Swap for Upstash/Redis when traffic warrants. |
-| 🟡 Deploy | Migration 029 awaits application | `supabase/migrations/029_atomic_spare_part_request_creation.sql` | Apply before deploying `64cee3d`; then run the protected request-creation positive/negative probes |
-| 🟢 Low | Field-service numbering still uses the legacy sequence RPC | `src/app/api/field-service-orders/route.ts` | Consolidate on `next_order_no()` inside the planned atomic field-order command; both current paths are sequence-backed |
+| 🟡 Deploy | Migration 030 awaits application | `supabase/migrations/030_atomic_field_service_order_commands.sql` | Apply before deploying `2557760`; then run field-order DATE, ticket/site, assignee, and rollback probes |
 | 🟢 Low | Slack `events` route doesn't route customer messages to a ticket comment yet | `src/app/api/slack/events/route.ts` | Sprint 3 — bidirectional thread sync (SLK-008) |
 | 🟡 Med | Credentialed role/tenant matrix has not had its first staging execution | `scripts/credentialed-role-matrix.mjs` | Harness, fixture validation, and Chromium launch are committed/green; provision six dedicated accounts and non-vacuous two-tenant/archive/internal-artifact IDs, then run with required credentials |
 | 🟡 Activate | Hosted quality workflow and protected staging job are not activated yet | `.github/workflows/ci.yml` | After pushing, require `Quality gates`; create a reviewer-protected `staging` environment and add only `RIPPLE_E2E_FIXTURES_JSON` there |
 
 ### Next priorities (Sprint 3, in proposed order)
-1. **Run migration 028's positive/negative fulfillment probes.** Migration 028
-   is applied; staging credentials are not present in this workspace.
-2. **Apply migration 029, then run its request-creation probes.** Code is
-   committed in `64cee3d`; database execution is not yet claimed.
-3. **Run the required credentialed staging matrix.** Migrations 027–028 are applied;
+1. **Run migrations 028–029 part-request probes.** Both migrations are
+   applied; staging credentials are not present in this workspace.
+2. **Apply migration 030, then run field-service transaction probes.** Code is
+   committed in `2557760`; database execution is not yet claimed.
+3. **Run the required credentialed staging matrix.** Migrations 027–029 are applied;
    the secret six-account/two-tenant fixture is the remaining external gate.
 4. **Apply migration 019** ✅ done (2026-07-14).
 5. **Migrate `next lint` and add protected CI quality gates.** ✅ code done
@@ -654,6 +676,7 @@ resume work; this section remains the broader historical summary.
 6. **Close INT-005 part-item parent containment.** ✅ deployed
    (`1f49ecc` + migration 028); protected runtime verification remains.
 7. **Complete INT-004 field-service order/engineer atomicity and date contract.**
+   ✅ code complete in `2557760`; migration 030 deployment/probes remain.
 8. **Fix MiniMax AI key** (or swap provider in `.env`). Verify `/api/ai/suggest` returns a real model response, not a mock.
 9. **Verify Resend sender domain** so confirmation / resolution emails actually send.
 10. **Ticket number sequence migration** (020) ✅ done (2026-07-14) — `next_ticket_no()` RPC + 021 volatility fix.
@@ -682,7 +705,7 @@ npm audit
 ```
 
 **Apply a new migration:**
-1. Create `supabase/migrations/030_xxx.sql` (next number)
+1. Create `supabase/migrations/031_xxx.sql` (next number)
 2. Test locally: `supabase db reset` (drops + re-applies all)
 3. Apply to prod via Supabase SQL editor
 4. Document in this file's §5 + §10

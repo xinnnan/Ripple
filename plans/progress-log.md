@@ -7,12 +7,12 @@ meaningful change and before ending a work session. Newest entries go first.
 
 - **Branch:** `codex/prd-v1-1-gap-closure`
 - **Active phase:** Phase 0 — Containment and reproducible baseline
-- **Active work item:** INT-004 field-service transaction gaps plus migration
-  029 and the P0-I external staging execution gate
-- **Last verified implementation commit:** `7cd876b` (`feat: redesign support experience`)
+- **Active work item:** migration 030 deployment/probes, then INT-006 atomic
+  team site assignment plus the P0-I external staging execution gate
+- **Last verified implementation commit:** `2557760` (`fix: make field service writes atomic`)
 - **Uncommitted work:** none expected; verify with `git status` before resuming
-- **Deployment gate:** migrations 001–028 are user-confirmed applied;
-  `029_atomic_spare_part_request_creation.sql` awaits application
+- **Deployment gate:** migrations 001–029 are user-confirmed applied;
+  `030_atomic_field_service_order_commands.sql` awaits application
 - **External validation gate:** populate the gitignored credential fixture with six
   dedicated staging accounts, two tenants, a decommissioned site/ticket, and
   real internal artifact IDs; then run
@@ -22,17 +22,129 @@ meaningful change and before ending a work session. Newest entries go first.
   `RIPPLE_E2E_FIXTURES_JSON` secret before manually enabling the credentialed
   matrix
 - **Runtime verification debt:** when staging credentials become available,
-  test request creation plus fulfillment positive/negative cases, including
-  cross-site ticket, inactive part, foreign item, and over-fulfillment
+  test request creation/fulfillment plus field-service create/update
+  positive/negative cases, including cross-site tickets, inactive parts,
+  foreign items, over-fulfillment, invalid/reversed dates, invalid assignees,
+  and assignment-replacement rollback
 - **Support UX verification:** public pages and the real admin shell were
   reviewed at 1440×1000 and 390×844. A short-lived admin test identity was
   created for read-only protected-page visits and fully deleted afterward.
   Password-based login passed; recovery-email delivery and one-time link
   consumption still require a dedicated staging mailbox.
-- **Exact next local step:** after migration 029 is applied, make field-service
-  order creation and engineer-assignment replacement atomic and correct the
-  `YYYY-MM-DD` API contract for database `DATE` fields
+- **Exact next local step:** apply migration 030 and run its safe presence
+  probe; with protected fixtures, run creation, date, assignee, containment,
+  and rollback probes; then close INT-006 with an atomic team-site set diff
 - **Primary plan:** [`plans/prd-v1.1-gap-closure-plan.md`](./prd-v1.1-gap-closure-plan.md)
+
+## Session record — 2026-07-29 (P0-P / INT-004 field service)
+
+### Objective
+
+Finish INT-004 by ensuring a field-service order cannot commit independently
+of its complete engineer assignment set or required audit evidence, and align
+browser/API/database handling of PostgreSQL `DATE` columns.
+
+### Deployment confirmation received
+
+- The user confirmed migration 029 was applied.
+- A safe service-role call to `create_spare_part_request_atomic` with
+  deliberately invalid, non-writing input returned the command's expected
+  SQLSTATE `22023`.
+- This verifies the live RPC is present without creating request data.
+- Migrations 001–029 are therefore confirmed applied in order. Protected
+  positive/negative request-creation probes still require staging fixtures.
+
+### Confirmed defects
+
+- `POST /api/field-service-orders` minted the number, inserted the order,
+  inserted engineer assignments, and wrote audit evidence in separate calls.
+  Assignment failures were logged and ignored, leaving incomplete orders.
+- `PATCH /api/field-service-orders/[id]` updated the header, deleted every
+  assignment, inserted replacements, and wrote audit evidence separately.
+  Delete/insert errors were ignored, so an update could silently lose all
+  assigned engineers.
+- Both routes required Zod `datetime()` strings while the native date inputs
+  correctly submitted `YYYY-MM-DD`, causing valid schedules to fail.
+- Field-service pages parsed database DATE strings through JavaScript UTC
+  instants, allowing a U.S. timezone to display the previous calendar day.
+- The completion action sent `actual_hours` as a prompt string even though the
+  API requires a number; failures had no visible error.
+- Hour fields map to `NUMERIC(5,1)` but the API did not enforce its maximum or
+  single-decimal precision.
+
+### Changes
+
+- Added migration `030_atomic_field_service_order_commands.sql` with
+  service-role-only `create_field_service_order_atomic` and
+  `apply_field_service_order_patch` commands.
+- Creation now verifies an active internal actor, active site/customer,
+  same-site optional ticket, supported fields, DATE/hour bounds, unique
+  assignments, and active engineer identities before allocating
+  `next_order_no()` and committing the order, assignments, and audit row.
+- Update row-locks the order, validates the final date range and every supplied
+  field, distinguishes unchanged assignments (`null`) from an explicit clear
+  (`[]`), compares normalized assignment sets, and commits header changes,
+  replacement, completion attribution, and per-field/assignment audit rows
+  together.
+- Added `NOT VALID` schedule/hour checks so all new or changed rows are
+  protected without claiming historical data has already been audited.
+- Moved HTTP contracts and RPC wrappers into `src/lib/field-service/`; route
+  hydration happens after commit and returns the durable ID with a warning if
+  the read fails, preventing unsafe client retries.
+- DATE inputs now require real calendar values in exact `YYYY-MM-DD` form,
+  reject reversed ranges, and render with `formatDateOnly()` without timezone
+  conversion.
+- Completion hours are numeric, bounded, single-decimal, and failures render
+  visibly in the action panel.
+- Added 22 focused DATE, mutation-wrapper, migration-integrity, assignment,
+  and formatting regression checks, bringing the suite to 210 tests.
+
+### Verification before implementation commit
+
+| Command | Result |
+|---|---|
+| `npm ci` | Passed; 533 packages installed and 534 audited |
+| `npm test` | Passed; 27 files, 210 tests |
+| `npm run lint` | Passed via ESLint CLI; 0 warnings/errors |
+| `npm run build` | Passed on Next.js 15.5.22 |
+| `npm run test:e2e` | Passed 21 production HTTP checks; credentialed matrix explicitly skipped because the secret fixture is unavailable |
+| `npm audit` | Passed; 0 vulnerabilities |
+| `git diff --check` | Passed |
+| Staged secret-pattern scan | Passed |
+
+The implementation was committed only after the exact full gate and a second
+`npm run test:e2e` in the same command immediately before commit.
+
+### Decisions and rollback
+
+- Migration 030 must be applied before deploying `2557760`; both field-service
+  write routes now depend on its RPCs.
+- `p_engineers = NULL` means “do not change assignments,” while an empty JSON
+  array means “replace with no assignments.” This avoids accidental clears.
+- Existing orders at archived sites may still be completed or cancelled; the
+  active tenant lifecycle check applies to new order creation.
+- Migration constraints are `NOT VALID`: they enforce new/changed rows now,
+  while legacy validation remains a separate audited operation.
+- Reverting `2557760` restores the old non-atomic routes. Migration 030 is
+  additive and may remain installed during an application rollback; do not
+  drop it while any deployed instance calls the RPCs.
+
+### Commit
+
+- Hash: `2557760`
+- Message: `fix: make field service writes atomic`
+
+### Exact next step
+
+1. Apply migration `030_atomic_field_service_order_commands.sql` in order.
+2. Run a safe invalid-input RPC presence probe, then use protected fixtures to
+   verify valid DATE creation, cross-site ticket rejection, inactive/duplicate
+   assignee rejection, and failed assignment replacement rolls back the header
+   and preserves the prior assignment set.
+3. Run the outstanding migrations 028–029 request probes and the six-account
+   role/tenant matrix when its secret fixture is provisioned.
+4. Continue local integrity work with INT-006: replace team site-membership
+   delete-all/insert with one atomic set-diff command.
 
 ## Session record — 2026-07-29 (P0-O / support experience)
 
