@@ -7,14 +7,16 @@ meaningful change and before ending a work session. Newest entries go first.
 
 - **Branch:** `codex/prd-v1-1-gap-closure`
 - **Active phase:** Phase 0 — Containment and reproducible baseline
-- **Active work item:** deploy/probe INT-007 migration 033, then move ticket
-  creation delivery and remaining best-effort audit domains onto atomic seams
-- **Last verified implementation commit:** `a6ccd33` (`feat: add durable ticket notification outbox`)
+- **Active work item:** apply/probe migration 034, configure the production
+  outbox worker secret, then move remaining best-effort audit domains onto
+  atomic commands
+- **Last verified implementation commit:** `21f7781` (`feat: make ticket creation atomic`)
 - **Uncommitted work:** documentation checkpoint only; verify with `git status`
   before resuming
-- **Deployment gate:** migrations 001–032 are user-confirmed applied;
-  migration 033 and production `CRON_SECRET` are pending. Protected positive
-  business probes for migrations 028–033 still require staging fixtures
+- **Deployment gate:** migrations 001–033 are confirmed applied; migration 034
+  must be applied before deploying `21f7781`. Production `CRON_SECRET` remains
+  unset in this workspace. Protected positive business probes for migrations
+  028–034 still require staging fixtures
 - **External validation gate:** populate the gitignored credential fixture with six
   dedicated staging accounts, two tenants, a decommissioned site/ticket, and
   real internal artifact IDs; then run
@@ -34,11 +36,114 @@ meaningful change and before ending a work session. Newest entries go first.
   created for read-only protected-page visits and fully deleted afterward.
   Password-based login passed; recovery-email delivery and one-time link
   consumption still require a dedicated staging mailbox.
-- **Exact next local step:** after the user applies migration 033, verify the
-  table/trigger/RPC surface and fail-closed worker authorization without
-  exposing secrets; then migrate ticket-create Slack/email effects onto the
-  outbox and continue the best-effort audit inventory
+- **Exact next local step:** after the user applies migration 034, verify the
+  expanded constraint and atomic command with non-writing probes, then run one
+  disposable ticket-creation/rollback probe when protected staging fixtures
+  exist. Configure `CRON_SECRET` separately before production worker activation
 - **Primary plan:** [`plans/prd-v1.1-gap-closure-plan.md`](./prd-v1.1-gap-closure-plan.md)
+
+## Session record — 2026-07-30 (P0-V / atomic ticket creation)
+
+### Objective
+
+Safely verify migration 033, audit ticket-creation authorization and
+transaction boundaries, then move ticket creation, timeline/audit evidence,
+Slack master posting, and confirmation email onto the durable outbox seam.
+
+### Migration 033 verification
+
+- The user confirmed migration 033 was applied.
+- `integration_outbox` is readable through the service role with every expected
+  lease, retry, delivery, and dead-letter column; it contained zero rows and no
+  queued work during the probe.
+- `slack_messages.outbox_event_id` exists.
+- `claim_integration_outbox(p_limit := 0, ...)` rejected with SQLSTATE `22023`
+  before mutation; random event/lock-token acknowledgements returned `false`.
+- Local worker readiness remains intentionally fail-closed because
+  `CRON_SECRET` is not configured. No secret value was generated, printed, or
+  committed.
+
+### Audit findings
+
+- Ticket creation inserted the ticket and creation event separately, then
+  called Slack and Resend directly. A failure between those steps could leave
+  incomplete audit/timeline evidence or permanently lose delivery.
+- Authenticated customers were not scope-checked before creating a ticket for
+  a supplied site.
+- An authenticated inactive account could be silently treated as an anonymous
+  submitter because every `getAuthUser()` error took the guest path.
+- The web API accepted client-supplied `source` provenance, and the
+  authenticated modal still submitted a client-controlled `created_by`.
+- A migration-trigger design would have duplicated direct confirmation emails
+  if the database migration was applied before application deployment. It was
+  discarded in favor of an opt-in service-role command.
+
+### Changes completed
+
+- Added rollout-safe migration `034_atomic_ticket_creation_outbox.sql`.
+  Applying it first does not alter the old direct-insert deployment.
+- Added service-role-only `create_ticket_atomic(jsonb)`, which:
+  - allowlists and bounds input;
+  - locks and validates the active site/customer, active actor, tenant/site
+    membership, source, secure token, and optional SLA policy;
+  - consumes the concurrency-safe ticket sequence;
+  - inserts the ticket, creation event, audit row, Slack-master outbox event,
+    and optional confirmation-email event in one transaction.
+- The web endpoint now derives the tenant from the active site, checks the
+  authenticated caller's current site scope, distinguishes a missing session
+  from an inactive account, bounds public text/contact fields, and assigns
+  `source = web` server-side.
+- Removed client-supplied actor/source fields from both web forms.
+- `createTicketCore()` now invokes the atomic command and never falls back to
+  racy `MAX+1`, separate event writes, or direct providers.
+- Added durable initial Slack master delivery with local event identity and
+  confirmation-email delivery with Resend idempotency.
+- Escaped customer and site names in confirmation-email HTML.
+- Added seven net-new contract/delivery tests, bringing the suite to 258 tests
+  across 38 files.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| Focused creation/scope/outbox checks | Passed; 29 tests |
+| `npm ci` | Passed; 533 packages installed |
+| `npm test` | Passed; 38 files, 258 tests |
+| `npm run lint` | Passed; 0 warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build |
+| `npm run test:e2e` | Passed; 22 HTTP checks, credentialed matrix skipped explicitly because the secret fixture is unset |
+| `npm audit` | Passed; 0 vulnerabilities |
+| `git diff --check` | Passed |
+| Immediate pre-commit E2E rerun | Passed before `21f7781` |
+
+### Commit
+
+- `21f7781` — `feat: make ticket creation atomic`
+
+### Deployment gates and limitations
+
+- Apply migration 034 before deploying `21f7781`. The old deployed code remains
+  compatible when the migration is applied first.
+- Do not deploy the new application code before the RPC exists; ticket
+  creation intentionally fails closed instead of returning to non-atomic
+  writes.
+- Set a long random production `CRON_SECRET` through deployment-secret
+  management. Local readiness correctly remains not ready until configured.
+- Slack delivery is at-least-once. A crash after Slack accepts the post but
+  before the local message record still creates a narrow duplicate window.
+- Protected positive/cross-tenant/rollback probes require the dedicated
+  staging fixture; the local matrix skipped rather than using personal or
+  production identities.
+
+### Exact next step
+
+1. Apply migration 034 in order.
+2. Run non-writing presence, privilege, allowlist, and authorization probes.
+3. With protected fixtures, create one disposable web and signed-Slack ticket,
+   verify one creation event/audit row and both applicable outbox deliveries,
+   then remove only the disposable fixture data.
+4. Continue converting best-effort administrative audit writes into atomic
+   commands.
 
 ## Session record — 2026-07-30 (P0-U / INT-007 durable ticket notifications)
 

@@ -89,7 +89,7 @@ Vercel.
 │   │   ├── ticket.ts                    # ⭐ All domain enums + labels
 │   │   └── spare-parts.ts               # ⭐ Spare parts + field service enums
 │   └── middleware.ts                    # ⭐ Route guard + session refresh
-├── supabase/migrations/                 # 001–033, apply in order
+├── supabase/migrations/                 # 001–034, apply in order
 ├── plans/                               # Architecture + phase planning docs
 │   ├── architecture.md
 │   ├── phase2-customer-auth-and-user-management.md
@@ -108,7 +108,7 @@ Vercel.
 - Ticket detail UI → `src/app/(auth)/tickets/[ticketId]/page.tsx` (server) + `ticket-actions-panel.tsx` (client)
 - Slack ticket creation → `src/app/api/slack/command/ticket/route.ts` + `src/lib/slack/blocks/ticket-form.ts`
 - AI assist → `src/app/api/ai/suggest/route.ts` + `src/lib/ai/suggest.ts`
-- DB schema → `supabase/migrations/001_*.sql` … `033_ticket_notification_outbox.sql`
+- DB schema → `supabase/migrations/001_*.sql` … `034_atomic_ticket_creation_outbox.sql`
 
 ---
 
@@ -146,8 +146,8 @@ const isInternal = role ? INTERNAL_ROLES.includes(role) : email ? isInternalEmai
 
 ## 5. Database Schema (Supabase)
 
-33 migrations, to be applied in order. Migrations 001–032 are confirmed
-applied as of 2026-07-30; migration 033 awaits application. Key tables:
+34 migrations, to be applied in order. Migrations 001–033 are confirmed
+applied as of 2026-07-30; migration 034 awaits application. Key tables:
 
 | Table | Purpose | Notes |
 |---|---|---|
@@ -168,9 +168,9 @@ applied as of 2026-07-30; migration 033 awaits application. Key tables:
 **Auto-numbering** — sequence-backed RPCs allocate `ticket_no` (RPL-XXXXXX),
 `request_no` (SPR-XXXX), and `order_no` (FSO-XXXX). Migration 029 restricts
 all current number-minting RPCs to `service_role`; migration 030 consumes
-`next_order_no()` inside the atomic field-service create command. The ticket
-helper retains a MAX+1 availability fallback only when its RPC is missing or
-unavailable.
+`next_order_no()` inside the atomic field-service create command. Migration
+034 consumes `next_ticket_no()` inside the atomic ticket-create command. The
+ticket path intentionally has no `MAX+1` fallback.
 
 **Important functions** in `011_create_functions_and_triggers.sql`:
 - `generate_ticket_no()`, `update_ticket_updated_at()`, `create_ticket_status_event()`, `match_site_by_code()`, `handle_new_user()` (auth.users → public.users sync)
@@ -263,7 +263,7 @@ if ("error" in auth) return NextResponse.json({ error: auth.error }, { status: a
 npm install
 cp .env.local.example .env.local   # fill in real values
 # Run migrations in Supabase SQL editor (or `supabase db push` if using CLI):
-#   001 → 033 in order
+#   001 → 034 in order
 # Enable pgvector: CREATE EXTENSION IF NOT EXISTS vector;
 npm run dev
 ```
@@ -273,7 +273,7 @@ npm run dev
 - `npm run build` — production build
 - `npm run start` — production server
 - `npm run lint` — direct ESLint CLI across the repository; warnings fail the gate
-- `npm test` — Vitest unit/contract suite (251 tests)
+- `npm test` — Vitest unit/contract suite (258 tests)
 - `npm run test:e2e` — 22-check production HTTP smoke plus optional credentialed Playwright/API/RLS matrix; requires a successful build
 - `npm run test:e2e:credentialed` — real six-account/two-tenant matrix; set `RIPPLE_E2E_FIXTURES_FILE`
 - `npm run test:e2e:install-browser` — install the pinned Chromium runtime
@@ -623,9 +623,18 @@ request path tries an immediate lease for responsiveness; the protected cron
 route reclaims failures, applies exponential backoff, and retains exhausted
 work as a dead letter.
 
+Commit `21f7781` and migration 034 extend the same seam to ticket creation.
+The service-role command validates and locks active tenant/actor scope, mints
+the sequence number, and writes the ticket, creation event, audit row, initial
+Slack event, and optional confirmation-email event in one transaction. The
+web endpoint assigns provenance server-side. Migration 034 is deliberately
+opt-in rather than an INSERT trigger, so applying the migration before the
+application commit does not duplicate the old direct provider calls.
+
 Master-card updates are naturally repeatable, resolution email passes a stable
-Resend idempotency key, and Slack resolution replies record the outbox event id
-locally plus message metadata. Missing Slack targets are terminal skips;
+Resend idempotency key, confirmation email does the same, and Slack creation
+and resolution records retain the outbox event id locally plus message
+metadata. Missing Slack targets are terminal skips;
 missing credentials/provider failures remain retryable. Readiness now fails
 closed when `CRON_SECRET` is absent.
 
@@ -730,7 +739,7 @@ resume work; this section remains the broader historical summary.
       to detail-tabs-helpers.ts (no "use client" directive).
   - **Helper upgrade**: `requireAdmin()` now also returns `email` (it was already selecting it — just not exposing).
   - **New tests**: 4 new e2e scripts (21_audit_fixes, 22_list_pii, 23_web_pages_full, 24_feature_flows), 272 new test cases. Full suite: 7 e2e mjs (182) + 2 e2e Python (187) + 7 unit (83) = **452 tests, all green**.
-- **PRD v1.1 Phase 0 containment** (`9083ece`, `211843e`, `b71b3d7`, `b9a7a12`, `e83156f`, `4ceacd0`, `1f49ecc`, `64cee3d`, `7cd876b`, `2557760`, `c0c2354`): centralized
+- **PRD v1.1 Phase 0 containment** (`9083ece` through `21f7781`): centralized
   tenant scoping and response shaping; removed client service-role imports;
   restricted Slack actions; hid customer-internal ticket fields; retired
   customer/site/user hard delete; added transactional archive/deactivation,
@@ -747,10 +756,11 @@ resume work; this section remains the broader historical summary.
   routed Slack Ripple Assist through the shared, rate-limited AI service;
   added database-authoritative guarded ticket transitions and entry invariants;
   unified resolution email and Slack-thread notification semantics and moved
-  ticket update notifications onto a transactional outbox with retry/dead-letter
-  recovery;
+  ticket creation/update notifications onto a transactional outbox with
+  retry/dead-letter recovery and made ticket creation/event/audit/outbox writes
+  one database transaction;
   added password recovery, fixed SSR auth-cookie propagation, rebuilt the
-  responsive support experience, and established 251 unit/contract tests plus
+  responsive support experience, and established 258 unit/contract tests plus
   a zero-vulnerability dependency baseline.
 
 ### Known issues / open work
@@ -763,7 +773,8 @@ resume work; this section remains the broader historical summary.
 | 🟡 Med | In-memory rate limit not production-grade | `src/lib/rate-limit.ts` | Fine for now (Vercel cold starts reset the counter, but worst case is a fresh window per cold start). Swap for Upstash/Redis when traffic warrants. |
 | 🟡 Verify | Migration 031 protected business probes remain | `supabase/migrations/031_atomic_team_site_assignment.sql` | RPC presence and validation behavior are confirmed; run same-tenant, cross-tenant, role-preservation, explicit-clear, and rollback probes with staging fixtures |
 | 🟡 Verify | Migration 032 positive business probe remains | `supabase/migrations/032_guard_ticket_status_transitions.sql` | Truth-table and three rollback guards are live/green; run one allowed transition and restore it on a disposable staging ticket |
-| 🟡 Apply | Migration 033 and `CRON_SECRET` are not deployed yet | `supabase/migrations/033_ticket_notification_outbox.sql` | Apply the migration before deploying `a6ccd33`, set a long production secret, then verify readiness and worker authorization |
+| 🟡 Configure | Production `CRON_SECRET` is not configured | deployment environment | Migration 033 is live and its non-writing RPC/column probes passed; set a long server-only secret, then verify readiness and worker authorization |
+| 🟡 Apply | Migration 034 is not deployed yet | `supabase/migrations/034_atomic_ticket_creation_outbox.sql` | Apply it before deploying `21f7781`; then verify command privilege/validation and run disposable protected creation/outbox probes |
 | 🟡 Med | Vercel recovery cron runs daily for plan compatibility | `vercel.json` | Request-path dispatch is immediate; use a supported 1–5 minute schedule or external scheduler when the production Vercel plan permits |
 | 🟢 Low | Slack `events` route doesn't route customer messages to a ticket comment yet | `src/app/api/slack/events/route.ts` | Sprint 3 — bidirectional thread sync (SLK-008) |
 | 🟡 Med | Credentialed role/tenant matrix has not had its first staging execution | `scripts/credentialed-role-matrix.mjs` | Harness, fixture validation, and Chromium launch are committed/green; provision six dedicated accounts and non-vacuous two-tenant/archive/internal-artifact IDs, then run with required credentials |
@@ -777,7 +788,7 @@ resume work; this section remains the broader historical summary.
 3. **Run migration 031 team-access transaction probes.** The command is live;
    protected same/cross-tenant, role-preservation, explicit-clear, and rollback
    fixtures remain unavailable.
-4. **Run the required credentialed staging matrix.** Migrations 027–030 are applied;
+4. **Run the required credentialed staging matrix.** Migrations 027–033 are applied;
    the secret six-account/two-tenant fixture is the remaining external gate.
 5. **Apply migration 019** ✅ done (2026-07-14).
 6. **Migrate `next lint` and add protected CI quality gates.** ✅ code done
@@ -801,9 +812,12 @@ resume work; this section remains the broader historical summary.
 18. **Close current Slack mutation parity (INT-011).** ✅ code complete in
     `4892dcb` and made durable for ticket updates in `a6ccd33`; web and Slack
     share resolution email/thread/master-card effects through the outbox.
-19. **Deploy the first INT-007 outbox slice.** Apply migration 033, configure
-    `CRON_SECRET`, and verify lease/retry/dead-letter behavior with protected
-    staging delivery fixtures.
+19. **Deploy the first INT-007 outbox slice.** Migration 033 is applied and
+    non-writing verification passed. Configure `CRON_SECRET` and verify
+    lease/retry/dead-letter delivery with protected staging fixtures.
+20. **Deploy atomic ticket creation.** Apply migration 034 before `21f7781`,
+    verify its service-role command and constraint surface, then run disposable
+    web/Slack create and delivery probes with protected fixtures.
 
 ### Open architectural questions
 - The RLS recursion bug surfaces a bigger question: do we keep `createAdminClient() + code filter` (the current pattern in `lib/supabase/scope.ts`) or move back to proper RLS once migration 019 + similar fixes are in place? The current pattern scales fine but has a lower safety margin for new queries.
@@ -825,7 +839,7 @@ npm audit
 ```
 
 **Apply a new migration:**
-1. Create `supabase/migrations/034_xxx.sql` (next number)
+1. Create `supabase/migrations/035_xxx.sql` (next number)
 2. Test locally: `supabase db reset` (drops + re-applies all)
 3. Apply to prod via Supabase SQL editor
 4. Document in this file's §5 + §10
