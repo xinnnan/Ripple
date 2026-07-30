@@ -7,12 +7,12 @@ meaningful change and before ending a work session. Newest entries go first.
 
 - **Branch:** `codex/prd-v1-1-gap-closure`
 - **Active phase:** Phase 0 — Containment and reproducible baseline
-- **Active work item:** migration 031 deployment/probes, then INT-008/INT-009
-  site inventory/query contracts plus the P0-I external staging execution gate
-- **Last verified implementation commit:** `c0c2354` (`fix: update team site access atomically`)
+- **Active work item:** INT-001 guarded ticket transitions plus the P0-I
+  external staging execution gate
+- **Last verified implementation commit:** `3f7d296` (`fix: route Slack assist through domain service`)
 - **Uncommitted work:** none expected; verify with `git status` before resuming
-- **Deployment gate:** migrations 001–030 are user-confirmed applied;
-  `031_atomic_team_site_assignment.sql` awaits application
+- **Deployment gate:** migrations 001–031 are user-confirmed applied; protected
+  business probes for migrations 028–031 still require staging fixtures
 - **External validation gate:** populate the gitignored credential fixture with six
   dedicated staging accounts, two tenants, a decommissioned site/ticket, and
   real internal artifact IDs; then run
@@ -32,10 +32,89 @@ meaningful change and before ending a work session. Newest entries go first.
   created for read-only protected-page visits and fully deleted afterward.
   Password-based login passed; recovery-email delivery and one-time link
   consumption still require a dedicated staging mailbox.
-- **Exact next local step:** apply migration 031 and run its safe presence
-  probe; with protected fixtures, run same/cross-tenant, role-preservation,
-  explicit-clear, and rollback probes; then close INT-008 and INT-009
+- **Exact next local step:** implement INT-001 with one transition truth table
+  enforced by the atomic ticket command and shared by web/Slack; with protected
+  fixtures, run the outstanding request, field-service, and team transaction
+  probes
 - **Primary plan:** [`plans/prd-v1.1-gap-closure-plan.md`](./prd-v1.1-gap-closure-plan.md)
+
+## Session record — 2026-07-30 (P0-R / INT-010 Slack Ripple Assist)
+
+### Objective
+
+Confirm migration 031, reconcile stale INT-008/INT-009 records against git
+history, and make Slack Ripple Assist invoke the authorized AI domain path
+without relying on a browser session cookie.
+
+### Deployment confirmation received
+
+- The user confirmed migration 031 was applied.
+- A deliberately invalid, non-writing service-role call to
+  `apply_team_member_patch` returned the expected SQLSTATE `22023`, confirming
+  the command is live without changing profile or membership data.
+- Migrations 001–031 are therefore confirmed applied in order. Protected
+  positive/rollback team-access probes still require staging fixtures.
+
+### Historical reconciliation
+
+- Git history and blame confirmed INT-008 and INT-009 were already closed in
+  commit `9083ece` on 2026-07-28.
+- The site detail page consumes the correct inventory result, `/sites` emits
+  `?site=...`, and the ticket filter parser/tests use the same canonical key.
+- The active plan had not carried those closures forward; its register now
+  records the original implementation commit.
+
+### Changes completed
+
+- Added `requestAiSuggestion()` as the shared application service for the web
+  route and signed Slack submission handler.
+- Moved the 20-per-minute paid-provider guard below the transport boundary so
+  Slack cannot bypass the web route's cost protection.
+- Removed Slack's server-to-server fetch of cookie-authenticated
+  `/api/ai/suggest`; the mapped active internal user's ID is passed directly to
+  the shared service for suggestion attribution.
+- Preserved channel/message context in Ripple Assist modal metadata so the
+  generated result has a valid ephemeral delivery destination.
+- Added explicit errors for unsupported tasks, missing tickets, and missing
+  channel context, plus best-effort failure messaging.
+- Added four service and Slack contract checks, bringing the suite from 222 to
+  226 tests.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| Focused AI/Slack regression checks | Passed; 2 files, 4 tests |
+| `npm ci` | Passed; 533 packages installed, 0 vulnerabilities |
+| `npm test` | Passed; 32 files, 226 tests |
+| `npm run lint` | Passed; 0 warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build |
+| `npm run test:e2e` | Passed; 21 HTTP checks, credentialed matrix skipped explicitly because the secret fixture is unset |
+| `npm audit` | Passed; 0 vulnerabilities |
+| `git diff --check` | Passed |
+| Immediate pre-commit E2E rerun | Passed before `3f7d296` |
+
+### Commit
+
+- `3f7d296` — `fix: route Slack assist through domain service`
+
+### External gates
+
+- The live MiniMax key still returns the known 401 and therefore exercises the
+  clearly labelled mock fallback until provider credentials are corrected.
+- Real Slack modal generation/delivery needs a signed staging interaction with
+  a mapped active internal user and configured bot token.
+- Protected migration 028–031 business probes and the six-account tenant
+  matrix still require the gitignored staging fixture.
+
+### Next
+
+1. Close INT-001 with a single guarded ticket-transition truth table enforced
+   below both web and Slack paths.
+2. Run the protected migration 028–031 transaction probes when staging
+   fixtures become available.
+3. Activate hosted branch protection and the reviewer-protected staging job
+   after push.
 
 ## Session record — 2026-07-30 (P0-Q / INT-006 team access)
 

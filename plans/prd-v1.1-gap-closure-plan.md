@@ -33,7 +33,7 @@ Ripple is a useful support-ticket prototype with meaningful Phase 1–4 work:
 - spare-parts and field-service skeletons
 - simple wall-clock SLA targets
 - email and AI integrations with graceful failure
-- 222 committed unit/contract tests, production HTTP smoke, and an opt-in
+- 226 committed unit/contract tests, production HTTP smoke, and an opt-in
   credentialed browser/API/RLS matrix
 
 It is not yet the operations platform described by PRD v1.1. The old
@@ -64,14 +64,14 @@ The correct approach is therefore:
 
 ## 3. Current baseline
 
-| Gate | Result through 2026-07-29 | Meaning |
+| Gate | Result through 2026-07-30 | Meaning |
 |---|---|---|
-| Unit tests | 222/222 passed | Scope, lifecycle, visibility, auth recovery/redirects, public/responsive UI contracts, Slack authentication/configuration, readiness, CI policy, filters, SLA, fixture validation, migration/RPC contracts, spare-part, field-service, and team-access transaction containment, DATE handling, and audit coverage is green |
+| Unit tests | 226/226 passed | Scope, lifecycle, visibility, auth recovery/redirects, public/responsive UI contracts, Slack authentication/configuration and direct AI-service invocation, readiness, CI policy, filters, SLA, fixture validation, migration/RPC contracts, spare-part, field-service, and team-access transaction containment, DATE handling, and audit coverage is green |
 | Lint | Passed, no warnings | Direct ESLint CLI with zero-warning enforcement and generated-artifact ignores |
 | Production build | Passed on Next.js 15.5.22 | Environment-free build is reproducible |
 | Dependency audit | 0 vulnerabilities | Patched direct/transitive versions are lockfile-pinned and compatibility-tested |
 | Worktree | Clean at baseline | Work started on `codex/prd-v1-1-gap-closure` |
-| Committed end-to-end tests | 21 production HTTP checks + credentialed Playwright/API/RLS matrix | Public/recovery/negative/configuration smoke always runs; migrations 001–030 are applied and migration 031 is pending, while protected request/field-service/team probes and the six-account two-tenant matrix await staging credentials/fixtures |
+| Committed end-to-end tests | 21 production HTTP checks + credentialed Playwright/API/RLS matrix | Public/recovery/negative/configuration smoke always runs; migrations 001–031 are applied, while protected request/field-service/team probes and the six-account two-tenant matrix await staging credentials/fixtures |
 | Hosted CI | Workflow committed in `4ceacd0`; first hosted run pending | Read-only, SHA-pinned quality job is reproducible; repository branch protection and the protected staging environment still require activation |
 
 ## 4. PRD capability gap map
@@ -133,11 +133,11 @@ has a release-blocking security or integrity problem.
 | INT-003 | A ticket resolved after its due time can be recorded as SLA met | **Closed in `b71b3d7`:** actual `resolved_at` is compared with the due timestamp and milestone breach is persisted |
 | INT-004 | Part-request header and items, and field order plus engineer assignments, are non-atomic | **Deployed; protected verification pending:** part-request update/create are deployed in `1f49ecc`/`64cee3d` + migrations 028/029. `2557760` + migration 030 make field-order create/update, complete engineer assignment sets, numbering, and audit atomic; both RPCs are live and protected rollback probes remain |
 | INT-005 | Part fulfillment updates do not verify the item belongs to the request in the URL | **Closed in `1f49ecc`; migration 028 confirmed applied 2026-07-29:** the row-locked command constrains every item by both `request_id` and item ID and rejects invalid quantity bounds; protected runtime probes remain |
-| INT-006 | Team site assignments are delete-all then insert, so a failed insert removes all access | **Code closed; deployment verification pending:** `c0c2354` + migration 031 atomically update profile/status, apply a role-preserving membership set diff, validate the manager/tenant/target/sites, and write audit evidence |
+| INT-006 | Team site assignments are delete-all then insert, so a failed insert removes all access | **Deployed; protected verification pending:** `c0c2354` + migration 031 atomically update profile/status, apply a role-preserving membership set diff, validate the manager/tenant/target/sites, and write audit evidence; RPC presence and non-writing validation behavior are confirmed |
 | INT-007 | Audit writes are best-effort and separate from the business transaction | Partially closed for ticket patch/comment commands in `b71b3d7`; migrate remaining domains and add the platform outbox |
-| INT-008 | Site detail assigns the inventory query to an unused tuple slot and always renders empty inventory | Correct the parallel query result wiring and cover it |
-| INT-009 | `/sites` links to `?site_id=...`, while the ticket parser expects `?site=...` | Use one canonical query contract |
-| INT-010 | Slack Ripple Assist calls an internal authenticated HTTP API without a session cookie | Call the domain service directly after Slack user authorization |
+| INT-008 | Site detail assigns the inventory query to an unused tuple slot and always renders empty inventory | **Closed in `9083ece`:** the inventory query result is wired to the inventory tab and covered by the external-resource containment regression checkpoint |
+| INT-009 | `/sites` links to `?site_id=...`, while the ticket parser expects `?site=...` | **Closed in `9083ece`:** site links and the ticket filter parser use the canonical `site` query key |
+| INT-010 | Slack Ripple Assist calls an internal authenticated HTTP API without a session cookie | **Closed in `3f7d296`:** web and signed Slack ingress authorize independently, then call the shared rate-limited AI application service; Slack preserves channel delivery context |
 | INT-011 | Slack mutations bypass ticket events, SLA stamping, state guards, and some notification paths | SLA/ticket/audit parity is closed for current Slack patch/comment actions in `b71b3d7`; state guards, AI direct service, and notification parity remain |
 | INT-012 | Clean builds fail on `/login` without Supabase env because the client is created during prerender | Construct the browser client only inside the submit action |
 
@@ -383,11 +383,17 @@ Every implementation slice must:
     Migration 030 was confirmed live 2026-07-30 through both commands'
     expected non-writing validation SQLSTATEs; protected positive/rollback
     probes remain.
-17. **P0-Q — code complete, deployment pending:** Commit `c0c2354` and
+17. **P0-Q — deployed; protected verification pending:** Commit `c0c2354` and
     migration 031 replace team access delete-all/reinsert with a row-locked,
     role-preserving set diff. Profile/status, memberships, and audit evidence
     commit together; only an active same-tenant manager may update a customer
-    user, and desired sites must be active in that tenant.
-18. **Next local integrity work:** after migration 031 is applied and probed,
-    close INT-008's empty site-inventory result wiring and INT-009's mismatched
-    ticket site-query parameter contract.
+    user, and desired sites must be active in that tenant. Application and
+    non-writing validation behavior were confirmed 2026-07-30; protected
+    positive/rollback probes remain.
+18. **P0-R — completed in `9083ece` / `3f7d296`:** Historical review confirmed
+    INT-008 and INT-009 were already closed in the containment checkpoint.
+    Slack Ripple Assist now calls the shared AI application service instead of
+    a cookie-bound internal HTTP route, preserves channel context, and shares
+    the paid-call rate limit with the web route.
+19. **Next local integrity work:** close INT-001 by enforcing a single guarded
+    ticket transition truth table below both web and Slack mutation paths.

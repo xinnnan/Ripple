@@ -143,8 +143,8 @@ const isInternal = role ? INTERNAL_ROLES.includes(role) : email ? isInternalEmai
 
 ## 5. Database Schema (Supabase)
 
-31 migrations, to be applied in order. Migrations 001–030 are confirmed
-applied as of 2026-07-30; migration 031 awaits application. Key tables:
+31 migrations, to be applied in order. Migrations 001–031 are confirmed
+applied as of 2026-07-30. Key tables:
 
 | Table | Purpose | Notes |
 |---|---|---|
@@ -269,7 +269,7 @@ npm run dev
 - `npm run build` — production build
 - `npm run start` — production server
 - `npm run lint` — direct ESLint CLI across the repository; warnings fail the gate
-- `npm test` — Vitest unit/contract suite (222 tests)
+- `npm test` — Vitest unit/contract suite (226 tests)
 - `npm run test:e2e` — 21-check production HTTP smoke plus optional credentialed Playwright/API/RLS matrix; requires a successful build
 - `npm run test:e2e:credentialed` — real six-account/two-tenant matrix; set `RIPPLE_E2E_FIXTURES_FILE`
 - `npm run test:e2e:install-browser` — install the pinned Chromium runtime
@@ -558,6 +558,24 @@ destroy and reconstruct every row. Preserve retained row identity and
 attributes, distinguish omission from an explicit empty set, and commit the
 parent, set diff, and audit evidence together.
 
+### Server integrations call application services, not cookie-bound routes
+Found 2026-07-30 in Slack Ripple Assist. The signed Slack submission handler
+called `/api/ai/suggest` over HTTP, but that route authenticates through a
+browser Supabase session cookie. Slack has no browser cookie, so valid internal
+users received a 401. The modal also failed to preserve its source channel,
+leaving no valid destination for the ephemeral result.
+
+Commit `3f7d296` adds `requestAiSuggestion()` as the shared application
+service. Both web and Slack authorize at their own ingress boundary, then call
+the service with the authenticated actor ID. The paid-call rate limit now
+applies consistently to both entry points, and Slack modal metadata preserves
+the channel needed to deliver the result.
+
+**Lesson:** do not make one server ingress impersonate another transport.
+Authenticate at the boundary, pass typed actor/context data into a shared
+application service, and keep provider limits and domain behavior below the
+transport layer.
+
 ### Supabase SSR auth cookies belong on the response you return
 Found 2026-07-29 while adding password recovery. The authorization-code
 callback created a redirect inside the Supabase `setAll` callback, attached
@@ -666,8 +684,9 @@ resume work; this section remains the broader historical summary.
   restricted number-minting RPCs to the service role; made field-service
   order/engineer writes atomic and aligned PostgreSQL DATE handling; replaced
   team access delete-all/reinsert with an atomic role-preserving set diff;
+  routed Slack Ripple Assist through the shared, rate-limited AI service;
   added password recovery, fixed SSR auth-cookie propagation, rebuilt the
-  responsive support experience, and established 222 unit/contract tests plus
+  responsive support experience, and established 226 unit/contract tests plus
   a zero-vulnerability dependency baseline.
 
 ### Known issues / open work
@@ -678,7 +697,7 @@ resume work; this section remains the broader historical summary.
 | 🟡 Med | Dashboard timezone hardcoded to `America/New_York` for some widgets | `src/app/(auth)/dashboard/page.tsx` | Should derive from user or first site; ticket detail already uses `site.timezone` |
 | 🟡 Med | `/settings` is read-only integration status | `src/app/(auth)/settings/page.tsx` | Add notification preferences, user timezone, and theme controls |
 | 🟡 Med | In-memory rate limit not production-grade | `src/lib/rate-limit.ts` | Fine for now (Vercel cold starts reset the counter, but worst case is a fresh window per cold start). Swap for Upstash/Redis when traffic warrants. |
-| 🟡 Deploy | Migration 031 awaits application | `supabase/migrations/031_atomic_team_site_assignment.sql` | Apply before deploying `c0c2354`; then run same-tenant, cross-tenant, role-preservation, explicit-clear, and rollback probes |
+| 🟡 Verify | Migration 031 protected business probes remain | `supabase/migrations/031_atomic_team_site_assignment.sql` | RPC presence and validation behavior are confirmed; run same-tenant, cross-tenant, role-preservation, explicit-clear, and rollback probes with staging fixtures |
 | 🟢 Low | Slack `events` route doesn't route customer messages to a ticket comment yet | `src/app/api/slack/events/route.ts` | Sprint 3 — bidirectional thread sync (SLK-008) |
 | 🟡 Med | Credentialed role/tenant matrix has not had its first staging execution | `scripts/credentialed-role-matrix.mjs` | Harness, fixture validation, and Chromium launch are committed/green; provision six dedicated accounts and non-vacuous two-tenant/archive/internal-artifact IDs, then run with required credentials |
 | 🟡 Activate | Hosted quality workflow and protected staging job are not activated yet | `.github/workflows/ci.yml` | After pushing, require `Quality gates`; create a reviewer-protected `staging` environment and add only `RIPPLE_E2E_FIXTURES_JSON` there |
@@ -688,8 +707,9 @@ resume work; this section remains the broader historical summary.
    applied; staging credentials are not present in this workspace.
 2. **Run migration 030 field-service transaction probes.** Both command RPCs
    are live; protected positive/rollback fixtures remain unavailable.
-3. **Apply migration 031, then run team-access transaction probes.** Code is
-   committed in `c0c2354`; database execution is not yet claimed.
+3. **Run migration 031 team-access transaction probes.** The command is live;
+   protected same/cross-tenant, role-preservation, explicit-clear, and rollback
+   fixtures remain unavailable.
 4. **Run the required credentialed staging matrix.** Migrations 027–030 are applied;
    the secret six-account/two-tenant fixture is the remaining external gate.
 5. **Apply migration 019** ✅ done (2026-07-14).
@@ -699,8 +719,8 @@ resume work; this section remains the broader historical summary.
    (`1f49ecc` + migration 028); protected runtime verification remains.
 8. **Complete INT-004 field-service order/engineer atomicity and date contract.**
    ✅ deployed in `2557760` + migration 030; protected probes remain.
-9. **Complete INT-006 team access set diff.** ✅ code complete in `c0c2354`;
-   migration 031 deployment/probes remain.
+9. **Complete INT-006 team access set diff.** ✅ deployed in `c0c2354` +
+   migration 031; protected business probes remain.
 10. **Fix MiniMax AI key** (or swap provider in `.env`). Verify `/api/ai/suggest` returns a real model response, not a mock.
 11. **Verify Resend sender domain** so confirmation / resolution emails actually send.
 12. **Ticket number sequence migration** (020) ✅ done (2026-07-14) — `next_ticket_no()` RPC + 021 volatility fix.
@@ -708,6 +728,9 @@ resume work; this section remains the broader historical summary.
 14. **Dashboard timezone** — derive from user or first site.
 15. **Sprint 3 feature work** — Kanban view (INT-5), SLA monitoring (INT-6), notifications center (INT-7).
 16. **Start real Slack Connect work** — see PRD §8.5 / SLK-015.
+17. **Guard ticket state transitions (INT-001).** Move the transition truth
+    table below both web and Slack mutations and reject invalid jumps in the
+    atomic database command.
 
 ### Open architectural questions
 - The RLS recursion bug surfaces a bigger question: do we keep `createAdminClient() + code filter` (the current pattern in `lib/supabase/scope.ts`) or move back to proper RLS once migration 019 + similar fixes are in place? The current pattern scales fine but has a lower safety margin for new queries.
