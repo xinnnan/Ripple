@@ -34,6 +34,33 @@ export function formatDate(
   });
 }
 
+/**
+ * Format a PostgreSQL DATE without converting it through the host timezone.
+ * A DATE is a calendar label, not an instant; parsing YYYY-MM-DD with
+ * `new Date(value)` can display the previous day west of UTC.
+ */
+export function formatDateOnly(date: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+  if (!match) return date;
+
+  const parsed = new Date(
+    Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]))
+  );
+  if (
+    parsed.getUTCFullYear() !== Number(match[1]) ||
+    parsed.getUTCMonth() !== Number(match[2]) - 1 ||
+    parsed.getUTCDate() !== Number(match[3])
+  ) {
+    return date;
+  }
+  return new Intl.DateTimeFormat("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  }).format(parsed);
+}
+
 export const COMMON_TIMEZONES = [
   { value: "America/New_York", label: "Eastern Time (US & Canada)" },
   { value: "America/Chicago", label: "Central Time (US & Canada)" },

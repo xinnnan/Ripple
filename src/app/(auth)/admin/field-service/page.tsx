@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { FSO_STATUS_LABELS, FSO_STATUS_COLORS, SERVICE_TYPE_LABELS, FSO_PRIORITY_LABELS } from "@/types/spare-parts";
+import { formatDateOnly } from "@/lib/utils";
 import Link from "next/link";
 
 export const dynamic = "force-dynamic";
@@ -135,7 +136,7 @@ export default async function FieldServicePage() {
                     </td>
                     <td className="p-3">
                       <span className="text-xs text-muted-foreground">
-                        {order.scheduled_date ? new Date(order.scheduled_date).toLocaleDateString() : "—"}
+                        {order.scheduled_date ? formatDateOnly(order.scheduled_date) : "—"}
                       </span>
                     </td>
                     <td className="p-3">

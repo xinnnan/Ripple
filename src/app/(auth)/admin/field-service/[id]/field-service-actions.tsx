@@ -11,13 +11,29 @@ interface FieldServiceActionsProps {
 export function FieldServiceActions({ orderId, status }: FieldServiceActionsProps) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   async function updateStatus(newStatus: string) {
     setLoading(true);
+    setError(null);
     try {
       const body: Record<string, unknown> = { status: newStatus };
       if (newStatus === "completed") {
-        body.actual_hours = prompt("Enter actual hours worked:") || null;
+        const actualHoursInput = prompt("Enter actual hours worked:");
+        if (actualHoursInput === null) return;
+        const actualHours = Number(actualHoursInput);
+        if (
+          !Number.isFinite(actualHours) ||
+          actualHours < 0 ||
+          actualHours > 9_999.9 ||
+          !Number.isInteger(actualHours * 10)
+        ) {
+          setError(
+            "Actual hours must be between 0 and 9,999.9 with at most one decimal place."
+          );
+          return;
+        }
+        body.actual_hours = actualHours;
         body.completion_report = prompt("Enter completion report (optional):") || null;
       }
       const res = await fetch(`/api/field-service-orders/${orderId}`, {
@@ -26,9 +42,17 @@ export function FieldServiceActions({ orderId, status }: FieldServiceActionsProp
         body: JSON.stringify(body),
       });
 
-      if (res.ok) {
-        router.refresh();
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.error || "Failed to update service order");
       }
+      router.refresh();
+    } catch (updateError) {
+      setError(
+        updateError instanceof Error
+          ? updateError.message
+          : "Failed to update service order"
+      );
     } finally {
       setLoading(false);
     }
@@ -37,6 +61,11 @@ export function FieldServiceActions({ orderId, status }: FieldServiceActionsProp
   return (
     <div className="rounded-xl border border-border p-6 space-y-3">
       <h2 className="text-base font-semibold text-foreground mb-4">Actions</h2>
+      {error ? (
+        <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-800">
+          {error}
+        </p>
+      ) : null}
       <div className="space-y-2">
         {status === "scheduled" && (
           <button
