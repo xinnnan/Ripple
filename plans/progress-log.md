@@ -7,12 +7,12 @@ meaningful change and before ending a work session. Newest entries go first.
 
 - **Branch:** `codex/prd-v1-1-gap-closure`
 - **Active phase:** Phase 0 — Containment and reproducible baseline
-- **Active work item:** migration 030 deployment/probes, then INT-006 atomic
-  team site assignment plus the P0-I external staging execution gate
-- **Last verified implementation commit:** `2557760` (`fix: make field service writes atomic`)
+- **Active work item:** migration 031 deployment/probes, then INT-008/INT-009
+  site inventory/query contracts plus the P0-I external staging execution gate
+- **Last verified implementation commit:** `c0c2354` (`fix: update team site access atomically`)
 - **Uncommitted work:** none expected; verify with `git status` before resuming
-- **Deployment gate:** migrations 001–029 are user-confirmed applied;
-  `030_atomic_field_service_order_commands.sql` awaits application
+- **Deployment gate:** migrations 001–030 are user-confirmed applied;
+  `031_atomic_team_site_assignment.sql` awaits application
 - **External validation gate:** populate the gitignored credential fixture with six
   dedicated staging accounts, two tenants, a decommissioned site/ticket, and
   real internal artifact IDs; then run
@@ -22,19 +22,119 @@ meaningful change and before ending a work session. Newest entries go first.
   `RIPPLE_E2E_FIXTURES_JSON` secret before manually enabling the credentialed
   matrix
 - **Runtime verification debt:** when staging credentials become available,
-  test request creation/fulfillment plus field-service create/update
-  positive/negative cases, including cross-site tickets, inactive parts,
-  foreign items, over-fulfillment, invalid/reversed dates, invalid assignees,
-  and assignment-replacement rollback
+  test request creation/fulfillment, field-service create/update, and team
+  access positive/negative cases, including cross-site tickets, inactive
+  parts, foreign items, over-fulfillment, invalid/reversed dates, invalid
+  assignees, assignment-replacement rollback, cross-tenant team targets,
+  retained membership roles, and explicit access clearing
 - **Support UX verification:** public pages and the real admin shell were
   reviewed at 1440×1000 and 390×844. A short-lived admin test identity was
   created for read-only protected-page visits and fully deleted afterward.
   Password-based login passed; recovery-email delivery and one-time link
   consumption still require a dedicated staging mailbox.
-- **Exact next local step:** apply migration 030 and run its safe presence
-  probe; with protected fixtures, run creation, date, assignee, containment,
-  and rollback probes; then close INT-006 with an atomic team-site set diff
+- **Exact next local step:** apply migration 031 and run its safe presence
+  probe; with protected fixtures, run same/cross-tenant, role-preservation,
+  explicit-clear, and rollback probes; then close INT-008 and INT-009
 - **Primary plan:** [`plans/prd-v1.1-gap-closure-plan.md`](./prd-v1.1-gap-closure-plan.md)
+
+## Session record — 2026-07-30 (P0-Q / INT-006 team access)
+
+### Objective
+
+Prevent team-member profile updates from partially committing while the
+complete site-access set is deleted or incompletely rebuilt, and preserve the
+attributes of memberships that remain selected.
+
+### Deployment confirmation received
+
+- The user confirmed migration 030 was applied.
+- Safe service-role calls verified both
+  `create_field_service_order_atomic` and
+  `apply_field_service_order_patch` are live.
+- Deliberately invalid, non-writing inputs returned the expected SQLSTATEs
+  `42501` and `22023`; no field-service record was created or changed.
+- Migrations 001–030 are therefore confirmed applied in order. Protected
+  positive/rollback field-service probes still require staging fixtures.
+
+### Confirmed defects
+
+- `PATCH /api/team/[id]` updated `users.full_name`/`status` before changing
+  memberships, so a later child-write failure left profile and access state
+  inconsistent.
+- The route deleted every `site_members` row and ignored the delete result.
+- Replacement inserts were also ignored; any invalid/conflicting row could
+  leave the target with no site access while the API returned success.
+- Every retained membership was recreated with role `member`, silently
+  downgrading existing `owner`, `manager`, or `viewer` assignments.
+- Tenant/site validation and audit logging happened in separate best-effort
+  calls outside the business transaction.
+- The edit page loaded legacy archived memberships into hidden selected IDs,
+  even though archived sites were not available as choices.
+
+### Changes
+
+- Added migration `031_atomic_team_site_assignment.sql` with the
+  service-role-only `apply_team_member_patch` command.
+- The command independently verifies an active customer manager in an
+  active/trial tenant, row-locks a same-tenant `customer` target, and validates
+  every desired site as active and owned by that tenant.
+- Profile/status changes, the membership set diff, and per-field/site-set audit
+  rows now commit or roll back together.
+- Retained membership rows are untouched, so their identity, creation time,
+  and role survive. Only deselected links are deleted and only newly selected
+  links are inserted as `member`.
+- `site_ids = NULL` means “leave access unchanged”; `site_ids = []` means
+  “explicitly remove all site access.”
+- Duplicate/malformed/oversized site sets are rejected at both HTTP and
+  database boundaries.
+- The edit page excludes archived legacy memberships from the desired active
+  set so a save removes stale access instead of submitting hidden invalid IDs.
+- Added 12 contract, wrapper, and migration-integrity checks, bringing the
+  suite to 222 tests.
+
+### Verification before implementation commit
+
+| Command | Result |
+|---|---|
+| `npm ci` | Passed; 533 packages installed and 534 audited |
+| `npm test` | Passed; 30 files, 222 tests |
+| `npm run lint` | Passed via ESLint CLI; 0 warnings/errors |
+| `npm run build` | Passed on Next.js 15.5.22 |
+| `npm run test:e2e` | Passed 21 production HTTP checks; credentialed matrix explicitly skipped because the secret fixture is unavailable |
+| `npm audit` | Passed; 0 vulnerabilities |
+| `git diff --check` | Passed |
+| Staged secret-pattern scan | Passed |
+
+The implementation was committed only after the exact full gate and a second
+`npm run test:e2e` in the same command immediately before commit.
+
+### Decisions and rollback
+
+- Migration 031 must be applied before deploying `c0c2354`; the team update
+  route now depends on its RPC.
+- The set-diff deliberately preserves retained membership roles rather than
+  normalizing them to `member`.
+- Only active sites may appear in a desired set. Saving the form therefore
+  removes any hidden legacy membership to an archived site.
+- Reverting `c0c2354` restores the old non-atomic route. Migration 031 is
+  additive and may remain installed during an application rollback; do not
+  drop it while any deployed instance calls the RPC.
+
+### Commit
+
+- Hash: `c0c2354`
+- Message: `fix: update team site access atomically`
+
+### Exact next step
+
+1. Apply migration `031_atomic_team_site_assignment.sql` in order.
+2. Run a safe invalid-input RPC presence probe, then use protected fixtures to
+   verify same-tenant updates, cross-tenant denial, manager-target denial,
+   retained role preservation, explicit clear, and failed-set rollback.
+3. Run the outstanding migrations 028–030 protected business probes and the
+   six-account role/tenant matrix when its secret fixture is provisioned.
+4. Continue local integrity work by fixing INT-008 site-inventory result
+   wiring and INT-009’s mismatched ticket site-query parameter.
 
 ## Session record — 2026-07-29 (P0-P / INT-004 field service)
 
