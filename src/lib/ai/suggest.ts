@@ -49,14 +49,21 @@ function getModel(): string {
 // Types
 // ---------------------------------------------------------------------------
 
-export type SuggestionType =
-  | "summary"
-  | "troubleshooting"
-  | "similar_tickets"
-  | "customer_reply_draft"
-  | "escalation_summary"
-  | "closure_summary"
-  | "log_analysis";
+export const SUGGESTION_TYPES = [
+  "summary",
+  "troubleshooting",
+  "similar_tickets",
+  "customer_reply_draft",
+  "escalation_summary",
+  "closure_summary",
+  "log_analysis",
+] as const;
+
+export type SuggestionType = (typeof SUGGESTION_TYPES)[number];
+
+export function isSuggestionType(value: string): value is SuggestionType {
+  return SUGGESTION_TYPES.some((type) => type === value);
+}
 
 export interface SuggestionResult {
   id: string | null;

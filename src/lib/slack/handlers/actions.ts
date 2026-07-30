@@ -12,6 +12,11 @@ import {
   type TicketPatch,
 } from "@/lib/tickets/mutations";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import {
+  AiSuggestionRateLimitError,
+  requestAiSuggestion,
+} from "@/lib/ai/service";
+import { isSuggestionType } from "@/lib/ai/suggest";
 
 interface ActionPayload {
   actions: { action_id: string; value?: string; selected_option?: { value: string } }[];
@@ -245,7 +250,10 @@ export async function handleBlockAction(
     case "ask_ripple_assist": {
       if (!ticketNo) break;
       try {
-        const modal = buildAskRippleAssistModal(ticketNo);
+        const modal = buildAskRippleAssistModal(ticketNo, {
+          channelId,
+          messageTs,
+        });
         await client.views.open({
           trigger_id: payload.trigger_id,
           view: modal,
@@ -487,43 +495,69 @@ export async function handleViewSubmission(
       const taskType = state.task_type_block?.task_type?.selected_option?.value || "summary";
       const ticketNo = metadata.ticket_no;
 
-      // Get ticket and user
-      const { data: ticket } = await supabase
+      if (!isSuggestionType(taskType)) {
+        return {
+          response_action: "errors",
+          errors: {
+            task_type_block: "Select a supported Ripple Assist task.",
+          },
+        };
+      }
+
+      const { data: ticket, error: ticketError } = await supabase
         .from("tickets")
         .select("id")
         .eq("ticket_no", ticketNo)
-        .single();
+        .maybeSingle();
 
-      if (ticket && internalUser) {
-        // Call AI suggestion API
+      if (ticketError || !ticket) {
+        return {
+          response_action: "errors",
+          errors: {
+            task_type_block: "Ticket not found. Close the modal and try again.",
+          },
+        };
+      }
+
+      if (!metadata.channel_id) {
+        return {
+          response_action: "errors",
+          errors: {
+            task_type_block:
+              "Slack channel context is missing. Close the modal and try again.",
+          },
+        };
+      }
+
+      try {
+        const data = await requestAiSuggestion({
+          ticketId: ticket.id,
+          suggestionType: taskType,
+          actorId: internalUser!.id,
+        });
+
+        await client.chat.postEphemeral({
+          channel: metadata.channel_id,
+          user: payload.user.id,
+          text: `🤖 *Ripple Assist — ${taskType}*\n\n${data.output_text || "No suggestion generated."}\n\n_Confidence: ${data.confidence_level || "unknown"} | Model: ${data.model_name || "unknown"}_`,
+        });
+      } catch (error) {
+        console.error("AI suggestion failed:", error);
+        const text =
+          error instanceof AiSuggestionRateLimitError
+            ? `⏳ ${error.message}`
+            : "❌ Ripple Assist failed to generate a suggestion. Please try again.";
         try {
-          const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
-          const res = await fetch(`${baseUrl}/api/ai/suggest`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              ticket_id: ticket.id,
-              suggestion_type: taskType,
-            }),
-          });
-
-          const data = await res.json();
-
-          // Send ephemeral message to engineer
-          if (metadata.channel_id || payload.user.id) {
-            await client.chat.postEphemeral({
-              channel: metadata.channel_id || "",
-              user: payload.user.id,
-              text: `🤖 *Ripple Assist — ${taskType}*\n\n${data.output_text || "No suggestion generated."}\n\n_Confidence: ${data.confidence_level || "unknown"} | Model: ${data.model_name || "unknown"}_`,
-            });
-          }
-        } catch (error) {
-          console.error("AI suggestion failed:", error);
           await client.chat.postEphemeral({
-            channel: metadata.channel_id || "",
+            channel: metadata.channel_id,
             user: payload.user.id,
-            text: "❌ Ripple Assist failed to generate a suggestion. Please try again.",
+            text,
           });
+        } catch (postError) {
+          console.warn(
+            "[slack/handlers] Ripple Assist error reply failed (non-fatal):",
+            postError instanceof Error ? postError.message : postError
+          );
         }
       }
 
