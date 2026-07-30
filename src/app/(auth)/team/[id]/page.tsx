@@ -62,8 +62,6 @@ export default async function EditTeamMemberPage({
     .select("site_id")
     .eq("user_id", id);
 
-  const currentSiteIds = (memberships || []).map((m: { site_id: string }) => m.site_id);
-
   // Get available sites for the customer
   const { data: sites } = await admin
     .from("sites")
@@ -71,6 +69,14 @@ export default async function EditTeamMemberPage({
     .eq("customer_id", customerId)
     .eq("status", "active")
     .order("site_name");
+
+  // Archived sites cannot be newly assigned. Excluding their legacy
+  // memberships from the desired set lets the atomic update remove stale
+  // access rather than submitting hidden, invalid site IDs.
+  const activeSiteIds = new Set((sites || []).map((site) => site.id));
+  const currentSiteIds = (memberships || [])
+    .map((membership: { site_id: string }) => membership.site_id)
+    .filter((siteId) => activeSiteIds.has(siteId));
 
   return (
     <div className="p-8">

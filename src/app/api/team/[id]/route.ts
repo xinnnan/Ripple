@@ -1,14 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthUser } from "@/lib/supabase/auth-helpers";
-import { logDiff } from "@/lib/audit";
+import { updateTeamMemberSchema } from "@/lib/team/contracts";
+import {
+  applyTeamMemberPatch,
+  TeamMemberMutationError,
+} from "@/lib/team/mutations";
 import { z } from "zod";
-
-const updateTeamSchema = z.object({
-  full_name: z.string().trim().min(1).max(200).optional(),
-  status: z.enum(["active", "inactive", "invited"]).optional(),
-  site_ids: z.array(z.string().uuid()).max(100).optional(),
-});
 
 // PATCH /api/team/[id] — Update a team member (site assignments, status)
 export async function PATCH(
@@ -32,7 +30,7 @@ export async function PATCH(
     } catch {
       return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
     }
-    const data = updateTeamSchema.parse(body);
+    const data = updateTeamMemberSchema.parse(body);
 
     if (Object.keys(data).length === 0) {
       return NextResponse.json(
@@ -41,98 +39,56 @@ export async function PATCH(
       );
     }
 
+    const { site_ids: siteIds, ...patch } = data;
     const supabase = createAdminClient();
+    let updatedUserId: string;
 
-    // Verify the target user belongs to the same customer
-    const { data: targetUser } = await supabase
-      .from("users")
-      .select("id, customer_id, role, email, full_name, status")
-      .eq("id", id)
-      .single();
-
-    if (!targetUser || targetUser.customer_id !== auth.customerId) {
-      return NextResponse.json({ error: "User not found in your organization" }, { status: 404 });
-    }
-
-    // Cannot modify other customer_managers
-    if (targetUser.role === "customer_manager") {
-      return NextResponse.json({ error: "Cannot modify other managers" }, { status: 403 });
-    }
-
-    // Update basic fields
-    const updates: Record<string, string> = {};
-    if (data.full_name !== undefined) updates.full_name = data.full_name;
-    if (data.status !== undefined) updates.status = data.status;
-
-    if (Object.keys(updates).length > 0) {
-      const { error } = await supabase
-        .from("users")
-        .update(updates)
-        .eq("id", id);
-
-      if (error) {
-        console.error("PATCH /api/team/[id] user update failed:", error);
-        return NextResponse.json({ error: "Failed to update team member" }, { status: 500 });
+    try {
+      updatedUserId = await applyTeamMemberPatch({
+        supabase,
+        actorId: auth.userId,
+        targetUserId: id,
+        patch,
+        siteIds,
+      });
+    } catch (error) {
+      if (
+        error instanceof TeamMemberMutationError &&
+        error.code === "P0002"
+      ) {
+        return NextResponse.json(
+          { error: "User not found in your organization" },
+          { status: 404 }
+        );
       }
-    }
-
-    // Update site assignments
-    if (data.site_ids !== undefined) {
-      // Verify all sites belong to this customer
-      if (data.site_ids.length > 0) {
-        const { data: sites } = await supabase
-          .from("sites")
-          .select("id")
-          .eq("customer_id", auth.customerId)
-          .in("id", data.site_ids);
-
-        const validSiteIds = (sites || []).map((s: { id: string }) => s.id);
-        const invalidSites = data.site_ids.filter((sid: string) => !validSiteIds.includes(sid));
-        if (invalidSites.length > 0) {
-          return NextResponse.json(
-            { error: "Some sites do not belong to your organization" },
-            { status: 400 }
-          );
-        }
+      if (
+        error instanceof TeamMemberMutationError &&
+        error.code === "42501"
+      ) {
+        return NextResponse.json(
+          { error: "Forbidden: Cannot modify this team member" },
+          { status: 403 }
+        );
       }
-
-      // Remove existing memberships
-      await supabase
-        .from("site_members")
-        .delete()
-        .eq("user_id", id);
-
-      // Add new memberships
-      if (data.site_ids.length > 0) {
-        const memberInserts = data.site_ids.map((siteId: string) => ({
-          site_id: siteId,
-          user_id: id,
-          role: "member",
-        }));
-        await supabase.from("site_members").insert(memberInserts);
+      if (
+        error instanceof TeamMemberMutationError &&
+        ["22023", "22P02", "23503", "23505", "23514"].includes(
+          error.code ?? ""
+        )
+      ) {
+        return NextResponse.json(
+          { error: "Invalid team member update" },
+          { status: 400 }
+        );
       }
+      console.error("PATCH /api/team/[id] command failed:", error);
+      return NextResponse.json(
+        { error: "Failed to update team member" },
+        { status: 500 }
+      );
     }
 
-    // Audit
-    const auditAfter: Record<string, unknown> = { ...updates };
-    if (data.site_ids !== undefined) {
-      auditAfter.site_ids = data.site_ids;
-    }
-    await logDiff({
-      actorId: auth.userId,
-      actorEmail: auth.email,
-      actorRole: auth.role,
-      entityType: "user",
-      entityId: id,
-      before: {
-        full_name: targetUser.full_name,
-        status: targetUser.status,
-      },
-      after: auditAfter,
-      metadata: { target_email: targetUser.email, customer_id: auth.customerId },
-    });
-
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, id: updatedUserId });
   } catch (error) {
     if (error instanceof z.ZodError) {
       return NextResponse.json(
