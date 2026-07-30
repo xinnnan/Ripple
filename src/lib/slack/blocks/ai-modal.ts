@@ -1,6 +1,9 @@
 import type { KnownBlock, Block } from "@slack/web-api";
 
-export function buildAskRippleAssistModal(ticketNo: string): {
+export function buildAskRippleAssistModal(
+  ticketNo: string,
+  context?: { channelId?: string; messageTs?: string }
+): {
   type: "modal";
   title: { type: "plain_text"; text: string };
   submit: { type: "plain_text"; text: string };
@@ -19,7 +22,11 @@ export function buildAskRippleAssistModal(ticketNo: string): {
       text: "Generate",
     },
     callback_id: "ripple_assist_submit",
-    private_metadata: JSON.stringify({ ticket_no: ticketNo }),
+    private_metadata: JSON.stringify({
+      ticket_no: ticketNo,
+      channel_id: context?.channelId,
+      message_ts: context?.messageTs,
+    }),
     blocks: [
       {
         type: "section",

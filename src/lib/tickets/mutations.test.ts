@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   applyTicketPatchWithSla,
+  InvalidTicketTransitionError,
   recordTicketCommentWithSla,
 } from "./mutations";
 
@@ -84,5 +85,29 @@ describe("ticket mutation RPC contracts", () => {
         source: "web",
       })
     ).rejects.toThrow("Atomic ticket update failed");
+  });
+
+  it("maps database transition guards to a safe domain error", async () => {
+    const { client } = clientWithRpc({
+      data: null,
+      error: {
+        code: "23514",
+        message: "Invalid ticket status transition: new -> closed",
+      },
+    });
+
+    await expect(
+      applyTicketPatchWithSla({
+        supabase: client,
+        ticketId: TICKET_ID,
+        actorId: ACTOR_ID,
+        patch: { status: "closed" },
+        source: "web",
+      })
+    ).rejects.toEqual(
+      new InvalidTicketTransitionError(
+        "Invalid ticket status transition: new -> closed"
+      )
+    );
   });
 });

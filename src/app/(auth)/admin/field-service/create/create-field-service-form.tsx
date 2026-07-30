@@ -176,6 +176,7 @@ export function CreateFieldServiceForm({ sites, engineers }: CreateFieldServiceF
             type="number"
             step="0.5"
             min="0"
+            max="9999.9"
             value={estimatedHours}
             onChange={(e) => setEstimatedHours(e.target.value)}
             placeholder="e.g., 8"
@@ -200,6 +201,7 @@ export function CreateFieldServiceForm({ sites, engineers }: CreateFieldServiceF
             type="date"
             value={scheduledEndDate}
             onChange={(e) => setScheduledEndDate(e.target.value)}
+            min={scheduledDate || undefined}
             className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
           />
         </div>

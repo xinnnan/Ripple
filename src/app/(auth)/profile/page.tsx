@@ -86,10 +86,10 @@ export default function ProfilePage() {
   async function handleChangePassword() {
     setPasswordMessage(null);
 
-    if (!newPassword || newPassword.length < 6) {
+    if (!newPassword || newPassword.length < 12) {
       setPasswordMessage({
         type: "error",
-        text: "Password must be at least 6 characters",
+        text: "Password must be at least 12 characters",
       });
       return;
     }
@@ -319,8 +319,10 @@ export default function ProfilePage() {
                 New Password
               </label>
               <input
-                type="password"
-                value={newPassword}
+                    type="password"
+                    autoComplete="new-password"
+                    minLength={12}
+                    value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
                 placeholder="At least 6 characters"
                 className="w-full rounded-lg border border-border px-3 py-2 text-sm text-foreground bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
@@ -331,8 +333,10 @@ export default function ProfilePage() {
                 Confirm New Password
               </label>
               <input
-                type="password"
-                value={confirmPassword}
+                    type="password"
+                    autoComplete="new-password"
+                    minLength={12}
+                    value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 placeholder="Repeat new password"
                 className="w-full rounded-lg border border-border px-3 py-2 text-sm text-foreground bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"

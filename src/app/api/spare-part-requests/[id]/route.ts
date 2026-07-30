@@ -2,7 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireInternal } from "@/lib/supabase/auth-helpers";
 import { getUserScope, scopeSiteRows } from "@/lib/supabase/scope";
-import { logDiff } from "@/lib/audit";
+import {
+  applySparePartRequestPatch,
+  SparePartRequestMutationError,
+} from "@/lib/spare-parts/mutations";
 import { sparePartRequestForExternal } from "@/lib/resource-visibility";
 import { z } from "zod";
 
@@ -11,17 +14,33 @@ export const dynamic = "force-dynamic";
 const SPR_STATUSES = ["requested", "approved", "shipped", "delivered", "cancelled"] as const;
 const SPR_PRIORITIES = ["low", "normal", "high", "urgent"] as const;
 
-const updateSPRSchema = z.object({
-  status: z.enum(SPR_STATUSES).optional(),
-  notes: z.string().trim().max(5000).nullable().optional(),
-  priority: z.enum(SPR_PRIORITIES).optional(),
-  shipping_carrier: z.string().trim().max(100).nullable().optional(),
-  shipping_tracking: z.string().trim().max(200).nullable().optional(),
-  items: z.array(z.object({
-    id: z.string().uuid(),
-    fulfilled_quantity: z.number().int().nonnegative(),
-  })).max(100).optional(),
-});
+const updateSPRSchema = z
+  .object({
+    status: z.enum(SPR_STATUSES).optional(),
+    notes: z.string().trim().max(5000).nullable().optional(),
+    priority: z.enum(SPR_PRIORITIES).optional(),
+    shipping_carrier: z.string().trim().max(100).nullable().optional(),
+    shipping_tracking: z.string().trim().max(200).nullable().optional(),
+    items: z
+      .array(
+        z.object({
+          id: z.string().uuid(),
+          fulfilled_quantity: z.number().int().nonnegative(),
+        })
+      )
+      .max(100)
+      .optional(),
+  })
+  .superRefine((value, context) => {
+    const itemIds = value.items?.map((item) => item.id) ?? [];
+    if (new Set(itemIds).size !== itemIds.length) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["items"],
+        message: "Duplicate item ids are not allowed",
+      });
+    }
+  });
 
 // GET /api/spare-part-requests/[id] — Get request detail
 export async function GET(
@@ -90,47 +109,48 @@ export async function PATCH(
       return NextResponse.json({ error: "No fields to update" }, { status: 400 });
     }
 
+    const { items, ...patch } = data;
     const admin = createAdminClient();
+    let updatedRequestId: string;
 
-    // Fetch before-state for audit
-    const before = await admin
-      .from("spare_part_requests")
-      .select("status, notes, priority, shipping_carrier, shipping_tracking, request_no")
-      .eq("id", id)
-      .maybeSingle();
-    if (before.error) {
-      console.error("PATCH /api/spare-part-requests/[id] before fetch failed:", before.error);
-      return NextResponse.json({ error: "Failed to load request" }, { status: 500 });
-    }
-    if (!before.data) {
-      return NextResponse.json({ error: "Spare part request not found" }, { status: 404 });
-    }
-
-    const updateFields: Record<string, unknown> = { updated_at: new Date().toISOString() };
-
-    // Status transitions
-    if (data.status) {
-      updateFields.status = data.status;
-      if (data.status === "approved") {
-        updateFields.approved_by = auth.userId;
+    try {
+      updatedRequestId = await applySparePartRequestPatch({
+        supabase: admin,
+        requestId: id,
+        actorId: auth.userId,
+        patch,
+        items,
+      });
+    } catch (error) {
+      if (
+        error instanceof SparePartRequestMutationError &&
+        error.code === "P0002"
+      ) {
+        return NextResponse.json(
+          { error: "Spare part request not found" },
+          { status: 404 }
+        );
       }
-      if (data.status === "shipped") {
-        updateFields.shipped_at = new Date().toISOString();
+      if (
+        error instanceof SparePartRequestMutationError &&
+        ["22023", "22P02", "23514"].includes(error.code ?? "")
+      ) {
+        return NextResponse.json(
+          { error: "Invalid spare part request update" },
+          { status: 400 }
+        );
       }
-      if (data.status === "delivered") {
-        updateFields.delivered_at = new Date().toISOString();
-      }
+      console.error("PATCH /api/spare-part-requests/[id] command failed:", error);
+      return NextResponse.json(
+        { error: "Failed to update spare part request" },
+        { status: 500 }
+      );
     }
 
-    if (data.notes !== undefined) updateFields.notes = data.notes;
-    if (data.priority !== undefined) updateFields.priority = data.priority;
-    if (data.shipping_carrier !== undefined) updateFields.shipping_carrier = data.shipping_carrier;
-    if (data.shipping_tracking !== undefined) updateFields.shipping_tracking = data.shipping_tracking;
-
+    // Hydrate only after the transaction commits so returned item quantities
+    // reflect the mutation rather than the pre-update join.
     const { data: spr, error } = await admin
       .from("spare_part_requests")
-      .update(updateFields)
-      .eq("id", id)
       .select(`
         *,
         site:sites(id, site_name, site_code),
@@ -139,45 +159,22 @@ export async function PATCH(
         approver:users!spare_part_requests_approved_by_fkey(id, full_name),
         items:spare_part_request_items(*, spare_part:spare_parts(*))
       `)
+      .eq("id", id)
       .single();
 
     if (error) {
-      console.error("PATCH /api/spare-part-requests/[id] update failed:", error);
-      return NextResponse.json({ error: "Failed to update spare part request" }, { status: 500 });
+      // The command already committed. Report success with the durable ID so
+      // clients do not retry a completed mutation merely because hydration
+      // failed afterward.
+      console.error(
+        "PATCH /api/spare-part-requests/[id] hydration failed:",
+        error
+      );
+      return NextResponse.json({
+        data: { id: updatedRequestId },
+        warning: "Request updated; detail refresh is temporarily unavailable",
+      });
     }
-
-    // Update fulfilled quantities for items if provided
-    if (data.items && data.items.length > 0) {
-      for (const item of data.items) {
-        await admin
-          .from("spare_part_request_items")
-          .update({ fulfilled_quantity: item.fulfilled_quantity })
-          .eq("id", item.id);
-      }
-    }
-
-    // Audit
-    const auditAfter: Record<string, unknown> = {};
-    for (const k of Object.keys(data)) {
-      if (k === "items") continue;
-      auditAfter[k] = (data as Record<string, unknown>)[k];
-    }
-    if (data.status === "approved") {
-      auditAfter.approved_by = auth.userId;
-    }
-    await logDiff({
-      actorId: auth.userId,
-      actorEmail: auth.email,
-      actorRole: auth.role,
-      entityType: "part_request",
-      entityId: id,
-      before: before.data as Record<string, unknown>,
-      after: auditAfter,
-      metadata: {
-        request_no: before.data.request_no,
-        item_fulfillment_change: data.items !== undefined,
-      },
-    });
 
     return NextResponse.json({ data: spr });
   } catch (error) {

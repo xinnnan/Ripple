@@ -1,6 +1,9 @@
 import { describe, it, expect } from "vitest";
 import crypto from "crypto";
-import { verifySlackSignature } from "./verify";
+import {
+  getSlackSignatureFailureHttpStatus,
+  verifySlackSignature,
+} from "./verify";
 
 const SECRET = "test_signing_secret_abc123";
 
@@ -73,10 +76,22 @@ describe("verifySlackSignature", () => {
     expect(r.reason).toBe("bad_timestamp");
   });
 
-  it("bypasses verification when no signing secret is set (dev mode)", () => {
+  it("fails closed when no signing secret is set", () => {
     const r = verifySlackSignature(body, null, null, null);
-    expect(r.ok).toBe(true);
-    expect(r.reason).toBe("no_signing_secret");
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toBe("missing_signing_secret");
+    expect(getSlackSignatureFailureHttpStatus(r)).toBe(503);
+  });
+
+  it("fails closed for the environment-template signing secret", () => {
+    const r = verifySlackSignature(
+      body,
+      null,
+      null,
+      "your-signing-secret"
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toBe("missing_signing_secret");
   });
 
   it("handles empty body", () => {
@@ -88,5 +103,17 @@ describe("verifySlackSignature", () => {
     const r = verifySlackSignature(body, "v0=short", String(now), SECRET);
     expect(r.ok).toBe(false);
     expect(r.reason).toBe("bad_signature");
+  });
+
+  it("rejects a timestamp with trailing characters", () => {
+    const { sig } = sign(body, now);
+    const r = verifySlackSignature(body, sig, `${now}junk`, SECRET);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toBe("bad_timestamp");
+  });
+
+  it("maps authentication failures to 401", () => {
+    const r = verifySlackSignature(body, "v0=bad", String(now), SECRET);
+    expect(getSlackSignatureFailureHttpStatus(r)).toBe(401);
   });
 });

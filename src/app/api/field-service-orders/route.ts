@@ -2,36 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireInternal } from "@/lib/supabase/auth-helpers";
 import { getUserScope, scopeSiteRows } from "@/lib/supabase/scope";
-import { logAudit } from "@/lib/audit";
+import { createFieldServiceOrderSchema } from "@/lib/field-service/contracts";
+import {
+  createFieldServiceOrderAtomic,
+  FieldServiceOrderMutationError,
+} from "@/lib/field-service/mutations";
 import { fieldServiceOrderForExternal } from "@/lib/resource-visibility";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
-
-const SERVICE_TYPES = [
-  "repair", "installation", "inspection", "commissioning",
-  "training", "emergency", "maintenance",
-] as const;
-
-const PRIORITIES = ["low", "normal", "high", "urgent"] as const;
-
-const createFSOSchema = z.object({
-  ticket_id: z.string().uuid().nullable().optional(),
-  site_id: z.string().uuid(),
-  service_type: z.enum(SERVICE_TYPES),
-  priority: z.enum(PRIORITIES).default("normal"),
-  title: z.string().trim().min(1).max(200),
-  description: z.string().trim().max(5000).nullable().optional(),
-  scheduled_date: z.string().datetime().nullable().optional(),
-  scheduled_end_date: z.string().datetime().nullable().optional(),
-  estimated_hours: z.number().nonnegative().finite().nullable().optional(),
-  travel_required: z.boolean().optional(),
-  travel_from: z.string().trim().max(200).nullable().optional(),
-  engineers: z.array(z.object({
-    engineer_id: z.string().uuid(),
-    role: z.string().trim().max(50).optional(),
-  })).max(20).optional(),
-});
 
 // GET /api/field-service-orders — List field service orders
 export async function GET(request: NextRequest) {
@@ -106,83 +85,72 @@ export async function POST(request: NextRequest) {
     } catch {
       return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
     }
-    const data = createFSOSchema.parse(body);
+    const data = createFieldServiceOrderSchema.parse(body);
 
+    const { engineers, ...input } = data;
     const admin = createAdminClient();
+    let createdOrderId: string;
 
-    // Generate order number
-    const { data: seqData, error: seqErr } = await admin.rpc("generate_fso_number");
-    if (seqErr || typeof seqData !== "string") {
-      console.error("generate_fso_number RPC failed:", seqErr);
-      return NextResponse.json({ error: "Failed to generate order number" }, { status: 500 });
+    try {
+      createdOrderId = await createFieldServiceOrderAtomic({
+        supabase: admin,
+        actorId: auth.userId,
+        input,
+        engineers,
+      });
+    } catch (error) {
+      if (
+        error instanceof FieldServiceOrderMutationError &&
+        ["22003", "22007", "22008", "22023", "22P02", "23503", "23505", "23514"].includes(
+          error.code ?? ""
+        )
+      ) {
+        return NextResponse.json(
+          { error: "Invalid field service order" },
+          { status: 400 }
+        );
+      }
+      if (
+        error instanceof FieldServiceOrderMutationError &&
+        error.code === "42501"
+      ) {
+        return NextResponse.json(
+          { error: "Forbidden: Active internal access required" },
+          { status: 403 }
+        );
+      }
+      console.error("POST /api/field-service-orders command failed:", error);
+      return NextResponse.json(
+        { error: "Failed to create field service order" },
+        { status: 500 }
+      );
     }
-    const orderNo = seqData;
 
-    // Create the order
+    // Hydrate after commit so a read failure cannot make the caller retry a
+    // field-service order that was already created successfully.
     const { data: order, error } = await admin
       .from("field_service_orders")
-      .insert({
-        order_no: orderNo,
-        ticket_id: data.ticket_id ?? null,
-        site_id: data.site_id,
-        service_type: data.service_type,
-        status: "scheduled",
-        priority: data.priority,
-        title: data.title,
-        description: data.description ?? null,
-        scheduled_date: data.scheduled_date ?? null,
-        scheduled_end_date: data.scheduled_end_date ?? null,
-        estimated_hours: data.estimated_hours ?? null,
-        travel_required: data.travel_required !== undefined ? data.travel_required : true,
-        travel_from: data.travel_from ?? null,
-        requested_by: auth.userId,
-      })
       .select(`
         *,
         site:sites(id, site_name, site_code),
         ticket:tickets(id, ticket_no, title),
-        requester:users!field_service_orders_requested_by_fkey(id, full_name)
+        requester:users!field_service_orders_requested_by_fkey(id, full_name),
+        engineers:field_service_engineers(*, engineer:users(id, full_name, email))
       `)
+      .eq("id", createdOrderId)
       .single();
 
     if (error) {
-      console.error("POST /api/field-service-orders insert failed:", error);
-      return NextResponse.json({ error: "Failed to create field service order" }, { status: 500 });
+      console.error("POST /api/field-service-orders hydration failed:", error);
+      return NextResponse.json(
+        {
+          data: { id: createdOrderId },
+          warning:
+            "Service order created; detail refresh is temporarily unavailable",
+        },
+        { status: 201 }
+      );
     }
-
-    // Assign engineers if provided
-    if (data.engineers && data.engineers.length > 0) {
-      const engineerInserts = data.engineers.map((e) => ({
-        order_id: order.id,
-        engineer_id: e.engineer_id,
-        role: e.role || "engineer",
-      }));
-
-      const { error: engError } = await admin
-        .from("field_service_engineers")
-        .insert(engineerInserts);
-
-      if (engError) {
-        console.error("Failed to assign engineers:", engError);
-      }
-    }
-
-    await logAudit({
-      actorId: auth.userId,
-      actorEmail: auth.email,
-      actorRole: auth.role,
-      entityType: "field_service_order",
-      entityId: order.id,
-      action: "created",
-      newValue: orderNo,
-      metadata: {
-        site_id: data.site_id,
-        service_type: data.service_type,
-        priority: data.priority,
-        ticket_id: data.ticket_id ?? null,
-        scheduled_date: data.scheduled_date ?? null,
-      },
-    });
 
     return NextResponse.json({ data: order }, { status: 201 });
   } catch (error) {

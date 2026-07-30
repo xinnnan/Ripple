@@ -8,6 +8,12 @@ import {
   type TicketStatus,
   type Severity,
 } from "@/types/ticket";
+import {
+  canTransitionTicketStatus,
+  getAllowedTicketTransitions,
+  ticketStatusAcceptsAssignment,
+  ticketStatusRequiresOwner,
+} from "@/lib/tickets/status";
 import { cn } from "@/lib/utils";
 
 interface Owner {
@@ -46,7 +52,18 @@ export function TicketActionsPanel({
   const [severity, setSeverity] = useState<Severity>(currentSeverity);
   const [ownerId, setOwnerId] = useState<string | null>(currentOwnerId);
   const [resolveOpen, setResolveOpen] = useState(false);
+  const [mutationError, setMutationError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
   const router = useRouter();
+  const statusOptions = [
+    currentStatus,
+    ...getAllowedTicketTransitions(currentStatus).filter(
+      (nextStatus) => nextStatus !== "resolved"
+    ),
+  ];
+  const canResolve =
+    currentStatus === "resolved" ||
+    canTransitionTicketStatus(currentStatus, "resolved");
 
   // Detect whether the form would actually change anything — used to enable / disable Save
   const dirty =
@@ -56,20 +73,29 @@ export function TicketActionsPanel({
 
   // Quick action: Assign to me
   async function handleAssignToMe() {
-    await savePatch({ owner_id: currentUserId });
-    setOwnerId(currentUserId);
+    const patch: Record<string, unknown> = { owner_id: currentUserId };
+    if (
+      currentStatus !== "assigned" &&
+      canTransitionTicketStatus(currentStatus, "assigned")
+    ) {
+      patch.status = "assigned";
+    }
+    await runMutation(patch, () => {
+      setOwnerId(currentUserId);
+      if (patch.status === "assigned") setStatus("assigned");
+    });
   }
 
   // Quick action: Mark In Progress
   async function handleMarkInProgress() {
-    setStatus("in_progress");
-    await savePatch({ status: "in_progress" });
+    await runMutation({ status: "in_progress" }, () =>
+      setStatus("in_progress")
+    );
   }
 
   // Quick action: Reopen
   async function handleReopen() {
-    setStatus("reopened");
-    await savePatch({ status: "reopened" });
+    await runMutation({ status: "reopened" }, () => setStatus("reopened"));
   }
 
   async function savePatch(patch: Record<string, unknown>) {
@@ -90,10 +116,45 @@ export function TicketActionsPanel({
   async function handleSaveAll() {
     if (!dirty) return;
     const patch: Record<string, unknown> = {};
-    if (status !== currentStatus) patch.status = status;
+    if (status !== currentStatus) {
+      patch.status = status;
+    } else if (
+      ownerId &&
+      ownerId !== currentOwnerId &&
+      (currentStatus === "new" || currentStatus === "reopened")
+    ) {
+      patch.status = "assigned";
+    }
     if (severity !== currentSeverity) patch.severity = severity;
     if (ownerId !== currentOwnerId) patch.owner_id = ownerId;
-    await savePatch(patch);
+    await runMutation(patch);
+  }
+
+  async function runMutation(
+    patch: Record<string, unknown>,
+    onSuccess?: () => void
+  ) {
+    setSaving(true);
+    setMutationError(null);
+    try {
+      await savePatch(patch);
+      if (typeof patch.status === "string") {
+        setStatus(patch.status as TicketStatus);
+      }
+      if ("owner_id" in patch) {
+        setOwnerId((patch.owner_id as string | null) ?? null);
+      }
+      if (typeof patch.severity === "string") {
+        setSeverity(patch.severity as Severity);
+      }
+      onSuccess?.();
+    } catch (error) {
+      setMutationError(
+        error instanceof Error ? error.message : "Failed to update ticket"
+      );
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -115,9 +176,9 @@ export function TicketActionsPanel({
                 onChange={(e) => setStatus(e.target.value as TicketStatus)}
                 className="w-full rounded-lg border border-border px-3 py-2 text-sm text-foreground bg-background"
               >
-                {Object.entries(STATUS_LABELS).map(([v, l]) => (
-                  <option key={v} value={v}>
-                    {l}
+                {statusOptions.map((value) => (
+                  <option key={value} value={value}>
+                    {STATUS_LABELS[value]}
                   </option>
                 ))}
               </select>
@@ -149,7 +210,14 @@ export function TicketActionsPanel({
                 onChange={(e) => setOwnerId(e.target.value || null)}
                 className="w-full rounded-lg border border-border px-3 py-2 text-sm text-foreground bg-background"
               >
-                <option value="">— Unassigned —</option>
+                {!ticketStatusRequiresOwner(status) && (
+                  <option value="">— Unassigned —</option>
+                )}
+                {ticketStatusRequiresOwner(status) && !ownerId && (
+                  <option value="" disabled>
+                    — Select an owner —
+                  </option>
+                )}
                 {availableOwners.map((o) => (
                   <option key={o.id} value={o.id}>
                     {o.full_name}
@@ -161,26 +229,32 @@ export function TicketActionsPanel({
 
             <button
               onClick={handleSaveAll}
-              disabled={!dirty}
+              disabled={!dirty || saving}
               className="w-full rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              {dirty ? "Save Changes" : "No changes"}
+              {saving ? "Saving…" : dirty ? "Save Changes" : "No changes"}
             </button>
+            {mutationError && (
+              <p role="alert" className="text-xs text-red-600">
+                {mutationError}
+              </p>
+            )}
           </div>
 
           {/* Quick action buttons */}
           <div className="mt-4 pt-4 border-t border-border space-y-2">
             <p className="text-xs font-medium text-muted-foreground">Quick actions</p>
             <div className="grid grid-cols-2 gap-2">
-              {currentOwnerId !== currentUserId && (
+              {currentOwnerId !== currentUserId &&
+                ticketStatusAcceptsAssignment(currentStatus) && (
                 <button
                   onClick={handleAssignToMe}
                   className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-accent transition-colors"
                 >
                   Assign to me
                 </button>
-              )}
-              {currentStatus !== "in_progress" && (
+                )}
+              {canTransitionTicketStatus(currentStatus, "in_progress") && (
                 <button
                   onClick={handleMarkInProgress}
                   className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-accent transition-colors"
@@ -188,7 +262,7 @@ export function TicketActionsPanel({
                   Mark In Progress
                 </button>
               )}
-              {(currentStatus === "resolved" || currentStatus === "closed") && (
+              {canTransitionTicketStatus(currentStatus, "reopened") && (
                 <button
                   onClick={handleReopen}
                   className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-accent transition-colors col-span-2"
@@ -202,7 +276,7 @@ export function TicketActionsPanel({
       )}
 
       {/* Resolve — internal only */}
-      {isInternal && (
+      {isInternal && canResolve && (
         <ResolveCard
           ticketId={ticketId}
           ticketNo={ticketNo}

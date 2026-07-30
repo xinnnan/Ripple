@@ -18,6 +18,34 @@ export interface TicketPatch {
   follow_up_needed?: boolean;
 }
 
+export class InvalidTicketTransitionError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "InvalidTicketTransitionError";
+  }
+}
+
+function safeTransitionMessage(databaseMessage: string): string {
+  if (databaseMessage.startsWith("Invalid ticket status transition:")) {
+    return databaseMessage;
+  }
+  if (
+    databaseMessage.includes(
+      "Assigned and in-progress tickets require an owner"
+    )
+  ) {
+    return "Assigned and in-progress tickets require an owner.";
+  }
+  if (
+    databaseMessage.includes(
+      "Resolved tickets require a customer-visible summary"
+    )
+  ) {
+    return "Resolved tickets require a customer-visible summary.";
+  }
+  return "The ticket status transition is not allowed.";
+}
+
 /**
  * Apply a ticket patch through the row-locked database command introduced in
  * migration 026. The command owns milestone calculation and writes ticket
@@ -41,6 +69,11 @@ export async function applyTicketPatchWithSla(args: {
   );
 
   if (error || typeof data !== "string") {
+    if (error?.code === "23514") {
+      throw new InvalidTicketTransitionError(
+        safeTransitionMessage(error.message)
+      );
+    }
     throw new Error(
       `Atomic ticket update failed: ${error?.message ?? "invalid RPC response"}`
     );

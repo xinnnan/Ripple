@@ -39,12 +39,64 @@ export interface SyncOptions {
    * extra connection setup.
    */
   client?: WebClient;
+  /**
+   * Durable delivery id from `integration_outbox`. Thread replies record this
+   * value locally and attach it as Slack metadata so a retried worker can
+   * recognize an already-recorded delivery.
+   */
+  deliveryKey?: string;
 }
 
 export interface SyncResult {
   ok: boolean;
   reason?: "no_channel" | "no_message" | "no_token" | "slack_error";
   error?: string;
+  deduplicated?: boolean;
+}
+
+async function resolveTarget(
+  ticketId: string,
+  options: SyncOptions
+): Promise<{
+  channelId: string;
+  channelRecordId: string;
+  messageTs: string;
+} | null> {
+  let channelId = options.channelId ?? null;
+  let messageTs = options.messageTs ?? null;
+  let channelRecordId: string | null = null;
+
+  if (!channelId || !messageTs) {
+    const found = await lookupMaster(ticketId);
+    if (found) {
+      channelId = channelId ?? found.channelId;
+      messageTs = messageTs ?? found.messageTs;
+      channelRecordId = found.channelRecordId;
+    }
+  }
+
+  if (channelId && !channelRecordId) {
+    const supabase = createAdminClient();
+    const { data } = await supabase
+      .from("slack_channels")
+      .select("id")
+      .eq("channel_id", channelId)
+      .maybeSingle();
+    channelRecordId = data?.id ?? null;
+  }
+
+  return channelId && channelRecordId && messageTs
+    ? { channelId, channelRecordId, messageTs }
+    : null;
+}
+
+function resolveClient(options: SyncOptions): WebClient | null {
+  return (
+    options.client ??
+    (process.env.SLACK_BOT_TOKEN
+      ? new WebClientCtor(process.env.SLACK_BOT_TOKEN)
+      : null)
+  );
 }
 
 /**
@@ -58,17 +110,22 @@ export async function recordMasterMessage(args: {
   slackChannelId: string;
   messageTs: string;
   messageType?: "master" | "thread_reply" | "notification";
-}): Promise<void> {
+  outboxEventId?: string | null;
+}): Promise<SyncResult> {
   const supabase = createAdminClient();
-  const { error } = await supabase.from("slack_messages").insert({
+  const row: Record<string, string> = {
     ticket_id: args.ticketId,
     slack_channel_id: args.slackChannelId,
     message_ts: args.messageTs,
     message_type: args.messageType ?? "master",
-  });
+  };
+  if (args.outboxEventId) row.outbox_event_id = args.outboxEventId;
+  const { error } = await supabase.from("slack_messages").insert(row);
   if (error) {
     console.error("[slack/sync] failed to record master message:", error);
+    return { ok: false, reason: "slack_error", error: error.message };
   }
+  return { ok: true };
 }
 
 /**
@@ -77,12 +134,16 @@ export async function recordMasterMessage(args: {
  */
 async function lookupMaster(
   ticketId: string
-): Promise<{ channelId: string; messageTs: string } | null> {
+): Promise<{
+  channelId: string;
+  channelRecordId: string;
+  messageTs: string;
+} | null> {
   const supabase = createAdminClient();
   const { data } = await supabase
     .from("slack_messages")
     .select(
-      "message_ts, message_type, slack_channels!inner(channel_id)"
+      "message_ts, message_type, slack_channels!inner(id, channel_id)"
     )
     .eq("ticket_id", ticketId)
     .eq("message_type", "master")
@@ -91,11 +152,19 @@ async function lookupMaster(
     .maybeSingle();
 
   if (!data) return null;
-  const ch = (Array.isArray(data.slack_channels)
+  const channelRecord = (Array.isArray(data.slack_channels)
     ? data.slack_channels[0]
-    : data.slack_channels) as { channel_id: string } | null;
-  if (!ch?.channel_id || !data.message_ts) return null;
-  return { channelId: ch.channel_id, messageTs: data.message_ts };
+    : data.slack_channels) as {
+      id: string;
+      channel_id: string;
+    } | null;
+  if (!channelRecord?.id || !channelRecord.channel_id || !data.message_ts)
+    return null;
+  return {
+    channelId: channelRecord.channel_id,
+    channelRecordId: channelRecord.id,
+    messageTs: data.message_ts,
+  };
 }
 
 /**
@@ -113,33 +182,21 @@ export async function updateMasterMessage(
   ticket: Ticket,
   options: SyncOptions = {}
 ): Promise<SyncResult> {
-  // Resolve target channel + message ts.
-  let channelId = options.channelId ?? null;
-  let messageTs = options.messageTs ?? null;
-
-  if (!channelId || !messageTs) {
-    const found = await lookupMaster(ticket.id);
-    if (found) {
-      channelId = channelId ?? found.channelId;
-      messageTs = messageTs ?? found.messageTs;
-    }
+  const target = await resolveTarget(ticket.id, options);
+  if (!target) {
+    return {
+      ok: false,
+      reason: options.channelId ? "no_message" : "no_channel",
+    };
   }
 
-  if (!channelId) return { ok: false, reason: "no_channel" };
-  if (!messageTs) return { ok: false, reason: "no_message" };
-
-  // Resolve WebClient.
-  const client =
-    options.client ??
-    (process.env.SLACK_BOT_TOKEN
-      ? new WebClientCtor(process.env.SLACK_BOT_TOKEN)
-      : null);
+  const client = resolveClient(options);
   if (!client) return { ok: false, reason: "no_token" };
 
   try {
     await client.chat.update({
-      channel: channelId,
-      ts: messageTs,
+      channel: target.channelId,
+      ts: target.messageTs,
       text: `[${ticket.ticket_no}] ${ticket.title}`,
       blocks: buildMasterTicketMessage(ticket),
     });
@@ -148,5 +205,72 @@ export async function updateMasterMessage(
     const msg = e instanceof Error ? e.message : String(e);
     console.error("[slack/sync] chat.update failed:", msg);
     return { ok: false, reason: "slack_error", error: msg };
+  }
+}
+
+/**
+ * Post a plain-text reply beneath the ticket's master message.
+ *
+ * Like master-card sync, this is best-effort and never throws. Setting
+ * `mrkdwn: false` prevents a resolution summary from turning customer-entered
+ * text into Slack mentions or formatting directives.
+ */
+export async function postMasterThreadReply(
+  ticket: Ticket,
+  text: string,
+  options: SyncOptions = {}
+): Promise<SyncResult> {
+  const target = await resolveTarget(ticket.id, options);
+  if (!target) {
+    return {
+      ok: false,
+      reason: options.channelId ? "no_message" : "no_channel",
+    };
+  }
+
+  const client = resolveClient(options);
+  if (!client) return { ok: false, reason: "no_token" };
+
+  try {
+    if (options.deliveryKey) {
+      const supabase = createAdminClient();
+      const { data: recorded } = await supabase
+        .from("slack_messages")
+        .select("id")
+        .eq("outbox_event_id", options.deliveryKey)
+        .maybeSingle();
+      if (recorded) {
+        return { ok: true, deduplicated: true };
+      }
+    }
+
+    const response = await client.chat.postMessage({
+      channel: target.channelId,
+      thread_ts: target.messageTs,
+      text,
+      mrkdwn: false,
+      metadata: options.deliveryKey
+        ? {
+            event_type: "ripple_ticket_delivery",
+            event_payload: { outbox_event_id: options.deliveryKey },
+          }
+        : undefined,
+    });
+
+    if (options.deliveryKey && response.ts) {
+      const recorded = await recordMasterMessage({
+        ticketId: ticket.id,
+        slackChannelId: target.channelRecordId,
+        messageTs: response.ts,
+        messageType: "notification",
+        outboxEventId: options.deliveryKey,
+      });
+      if (!recorded.ok) return recorded;
+    }
+    return { ok: true };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("[slack/sync] thread reply failed:", message);
+    return { ok: false, reason: "slack_error", error: message };
   }
 }

@@ -3,15 +3,21 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { buildResolveModal } from "../blocks/resolve-modal";
 import { buildAskRippleAssistModal } from "../blocks/ai-modal";
 import { createTicketCore, resolveSiteBySlackChannel } from "@/lib/tickets/create";
-import { updateMasterMessage } from "../sync";
 import { INTERNAL_ROLES } from "@/lib/roles";
 import type { Ticket } from "@/types/ticket";
 import {
   applyTicketPatchWithSla,
+  InvalidTicketTransitionError,
   recordTicketCommentWithSla,
   type TicketPatch,
 } from "@/lib/tickets/mutations";
+import { dispatchTicketOutboxBestEffort } from "@/lib/tickets/outbox";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import {
+  AiSuggestionRateLimitError,
+  requestAiSuggestion,
+} from "@/lib/ai/service";
+import { isSuggestionType } from "@/lib/ai/suggest";
 
 interface ActionPayload {
   actions: { action_id: string; value?: string; selected_option?: { value: string } }[];
@@ -33,11 +39,18 @@ async function applySlackTicketPatch(args: {
   supabase: SupabaseClient;
   ticketNo: string;
   actorId: string;
-  patch: TicketPatch;
+  patch:
+    | TicketPatch
+    | ((currentStatus: Ticket["status"]) => TicketPatch);
+  slackOptions?: {
+    channelId?: string | null;
+    messageTs?: string | null;
+    client?: WebClient;
+  };
 }) {
   const { data: currentTicket, error: lookupError } = await args.supabase
     .from("tickets")
-    .select("id")
+    .select("id, status")
     .eq("ticket_no", args.ticketNo)
     .maybeSingle();
 
@@ -47,11 +60,16 @@ async function applySlackTicketPatch(args: {
     );
   }
 
+  const patch =
+    typeof args.patch === "function"
+      ? args.patch(currentTicket.status as Ticket["status"])
+      : args.patch;
+
   await applyTicketPatchWithSla({
     supabase: args.supabase,
     ticketId: currentTicket.id,
     actorId: args.actorId,
-    patch: args.patch,
+    patch,
     source: "slack",
   });
 
@@ -66,6 +84,11 @@ async function applySlackTicketPatch(args: {
       `Slack ticket refresh failed: ${error?.message ?? "ticket not found"}`
     );
   }
+
+  await dispatchTicketOutboxBestEffort({
+    aggregateId: currentTicket.id,
+    slackOptions: args.slackOptions,
+  });
 
   return ticket;
 }
@@ -116,67 +139,49 @@ export async function handleBlockAction(
     return;
   }
 
-  switch (action.action_id) {
+  try {
+    switch (action.action_id) {
     case "assign_to_me": {
       if (!ticketNo) break;
 
-      const ticket = await applySlackTicketPatch({
+      await applySlackTicketPatch({
         supabase,
         ticketNo,
         actorId: internalUser.id,
-        patch: {
+        patch: (currentStatus) => ({
           owner_id: internalUser.id,
-          status: "assigned",
-        },
+          ...(currentStatus === "new" || currentStatus === "reopened"
+            ? { status: "assigned" as const }
+            : {}),
+        }),
+        slackOptions: { channelId, messageTs, client },
       });
-
-      if (ticket) {
-        await updateMasterMessage(ticket as unknown as Ticket, {
-          channelId,
-          messageTs,
-          client,
-        });
-      }
       break;
     }
 
     case "mark_in_progress": {
       if (!ticketNo) break;
 
-      const ticket = await applySlackTicketPatch({
+      await applySlackTicketPatch({
         supabase,
         ticketNo,
         actorId: internalUser.id,
         patch: { status: "in_progress" },
+        slackOptions: { channelId, messageTs, client },
       });
-
-      if (ticket) {
-        await updateMasterMessage(ticket as unknown as Ticket, {
-          channelId,
-          messageTs,
-          client,
-        });
-      }
       break;
     }
 
     case "request_info": {
       if (!ticketNo) break;
 
-      const ticket = await applySlackTicketPatch({
+      await applySlackTicketPatch({
         supabase,
         ticketNo,
         actorId: internalUser.id,
         patch: { status: "waiting_customer" },
+        slackOptions: { channelId, messageTs, client },
       });
-
-      if (ticket) {
-        await updateMasterMessage(ticket as unknown as Ticket, {
-          channelId,
-          messageTs,
-          client,
-        });
-      }
       break;
     }
 
@@ -245,7 +250,10 @@ export async function handleBlockAction(
     case "ask_ripple_assist": {
       if (!ticketNo) break;
       try {
-        const modal = buildAskRippleAssistModal(ticketNo);
+        const modal = buildAskRippleAssistModal(ticketNo, {
+          channelId,
+          messageTs,
+        });
         await client.views.open({
           trigger_id: payload.trigger_id,
           view: modal,
@@ -256,8 +264,26 @@ export async function handleBlockAction(
       break;
     }
 
-    default:
-      console.log(`Unknown action: ${action.action_id}`);
+      default:
+        console.log(`Unknown action: ${action.action_id}`);
+    }
+  } catch (error) {
+    if (error instanceof InvalidTicketTransitionError && channelId) {
+      try {
+        await client.chat.postEphemeral({
+          channel: channelId,
+          user: userId,
+          text: `❌ ${error.message}`,
+        });
+      } catch (postError) {
+        console.warn(
+          "[slack/handlers] transition error reply failed (non-fatal):",
+          postError instanceof Error ? postError.message : postError
+        );
+      }
+      return;
+    }
+    throw error;
   }
 }
 
@@ -389,45 +415,32 @@ export async function handleViewSubmission(
       // The same row-locked command used by the web PATCH path records the
       // actual resolution time, compares it to resolve_due_at, and commits
       // the ticket + milestone + timeline + audit rows together.
-      const ticket = await applySlackTicketPatch({
-        supabase,
-        ticketNo,
-        actorId: internalUser!.id,
-        patch: {
-          status: "resolved",
-          customer_visible_summary: customerSummary,
-          root_cause_category: rootCause,
-          follow_up_needed: followUp === "yes",
-          internal_summary: internalNotes || null,
-        },
-      });
-
-      if (ticket) {
-        await updateMasterMessage(ticket as unknown as Ticket, {
-          channelId: metadata.channel_id,
-          messageTs: metadata.message_ts,
-          client,
+      try {
+        await applySlackTicketPatch({
+          supabase,
+          ticketNo,
+          actorId: internalUser!.id,
+          patch: {
+            status: "resolved",
+            customer_visible_summary: customerSummary,
+            root_cause_category: rootCause,
+            follow_up_needed: followUp === "yes",
+            internal_summary: internalNotes || null,
+          },
+          slackOptions: {
+            channelId: metadata.channel_id,
+            messageTs: metadata.message_ts,
+            client,
+          },
         });
-      }
-
-      // Post resolution note in thread. Best-effort: if the channel
-      // is gone or the bot was uninstalled, the ticket is still
-      // resolved in the DB — don't let a Slack API error 500 the
-      // whole view_submission (which would leave the modal stuck
-      // open for the user).
-      if (metadata.channel_id && metadata.message_ts) {
-        try {
-          await client.chat.postMessage({
-            channel: metadata.channel_id,
-            thread_ts: metadata.message_ts,
-            text: `✅ *Ticket Resolved*\n\n${customerSummary}`,
-          });
-        } catch (e) {
-          console.warn(
-            "[slack/handlers] resolve thread post failed (non-fatal):",
-            e instanceof Error ? e.message : e
-          );
+      } catch (error) {
+        if (error instanceof InvalidTicketTransitionError) {
+          return {
+            response_action: "errors",
+            errors: { customer_summary_block: error.message },
+          };
         }
+        throw error;
       }
 
       return { response_action: "clear" };
@@ -487,43 +500,69 @@ export async function handleViewSubmission(
       const taskType = state.task_type_block?.task_type?.selected_option?.value || "summary";
       const ticketNo = metadata.ticket_no;
 
-      // Get ticket and user
-      const { data: ticket } = await supabase
+      if (!isSuggestionType(taskType)) {
+        return {
+          response_action: "errors",
+          errors: {
+            task_type_block: "Select a supported Ripple Assist task.",
+          },
+        };
+      }
+
+      const { data: ticket, error: ticketError } = await supabase
         .from("tickets")
         .select("id")
         .eq("ticket_no", ticketNo)
-        .single();
+        .maybeSingle();
 
-      if (ticket && internalUser) {
-        // Call AI suggestion API
+      if (ticketError || !ticket) {
+        return {
+          response_action: "errors",
+          errors: {
+            task_type_block: "Ticket not found. Close the modal and try again.",
+          },
+        };
+      }
+
+      if (!metadata.channel_id) {
+        return {
+          response_action: "errors",
+          errors: {
+            task_type_block:
+              "Slack channel context is missing. Close the modal and try again.",
+          },
+        };
+      }
+
+      try {
+        const data = await requestAiSuggestion({
+          ticketId: ticket.id,
+          suggestionType: taskType,
+          actorId: internalUser!.id,
+        });
+
+        await client.chat.postEphemeral({
+          channel: metadata.channel_id,
+          user: payload.user.id,
+          text: `🤖 *Ripple Assist — ${taskType}*\n\n${data.output_text || "No suggestion generated."}\n\n_Confidence: ${data.confidence_level || "unknown"} | Model: ${data.model_name || "unknown"}_`,
+        });
+      } catch (error) {
+        console.error("AI suggestion failed:", error);
+        const text =
+          error instanceof AiSuggestionRateLimitError
+            ? `⏳ ${error.message}`
+            : "❌ Ripple Assist failed to generate a suggestion. Please try again.";
         try {
-          const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
-          const res = await fetch(`${baseUrl}/api/ai/suggest`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              ticket_id: ticket.id,
-              suggestion_type: taskType,
-            }),
-          });
-
-          const data = await res.json();
-
-          // Send ephemeral message to engineer
-          if (metadata.channel_id || payload.user.id) {
-            await client.chat.postEphemeral({
-              channel: metadata.channel_id || "",
-              user: payload.user.id,
-              text: `🤖 *Ripple Assist — ${taskType}*\n\n${data.output_text || "No suggestion generated."}\n\n_Confidence: ${data.confidence_level || "unknown"} | Model: ${data.model_name || "unknown"}_`,
-            });
-          }
-        } catch (error) {
-          console.error("AI suggestion failed:", error);
           await client.chat.postEphemeral({
-            channel: metadata.channel_id || "",
+            channel: metadata.channel_id,
             user: payload.user.id,
-            text: "❌ Ripple Assist failed to generate a suggestion. Please try again.",
+            text,
           });
+        } catch (postError) {
+          console.warn(
+            "[slack/handlers] Ripple Assist error reply failed (non-fatal):",
+            postError instanceof Error ? postError.message : postError
+          );
         }
       }
 

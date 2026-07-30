@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { WebClient } from "@slack/web-api";
 import { handleBlockAction, handleViewSubmission } from "@/lib/slack/handlers/actions";
-import { verifySlackSignature } from "@/lib/slack/verify";
+import {
+  getSlackSignatureFailureHttpStatus,
+  verifySlackSignature,
+} from "@/lib/slack/verify";
+import { isSlackBotTokenConfigured } from "@/lib/slack/config";
 
 export async function POST(request: NextRequest) {
   try {
@@ -14,8 +18,31 @@ export async function POST(request: NextRequest) {
       process.env.SLACK_SIGNING_SECRET ?? null
     );
     if (!sigCheck.ok) {
+      const status = getSlackSignatureFailureHttpStatus(sigCheck) ?? 401;
       console.warn(`[slack/interactive] signature rejected: ${sigCheck.reason}`);
-      return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
+      return NextResponse.json(
+        {
+          error:
+            status === 503
+              ? "Slack integration unavailable"
+              : "Invalid signature",
+          code:
+            status === 503
+              ? "SLACK_CONFIGURATION_ERROR"
+              : "SLACK_SIGNATURE_INVALID",
+        },
+        { status }
+      );
+    }
+    if (!isSlackBotTokenConfigured(process.env.SLACK_BOT_TOKEN)) {
+      console.error("Slack bot token is missing or invalid");
+      return NextResponse.json(
+        {
+          error: "Slack integration unavailable",
+          code: "SLACK_CONFIGURATION_ERROR",
+        },
+        { status: 503 }
+      );
     }
 
     // Re-parse the (now verified) body

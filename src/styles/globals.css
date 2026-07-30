@@ -1,21 +1,22 @@
+@import "@fontsource-variable/inter";
 @import "tailwindcss";
 
 @theme {
   --color-background: #ffffff;
-  --color-foreground: #1a1a2e;
-  --color-muted: #f1f5f9;
-  --color-muted-foreground: #64748b;
-  --color-border: #e2e8f0;
-  --color-primary: #0ea5e9;
+  --color-foreground: #172012;
+  --color-muted: #f3f6f1;
+  --color-muted-foreground: #657060;
+  --color-border: #dfe5dc;
+  --color-primary: #4d7c0f;
   --color-primary-foreground: #ffffff;
   --color-destructive: #ef4444;
   --color-success: #22c55e;
   --color-warning: #f59e0b;
-  --color-accent: #f1f5f9;
-  --color-accent-foreground: #1a1a2e;
+  --color-accent: #eef4e9;
+  --color-accent-foreground: #172012;
   --color-card: #ffffff;
-  --color-card-foreground: #1a1a2e;
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --color-card-foreground: #172012;
+  --font-sans: "Inter Variable", "Inter", ui-sans-serif, system-ui, sans-serif;
 }
 
 @layer base {
@@ -29,6 +30,20 @@
     background-color: var(--color-background);
     color: var(--color-foreground);
     font-family: var(--font-sans);
+    text-rendering: optimizeLegibility;
+  }
+
+  ::selection {
+    color: #172012;
+    background-color: #d9f99d;
+  }
+
+  button,
+  a,
+  input,
+  select,
+  textarea {
+    -webkit-tap-highlight-color: transparent;
   }
 }
 

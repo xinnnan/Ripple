@@ -12,7 +12,7 @@ export function TicketsPageHeader({ filterQuery, isInternal = true }: TicketsPag
   const [modalOpen, setModalOpen] = useState(false);
 
   return (
-    <div className="mb-8 flex items-center justify-between">
+    <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
       <div>
         <h1 className="text-2xl font-bold text-foreground">Tickets</h1>
         <p className="text-sm text-muted-foreground mt-1">
@@ -24,14 +24,14 @@ export function TicketsPageHeader({ filterQuery, isInternal = true }: TicketsPag
       <div className="flex gap-3">
         <button
           onClick={() => setModalOpen(true)}
-          className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+          className="flex-1 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 sm:flex-none"
         >
           + Submit Ticket
         </button>
         {isInternal && (
           <a
             href={`/api/tickets/export${filterQuery}`}
-            className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-accent transition-colors"
+            className="flex-1 rounded-lg border border-border px-4 py-2 text-center text-sm font-medium text-foreground transition-colors hover:bg-accent sm:flex-none"
           >
             Export CSV
           </a>

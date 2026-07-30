@@ -2,38 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireInternal } from "@/lib/supabase/auth-helpers";
 import { getUserScope, scopeSiteRows } from "@/lib/supabase/scope";
-import { logDiff } from "@/lib/audit";
+import { updateFieldServiceOrderSchema } from "@/lib/field-service/contracts";
+import {
+  applyFieldServiceOrderPatch,
+  FieldServiceOrderMutationError,
+} from "@/lib/field-service/mutations";
 import { fieldServiceOrderForExternal } from "@/lib/resource-visibility";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
-
-const FSO_STATUSES = ["scheduled", "in_progress", "completed", "cancelled"] as const;
-const FSO_PRIORITIES = ["low", "normal", "high", "urgent"] as const;
-const SERVICE_TYPES = [
-  "repair", "installation", "inspection", "commissioning",
-  "training", "emergency", "maintenance",
-] as const;
-
-const updateFSOSchema = z.object({
-  status: z.enum(FSO_STATUSES).optional(),
-  title: z.string().trim().min(1).max(200).optional(),
-  description: z.string().trim().max(5000).nullable().optional(),
-  service_type: z.enum(SERVICE_TYPES).optional(),
-  priority: z.enum(FSO_PRIORITIES).optional(),
-  scheduled_date: z.string().datetime().nullable().optional(),
-  scheduled_end_date: z.string().datetime().nullable().optional(),
-  estimated_hours: z.number().nonnegative().finite().nullable().optional(),
-  actual_hours: z.number().nonnegative().finite().nullable().optional(),
-  travel_required: z.boolean().optional(),
-  travel_from: z.string().trim().max(200).nullable().optional(),
-  completion_report: z.string().trim().max(20000).nullable().optional(),
-  completion_notes: z.string().trim().max(2000).nullable().optional(),
-  engineers: z.array(z.object({
-    engineer_id: z.string().uuid(),
-    role: z.string().trim().max(50).optional(),
-  })).max(20).optional(),
-});
 
 // GET /api/field-service-orders/[id] — Get order detail
 export async function GET(
@@ -96,56 +73,68 @@ export async function PATCH(
     } catch {
       return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
     }
-    const data = updateFSOSchema.parse(body);
+    const data = updateFieldServiceOrderSchema.parse(body);
 
     if (Object.keys(data).length === 0) {
       return NextResponse.json({ error: "No fields to update" }, { status: 400 });
     }
 
+    const { engineers, ...patch } = data;
     const admin = createAdminClient();
+    let updatedOrderId: string;
 
-    // Fetch before-state for audit diff
-    const before = await admin
-      .from("field_service_orders")
-      .select("status, title, description, service_type, priority, scheduled_date, scheduled_end_date, estimated_hours, actual_hours, travel_required, travel_from, completion_report, completion_notes")
-      .eq("id", id)
-      .maybeSingle();
-    if (before.error) {
-      console.error("PATCH /api/field-service-orders/[id] before fetch failed:", before.error);
-      return NextResponse.json({ error: "Failed to load order" }, { status: 500 });
-    }
-    if (!before.data) {
-      return NextResponse.json({ error: "Field service order not found" }, { status: 404 });
-    }
-
-    const updateFields: Record<string, unknown> = { updated_at: new Date().toISOString() };
-
-    // Status transitions
-    if (data.status) {
-      updateFields.status = data.status;
-      if (data.status === "completed") {
-        updateFields.completed_by = auth.userId;
-        updateFields.completed_at = new Date().toISOString();
+    try {
+      updatedOrderId = await applyFieldServiceOrderPatch({
+        supabase: admin,
+        orderId: id,
+        actorId: auth.userId,
+        patch,
+        engineers,
+      });
+    } catch (error) {
+      if (
+        error instanceof FieldServiceOrderMutationError &&
+        error.code === "P0002"
+      ) {
+        return NextResponse.json(
+          { error: "Field service order not found" },
+          { status: 404 }
+        );
       }
+      if (
+        error instanceof FieldServiceOrderMutationError &&
+        ["22003", "22007", "22008", "22023", "22P02", "23503", "23505", "23514"].includes(
+          error.code ?? ""
+        )
+      ) {
+        return NextResponse.json(
+          { error: "Invalid field service order update" },
+          { status: 400 }
+        );
+      }
+      if (
+        error instanceof FieldServiceOrderMutationError &&
+        error.code === "42501"
+      ) {
+        return NextResponse.json(
+          { error: "Forbidden: Active internal access required" },
+          { status: 403 }
+        );
+      }
+      console.error(
+        "PATCH /api/field-service-orders/[id] command failed:",
+        error
+      );
+      return NextResponse.json(
+        { error: "Failed to update field service order" },
+        { status: 500 }
+      );
     }
 
-    if (data.title !== undefined) updateFields.title = data.title;
-    if (data.description !== undefined) updateFields.description = data.description;
-    if (data.service_type !== undefined) updateFields.service_type = data.service_type;
-    if (data.priority !== undefined) updateFields.priority = data.priority;
-    if (data.scheduled_date !== undefined) updateFields.scheduled_date = data.scheduled_date;
-    if (data.scheduled_end_date !== undefined) updateFields.scheduled_end_date = data.scheduled_end_date;
-    if (data.estimated_hours !== undefined) updateFields.estimated_hours = data.estimated_hours;
-    if (data.actual_hours !== undefined) updateFields.actual_hours = data.actual_hours;
-    if (data.travel_required !== undefined) updateFields.travel_required = data.travel_required;
-    if (data.travel_from !== undefined) updateFields.travel_from = data.travel_from;
-    if (data.completion_report !== undefined) updateFields.completion_report = data.completion_report;
-    if (data.completion_notes !== undefined) updateFields.completion_notes = data.completion_notes;
-
+    // Hydrate only after the command commits so returned engineers always
+    // reflect the post-replacement assignment set.
     const { data: order, error } = await admin
       .from("field_service_orders")
-      .update(updateFields)
-      .eq("id", id)
       .select(`
         *,
         site:sites(id, site_name, site_code),
@@ -154,47 +143,20 @@ export async function PATCH(
         completer:users!field_service_orders_completed_by_fkey(id, full_name),
         engineers:field_service_engineers(*, engineer:users(id, full_name, email))
       `)
+      .eq("id", id)
       .single();
 
     if (error) {
-      console.error("PATCH /api/field-service-orders/[id] update failed:", error);
-      return NextResponse.json({ error: "Failed to update field service order" }, { status: 500 });
+      console.error(
+        "PATCH /api/field-service-orders/[id] hydration failed:",
+        error
+      );
+      return NextResponse.json({
+        data: { id: updatedOrderId },
+        warning:
+          "Service order updated; detail refresh is temporarily unavailable",
+      });
     }
-
-    // Update engineer assignments if provided
-    if (data.engineers !== undefined) {
-      // Delete existing and re-insert
-      await admin.from("field_service_engineers").delete().eq("order_id", id);
-
-      if (data.engineers.length > 0) {
-        const engineerInserts = data.engineers.map((e) => ({
-          order_id: id,
-          engineer_id: e.engineer_id,
-          role: e.role || "engineer",
-        }));
-        await admin.from("field_service_engineers").insert(engineerInserts);
-      }
-    }
-
-    // Audit log — per-field diff
-    const auditAfter: Record<string, unknown> = {};
-    for (const k of Object.keys(data)) {
-      if (k === "engineers") continue;
-      auditAfter[k] = (data as Record<string, unknown>)[k];
-    }
-    if (data.status === "completed") {
-      auditAfter.completed_by = auth.userId;
-    }
-    await logDiff({
-      actorId: auth.userId,
-      actorEmail: auth.email,
-      actorRole: auth.role,
-      entityType: "field_service_order",
-      entityId: id,
-      before: before.data as Record<string, unknown>,
-      after: auditAfter,
-      metadata: { order_no: order.order_no, engineer_change: data.engineers !== undefined },
-    });
 
     return NextResponse.json({ data: order });
   } catch (error) {

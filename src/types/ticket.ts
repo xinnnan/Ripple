@@ -13,15 +13,18 @@ export type RequestType =
 
 export type Severity = "P1" | "P2" | "P3" | "P4";
 
-export type TicketStatus =
-  | "new"
-  | "assigned"
-  | "in_progress"
-  | "waiting_customer"
-  | "waiting_droplet"
-  | "resolved"
-  | "closed"
-  | "reopened";
+export const TICKET_STATUSES = [
+  "new",
+  "assigned",
+  "in_progress",
+  "waiting_customer",
+  "waiting_droplet",
+  "resolved",
+  "closed",
+  "reopened",
+] as const;
+
+export type TicketStatus = (typeof TICKET_STATUSES)[number];
 
 export type Impact =
   | "safety"

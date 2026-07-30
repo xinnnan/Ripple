@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { FSO_STATUS_LABELS, FSO_STATUS_COLORS, SERVICE_TYPE_LABELS, FSO_PRIORITY_LABELS } from "@/types/spare-parts";
+import { formatDateOnly } from "@/lib/utils";
 import Link from "next/link";
 import { FieldServiceActions } from "./field-service-actions";
 
@@ -168,8 +169,8 @@ export default async function FieldServiceDetailPage({ params }: { params: Promi
               <div className="flex justify-between">
                 <dt className="text-muted-foreground">Scheduled</dt>
                 <dd className="text-foreground">
-                  {o.scheduled_date ? new Date(o.scheduled_date).toLocaleDateString() : "—"}
-                  {o.scheduled_end_date ? ` → ${new Date(o.scheduled_end_date).toLocaleDateString()}` : ""}
+                  {o.scheduled_date ? formatDateOnly(o.scheduled_date) : "—"}
+                  {o.scheduled_end_date ? ` → ${formatDateOnly(o.scheduled_end_date)}` : ""}
                 </dd>
               </div>
               <div className="flex justify-between">

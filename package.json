@@ -6,13 +6,16 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "eslint . --max-warnings=0",
     "test": "vitest run",
-    "test:e2e": "node scripts/production-smoke.mjs",
+    "test:e2e": "node scripts/production-smoke.mjs && node scripts/credentialed-role-matrix.mjs",
+    "test:e2e:credentialed": "node scripts/credentialed-role-matrix.mjs",
+    "test:e2e:install-browser": "playwright install chromium",
     "test:watch": "vitest",
     "test:ui": "vitest --ui"
   },
   "dependencies": {
+    "@fontsource-variable/inter": "^5.3.0",
     "@slack/bolt": "^4.2.0",
     "@slack/web-api": "^7.9.0",
     "@supabase/ssr": "^0.6.0",
@@ -30,6 +33,7 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.0",
+    "@playwright/test": "^1.62.0",
     "@tailwindcss/postcss": "^4.1.0",
     "@types/node": "^22.15.0",
     "@types/react": "^19.1.0",

@@ -2,13 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireInternal, getAuthUser } from "@/lib/supabase/auth-helpers";
 import { getUserScope, scopeTickets } from "@/lib/supabase/scope";
-import { updateMasterMessage } from "@/lib/slack/sync";
-import { sendTicketResolved } from "@/lib/email/send";
 import { resolveTicketQuery } from "@/lib/tickets/lookup";
 import {
   applyTicketPatchWithSla,
+  InvalidTicketTransitionError,
   type TicketPatch,
 } from "@/lib/tickets/mutations";
+import {
+  dispatchTicketOutboxBestEffort,
+} from "@/lib/tickets/outbox";
+import { TICKET_STATUSES } from "@/types/ticket";
 import { z } from "zod";
 
 interface RouteContext {
@@ -16,18 +19,9 @@ interface RouteContext {
 }
 
 const patchTicketSchema = z.object({
-  status: z.enum([
-    "new",
-    "assigned",
-    "in_progress",
-    "waiting_customer",
-    "waiting_droplet",
-    "resolved",
-    "closed",
-    "reopened",
-  ]).optional(),
+  status: z.enum(TICKET_STATUSES).optional(),
   severity: z.enum(["P1", "P2", "P3", "P4"]).optional(),
-  owner_id: z.string().uuid().optional(),
+  owner_id: z.string().uuid().nullable().optional(),
   customer_visible_summary: z.string().optional(),
   internal_summary: z.string().optional(),
   root_cause_category: z.string().optional(),
@@ -196,47 +190,18 @@ export async function PATCH(
       return NextResponse.json({ error: "Failed to update ticket" }, { status: 500 });
     }
 
-    // Sync the change back to Slack so the master card in the channel
-    // stays in lockstep with the database. The function looks up the
-    // most recent master message from `slack_messages`; if none is
-    // recorded (e.g. ticket was created before Sprint 2), it silently
-    // no-ops and the ticket still updates.
-    const syncResult = await updateMasterMessage(ticket as import("@/types/ticket").Ticket);
-    if (!syncResult.ok) {
-      // Non-fatal: log and continue. Web portal is the source of truth.
-      console.warn(
-        `[PATCH /api/tickets/[id]] Slack sync skipped: ${syncResult.reason ?? "unknown"}` +
-          (syncResult.error ? ` (${syncResult.error})` : "")
-      );
-    }
-
-    // Send a resolution email when the status flips to "resolved".
-    // Re-read submitter_email + customer_visible_summary from the
-    // updated ticket to make sure we have the latest values.
-    if (data.status === "resolved" && currentTicket.status !== "resolved") {
-      const submitterEmail = ticket.submitter_email as string | null;
-      const summary =
-        (ticket.customer_visible_summary as string | null) ??
-        "Your ticket has been resolved. Please reply if anything is still off.";
-      if (submitterEmail) {
-        const emailRes = await sendTicketResolved({
-          to: submitterEmail,
-          ticketNo: ticket.ticket_no as string,
-          title: ticket.title as string,
-          secureToken: ticket.secure_token as string,
-          resolutionSummary: summary,
-        });
-        if (!emailRes.sent) {
-          console.warn(
-            `[PATCH /api/tickets/[id]] resolution email not sent: ${emailRes.reason}` +
-              (emailRes.error ? ` (${emailRes.error})` : "")
-          );
-        }
-      }
-    }
+    // Migration 033 enqueued delivery work in the same transaction as the
+    // ticket mutation. Try it immediately for responsive UI, while leaving
+    // any failure durable for the scheduled lease-based worker.
+    await dispatchTicketOutboxBestEffort({
+      aggregateId: currentTicket.id,
+    });
 
     return NextResponse.json({ ticket });
   } catch (error) {
+    if (error instanceof InvalidTicketTransitionError) {
+      return NextResponse.json({ error: error.message }, { status: 409 });
+    }
     if (error instanceof z.ZodError) {
       return NextResponse.json(
         { error: "Validation error", details: error.errors },

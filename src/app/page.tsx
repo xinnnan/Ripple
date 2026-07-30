@@ -1,206 +1,373 @@
-import Link from "next/link";
 import Image from "next/image";
+import Link from "next/link";
+import {
+  ArrowRight,
+  Bot,
+  Check,
+  ClipboardCheck,
+  Clock3,
+  FileUp,
+  MapPin,
+  MessageSquareText,
+  PackageCheck,
+  ShieldCheck,
+  Wrench,
+} from "lucide-react";
+import { PublicSiteFooter } from "@/components/public-site-footer";
+import { PublicSiteHeader } from "@/components/public-site-header";
+
+const intakeSteps = [
+  {
+    number: "01",
+    title: "Identify the site",
+    description:
+      "Use the site code assigned to your deployment so the request reaches the right customer and facility context.",
+    icon: MapPin,
+  },
+  {
+    number: "02",
+    title: "Describe the impact",
+    description:
+      "Tell us what stopped, when it started, and which equipment or process is affected. Add photos, logs, or video.",
+    icon: MessageSquareText,
+  },
+  {
+    number: "03",
+    title: "Track the response",
+    description:
+      "Follow status, ownership, engineer updates, parts requests, and field-service activity from one ticket.",
+    icon: ClipboardCheck,
+  },
+];
+
+const checklist = [
+  "Site code and affected area",
+  "Equipment or asset identifier",
+  "Operational and safety impact",
+  "When the behavior started",
+  "Error text, photos, video, or logs",
+  "Actions already attempted",
+];
+
+const capabilities = [
+  {
+    title: "Structured triage",
+    description:
+      "Severity and production-impact fields help the service team prioritize the right response.",
+    icon: ShieldCheck,
+  },
+  {
+    title: "Engineering collaboration",
+    description:
+      "Customer-visible updates and internal technical notes keep every handoff connected.",
+    icon: Wrench,
+  },
+  {
+    title: "Parts coordination",
+    description:
+      "Link spare-part requests and fulfillment progress directly to the support case.",
+    icon: PackageCheck,
+  },
+  {
+    title: "Ripple Assist",
+    description:
+      "Internal AI-assisted troubleshooting helps engineers organize evidence and next checks.",
+    icon: Bot,
+  },
+];
 
 export default function HomePage() {
   return (
-    <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="border-b border-border">
-        <div className="mx-auto max-w-7xl px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Image
-              src="/logo.png"
-              alt="Ripple"
-              width={32}
-              height={32}
-              className="rounded-lg"
-            />
-            <span className="text-lg font-semibold text-foreground">Ripple</span>
-            <span className="text-sm text-muted-foreground">by DropletAI</span>
-          </div>
-          <nav className="flex items-center gap-4">
-            <Link
-              href="/submit"
-              className="text-sm font-medium text-primary hover:text-primary/80 transition-colors"
-            >
-              Submit Ticket
-            </Link>
-            <Link
-              href="/login"
-              className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-            >
-              Login
-            </Link>
-          </nav>
-        </div>
-      </header>
+    <div className="min-h-screen bg-white">
+      <PublicSiteHeader current="home" />
 
-      {/* Hero */}
-      <main className="mx-auto max-w-7xl px-6 py-24">
-        <div className="text-center max-w-3xl mx-auto">
-          <h1 className="text-4xl font-bold tracking-tight text-foreground sm:text-6xl">
-            Support Portal
-          </h1>
-          <p className="mt-6 text-lg leading-8 text-muted-foreground">
-            Submit support requests, track issues, and communicate with our
-            engineering team.
-          </p>
-          <div className="mt-10 flex items-center justify-center">
-            <Link
-              href="/submit"
-              className="rounded-lg bg-primary px-8 py-3.5 text-sm font-semibold text-primary-foreground shadow-sm hover:bg-primary/90 transition-colors"
-            >
-              Submit Support Request
-            </Link>
-          </div>
-        </div>
+      <main>
+        <section className="relative isolate min-h-[680px] overflow-hidden bg-slate-950">
+          <Image
+            src="/images/ripple-automation-fleet.jpg"
+            alt="Autonomous mobile robots lined up inside an industrial facility"
+            fill
+            priority
+            sizes="100vw"
+            className="object-cover object-[64%_center]"
+          />
+          <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(2,6,23,0.96)_0%,rgba(2,6,23,0.84)_37%,rgba(2,6,23,0.28)_75%,rgba(2,6,23,0.12)_100%)]" />
+          <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(2,6,23,0.18)_0%,rgba(2,6,23,0.08)_58%,rgba(2,6,23,0.85)_100%)]" />
 
-        {/* Features */}
-        <div className="mt-24 grid grid-cols-1 gap-8 sm:grid-cols-3">
-          <div className="rounded-xl border border-border p-6">
-            <div className="h-10 w-10 rounded-lg bg-blue-50 flex items-center justify-center mb-4">
-              <svg className="h-5 w-5 text-primary" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
-              </svg>
-            </div>
-            <h3 className="text-base font-semibold text-foreground">Quick Issue Reporting</h3>
-            <p className="mt-2 text-sm text-muted-foreground">
-              Report issues with your AMR, AGV, conveyor, or sortation systems
-              directly through Slack or this portal.
-            </p>
-          </div>
-
-          <div className="rounded-xl border border-border p-6">
-            <div className="h-10 w-10 rounded-lg bg-blue-50 flex items-center justify-center mb-4">
-              <svg className="h-5 w-5 text-primary" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 0 1 0 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 0 1-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 0 1-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 0 1-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 0 1-1.369-.49l-1.297-2.247a1.125 1.125 0 0 1 .26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 0 1 0-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 0 1-.26-1.43l1.297-2.247a1.125 1.125 0 0 1 1.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28Z" />
-                <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
-              </svg>
-            </div>
-            <h3 className="text-base font-semibold text-foreground">Real-Time Status</h3>
-            <p className="mt-2 text-sm text-muted-foreground">
-              Track your support tickets in real-time. See who is working on
-              your issue and get updates as they happen.
-            </p>
-          </div>
-
-          <div className="rounded-xl border border-border p-6">
-            <div className="h-10 w-10 rounded-lg bg-blue-50 flex items-center justify-center mb-4">
-              <svg className="h-5 w-5 text-primary" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75m-3-7.036A11.959 11.959 0 0 1 3.598 6 11.99 11.99 0 0 0 3 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285Z" />
-              </svg>
-            </div>
-            <h3 className="text-base font-semibold text-foreground">Expert Engineering Support</h3>
-            <p className="mt-2 text-sm text-muted-foreground">
-              Our field engineers and solution architects provide direct support
-              for all your automation equipment and systems.
-            </p>
-          </div>
-        </div>
-
-        {/* Info Section */}
-        <div className="mt-24 space-y-12">
-          {/* What is Ripple */}
-          <div className="rounded-2xl border border-border bg-muted/30 p-8 sm:p-10">
-            <div className="flex items-start gap-5">
-              <div className="h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
-                <Image
-                  src="/logo.png"
-                  alt="Ripple"
-                  width={28}
-                  height={28}
-                  className="rounded-lg"
-                />
+          <div className="relative mx-auto flex min-h-[680px] max-w-7xl flex-col justify-between px-6 py-16 sm:py-20 lg:px-8 lg:py-24">
+            <div className="max-w-3xl">
+              <div className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-slate-950/35 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-lime-300 backdrop-blur">
+                <span className="h-1.5 w-1.5 rounded-full bg-lime-400" />
+                Service operations, connected
               </div>
+              <h1 className="mt-7 max-w-2xl text-5xl font-semibold leading-[0.98] tracking-[-0.045em] text-white sm:text-6xl lg:text-7xl">
+                Keep your automation moving.
+              </h1>
+              <p className="mt-7 max-w-2xl text-lg leading-8 text-slate-200 sm:text-xl">
+                Report an issue once, route it with the right site and
+                operational context, and follow every update through
+                resolution.
+              </p>
+              <div className="mt-9 flex flex-col gap-3 sm:flex-row">
+                <Link
+                  href="/submit"
+                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-lime-400 px-5 py-3.5 text-sm font-bold text-slate-950 shadow-lg shadow-lime-950/20 transition hover:bg-lime-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lime-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+                >
+                  Submit a support request
+                  <ArrowRight className="h-4 w-4" aria-hidden="true" />
+                </Link>
+                <Link
+                  href="/login"
+                  className="inline-flex items-center justify-center rounded-xl border border-white/25 bg-white/10 px-5 py-3.5 text-sm font-semibold text-white backdrop-blur transition hover:bg-white/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+                >
+                  Sign in to track tickets
+                </Link>
+              </div>
+              <p className="mt-5 text-sm text-slate-300">
+                No account? You can still submit with your site code.
+              </p>
+            </div>
+
+            <div className="mt-14 grid gap-px overflow-hidden rounded-2xl border border-white/15 bg-white/15 backdrop-blur md:grid-cols-3">
+              {[
+                ["Slack + web", "Create from /ticket or the support portal"],
+                ["Site-aware", "Route every issue to its deployment context"],
+                ["One timeline", "Keep status, updates, parts, and visits linked"],
+              ].map(([title, description]) => (
+                <div key={title} className="bg-slate-950/55 p-5 sm:p-6">
+                  <p className="text-sm font-semibold text-white">{title}</p>
+                  <p className="mt-1 text-sm leading-6 text-slate-300">
+                    {description}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section
+          id="how-it-works"
+          className="scroll-mt-24 bg-slate-50 py-20 sm:py-24"
+        >
+          <div className="mx-auto max-w-7xl px-6 lg:px-8">
+            <div className="max-w-2xl">
+              <p className="text-sm font-bold uppercase tracking-[0.18em] text-primary">
+                A clearer support handoff
+              </p>
+              <h2 className="mt-4 text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl">
+                From first signal to documented resolution
+              </h2>
+              <p className="mt-5 text-lg leading-8 text-slate-600">
+                Ripple gives customers and service teams a shared operating
+                record without forcing every conversation into another
+                spreadsheet.
+              </p>
+            </div>
+
+            <div className="mt-12 grid gap-5 lg:grid-cols-3">
+              {intakeSteps.map((step) => {
+                const Icon = step.icon;
+                return (
+                  <article
+                    key={step.number}
+                    className="group rounded-2xl border border-slate-200 bg-white p-7 shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-mono text-sm font-semibold text-slate-400">
+                        {step.number}
+                      </span>
+                      <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-lime-100 text-primary">
+                        <Icon className="h-5 w-5" aria-hidden="true" />
+                      </span>
+                    </div>
+                    <h3 className="mt-8 text-xl font-semibold text-slate-950">
+                      {step.title}
+                    </h3>
+                    <p className="mt-3 text-sm leading-7 text-slate-600">
+                      {step.description}
+                    </p>
+                  </article>
+                );
+              })}
+            </div>
+          </div>
+        </section>
+
+        <section id="prepare" className="scroll-mt-24 py-20 sm:py-24">
+          <div className="mx-auto grid max-w-7xl gap-12 px-6 lg:grid-cols-[0.9fr_1.1fr] lg:items-center lg:px-8">
+            <div>
+              <p className="text-sm font-bold uppercase tracking-[0.18em] text-primary">
+                Faster, more useful triage
+              </p>
+              <h2 className="mt-4 text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl">
+                Give the engineer a strong starting point.
+              </h2>
+              <p className="mt-5 text-lg leading-8 text-slate-600">
+                A concise report with operational context is more useful than a
+                long message without asset or impact details.
+              </p>
+              <div className="mt-8 grid gap-3 sm:grid-cols-2">
+                {checklist.map((item) => (
+                  <div key={item} className="flex items-start gap-3">
+                    <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-lime-100 text-primary">
+                      <Check className="h-3.5 w-3.5" aria-hidden="true" />
+                    </span>
+                    <span className="text-sm leading-6 text-slate-700">
+                      {item}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <Link
+                href="/submit"
+                className="mt-9 inline-flex items-center gap-2 text-sm font-bold text-primary hover:text-primary/80"
+              >
+                Start a structured report
+                <ArrowRight className="h-4 w-4" aria-hidden="true" />
+              </Link>
+            </div>
+
+            <div className="rounded-3xl bg-slate-950 p-7 text-white shadow-2xl sm:p-9">
+              <div className="flex items-start gap-4">
+                <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-lime-400 text-slate-950">
+                  <Clock3 className="h-6 w-6" aria-hidden="true" />
+                </span>
+                <div>
+                  <p className="text-sm font-semibold uppercase tracking-[0.14em] text-lime-300">
+                    Choose impact carefully
+                  </p>
+                  <h3 className="mt-2 text-2xl font-semibold">
+                    Severity should describe operations, not frustration.
+                  </h3>
+                </div>
+              </div>
+              <div className="mt-8 space-y-4">
+                {[
+                  ["P1 — Critical", "Safety concern or production stopped"],
+                  ["P2 — High", "Major degradation or urgent operational risk"],
+                  ["P3 — Normal", "Limited impact with workarounds available"],
+                  ["P4 — Low", "Question, training, or planned improvement"],
+                ].map(([label, meaning]) => (
+                  <div
+                    key={label}
+                    className="grid gap-1 border-t border-white/10 pt-4 sm:grid-cols-[150px_1fr]"
+                  >
+                    <p className="text-sm font-semibold text-white">{label}</p>
+                    <p className="text-sm leading-6 text-slate-400">{meaning}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section className="bg-slate-950 py-20 text-white sm:py-24">
+          <div className="mx-auto max-w-7xl px-6 lg:px-8">
+            <div className="grid gap-12 lg:grid-cols-[0.85fr_1.15fr]">
               <div>
-                <h2 className="text-xl font-bold text-foreground mb-3">
-                  What is Ripple?
-                </h2>
-                <p className="text-muted-foreground leading-relaxed">
-                  Ripple is DropletAI&apos;s dedicated service and dispatch tool. It
-                  connects our clients with field operations, software and hardware
-                  engineering teams to efficiently resolve faults, software bugs,
-                  requests, and track routine maintenance for your automation
-                  deployments.
+                <p className="text-sm font-bold uppercase tracking-[0.18em] text-lime-300">
+                  More than a ticket inbox
                 </p>
+                <h2 className="mt-4 text-3xl font-semibold tracking-tight sm:text-4xl">
+                  One service record across the work.
+                </h2>
+                <p className="mt-5 max-w-xl text-lg leading-8 text-slate-400">
+                  The same support case can coordinate software investigation,
+                  hardware evidence, spare parts, and onsite service without
+                  losing the original customer context.
+                </p>
+              </div>
+              <div className="grid gap-px overflow-hidden rounded-2xl bg-white/10 sm:grid-cols-2">
+                {capabilities.map((capability) => {
+                  const Icon = capability.icon;
+                  return (
+                    <article
+                      key={capability.title}
+                      className="bg-slate-900 p-6 sm:p-7"
+                    >
+                      <Icon
+                        className="h-5 w-5 text-lime-300"
+                        aria-hidden="true"
+                      />
+                      <h3 className="mt-5 font-semibold text-white">
+                        {capability.title}
+                      </h3>
+                      <p className="mt-2 text-sm leading-6 text-slate-400">
+                        {capability.description}
+                      </p>
+                    </article>
+                  );
+                })}
               </div>
             </div>
           </div>
+        </section>
 
-          <div className="grid grid-cols-1 gap-8 sm:grid-cols-2">
-            {/* Slack Channel */}
-            <div className="rounded-2xl border border-border p-8">
-              <div className="h-10 w-10 rounded-lg bg-purple-50 flex items-center justify-center mb-4">
-                <svg className="h-5 w-5 text-purple-600" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M5.042 15.165a2.528 2.528 0 0 1-2.52 2.523A2.528 2.528 0 0 1 0 15.165a2.527 2.527 0 0 1 2.522-2.52h2.52v2.52zm1.271 0a2.527 2.527 0 0 1 2.521-2.52 2.527 2.527 0 0 1 2.521 2.52v6.313A2.528 2.528 0 0 1 8.834 24a2.528 2.528 0 0 1-2.521-2.522v-6.313zM8.834 5.042a2.528 2.528 0 0 1-2.521-2.52A2.528 2.528 0 0 1 8.834 0a2.528 2.528 0 0 1 2.521 2.522v2.52H8.834zm0 1.271a2.528 2.528 0 0 1 2.521 2.521 2.528 2.528 0 0 1-2.521 2.521H2.522A2.528 2.528 0 0 1 0 8.834a2.528 2.528 0 0 1 2.522-2.521h6.312zm10.124 2.521a2.528 2.528 0 0 1 2.521-2.521A2.528 2.528 0 0 1 24 8.834a2.528 2.528 0 0 1-2.521 2.521h-2.521V8.834zm-1.27 0a2.528 2.528 0 0 1-2.523 2.521 2.527 2.527 0 0 1-2.52-2.521V2.522A2.527 2.527 0 0 1 15.165 0a2.528 2.528 0 0 1 2.523 2.522v6.312zm-2.523 10.122a2.528 2.528 0 0 1 2.523 2.522A2.528 2.528 0 0 1 15.165 24a2.527 2.527 0 0 1-2.52-2.522v-2.522h2.52zm0-1.27a2.527 2.527 0 0 1-2.52-2.523 2.527 2.527 0 0 1 2.52-2.52h6.315A2.528 2.528 0 0 1 24 15.163a2.528 2.528 0 0 1-2.521 2.523h-6.315z" />
-                </svg>
-              </div>
-              <h3 className="text-lg font-semibold text-foreground mb-3">
-                Slack Connect Channel
-              </h3>
-              <p className="text-sm text-muted-foreground leading-relaxed mb-4">
-                Create and manage tickets without leaving your workspace using the{" "}
-                <code className="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">
-                  /ticket
-                </code>{" "}
-                command. Get real-time updates, communicate with engineers, and
-                resolve issues — all inside Slack.
-              </p>
-              <div className="rounded-lg bg-muted/50 p-4">
-                <p className="text-xs font-medium text-foreground mb-1">
-                  How to join
+        <section
+          id="support-channels"
+          className="scroll-mt-24 bg-lime-50 py-20 sm:py-24"
+        >
+          <div className="mx-auto max-w-7xl px-6 lg:px-8">
+            <div className="grid gap-6 lg:grid-cols-2">
+              <article className="rounded-3xl border border-lime-200 bg-white p-8 shadow-sm">
+                <MessageSquareText
+                  className="h-6 w-6 text-primary"
+                  aria-hidden="true"
+                />
+                <h2 className="mt-6 text-2xl font-semibold text-slate-950">
+                  Use your Slack Connect channel
+                </h2>
+                <p className="mt-4 text-base leading-7 text-slate-600">
+                  Run <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-sm text-slate-900">/ticket</code>{" "}
+                  in your site channel to create a structured request without
+                  leaving Slack. Contact your DropletAI Account Manager if your
+                  site channel is not connected yet.
                 </p>
-                <p className="text-xs text-muted-foreground">
-                  Contact your DropletAI Account Manager to set up a dedicated
-                  Slack Connect channel between our organizations.
-                </p>
-              </div>
-            </div>
-
-            {/* Site Code */}
-            <div className="rounded-2xl border border-border p-8">
-              <div className="h-10 w-10 rounded-lg bg-amber-50 flex items-center justify-center mb-4">
-                <svg className="h-5 w-5 text-amber-600" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1 1 15 0Z" />
-                </svg>
-              </div>
-              <h3 className="text-lg font-semibold text-foreground mb-3">
-                Finding Your Site Code
-              </h3>
-              <p className="text-sm text-muted-foreground leading-relaxed mb-4">
-                Every automation deployment is assigned a unique Site Code (e.g.,{" "}
-                <code className="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">
-                  XYZ-ABC-001
-                </code>
-                ). This code is required to submit a ticket so our engineers know
-                exactly which facility needs support.
-              </p>
-              <div className="rounded-lg bg-muted/50 p-4">
-                <p className="text-xs font-medium text-foreground mb-1">
-                  Don&apos;t know your Site Code?
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Ask your Account Manager or email{" "}
+              </article>
+              <article className="rounded-3xl border border-lime-200 bg-white p-8 shadow-sm">
+                <FileUp
+                  className="h-6 w-6 text-primary"
+                  aria-hidden="true"
+                />
+                <h2 className="mt-6 text-2xl font-semibold text-slate-950">
+                  Submit from the web—account optional
+                </h2>
+                <p className="mt-4 text-base leading-7 text-slate-600">
+                  Use your deployment&apos;s site code to submit from the web.
+                  If you do not know it, ask your Account Manager or email{" "}
                   <a
                     href="mailto:support@dropletai.services"
-                    className="text-primary hover:underline"
+                    className="font-semibold text-primary hover:underline"
                   >
                     support@dropletai.services
                   </a>
+                  .
                 </p>
+              </article>
+            </div>
+
+            <div className="mt-12 flex flex-col items-start justify-between gap-6 rounded-3xl bg-primary p-8 text-white sm:p-10 lg:flex-row lg:items-center">
+              <div>
+                <p className="text-sm font-semibold uppercase tracking-[0.16em] text-lime-100">
+                  Ready when you are
+                </p>
+                <h2 className="mt-3 text-3xl font-semibold tracking-tight">
+                  Start with the site. We&apos;ll keep the work connected.
+                </h2>
               </div>
+              <Link
+                href="/submit"
+                className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-white px-5 py-3.5 text-sm font-bold text-primary transition hover:bg-lime-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+              >
+                Submit a ticket
+                <ArrowRight className="h-4 w-4" aria-hidden="true" />
+              </Link>
             </div>
           </div>
-        </div>
+        </section>
       </main>
 
-      {/* Footer */}
-      <footer className="border-t border-border">
-        <div className="mx-auto max-w-7xl px-6 py-8 text-center text-sm text-muted-foreground">
-          © {new Date().getFullYear()} DropletAI Services. All rights reserved.
-        </div>
-      </footer>
+      <PublicSiteFooter />
     </div>
   );
 }

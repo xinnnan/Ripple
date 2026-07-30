@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { WebClient } from "@slack/web-api";
 import { buildTicketFormModal } from "@/lib/slack/blocks/ticket-form";
-import { verifySlackSignature } from "@/lib/slack/verify";
+import {
+  getSlackSignatureFailureHttpStatus,
+  verifySlackSignature,
+} from "@/lib/slack/verify";
+import { isSlackBotTokenConfigured } from "@/lib/slack/config";
 
 export async function POST(request: NextRequest) {
   try {
@@ -17,15 +21,23 @@ export async function POST(request: NextRequest) {
       process.env.SLACK_SIGNING_SECRET ?? null
     );
     if (!sigCheck.ok) {
+      const status = getSlackSignatureFailureHttpStatus(sigCheck) ?? 401;
       console.warn(
         `[slack/command/ticket] signature rejected: ${sigCheck.reason}`
       );
       return NextResponse.json(
         {
           response_type: "ephemeral",
-          text: "❌ Signature verification failed.",
+          code:
+            status === 503
+              ? "SLACK_CONFIGURATION_ERROR"
+              : "SLACK_SIGNATURE_INVALID",
+          text:
+            status === 503
+              ? "❌ Slack integration is not configured."
+              : "❌ Signature verification failed.",
         },
-        { status: 401 }
+        { status }
       );
     }
 
@@ -41,14 +53,15 @@ export async function POST(request: NextRequest) {
       `/ticket command from user ${user_id} in channel ${channel_name} (${channel_id})`
     );
 
-    if (!process.env.SLACK_BOT_TOKEN) {
-      console.error("Missing SLACK_BOT_TOKEN");
+    if (!isSlackBotTokenConfigured(process.env.SLACK_BOT_TOKEN)) {
+      console.error("Slack bot token is missing or invalid");
       return NextResponse.json(
         {
           response_type: "ephemeral",
+          code: "SLACK_CONFIGURATION_ERROR",
           text: "❌ Server configuration error. Please contact support.",
         },
-        { status: 500 }
+        { status: 503 }
       );
     }
 

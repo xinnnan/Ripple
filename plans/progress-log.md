@@ -7,14 +7,1175 @@ meaningful change and before ending a work session. Newest entries go first.
 
 - **Branch:** `codex/prd-v1-1-gap-closure`
 - **Active phase:** Phase 0 — Containment and reproducible baseline
-- **Active work item:** P0-I credentialed role/tenant browser and API matrix
-- **Last verified implementation commit:** `b71b3d7` (`fix: correct SLA milestone persistence`)
-- **Uncommitted work:** none expected; verify with `git status` before resuming
-- **Exact next step:** define environment-safe credential fixtures for admin,
-  engineer, customer manager, two customer tenants, inactive user, and archived
-  site; then commit positive/negative browser + API probes that skip with an
-  explicit reason when the credentialed test environment is unavailable
+- **Active work item:** deploy/probe INT-007 migration 033, then move ticket
+  creation delivery and remaining best-effort audit domains onto atomic seams
+- **Last verified implementation commit:** `a6ccd33` (`feat: add durable ticket notification outbox`)
+- **Uncommitted work:** documentation checkpoint only; verify with `git status`
+  before resuming
+- **Deployment gate:** migrations 001–032 are user-confirmed applied;
+  migration 033 and production `CRON_SECRET` are pending. Protected positive
+  business probes for migrations 028–033 still require staging fixtures
+- **External validation gate:** populate the gitignored credential fixture with six
+  dedicated staging accounts, two tenants, a decommissioned site/ticket, and
+  real internal artifact IDs; then run
+  `RIPPLE_E2E_REQUIRE_CREDENTIALS=1 npm run test:e2e:credentialed`
+- **Hosted CI activation:** require the `Quality gates` check in branch
+  protection; create a reviewer-protected `staging` environment with the
+  `RIPPLE_E2E_FIXTURES_JSON` secret before manually enabling the credentialed
+  matrix
+- **Runtime verification debt:** when staging credentials become available,
+  test request creation/fulfillment, field-service create/update, and team
+  access positive/negative cases, including cross-site tickets, inactive
+  parts, foreign items, over-fulfillment, invalid/reversed dates, invalid
+  assignees, assignment-replacement rollback, cross-tenant team targets,
+  retained membership roles, and explicit access clearing
+- **Support UX verification:** public pages and the real admin shell were
+  reviewed at 1440×1000 and 390×844. A short-lived admin test identity was
+  created for read-only protected-page visits and fully deleted afterward.
+  Password-based login passed; recovery-email delivery and one-time link
+  consumption still require a dedicated staging mailbox.
+- **Exact next local step:** after the user applies migration 033, verify the
+  table/trigger/RPC surface and fail-closed worker authorization without
+  exposing secrets; then migrate ticket-create Slack/email effects onto the
+  outbox and continue the best-effort audit inventory
 - **Primary plan:** [`plans/prd-v1.1-gap-closure-plan.md`](./prd-v1.1-gap-closure-plan.md)
+
+## Session record — 2026-07-30 (P0-U / INT-007 durable ticket notifications)
+
+### Objective
+
+Replace post-commit-only ticket update notifications with the first reusable
+transactional outbox, including concurrency-safe claims, retry, idempotency,
+dead-letter evidence, and a protected recovery worker.
+
+### Audit findings
+
+- Ticket patch and comment commands already commit business state,
+  `ticket_events`, and `audit_logs` atomically through migration 026.
+- Web and signed Slack ticket updates still invoked external delivery only
+  after commit. A process crash or provider outage could permanently lose the
+  Slack/email effect even though the ticket mutation succeeded.
+- Ticket creation still uses separate ticket/event writes plus direct Slack
+  master posting and confirmation email. That path remains the next outbox
+  migration slice.
+- Several customer/site/user/inventory admin routes still call the explicitly
+  best-effort `logAudit()` / `logDiff()` helpers after their business write.
+  Those domains remain INT-007 audit work.
+
+### Changes completed
+
+- Added migration `033_ticket_notification_outbox.sql`:
+  - protected `integration_outbox` table with unique idempotency keys,
+    attempt bounds, availability timestamps, delivery evidence, and retained
+    dead-letter state;
+  - `AFTER UPDATE` ticket trigger that transactionally enqueues one Slack
+    master sync plus independent resolution Slack/email effects;
+  - bounded `FOR UPDATE SKIP LOCKED` claims with five-minute leases;
+  - stale-lease recovery, exponential retry from 30 seconds to one hour, and
+    terminal dead-letter behavior after five attempts;
+  - lock-token-guarded delivery/failure acknowledgements restricted to
+    `service_role`;
+  - Slack delivery-event identity stored on `slack_messages`.
+- Replaced the direct shared notifier with `tickets/outbox.ts`. Web and Slack
+  use the same immediate best-effort drain, but failed work remains durable
+  for later recovery rather than disappearing.
+- Slack master updates remain naturally repeatable. Resolution replies record
+  the outbox event id and attach Slack metadata so ordinary retries
+  deduplicate after the first local record.
+- Resolution email passes the stable event id through Resend's
+  `Idempotency-Key`.
+- Added a constant-time, fail-closed `CRON_SECRET` check and
+  `/api/internal/outbox/dispatch`. The Vercel recovery schedule is daily to
+  stay compatible with all plans; production can shorten it when the plan
+  supports higher frequency.
+- Configuration readiness now includes the outbox worker without exposing the
+  secret value.
+- Added five net-new unit/contract checks and one HTTP worker-configuration
+  check, bringing the suite to 251 tests and the production smoke to 22 checks.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| Focused outbox/readiness/cron checks | Passed; 27 tests |
+| `npm ci` | Passed; 533 packages installed, 0 vulnerabilities |
+| `npm test` | Passed; 37 files, 251 tests |
+| `npm run lint` | Passed; 0 warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build |
+| `npm run test:e2e` | Passed; 22 HTTP checks, credentialed matrix skipped explicitly because the secret fixture is unset |
+| `npm audit` | Passed; 0 vulnerabilities |
+| `git diff --check` | Passed |
+| Immediate pre-commit E2E rerun | Passed before `a6ccd33` |
+
+### Commit
+
+- `a6ccd33` — `feat: add durable ticket notification outbox`
+
+### Deployment gates and limitations
+
+- Apply migration 033 before deploying the implementation commit.
+- Set a long random `CRON_SECRET` in the production Vercel environment.
+  Readiness intentionally remains `503/not_ready` until it is configured.
+- The committed cron is a daily recovery sweep. Request-path dispatch is
+  immediate; use a supported 1–5 minute schedule or external scheduler when
+  operational requirements and the Vercel plan permit.
+- Delivery is at-least-once. Resend has provider idempotency and Slack retries
+  deduplicate after the local delivery record, but a process crash between a
+  successful Slack post and that record remains a narrow duplicate window.
+- Ticket creation confirmation/master posting and remaining best-effort admin
+  audit writes are not yet on this outbox.
+
+### Next
+
+1. Apply and safely verify migration 033 plus worker authorization/readiness.
+2. Move ticket creation, creation event/audit, Slack master post, and
+   confirmation email onto one atomic create/outbox seam.
+3. Convert the remaining best-effort audit domains to transactional commands.
+
+## Session record — 2026-07-30 (P0-T / INT-011 notification parity)
+
+### Objective
+
+Confirm migration 032 without committed writes and make current web and Slack
+ticket mutations deliver the same resolution notifications.
+
+### Migration 032 deployment verification
+
+- The user confirmed migration 032 was applied.
+- `ticket_status_transition_allowed('new', 'assigned')` returned `true`;
+  `ticket_status_transition_allowed('new', 'resolved')` returned `false`.
+- Three deliberately rejected `apply_ticket_patch_with_sla` probes exercised
+  an invalid jump, missing active-work owner, and empty resolution summary.
+  Every probe returned SQLSTATE `23514`.
+- Status, owner, summary, and `updated_at` remained unchanged after every
+  rejected call, confirming full rollback.
+- Migrations 001–032 are therefore confirmed applied in order. A disposable
+  positive transition/restore still requires protected staging fixtures.
+
+### Confirmed parity defect
+
+- Web resolution refreshed the Slack master card and attempted the resolution
+  email, but did not post a thread notice.
+- Slack resolution refreshed the card and posted the thread notice, but did
+  not attempt the submitter email.
+- Engineers therefore produced different customer-visible effects for the
+  same committed domain transition depending on ingress.
+
+### Changes completed
+
+- Added `notifyTicketMutation()` as the shared post-commit notification policy
+  for web and signed Slack ticket mutations.
+- Every supported mutation refreshes the Slack master card through the same
+  dispatcher.
+- A new resolution now posts one plain-text Slack thread reply and attempts
+  one submitter email from either ingress.
+- Resolved-to-resolved summary edits update the master card without duplicating
+  resolution notices.
+- Resolution thread replies set `mrkdwn: false`, preventing summaries from
+  creating mentions or Slack formatting side effects.
+- Refactored Slack target/client resolution so master updates and thread
+  replies share the same recorded-message lookup behavior.
+- Delivery failures remain non-fatal after the ticket transaction and return
+  structured results; durable retry/idempotency remains INT-007.
+- Added six notification parity, duplicate-suppression, missing-email,
+  failure-containment, and call-site contract checks, bringing the suite from
+  240 to 246 tests.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| Migration 032 truth-table probe | Passed; expected true/false decisions |
+| Migration 032 rollback probes | Passed; three `23514`, all target fields unchanged |
+| Focused notification checks | Passed; 6 tests |
+| `npm ci` | Passed; 533 packages installed, 0 vulnerabilities |
+| `npm test` | Passed; 36 files, 246 tests |
+| `npm run lint` | Passed; 0 warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build |
+| `npm run test:e2e` | Passed; 21 HTTP checks, credentialed matrix skipped explicitly because the secret fixture is unset |
+| `npm audit` | Passed; 0 vulnerabilities |
+| `git diff --check` | Passed |
+| Immediate pre-commit E2E rerun | Passed before `4892dcb` |
+
+### Commit
+
+- `4892dcb` — `fix: unify ticket resolution notifications`
+
+### External gates and limitation
+
+- No new migration was introduced.
+- The Resend sender domain remains unverified, so real email delivery still
+  returns the existing structured `send_failed` result until configured.
+- Real Slack thread delivery requires the configured bot and a recorded master
+  message in staging.
+- In-process best effort is parity, not durability. Transactional outbox,
+  idempotent workers, retries, and dead-letter handling remain INT-007.
+
+### Next
+
+1. Inventory remaining best-effort audit and external-delivery writes.
+2. Establish the first transactional outbox schema/command seam.
+3. Add idempotent dispatch, retry/backoff, and dead-letter contracts before
+   moving more notifications onto the worker.
+
+## Session record — 2026-07-30 (P0-S / INT-001 guarded ticket transitions)
+
+### Objective
+
+Replace arbitrary ticket status writes with a documented compatibility state
+machine enforced below web and Slack, while preserving a deployable path for
+legacy inconsistent records.
+
+### Live read-only audit
+
+- Queried 413 tickets through the service-role client without mutations:
+  331 New, 3 Assigned, 22 In Progress, 3 Waiting Customer, and 54 Resolved.
+- Found 25 legacy Assigned/In Progress tickets without owners and three
+  Resolved tickets without customer-visible summaries.
+- Aggregated 82 historical `status_changed` events. Fifty were
+  `new → in_progress`, 31 were `in_progress → resolved`, and one was
+  `new → resolved`.
+- The direct New shortcuts were historical behavior, not PRD-compliant
+  transitions; web and Slack now require assignment before active work.
+
+### Changes completed
+
+- Added a typed eight-state transition table mapping the richer PRD v1.1 model
+  onto the statuses that exist in the compatibility schema.
+- Added migration `032_guard_ticket_status_transitions.sql` with an immutable
+  SQL truth table and a `BEFORE UPDATE` trigger that rejects illegal jumps.
+- Added entry invariants: Assigned/In Progress requires an owner; entering or
+  clearing Resolved requires a non-empty customer-visible summary.
+- Kept the migration non-retroactive. Historical inconsistent rows do not
+  block application or unrelated edits, but must satisfy the invariant on the
+  next guarded state/field change.
+- Web status controls now show only the current state and legal next states;
+  Resolve remains a dedicated summary-capturing path, and failed guards render
+  an accessible inline error.
+- Slack master cards render only legal lifecycle shortcuts. Stale Slack cards
+  still fail safely at the database guard and return an ephemeral error.
+- Slack Assign to Me preserves an active/waiting state and moves only New or
+  Reopened tickets into Assigned.
+- Database SQLSTATE `23514` is mapped to a safe domain error and HTTP 409 or
+  Slack modal/action feedback.
+- The API now accepts explicit `owner_id: null`, while the state invariant
+  prevents unassigning active Assigned/In Progress work.
+- Added 14 exhaustive truth-table, migration-parity, transport, wrapper, and
+  Slack-card checks, bringing the suite from 226 to 240 tests.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| Focused transition regression checks | Passed; 4 files, 17 tests |
+| Live current-state audit | Passed; 413 tickets summarized without writes |
+| Live transition-history audit | Passed; 82 events summarized without writes |
+| `npm ci` | Passed; 533 packages installed, 0 vulnerabilities |
+| `npm test` | Passed; 35 files, 240 tests |
+| `npm run lint` | Passed; 0 warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build |
+| `npm run test:e2e` | Passed; 21 HTTP checks, credentialed matrix skipped explicitly because the secret fixture is unset |
+| `npm audit` | Passed; 0 vulnerabilities |
+| `git diff --check` | Passed |
+| Immediate pre-commit E2E rerun | Passed before `b344d18` |
+
+### Commit
+
+- `b344d18` — `fix: guard ticket status transitions`
+
+### Migration and rollback
+
+- Apply `supabase/migrations/032_guard_ticket_status_transitions.sql` after 031
+  and before deploying `b344d18`.
+- Safe probes should cover at least one allowed same-row transition, one
+  rejected jump (`23514`), ownerless Assigned/In Progress rejection, and empty
+  Resolved-summary rejection. Positive probes need a disposable staging ticket
+  and active internal actor.
+- Application rollback can revert `b344d18`. Database rollback requires a
+  reviewed migration that drops trigger `enforce_ticket_status_transition` and
+  its two functions; do not manually edit migration 032 after application.
+
+### External gates
+
+- Migration 032 is not yet applied.
+- The credentialed role/tenant matrix and protected transition/business probes
+  still require the gitignored six-account staging fixture.
+- The richer PRD states and reopen SLA-cycle ledger are not introduced by this
+  compatibility checkpoint.
+
+### Next
+
+1. Apply migration 032 and run its safe presence/validation probes.
+2. With a disposable staging ticket, run allowed/rejected transition and
+   owner/summary invariant probes.
+3. Close remaining Slack notification parity or continue INT-007's atomic
+   audit/outbox work.
+
+## Session record — 2026-07-30 (P0-R / INT-010 Slack Ripple Assist)
+
+### Objective
+
+Confirm migration 031, reconcile stale INT-008/INT-009 records against git
+history, and make Slack Ripple Assist invoke the authorized AI domain path
+without relying on a browser session cookie.
+
+### Deployment confirmation received
+
+- The user confirmed migration 031 was applied.
+- A deliberately invalid, non-writing service-role call to
+  `apply_team_member_patch` returned the expected SQLSTATE `22023`, confirming
+  the command is live without changing profile or membership data.
+- Migrations 001–031 are therefore confirmed applied in order. Protected
+  positive/rollback team-access probes still require staging fixtures.
+
+### Historical reconciliation
+
+- Git history and blame confirmed INT-008 and INT-009 were already closed in
+  commit `9083ece` on 2026-07-28.
+- The site detail page consumes the correct inventory result, `/sites` emits
+  `?site=...`, and the ticket filter parser/tests use the same canonical key.
+- The active plan had not carried those closures forward; its register now
+  records the original implementation commit.
+
+### Changes completed
+
+- Added `requestAiSuggestion()` as the shared application service for the web
+  route and signed Slack submission handler.
+- Moved the 20-per-minute paid-provider guard below the transport boundary so
+  Slack cannot bypass the web route's cost protection.
+- Removed Slack's server-to-server fetch of cookie-authenticated
+  `/api/ai/suggest`; the mapped active internal user's ID is passed directly to
+  the shared service for suggestion attribution.
+- Preserved channel/message context in Ripple Assist modal metadata so the
+  generated result has a valid ephemeral delivery destination.
+- Added explicit errors for unsupported tasks, missing tickets, and missing
+  channel context, plus best-effort failure messaging.
+- Added four service and Slack contract checks, bringing the suite from 222 to
+  226 tests.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| Focused AI/Slack regression checks | Passed; 2 files, 4 tests |
+| `npm ci` | Passed; 533 packages installed, 0 vulnerabilities |
+| `npm test` | Passed; 32 files, 226 tests |
+| `npm run lint` | Passed; 0 warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build |
+| `npm run test:e2e` | Passed; 21 HTTP checks, credentialed matrix skipped explicitly because the secret fixture is unset |
+| `npm audit` | Passed; 0 vulnerabilities |
+| `git diff --check` | Passed |
+| Immediate pre-commit E2E rerun | Passed before `3f7d296` |
+
+### Commit
+
+- `3f7d296` — `fix: route Slack assist through domain service`
+
+### External gates
+
+- The live MiniMax key still returns the known 401 and therefore exercises the
+  clearly labelled mock fallback until provider credentials are corrected.
+- Real Slack modal generation/delivery needs a signed staging interaction with
+  a mapped active internal user and configured bot token.
+- Protected migration 028–031 business probes and the six-account tenant
+  matrix still require the gitignored staging fixture.
+
+### Next
+
+1. Close INT-001 with a single guarded ticket-transition truth table enforced
+   below both web and Slack paths.
+2. Run the protected migration 028–031 transaction probes when staging
+   fixtures become available.
+3. Activate hosted branch protection and the reviewer-protected staging job
+   after push.
+
+## Session record — 2026-07-30 (P0-Q / INT-006 team access)
+
+### Objective
+
+Prevent team-member profile updates from partially committing while the
+complete site-access set is deleted or incompletely rebuilt, and preserve the
+attributes of memberships that remain selected.
+
+### Deployment confirmation received
+
+- The user confirmed migration 030 was applied.
+- Safe service-role calls verified both
+  `create_field_service_order_atomic` and
+  `apply_field_service_order_patch` are live.
+- Deliberately invalid, non-writing inputs returned the expected SQLSTATEs
+  `42501` and `22023`; no field-service record was created or changed.
+- Migrations 001–030 are therefore confirmed applied in order. Protected
+  positive/rollback field-service probes still require staging fixtures.
+
+### Confirmed defects
+
+- `PATCH /api/team/[id]` updated `users.full_name`/`status` before changing
+  memberships, so a later child-write failure left profile and access state
+  inconsistent.
+- The route deleted every `site_members` row and ignored the delete result.
+- Replacement inserts were also ignored; any invalid/conflicting row could
+  leave the target with no site access while the API returned success.
+- Every retained membership was recreated with role `member`, silently
+  downgrading existing `owner`, `manager`, or `viewer` assignments.
+- Tenant/site validation and audit logging happened in separate best-effort
+  calls outside the business transaction.
+- The edit page loaded legacy archived memberships into hidden selected IDs,
+  even though archived sites were not available as choices.
+
+### Changes
+
+- Added migration `031_atomic_team_site_assignment.sql` with the
+  service-role-only `apply_team_member_patch` command.
+- The command independently verifies an active customer manager in an
+  active/trial tenant, row-locks a same-tenant `customer` target, and validates
+  every desired site as active and owned by that tenant.
+- Profile/status changes, the membership set diff, and per-field/site-set audit
+  rows now commit or roll back together.
+- Retained membership rows are untouched, so their identity, creation time,
+  and role survive. Only deselected links are deleted and only newly selected
+  links are inserted as `member`.
+- `site_ids = NULL` means “leave access unchanged”; `site_ids = []` means
+  “explicitly remove all site access.”
+- Duplicate/malformed/oversized site sets are rejected at both HTTP and
+  database boundaries.
+- The edit page excludes archived legacy memberships from the desired active
+  set so a save removes stale access instead of submitting hidden invalid IDs.
+- Added 12 contract, wrapper, and migration-integrity checks, bringing the
+  suite to 222 tests.
+
+### Verification before implementation commit
+
+| Command | Result |
+|---|---|
+| `npm ci` | Passed; 533 packages installed and 534 audited |
+| `npm test` | Passed; 30 files, 222 tests |
+| `npm run lint` | Passed via ESLint CLI; 0 warnings/errors |
+| `npm run build` | Passed on Next.js 15.5.22 |
+| `npm run test:e2e` | Passed 21 production HTTP checks; credentialed matrix explicitly skipped because the secret fixture is unavailable |
+| `npm audit` | Passed; 0 vulnerabilities |
+| `git diff --check` | Passed |
+| Staged secret-pattern scan | Passed |
+
+The implementation was committed only after the exact full gate and a second
+`npm run test:e2e` in the same command immediately before commit.
+
+### Decisions and rollback
+
+- Migration 031 must be applied before deploying `c0c2354`; the team update
+  route now depends on its RPC.
+- The set-diff deliberately preserves retained membership roles rather than
+  normalizing them to `member`.
+- Only active sites may appear in a desired set. Saving the form therefore
+  removes any hidden legacy membership to an archived site.
+- Reverting `c0c2354` restores the old non-atomic route. Migration 031 is
+  additive and may remain installed during an application rollback; do not
+  drop it while any deployed instance calls the RPC.
+
+### Commit
+
+- Hash: `c0c2354`
+- Message: `fix: update team site access atomically`
+
+### Exact next step
+
+1. Apply migration `031_atomic_team_site_assignment.sql` in order.
+2. Run a safe invalid-input RPC presence probe, then use protected fixtures to
+   verify same-tenant updates, cross-tenant denial, manager-target denial,
+   retained role preservation, explicit clear, and failed-set rollback.
+3. Run the outstanding migrations 028–030 protected business probes and the
+   six-account role/tenant matrix when its secret fixture is provisioned.
+4. Continue local integrity work by fixing INT-008 site-inventory result
+   wiring and INT-009’s mismatched ticket site-query parameter.
+
+## Session record — 2026-07-29 (P0-P / INT-004 field service)
+
+### Objective
+
+Finish INT-004 by ensuring a field-service order cannot commit independently
+of its complete engineer assignment set or required audit evidence, and align
+browser/API/database handling of PostgreSQL `DATE` columns.
+
+### Deployment confirmation received
+
+- The user confirmed migration 029 was applied.
+- A safe service-role call to `create_spare_part_request_atomic` with
+  deliberately invalid, non-writing input returned the command's expected
+  SQLSTATE `22023`.
+- This verifies the live RPC is present without creating request data.
+- Migrations 001–029 are therefore confirmed applied in order. Protected
+  positive/negative request-creation probes still require staging fixtures.
+
+### Confirmed defects
+
+- `POST /api/field-service-orders` minted the number, inserted the order,
+  inserted engineer assignments, and wrote audit evidence in separate calls.
+  Assignment failures were logged and ignored, leaving incomplete orders.
+- `PATCH /api/field-service-orders/[id]` updated the header, deleted every
+  assignment, inserted replacements, and wrote audit evidence separately.
+  Delete/insert errors were ignored, so an update could silently lose all
+  assigned engineers.
+- Both routes required Zod `datetime()` strings while the native date inputs
+  correctly submitted `YYYY-MM-DD`, causing valid schedules to fail.
+- Field-service pages parsed database DATE strings through JavaScript UTC
+  instants, allowing a U.S. timezone to display the previous calendar day.
+- The completion action sent `actual_hours` as a prompt string even though the
+  API requires a number; failures had no visible error.
+- Hour fields map to `NUMERIC(5,1)` but the API did not enforce its maximum or
+  single-decimal precision.
+
+### Changes
+
+- Added migration `030_atomic_field_service_order_commands.sql` with
+  service-role-only `create_field_service_order_atomic` and
+  `apply_field_service_order_patch` commands.
+- Creation now verifies an active internal actor, active site/customer,
+  same-site optional ticket, supported fields, DATE/hour bounds, unique
+  assignments, and active engineer identities before allocating
+  `next_order_no()` and committing the order, assignments, and audit row.
+- Update row-locks the order, validates the final date range and every supplied
+  field, distinguishes unchanged assignments (`null`) from an explicit clear
+  (`[]`), compares normalized assignment sets, and commits header changes,
+  replacement, completion attribution, and per-field/assignment audit rows
+  together.
+- Added `NOT VALID` schedule/hour checks so all new or changed rows are
+  protected without claiming historical data has already been audited.
+- Moved HTTP contracts and RPC wrappers into `src/lib/field-service/`; route
+  hydration happens after commit and returns the durable ID with a warning if
+  the read fails, preventing unsafe client retries.
+- DATE inputs now require real calendar values in exact `YYYY-MM-DD` form,
+  reject reversed ranges, and render with `formatDateOnly()` without timezone
+  conversion.
+- Completion hours are numeric, bounded, single-decimal, and failures render
+  visibly in the action panel.
+- Added 22 focused DATE, mutation-wrapper, migration-integrity, assignment,
+  and formatting regression checks, bringing the suite to 210 tests.
+
+### Verification before implementation commit
+
+| Command | Result |
+|---|---|
+| `npm ci` | Passed; 533 packages installed and 534 audited |
+| `npm test` | Passed; 27 files, 210 tests |
+| `npm run lint` | Passed via ESLint CLI; 0 warnings/errors |
+| `npm run build` | Passed on Next.js 15.5.22 |
+| `npm run test:e2e` | Passed 21 production HTTP checks; credentialed matrix explicitly skipped because the secret fixture is unavailable |
+| `npm audit` | Passed; 0 vulnerabilities |
+| `git diff --check` | Passed |
+| Staged secret-pattern scan | Passed |
+
+The implementation was committed only after the exact full gate and a second
+`npm run test:e2e` in the same command immediately before commit.
+
+### Decisions and rollback
+
+- Migration 030 must be applied before deploying `2557760`; both field-service
+  write routes now depend on its RPCs.
+- `p_engineers = NULL` means “do not change assignments,” while an empty JSON
+  array means “replace with no assignments.” This avoids accidental clears.
+- Existing orders at archived sites may still be completed or cancelled; the
+  active tenant lifecycle check applies to new order creation.
+- Migration constraints are `NOT VALID`: they enforce new/changed rows now,
+  while legacy validation remains a separate audited operation.
+- Reverting `2557760` restores the old non-atomic routes. Migration 030 is
+  additive and may remain installed during an application rollback; do not
+  drop it while any deployed instance calls the RPCs.
+
+### Commit
+
+- Hash: `2557760`
+- Message: `fix: make field service writes atomic`
+
+### Exact next step
+
+1. Apply migration `030_atomic_field_service_order_commands.sql` in order.
+2. Run a safe invalid-input RPC presence probe, then use protected fixtures to
+   verify valid DATE creation, cross-site ticket rejection, inactive/duplicate
+   assignee rejection, and failed assignment replacement rolls back the header
+   and preserves the prior assignment set.
+3. Run the outstanding migrations 028–029 request probes and the six-account
+   role/tenant matrix when its secret fixture is provisioned.
+4. Continue local integrity work with INT-006: replace team site-membership
+   delete-all/insert with one atomic set-diff command.
+
+## Session record — 2026-07-29 (P0-O / support experience)
+
+### Objective
+
+Review and improve the complete customer entry experience from the public home
+page through sign-in, account recovery, ticket intake, and the responsive
+authenticated shell, using the supplied DropletAI automation imagery and one
+consistent Inter type system.
+
+### Confirmed defects
+
+- Sign-in had no password-recovery path.
+- The Supabase authorization-code callback wrote exchanged session cookies to
+  a redirect response that was discarded, then returned a fresh response.
+- The callback trusted an unvalidated `next` query value.
+- Sign-out depended on an absolute configured origin rather than a relative
+  same-origin redirect.
+- The public home page did not explain support intake, severity, evidence, or
+  Slack/web channel choices.
+- Public attachment uploads were awaited only as fire-and-forget work, so a
+  ticket could show success while attachment failures remained invisible.
+- Public form labels were not explicitly associated with their controls.
+- The authenticated navigation was a fixed desktop sidebar with no mobile
+  drawer.
+- Real mobile data exposed horizontal overflow in dashboard ticket rows and in
+  the ticket filters/table.
+
+### Changes
+
+- Rebuilt the public home page around the supplied AMR-fleet image with
+  structured “how it works,” evidence checklist, severity, capabilities, and
+  support-channel sections.
+- Added shared public navigation/footer and self-hosted Inter Variable.
+- Rebuilt sign-in with accessible labels, password visibility, generic auth
+  errors, safe post-login routing, and a prominent recovery link.
+- Added non-enumerating `/forgot-password` and session-gated
+  `/reset-password` flows with a 12-character minimum.
+- Corrected the Supabase SSR callback so exchanged cookies are attached to the
+  response that is actually returned, and allow-listed same-origin redirect
+  paths.
+- Made logout return a standards-based relative HTTP 303 redirect.
+- Added a responsive authenticated shell with role-aware navigation, an
+  accessible mobile dialog/drawer, Escape handling, focus restoration, and
+  scroll locking.
+- Improved public ticket intake guidance, autocomplete/labels, live site-code
+  feedback, success tracking, and awaited attachment results with visible
+  partial-failure warnings.
+- Fixed mobile dashboard rows and ticket filters; dense ticket tables now
+  scroll inside their own container instead of widening the document.
+- Raised profile password validation to the same 12-character minimum.
+- Added auth, recovery, UI, accessibility, redirect, and production HTTP
+  regression contracts.
+
+### Browser and live-environment verification
+
+- Reviewed `/`, `/login`, `/forgot-password`, `/reset-password`, and `/submit`
+  at desktop and mobile viewport sizes; all measured without page-level
+  horizontal overflow.
+- Signed in with a short-lived test-only admin account and visited the real
+  dashboard, ticket list/detail, customers/sites/users, spare parts, part
+  requests, field service, SLA, audit, settings, and profile pages.
+- The temporary auth identity and `public.users` profile were deleted after the
+  read-only review; verification found zero remaining rows.
+- `GET /api/health/ready` returned HTTP 200 with database and Slack both ready.
+- A safe RPC-presence probe still reports migration 029 missing; it remains a
+  deployment dependency.
+- Recovery-email dispatch and final password mutation were intentionally not
+  performed against a real mailbox/account. The protected credential fixture
+  is still absent, so the six-account matrix prints its explicit local skip.
+
+### Verification before implementation commit
+
+| Command | Result |
+|---|---|
+| `npm ci` | Passed; 533 packages installed and 534 audited |
+| `npm test` | Passed; 23 files, 188 tests |
+| `npm run lint` | Passed via ESLint CLI; 0 warnings/errors |
+| `npm run build` | Passed on Next.js 15.5.22 |
+| `npm run test:e2e` | Passed 21 production HTTP checks; credentialed matrix explicitly skipped because the secret fixture is unavailable |
+| `npm audit` | Passed; 0 vulnerabilities |
+| `git diff --check` | Passed |
+| Staged secret-pattern scan | Passed |
+
+The implementation was committed only after the full gate and a second
+`npm run test:e2e` in the same command immediately before commit.
+
+### Decisions and rollback
+
+- The user-supplied image is stored as an optimized 460 KB JPEG; no generated
+  derivative service or external runtime dependency is required.
+- Password-recovery responses remain identical for known and unknown accounts.
+- The browser audit used only a disposable identity and read-only page visits;
+  it did not create or modify tickets, customers, sites, parts, or field work.
+- Rollback can revert `7cd876b` without a database migration. Keep the auth
+  callback cookie fix and safe redirects if selectively reverting visual work.
+
+### Commit
+
+- Hash: `7cd876b`
+- Message: `feat: redesign support experience`
+
+### Exact next step
+
+1. Apply migration `029_atomic_spare_part_request_creation.sql`.
+2. Provision the protected six-account fixture and a dedicated staging mailbox
+   to run the role/tenant matrix and complete recovery-link consumption.
+3. Continue INT-004 with an atomic field-service order/engineer-assignment
+   command and aligned PostgreSQL `DATE` input contracts.
+
+## Session record — 2026-07-29 (P0-N / INT-004 create path)
+
+### Objective
+
+Prevent a spare-part request header from committing without its items, move
+request-number allocation and total-cost calculation into the same database
+command, and close public access to number-minting RPCs.
+
+### Confirmed defects
+
+- `POST /api/spare-part-requests` inserted the request header first and then
+  inserted items in a separate call.
+- Item insert errors were logged and ignored, leaving a durable request that
+  could never be reconstructed safely from the failed client operation.
+- Request number generation and the audit row were also outside the business
+  transaction.
+- Migration 020 granted its three `SECURITY DEFINER` number functions to
+  `service_role` but did not revoke PostgreSQL's default `PUBLIC` execute
+  privilege. The two legacy part/field-service number RPCs were broad as well.
+
+### Changes
+
+- Added migration `029_atomic_spare_part_request_creation.sql` with
+  `create_spare_part_request_atomic`.
+- The command verifies and locks an active internal actor, active site/customer,
+  optional ticket at the same site, and each active catalog part.
+- It rejects unknown JSON fields, empty/oversized item sets, duplicate parts,
+  invalid quantities, long notes, negative/overflowing prices, and totals that
+  exceed the database column precision.
+- Request item prices are normalized to two decimal places and `total_cost` is
+  derived in the database; the header, all items, and the audit row commit or
+  roll back together.
+- Added a `NOT VALID` nonnegative/precision constraint for request-item prices.
+  It protects new and changed rows without claiming that historical rows were
+  scanned.
+- Revoked `PUBLIC`, `anon`, and `authenticated` execution from all five current
+  number-minting functions, explicitly granted `service_role`, and moved the
+  three `SECURITY DEFINER` sequence functions to an empty search path.
+- Replaced the route's direct writes with a typed RPC wrapper. Validation
+  failures map to generic client errors, database messages remain private, and
+  a failed post-commit hydration returns the durable request ID as success
+  instead of inviting a duplicate retry.
+- Made line items required and unique at the Zod boundary.
+- Added eight wrapper and migration/route contract tests plus a production
+  HTTP denial probe for unauthenticated request creation.
+
+### Industry guidance applied
+
+- One business operation has one transactional commit boundary; audit evidence
+  is part of that boundary rather than best-effort follow-up work.
+- Shared row locks preserve the actor, tenant lifecycle, ticket linkage, and
+  catalog state while the request is being created. Parts lock in stable UUID
+  order.
+- Security-definer functions use a safe search path, fully qualified objects,
+  independently verify attributed actors, and are executable only by the
+  server-side service role.
+- Sequence allocation is concurrency-safe. Rolled-back transactions may leave
+  harmless number gaps, but they cannot mint duplicate request numbers.
+
+### Verification before implementation commit
+
+| Command | Result |
+|---|---|
+| `npm ci` | Passed; 532 packages installed from the lockfile |
+| `npm test` | Passed; 20 files, 174 tests |
+| `npm run lint` | Passed via ESLint CLI; 0 warnings/errors |
+| `npm run build` | Passed on Next.js 15.5.22 |
+| `npm run test:e2e` | Passed 19 production HTTP checks; credentialed matrix explicitly skipped because the secret fixture is unavailable |
+| `npm audit` | Passed; 0 vulnerabilities |
+| `git diff --check` | Passed |
+| Staged secret-pattern scan | Passed |
+
+The implementation was committed only after the full gate and a second
+`npm run test:e2e` in the same command immediately before commit. No PostgreSQL
+server, Supabase CLI, runtime credentials, or credential fixture is available
+in this workspace, so migration execution and positive/negative RPC behavior
+are not claimed as tested.
+
+### Decisions and rollback
+
+- Migration 029 must be applied before deploying the route because the route
+  now calls its RPC.
+- The price constraint remains `NOT VALID` until historical item prices are
+  audited. Do not validate it based only on application tests.
+- If rollback is required, roll back the application route first. Keeping the
+  restricted number functions, constraint, and unused atomic command is safe;
+  do not restore the partial-success write path.
+
+### Commit
+
+- Hash: `64cee3d`
+- Message: `fix: create part requests atomically`
+
+### Exact next step
+
+1. Apply migration `029_atomic_spare_part_request_creation.sql` in order.
+2. With protected staging credentials, verify successful creation plus
+   rejection of a cross-site ticket, inactive part, duplicate part, and
+   overflowing total with no partial header/item/audit rows.
+3. Continue INT-004 with one atomic field-service order/engineer-assignment
+   command and align its `DATE` schemas with the UI's `YYYY-MM-DD` values.
+
+## Deployment confirmation — 2026-07-29 (migration 028)
+
+- The user confirmed
+  `028_atomic_spare_part_request_updates.sql` was applied on 2026-07-29.
+- Migrations 001–028 are therefore confirmed applied in order, and application
+  commit `1f49ecc` no longer has a migration-order deployment blocker.
+- Runtime RPC probes are not claimed: this workspace has no `.env.local`, no
+  Supabase URL/publishable/secret keys, and no credentialed staging fixture.
+- The exact positive/negative fulfillment probes remain part of the protected
+  staging validation debt alongside the six-account role/tenant matrix.
+
+## Session record — 2026-07-29 (P0-M / INT-005)
+
+### Objective
+
+Prevent a spare-part fulfillment request from updating an item owned by a
+different request, and remove the partial-commit/error-swallowing behavior from
+the request update path.
+
+### Confirmed defect
+
+- `PATCH /api/spare-part-requests/[id]` updated each submitted item with only
+  `.eq("id", item.id)`.
+- The URL request ID was not part of the item update predicate.
+- Item update errors were ignored, the request header could commit first, and
+  the response contained item values hydrated before the fulfillment writes.
+
+### Changes
+
+- Added migration `028_atomic_spare_part_request_updates.sql` with the
+  `apply_spare_part_request_patch` row-locked transaction.
+- The command independently verifies an active `admin`/`engineer` actor, locks
+  the parent request, locks supplied item rows in stable UUID order, and rejects
+  duplicates, foreign items, negative quantities, and fulfillment above the
+  ordered quantity.
+- Header changes, fulfillment changes, and per-field/per-item audit rows now
+  commit or roll back together.
+- Added a `NOT VALID` database check for
+  `0 <= fulfilled_quantity <= quantity`. It protects new/changed rows
+  immediately while honestly leaving historical validation for a later
+  data-audit migration.
+- Restricted the security-definer command to `service_role`, used an empty
+  search path with fully qualified objects, and wrapped create/revoke/grant in
+  one migration transaction.
+- Replaced direct route writes with a typed RPC wrapper and safe PostgreSQL
+  error-code mapping. The route hydrates after commit and returns the durable ID
+  as success if only the follow-up hydration query fails.
+- Added seven mutation/migration contract tests and a production HTTP denial
+  probe for unauthenticated spare-part request mutation.
+
+### Industry guidance applied
+
+- Parent-child containment is enforced in the database predicate, not inferred
+  from a previously fetched item.
+- `SELECT ... FOR UPDATE` serializes the parent and item rows; stable item lock
+  order limits deadlock risk for overlapping multi-item updates.
+- The security-definer function is transactionally permissioned, has no
+  untrusted search path, and re-verifies its attributed actor.
+- The non-blocking `NOT VALID` constraint does not scan or claim clean legacy
+  data but is enforced for subsequent inserts and updates.
+
+### Verification before implementation commit
+
+| Command | Result |
+|---|---|
+| `npm ci` | Passed; 532 packages installed from the lockfile |
+| `npm test` | Passed; 19 files, 166 tests |
+| `npm run lint` | Passed via ESLint CLI; 0 warnings/errors |
+| `npm run build` | Passed on Next.js 15.5.22 |
+| `npm run test:e2e` | Passed 18 production HTTP checks; credentialed matrix explicitly skipped because the secret fixture is unavailable |
+| `npm audit` | Passed; 0 vulnerabilities |
+| `git diff --check` | Passed |
+| Staged secret-pattern scan | Passed |
+
+The implementation was committed only after the full gate and a second
+`npm run test:e2e` in the same command immediately before commit. No PostgreSQL
+server, `psql`, Supabase CLI, or Docker runtime is connected in this workspace,
+so migration execution and positive RPC behavior are not claimed as tested.
+
+### Decisions and rollback
+
+- Migration 028 must precede the application commit because the route now calls
+  its RPC.
+- The constraint remains `NOT VALID` until existing rows are audited. Do not
+  mark it valid without first querying for negative or over-fulfilled history.
+- If rollback is required, roll back the application route first. Keeping the
+  database function and constraint is safe; do not restore the item-ID-only
+  update.
+
+### Commit
+
+- Hash: `1f49ecc`
+- Message: `fix: make part fulfillment updates atomic`
+
+### Exact next step
+
+- Migration 028 was subsequently confirmed applied. When staging credentials
+  are available, verify:
+  1. an owned item can update within its ordered quantity;
+  2. an item from another request is rejected with no header/item change;
+  3. an over-fulfilled quantity is rejected with no partial audit row.
+
+## Session record — 2026-07-29 (P0-L)
+
+### Objective
+
+Replace the deprecated Next.js lint wrapper and make the repository's complete
+quality policy executable in GitHub Actions without exposing staging
+credentials to ordinary pushes or pull requests.
+
+### Changes
+
+- Replaced `next lint` with `eslint . --max-warnings=0`.
+- Added explicit flat-config ignores for `.next`, `out`, `build`, `coverage`,
+  and generated `next-env.d.ts`; source rules remain unchanged.
+- Added `.github/workflows/ci.yml` with:
+  - pull-request and `main` push gates;
+  - read-only repository permissions and cancelled superseded runs;
+  - SHA-pinned official checkout/setup actions;
+  - Node 22 npm caching and `npm ci`;
+  - unit, lint, production build, production HTTP E2E, and dependency-audit
+    gates in the same order as the local implementation policy.
+- Added a separate manual credentialed-authorization job behind the GitHub
+  `staging` environment. It requires `RIPPLE_E2E_FIXTURES_JSON`, materializes
+  it with owner-only permissions, installs Chromium, forces
+  `RIPPLE_E2E_REQUIRE_CREDENTIALS=1`, and removes the fixture even on failure.
+- Added contract tests that prevent regression to `next lint`, unpinned action
+  references, incomplete/out-of-order quality commands, or an unprotected
+  credentialed job.
+
+### Industry guidance applied
+
+- GitHub Actions least privilege: workflow-level `contents: read`, no persisted
+  checkout credentials, and no secrets in the default pull-request job.
+- Supply-chain determinism: official actions are pinned to reviewed full
+  commit SHAs, while dependencies continue to install from `package-lock.json`.
+- Protected-environment separation: the real staging matrix is opt-in and
+  environment-gated; missing fixture material fails instead of skipping.
+- ESLint flat-config guidance: generated directories are global ignores so the
+  CLI lints project sources rather than compiled bundles.
+
+### Verification before implementation commit
+
+| Command | Result |
+|---|---|
+| `npm ci` | Passed; 532 packages installed from the lockfile |
+| `npm test` | Passed; 17 files, 159 tests |
+| `npm run lint` | Passed via ESLint CLI; 0 warnings/errors |
+| `npm run build` | Passed on Next.js 15.5.22 |
+| `npm run test:e2e` | Passed 17 production HTTP checks; credentialed matrix explicitly skipped because the secret fixture is unavailable |
+| `npm audit` | Passed; 0 vulnerabilities |
+| `git diff --check` | Passed |
+| Workflow YAML parse | Passed |
+| Staged secret-pattern scan | Passed |
+
+The implementation was committed only after the full gate and a second
+`npm run test:e2e` in the same command immediately before commit. The hosted
+workflow is committed but has not yet been pushed or observed on GitHub, and
+the credentialed matrix still has no protected fixture in this workspace.
+
+### Decisions and activation
+
+- Ordinary CI intentionally runs the deterministic negative/public HTTP suite;
+  it does not receive staging credentials.
+- The real matrix is manual because it targets persistent staging identities
+  and resources. Configure required reviewers on the `staging` environment
+  before adding its fixture secret.
+- A repository administrator must make the `Quality gates` check required in
+  branch protection after the workflow has run once.
+
+### Commit
+
+- Hash: `4ceacd0`
+- Message: `ci: enforce reproducible quality gates`
+
+### Exact next step
+
+- External: push the branch, observe `Quality gates`, enable branch protection,
+  and configure/run the protected staging matrix.
+- Local: audit INT-005 and constrain every part-request item mutation by both
+  its parent request ID and its own item ID.
+
+## Session record — 2026-07-29 (P0-K)
+
+### Objective
+
+Record migration 027 as applied and close SEC-007 by making every Slack ingress
+route fail closed when request-verification credentials are unavailable, while
+providing secret-safe liveness and readiness signals.
+
+### Deployment confirmation
+
+- The user confirmed migration
+  `027_restrict_ticket_columns_and_storage.sql` was applied on 2026-07-29.
+- Migrations 001–027 are therefore confirmed applied in order. The SEC-010
+  database deployment gate is closed.
+
+### Changes
+
+- Added one shared Slack configuration validator for bot-token and signing-secret
+  presence, format, minimum length, and known template values.
+- Removed the missing-signing-secret bypass from Slack request verification.
+  The slash command, interactive callback, and Events API routes now return:
+  - `503 SLACK_CONFIGURATION_ERROR` for unavailable server configuration;
+  - `401 SLACK_SIGNATURE_INVALID` for untrusted requests.
+- Hardened signature parsing with a strict numeric timestamp, a five-minute
+  replay window, a strict `v0=` SHA-256 signature shape, and timing-safe
+  comparison over the original body.
+- Added `/api/health/live` for process liveness and `/api/health/ready` for
+  configuration readiness. Responses are non-cacheable and expose only
+  `ready`/`not_ready` component state, never environment values.
+- Expanded production HTTP E2E from 12 to 17 checks with liveness, negative
+  readiness, and all three fail-closed Slack ingress probes.
+- Added 19 tests across the readiness and signature suites; the full
+  unit/contract baseline is now 155 tests.
+
+### Industry guidance applied
+
+- Slack request-authentication guidance: authenticate the untouched body with
+  the timestamped `v0` HMAC, reject replays older than five minutes, and use a
+  constant-time comparison.
+- Readiness-probe guidance: keep liveness independent of external configuration
+  and return non-success from readiness when the instance must not receive
+  integration traffic.
+- Fail-secure design: a missing credential is an unavailable server, not an
+  authenticated caller; production code has no environment-name-based bypass.
+
+### Verification before implementation commit
+
+| Command | Result |
+|---|---|
+| `npm ci` | Passed; 532 packages installed from the lockfile |
+| `npm test` | Passed; 16 files, 155 tests |
+| `npm run lint` | Passed; no warnings/errors |
+| `npm run build` | Passed on Next.js 15.5.22 |
+| `npm run test:e2e` | Passed 17 production HTTP checks; credentialed matrix explicitly skipped because the secret fixture is unavailable |
+| `npm audit` | Passed; 0 vulnerabilities |
+| `git diff --check` | Passed |
+| Staged secret-pattern scan | Passed |
+
+The implementation was committed only after the full gate and a second
+`npm run test:e2e` in the same command immediately before commit. The
+credentialed matrix is still not claimed as passed; this workspace does not
+have its protected six-account fixture.
+
+### Decisions and rollback
+
+- `503` distinguishes operator-remediable configuration absence from a `401`
+  request-authentication failure, without revealing credential material.
+- Readiness currently validates configuration shape rather than making
+  dependency network calls, so probes remain fast and do not amplify outages.
+- Rollback is the application commit only; no migration was introduced. Do not
+  restore the former signing-secret bypass.
+
+### Commit
+
+- Hash: `e83156f`
+- Message: `fix: fail closed on Slack configuration`
+
+### Exact next step
+
+- Migrate deprecated `next lint` to the ESLint CLI and add protected CI gates.
+  In parallel, an operator must provision the secret staging fixture and run
+  the required credentialed role/tenant matrix.
+
+## Session record — 2026-07-29 (P0-I harness)
+
+### Objective
+
+Record migration 026 as applied and commit a non-vacuous role/tenant browser,
+API, PostgREST, and Storage authorization matrix that is safe for local
+development and fail-closed in protected CI.
+
+### Deployment confirmation
+
+- The user confirmed migration `026_correct_sla_milestones.sql` was applied on
+  2026-07-29. Its prior deployment blocker is closed.
+- Migration `027_restrict_ticket_columns_and_storage.sql` is new in this
+  checkpoint and must be applied before the credentialed matrix or application
+  release.
+
+### Changes
+
+- Added a Playwright matrix for real UI login and page routing across admin,
+  engineer, customer manager, two separate customer tenants, and an inactive
+  account.
+- Added cookie-sharing API probes for vertical role denial, horizontal
+  cross-tenant denial, archived-ticket denial, customer response shaping,
+  internal archived-history access, and inactive-session rejection.
+- Added direct Supabase probes for RLS, ticket column privileges, internal
+  comment/attachment/event visibility, archived lifecycle, and private Storage
+  denial.
+- Made fixture assertions non-vacuous: the suite verifies role/status,
+  customer/site/ticket ownership, decommissioned site state, internal artifact
+  ownership/visibility, and the exact Storage path before trusting denial
+  results.
+- Added a secret-file contract and gitignored local fixture path. Missing
+  credentials explicitly skip in local runs; partial/invalid fixtures fail;
+  `RIPPLE_E2E_REQUIRE_CREDENTIALS=1` makes absence fail in protected CI.
+- Installed and launch-tested Playwright Chromium 1.62.0.
+- **SEC-010 discovered and code-closed:** RLS constrained ticket rows but not
+  ticket columns, and the attachment bucket allowed any active authenticated
+  user. Migration 027 revokes table-wide authenticated ticket SELECT, grants
+  only customer-safe columns, and removes direct authenticated Storage
+  read/upload policies so attachments remain server-mediated.
+
+### Industry guidance applied
+
+- OWASP authorization regression guidance: one central actor-resource-action
+  matrix covers vertical escalation, horizontal IDOR replay, tenant
+  boundaries, inactive identities, and field-level data exposure.
+- OWASP deny-by-default guidance: missing protected-CI credentials fail, direct
+  ticket secret columns are not granted, and private Storage has no general
+  authenticated policy.
+- Supabase SSR guidance: browser login exercises the real cookie session, API
+  calls reuse the browser cookie jar, and direct PostgREST probes use a separate
+  caller JWT to test RLS rather than the service role.
+- PostgreSQL privilege behavior: row security is not column security; a broad
+  table SELECT grant must be revoked before a safe column allow-list is
+  effective.
+
+### Verification before implementation commit
+
+| Command | Result |
+|---|---|
+| `npm ci` | Passed; 532 packages installed from the lockfile |
+| `npm test` | Passed; 15 files, 136 tests |
+| `npm run lint` | Passed; no warnings/errors |
+| `npm run build` | Passed on Next.js 15.5.22 |
+| `npm run test:e2e` | Passed 12 production HTTP checks; credentialed matrix explicitly skipped because the secret fixture is unavailable |
+| `npm run test:e2e:install-browser` | Passed; Chromium 151 / Playwright runtime 1.62.0 installed |
+| Chromium launch smoke | Passed; headless browser launched, rendered content, and closed |
+| `RIPPLE_E2E_REQUIRE_CREDENTIALS=1` negative gate | Passed; missing fixture exited non-zero |
+| `npm audit` | Passed; 0 vulnerabilities |
+| `git diff --check` | Passed |
+
+The implementation was committed only after the full gate and a second
+`npm run test:e2e` immediately before commit. The six-account staging matrix
+has not been claimed as passed: this workspace has no secret fixture. Migration
+027 was subsequently confirmed applied on 2026-07-29.
+
+### Decisions and rollback
+
+- The credential fixture contains passwords, so only an example is committed;
+  the local filename is ignored and CI must provide a protected file/secret.
+- The suite is read-only and requires existing rows for both tenants,
+  decommissioned history, and internal artifacts.
+- Direct authenticated attachment access is intentionally removed. The current
+  upload path already uses a trusted server route/service role; future
+  downloads must use an authorized server endpoint that mints a short-lived
+  URL.
+- Rollback of application/test code does not restore unsafe database grants.
+  If migration 027 must be rolled back, define a reviewed safe projection or
+  server endpoint; do not restore table-wide ticket SELECT or bucket-wide
+  authenticated access.
+
+### Commit
+
+- Hash: `b9a7a12`
+- Message: `test: add credentialed tenant authorization matrix`
+
+### Exact next step
+
+- Create the dedicated staging fixture from
+  `scripts/credentialed-role-matrix.example.json`, install Chromium in the
+  runner, and execute the matrix with
+  `RIPPLE_E2E_REQUIRE_CREDENTIALS=1`.
 
 ## Session record — 2026-07-29 (P0-H)
 
