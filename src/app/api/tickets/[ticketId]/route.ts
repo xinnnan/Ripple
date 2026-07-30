@@ -2,15 +2,17 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireInternal, getAuthUser } from "@/lib/supabase/auth-helpers";
 import { getUserScope, scopeTickets } from "@/lib/supabase/scope";
-import { updateMasterMessage } from "@/lib/slack/sync";
-import { sendTicketResolved } from "@/lib/email/send";
 import { resolveTicketQuery } from "@/lib/tickets/lookup";
 import {
   applyTicketPatchWithSla,
   InvalidTicketTransitionError,
   type TicketPatch,
 } from "@/lib/tickets/mutations";
-import { TICKET_STATUSES } from "@/types/ticket";
+import {
+  notifyTicketMutation,
+  type NotificationTicket,
+} from "@/lib/tickets/notifications";
+import { TICKET_STATUSES, type TicketStatus } from "@/types/ticket";
 import { z } from "zod";
 
 interface RouteContext {
@@ -189,44 +191,13 @@ export async function PATCH(
       return NextResponse.json({ error: "Failed to update ticket" }, { status: 500 });
     }
 
-    // Sync the change back to Slack so the master card in the channel
-    // stays in lockstep with the database. The function looks up the
-    // most recent master message from `slack_messages`; if none is
-    // recorded (e.g. ticket was created before Sprint 2), it silently
-    // no-ops and the ticket still updates.
-    const syncResult = await updateMasterMessage(ticket as import("@/types/ticket").Ticket);
-    if (!syncResult.ok) {
-      // Non-fatal: log and continue. Web portal is the source of truth.
-      console.warn(
-        `[PATCH /api/tickets/[id]] Slack sync skipped: ${syncResult.reason ?? "unknown"}` +
-          (syncResult.error ? ` (${syncResult.error})` : "")
-      );
-    }
-
-    // Send a resolution email when the status flips to "resolved".
-    // Re-read submitter_email + customer_visible_summary from the
-    // updated ticket to make sure we have the latest values.
-    if (data.status === "resolved" && currentTicket.status !== "resolved") {
-      const submitterEmail = ticket.submitter_email as string | null;
-      const summary =
-        (ticket.customer_visible_summary as string | null) ??
-        "Your ticket has been resolved. Please reply if anything is still off.";
-      if (submitterEmail) {
-        const emailRes = await sendTicketResolved({
-          to: submitterEmail,
-          ticketNo: ticket.ticket_no as string,
-          title: ticket.title as string,
-          secureToken: ticket.secure_token as string,
-          resolutionSummary: summary,
-        });
-        if (!emailRes.sent) {
-          console.warn(
-            `[PATCH /api/tickets/[id]] resolution email not sent: ${emailRes.reason}` +
-              (emailRes.error ? ` (${emailRes.error})` : "")
-          );
-        }
-      }
-    }
+    // Web and signed Slack mutations share the same best-effort delivery
+    // service. A committed ticket update never rolls back because Slack or
+    // email is unavailable; the structured result is logged by the service.
+    await notifyTicketMutation({
+      previousStatus: currentTicket.status as TicketStatus,
+      ticket: ticket as NotificationTicket,
+    });
 
     return NextResponse.json({ ticket });
   } catch (error) {

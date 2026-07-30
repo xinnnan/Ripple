@@ -3,7 +3,6 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { buildResolveModal } from "../blocks/resolve-modal";
 import { buildAskRippleAssistModal } from "../blocks/ai-modal";
 import { createTicketCore, resolveSiteBySlackChannel } from "@/lib/tickets/create";
-import { updateMasterMessage } from "../sync";
 import { INTERNAL_ROLES } from "@/lib/roles";
 import type { Ticket } from "@/types/ticket";
 import {
@@ -12,6 +11,7 @@ import {
   recordTicketCommentWithSla,
   type TicketPatch,
 } from "@/lib/tickets/mutations";
+import { notifyTicketMutation } from "@/lib/tickets/notifications";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   AiSuggestionRateLimitError,
@@ -42,6 +42,11 @@ async function applySlackTicketPatch(args: {
   patch:
     | TicketPatch
     | ((currentStatus: Ticket["status"]) => TicketPatch);
+  slackOptions?: {
+    channelId?: string | null;
+    messageTs?: string | null;
+    client?: WebClient;
+  };
 }) {
   const { data: currentTicket, error: lookupError } = await args.supabase
     .from("tickets")
@@ -79,6 +84,12 @@ async function applySlackTicketPatch(args: {
       `Slack ticket refresh failed: ${error?.message ?? "ticket not found"}`
     );
   }
+
+  await notifyTicketMutation({
+    previousStatus: currentTicket.status as Ticket["status"],
+    ticket: ticket as unknown as Ticket,
+    slackOptions: args.slackOptions,
+  });
 
   return ticket;
 }
@@ -134,7 +145,7 @@ export async function handleBlockAction(
     case "assign_to_me": {
       if (!ticketNo) break;
 
-      const ticket = await applySlackTicketPatch({
+      await applySlackTicketPatch({
         supabase,
         ticketNo,
         actorId: internalUser.id,
@@ -144,55 +155,34 @@ export async function handleBlockAction(
             ? { status: "assigned" as const }
             : {}),
         }),
+        slackOptions: { channelId, messageTs, client },
       });
-
-      if (ticket) {
-        await updateMasterMessage(ticket as unknown as Ticket, {
-          channelId,
-          messageTs,
-          client,
-        });
-      }
       break;
     }
 
     case "mark_in_progress": {
       if (!ticketNo) break;
 
-      const ticket = await applySlackTicketPatch({
+      await applySlackTicketPatch({
         supabase,
         ticketNo,
         actorId: internalUser.id,
         patch: { status: "in_progress" },
+        slackOptions: { channelId, messageTs, client },
       });
-
-      if (ticket) {
-        await updateMasterMessage(ticket as unknown as Ticket, {
-          channelId,
-          messageTs,
-          client,
-        });
-      }
       break;
     }
 
     case "request_info": {
       if (!ticketNo) break;
 
-      const ticket = await applySlackTicketPatch({
+      await applySlackTicketPatch({
         supabase,
         ticketNo,
         actorId: internalUser.id,
         patch: { status: "waiting_customer" },
+        slackOptions: { channelId, messageTs, client },
       });
-
-      if (ticket) {
-        await updateMasterMessage(ticket as unknown as Ticket, {
-          channelId,
-          messageTs,
-          client,
-        });
-      }
       break;
     }
 
@@ -426,9 +416,8 @@ export async function handleViewSubmission(
       // The same row-locked command used by the web PATCH path records the
       // actual resolution time, compares it to resolve_due_at, and commits
       // the ticket + milestone + timeline + audit rows together.
-      let ticket;
       try {
-        ticket = await applySlackTicketPatch({
+        await applySlackTicketPatch({
           supabase,
           ticketNo,
           actorId: internalUser!.id,
@@ -439,6 +428,11 @@ export async function handleViewSubmission(
             follow_up_needed: followUp === "yes",
             internal_summary: internalNotes || null,
           },
+          slackOptions: {
+            channelId: metadata.channel_id,
+            messageTs: metadata.message_ts,
+            client,
+          },
         });
       } catch (error) {
         if (error instanceof InvalidTicketTransitionError) {
@@ -448,34 +442,6 @@ export async function handleViewSubmission(
           };
         }
         throw error;
-      }
-
-      if (ticket) {
-        await updateMasterMessage(ticket as unknown as Ticket, {
-          channelId: metadata.channel_id,
-          messageTs: metadata.message_ts,
-          client,
-        });
-      }
-
-      // Post resolution note in thread. Best-effort: if the channel
-      // is gone or the bot was uninstalled, the ticket is still
-      // resolved in the DB — don't let a Slack API error 500 the
-      // whole view_submission (which would leave the modal stuck
-      // open for the user).
-      if (metadata.channel_id && metadata.message_ts) {
-        try {
-          await client.chat.postMessage({
-            channel: metadata.channel_id,
-            thread_ts: metadata.message_ts,
-            text: `✅ *Ticket Resolved*\n\n${customerSummary}`,
-          });
-        } catch (e) {
-          console.warn(
-            "[slack/handlers] resolve thread post failed (non-fatal):",
-            e instanceof Error ? e.message : e
-          );
-        }
       }
 
       return { response_action: "clear" };

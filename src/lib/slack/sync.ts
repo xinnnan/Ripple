@@ -47,6 +47,33 @@ export interface SyncResult {
   error?: string;
 }
 
+async function resolveTarget(
+  ticketId: string,
+  options: SyncOptions
+): Promise<{ channelId: string; messageTs: string } | null> {
+  let channelId = options.channelId ?? null;
+  let messageTs = options.messageTs ?? null;
+
+  if (!channelId || !messageTs) {
+    const found = await lookupMaster(ticketId);
+    if (found) {
+      channelId = channelId ?? found.channelId;
+      messageTs = messageTs ?? found.messageTs;
+    }
+  }
+
+  return channelId && messageTs ? { channelId, messageTs } : null;
+}
+
+function resolveClient(options: SyncOptions): WebClient | null {
+  return (
+    options.client ??
+    (process.env.SLACK_BOT_TOKEN
+      ? new WebClientCtor(process.env.SLACK_BOT_TOKEN)
+      : null)
+  );
+}
+
 /**
  * Record that a master Block Kit message was posted to Slack for a
  * given ticket. Called from `createTicketCore()` after a successful
@@ -113,33 +140,21 @@ export async function updateMasterMessage(
   ticket: Ticket,
   options: SyncOptions = {}
 ): Promise<SyncResult> {
-  // Resolve target channel + message ts.
-  let channelId = options.channelId ?? null;
-  let messageTs = options.messageTs ?? null;
-
-  if (!channelId || !messageTs) {
-    const found = await lookupMaster(ticket.id);
-    if (found) {
-      channelId = channelId ?? found.channelId;
-      messageTs = messageTs ?? found.messageTs;
-    }
+  const target = await resolveTarget(ticket.id, options);
+  if (!target) {
+    return {
+      ok: false,
+      reason: options.channelId ? "no_message" : "no_channel",
+    };
   }
 
-  if (!channelId) return { ok: false, reason: "no_channel" };
-  if (!messageTs) return { ok: false, reason: "no_message" };
-
-  // Resolve WebClient.
-  const client =
-    options.client ??
-    (process.env.SLACK_BOT_TOKEN
-      ? new WebClientCtor(process.env.SLACK_BOT_TOKEN)
-      : null);
+  const client = resolveClient(options);
   if (!client) return { ok: false, reason: "no_token" };
 
   try {
     await client.chat.update({
-      channel: channelId,
-      ts: messageTs,
+      channel: target.channelId,
+      ts: target.messageTs,
       text: `[${ticket.ticket_no}] ${ticket.title}`,
       blocks: buildMasterTicketMessage(ticket),
     });
@@ -148,5 +163,43 @@ export async function updateMasterMessage(
     const msg = e instanceof Error ? e.message : String(e);
     console.error("[slack/sync] chat.update failed:", msg);
     return { ok: false, reason: "slack_error", error: msg };
+  }
+}
+
+/**
+ * Post a plain-text reply beneath the ticket's master message.
+ *
+ * Like master-card sync, this is best-effort and never throws. Setting
+ * `mrkdwn: false` prevents a resolution summary from turning customer-entered
+ * text into Slack mentions or formatting directives.
+ */
+export async function postMasterThreadReply(
+  ticket: Ticket,
+  text: string,
+  options: SyncOptions = {}
+): Promise<SyncResult> {
+  const target = await resolveTarget(ticket.id, options);
+  if (!target) {
+    return {
+      ok: false,
+      reason: options.channelId ? "no_message" : "no_channel",
+    };
+  }
+
+  const client = resolveClient(options);
+  if (!client) return { ok: false, reason: "no_token" };
+
+  try {
+    await client.chat.postMessage({
+      channel: target.channelId,
+      thread_ts: target.messageTs,
+      text,
+      mrkdwn: false,
+    });
+    return { ok: true };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("[slack/sync] thread reply failed:", message);
+    return { ok: false, reason: "slack_error", error: message };
   }
 }
