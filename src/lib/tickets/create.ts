@@ -13,18 +13,18 @@
 //
 // The functions are intentionally small and side-effect-aware:
 //   - `resolveSite*` queries are pure reads
-//   - `generateNextTicketNo` is a race-prone MAX+1 (see AGENTS.md §9)
-//   - `createTicketCore` does the insert + event + (optional) Slack post
+//   - `createTicketCore` calls one command; migration 034 atomically records the
+//     timeline/audit/outbox effects and the request path drains them promptly
 //
-// All callers must be authenticated and authorised. This module does not
-// check authz — it trusts its inputs.
+// Callers must resolve site/source context. The database command independently
+// validates active actor and site scope; null actors are allowed only for the
+// public web and signed Slack intake paths.
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { WebClient } from "@slack/web-api";
+import type { WebClient } from "@slack/web-api";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { generateSecureToken, formatTicketNo } from "@/lib/utils";
-import { buildMasterTicketMessage } from "@/lib/slack/blocks/ticket-master";
-import { recordMasterMessage } from "@/lib/slack/sync";
+import { generateSecureToken } from "@/lib/utils";
+import { dispatchTicketOutboxBestEffort } from "@/lib/tickets/outbox";
 import { computeSlaTargets, findPolicyForCustomer } from "@/lib/sla";
 import type {
   Ticket,
@@ -63,9 +63,8 @@ export interface CreateTicketInput {
 
 export interface CreateTicketOptions {
   /**
-   * If provided, posts the master Block Kit message to this Slack channel
-   * (when the site has a slack_channel_id and a bot token is configured).
-   * Pass the channel id to post to; pass `false` to skip.
+   * Override the persisted site channel while immediately draining the
+   * durable master-message outbox event.
    */
   slackChannelId?: string | null;
   /**
@@ -79,8 +78,6 @@ export interface CreateTicketResult {
   ticket: Ticket;
   ticket_no: string;
   secure_token: string;
-  /** True iff we successfully posted the Slack master message. */
-  postedToSlack: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -129,65 +126,13 @@ export async function resolveSiteBySlackChannel(
 }
 
 // ---------------------------------------------------------------------------
-// Ticket numbering
-// ---------------------------------------------------------------------------
-
-/**
- * Compute the next ticket number. Backed by the `next_ticket_no()` RPC
- * (see migration 020), which uses a Postgres sequence to eliminate the
- * SELECT-MAX+1 race that the old code had.
- *
- * Fallback: if the RPC isn't available (e.g. the migration hasn't been
- * applied yet), fall back to the racy MAX+1 path so the system stays
- * online. Logs a warning so the operator notices.
- */
-export async function generateNextTicketNo(
-  supabase: SupabaseClient
-): Promise<string> {
-  try {
-    const { data, error } = await supabase.rpc("next_ticket_no");
-    if (!error && typeof data === "string" && /^RPL-\d{6}$/.test(data)) {
-      return data;
-    }
-    console.warn(
-      "[tickets] next_ticket_no RPC failed (%s) — falling back to MAX+1. " +
-        "Apply migration 020 to fix.",
-      error?.message ?? "unexpected response"
-    );
-  } catch (e) {
-    console.warn(
-      "[tickets] next_ticket_no RPC threw — falling back to MAX+1. " +
-        "Apply migration 020 to fix.",
-      e
-    );
-  }
-
-  // Fallback: the racy MAX+1 path. Pre-Sprint-2 code path.
-  const { data: last } = await supabase
-    .from("tickets")
-    .select("ticket_no")
-    .order("ticket_no", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  const lastNum = last
-    ? parseInt(last.ticket_no.replace("RPL-", ""), 10)
-    : 0;
-  return formatTicketNo((Number.isFinite(lastNum) ? lastNum : 0) + 1);
-}
-
-// ---------------------------------------------------------------------------
 // Core create
 // ---------------------------------------------------------------------------
 
 /**
- * Insert a ticket, log a `ticket_created` event, and (optionally) post
- * the master Block Kit message to Slack. Returns the inserted row + a
- * `postedToSlack` flag so the caller can show different confirmation
- * copy based on whether the channel post succeeded.
- *
- * Errors from the Slack post are swallowed (ticket creation is the
- * primary success criterion; the master message can be regenerated from
- * the web portal).
+ * Insert a ticket once. Migration 034 validates the creator/site boundary and
+ * atomically writes the creation event, cross-entity audit row, and durable
+ * Slack/email outbox records inside that INSERT transaction.
  */
 export async function createTicketCore(
   input: CreateTicketInput,
@@ -195,7 +140,6 @@ export async function createTicketCore(
 ): Promise<CreateTicketResult> {
   const supabase = createAdminClient();
 
-  const ticketNo = await generateNextTicketNo(supabase);
   const secureToken = generateSecureToken();
 
   // Look up the customer's SLA policy (per-customer or default)
@@ -225,30 +169,42 @@ export async function createTicketCore(
     console.warn("[tickets] SLA policy lookup failed (non-fatal):", e);
   }
 
+  const { data: ticketId, error: commandError } = await supabase.rpc(
+    "create_ticket_atomic",
+    {
+      p_input: {
+        customer_id: input.customer_id,
+        site_id: input.site_id,
+        source: input.source,
+        title: input.title,
+        description: input.description,
+        request_type: input.request_type,
+        severity: input.severity,
+        impact: input.impact ?? null,
+        asset_id: input.asset_id ?? null,
+        area: input.area ?? null,
+        created_by: input.created_by ?? null,
+        submitter_name: input.submitter_name ?? null,
+        submitter_email: input.submitter_email ?? null,
+        submitter_phone: input.submitter_phone ?? null,
+        secure_token: secureToken,
+        sla_policy_id: slaPolicyId,
+        first_response_due_at: firstResponseDueAt,
+        resolve_due_at: resolveDueAt,
+      },
+    }
+  );
+
+  if (commandError || typeof ticketId !== "string") {
+    throw new Error(
+      `Atomic ticket creation failed: ${
+        commandError?.message ?? "invalid RPC response"
+      }`
+    );
+  }
+
   const { data: ticket, error } = await supabase
     .from("tickets")
-    .insert({
-      ticket_no: ticketNo,
-      customer_id: input.customer_id,
-      site_id: input.site_id,
-      source: input.source,
-      title: input.title,
-      description: input.description,
-      request_type: input.request_type,
-      severity: input.severity,
-      status: "new",
-      impact: input.impact ?? null,
-      asset_id: input.asset_id ?? null,
-      area: input.area ?? null,
-      created_by: input.created_by ?? null,
-      submitter_name: input.submitter_name ?? null,
-      submitter_email: input.submitter_email ?? null,
-      submitter_phone: input.submitter_phone ?? null,
-      secure_token: secureToken,
-      sla_policy_id: slaPolicyId,
-      first_response_due_at: firstResponseDueAt,
-      resolve_due_at: resolveDueAt,
-    })
     .select(
       `
       *,
@@ -258,80 +214,30 @@ export async function createTicketCore(
       creator:users!tickets_created_by_fkey(id, full_name, email)
     `
     )
+    .eq("id", ticketId)
     .single();
 
   if (error || !ticket) {
     throw new Error(
-      `Ticket insert failed: ${error?.message ?? "no row returned"}`
+      `Ticket hydration failed: ${error?.message ?? "no row returned"}`
     );
   }
 
-  // Log the creation event. Sole writer — DB trigger was dropped in 015.
-  await supabase.from("ticket_events").insert({
-    ticket_id: ticket.id,
-    event_type: "ticket_created",
-    old_value: null,
-    new_value: "new",
-    actor_id: input.created_by ?? null,
-  });
-
-  // Optional Slack post.
   const targetChannel =
     options.slackChannelId ??
     (Array.isArray(ticket.site) ? ticket.site[0] : ticket.site)?.slack_channel_id ??
     null;
-
-  let postedToSlack = false;
-  if (targetChannel) {
-    const token = process.env.SLACK_BOT_TOKEN;
-    const client =
-      options.slackClient ?? (token ? new WebClient(token) : null);
-    if (client) {
-      try {
-        const siteData = Array.isArray(ticket.site) ? ticket.site[0] : ticket.site;
-        const customerData = Array.isArray(ticket.customer)
-          ? ticket.customer[0]
-          : ticket.customer;
-        const slackRes = await client.chat.postMessage({
-          channel: targetChannel,
-          text: `🎫 New ticket: [${ticket.ticket_no}] ${ticket.title}`,
-          blocks: buildMasterTicketMessage({
-            ...ticket,
-            customer: customerData as { id: string; name: string } | undefined,
-            site: siteData as { id: string; site_name: string; site_code: string } | undefined,
-            owner: undefined,
-            creator: undefined,
-          } as Ticket),
-        });
-        // Record the master message so future PATCH / status changes
-        // know which Slack message to update (see lib/slack/sync.ts).
-        if (slackRes?.ts && typeof slackRes.ts === "string") {
-          // We need the slack_channels.id (UUID), not the channel id
-          // string. Look it up — this is cheap (indexed by channel_id).
-          const { data: ch } = await supabase
-            .from("slack_channels")
-            .select("id")
-            .eq("channel_id", targetChannel)
-            .maybeSingle();
-          if (ch?.id) {
-            await recordMasterMessage({
-              ticketId: ticket.id,
-              slackChannelId: ch.id,
-              messageTs: slackRes.ts,
-            });
-          }
-        }
-        postedToSlack = true;
-      } catch (e) {
-        console.error("[createTicketCore] Slack post failed (non-fatal):", e);
-      }
-    }
-  }
+  await dispatchTicketOutboxBestEffort({
+    aggregateId: ticket.id,
+    slackOptions: {
+      channelId: targetChannel,
+      client: options.slackClient,
+    },
+  });
 
   return {
     ticket: ticket as Ticket,
     ticket_no: ticket.ticket_no,
     secure_token: ticket.secure_token,
-    postedToSlack,
   };
 }

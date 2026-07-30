@@ -77,12 +77,17 @@ function dependencies(overrides: Partial<{
   thread: { ok: boolean; deduplicated?: boolean };
 }> = {}) {
   return {
+    postMasterMessage: vi.fn().mockResolvedValue({ ok: true }),
     updateMasterMessage: vi.fn().mockResolvedValue(
       overrides.master ?? { ok: true }
     ),
     postMasterThreadReply: vi.fn().mockResolvedValue(
       overrides.thread ?? { ok: true }
     ),
+    sendTicketConfirmation: vi.fn().mockResolvedValue({
+      sent: true,
+      id: "email-confirmation-1",
+    }),
     sendTicketResolved: vi.fn().mockResolvedValue({
       sent: true,
       id: "email-1",
@@ -91,6 +96,44 @@ function dependencies(overrides: Partial<{
 }
 
 describe("ticket notification outbox delivery", () => {
+  it("uses the outbox id when posting the initial Slack master", async () => {
+    const deps = dependencies();
+    const slackOptions: SyncOptions = { channelId: "C123" };
+
+    await deliverTicketOutboxEvent(
+      event("ticket.slack_master_create"),
+      ticket(),
+      slackOptions,
+      deps
+    );
+
+    expect(deps.postMasterMessage).toHaveBeenCalledWith(ticket(), {
+      channelId: "C123",
+      deliveryKey: EVENT_ID,
+    });
+  });
+
+  it("uses an idempotency key for ticket confirmation email", async () => {
+    const deps = dependencies();
+
+    await deliverTicketOutboxEvent(
+      event("ticket.email_confirmation"),
+      ticket(),
+      {},
+      deps
+    );
+
+    expect(deps.sendTicketConfirmation).toHaveBeenCalledWith({
+      to: "operator@example.com",
+      ticketNo: "RPL-000123",
+      title: "AMR stopped",
+      secureToken: "secure-token",
+      customerName: "Customer",
+      siteName: "Site",
+      idempotencyKey: `ripple-outbox/${EVENT_ID}`,
+    });
+  });
+
   it("treats a ticket without a Slack target as a terminal skip", async () => {
     const deps = dependencies({
       master: { ok: false, reason: "no_channel" },

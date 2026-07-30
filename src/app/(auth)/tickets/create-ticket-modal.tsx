@@ -10,7 +10,6 @@ import {
   type Impact,
 } from "@/types/ticket";
 import { getCurrentSites } from "@/lib/supabase/scope.client";
-import { createClient } from "@/lib/supabase/client";
 
 interface UserSite {
   site_id: string;
@@ -85,9 +84,6 @@ export function CreateTicketModal({ open, onClose, onCreated }: CreateTicketModa
     }
 
     try {
-      const supabase = createClient();
-      const { data: { user } } = await supabase.auth.getUser();
-
       const res = await fetch("/api/tickets", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -100,8 +96,6 @@ export function CreateTicketModal({ open, onClose, onCreated }: CreateTicketModa
           asset_id: assetId || undefined,
           area: area || undefined,
           description,
-          source: "web",
-          created_by: user?.id || undefined,
         }),
       });
 

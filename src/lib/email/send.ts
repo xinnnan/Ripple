@@ -7,10 +7,8 @@
 // in the database. Email is the cherry on top, not the cake.
 //
 // Templates:
-//   - sendTicketConfirmation() — POST /api/tickets (when submitter
-//     email is on file)
-//   - sendTicketResolved() — PATCH /api/tickets/[id] when status
-//     flips to "resolved" (and the customer has an email)
+//   - sendTicketConfirmation() — durable ticket-creation outbox delivery
+//   - sendTicketResolved() — durable resolved-ticket outbox delivery
 //
 // If you ever swap providers (Postmark, SES, etc.) only this file
 // needs to change.
@@ -45,6 +43,8 @@ export interface TicketConfirmationParams {
   secureToken: string;
   customerName: string;
   siteName: string;
+  /** Stable outbox delivery key forwarded to Resend's idempotency header. */
+  idempotencyKey?: string;
 }
 
 export async function sendTicketConfirmation(
@@ -59,11 +59,12 @@ export async function sendTicketConfirmation(
   const ticketUrl = `${APP_URL}/t/${params.ticketNo}?token=${params.secureToken}`;
 
   try {
-    const { data, error } = await resend.emails.send({
-      from: `Ripple Support <${FROM_EMAIL}>`,
-      to: params.to,
-      subject: `[${params.ticketNo}] Support Ticket Created — ${params.title}`,
-      html: `
+    const { data, error } = await resend.emails.send(
+      {
+        from: `Ripple Support <${FROM_EMAIL}>`,
+        to: params.to,
+        subject: `[${params.ticketNo}] Support Ticket Created — ${params.title}`,
+        html: `
         <div style="font-family: 'Inter', sans-serif; max-width: 600px; margin: 0 auto; color: #1a1a2e;">
           <div style="padding: 24px; border-bottom: 2px solid #0ea5e9;">
             <h1 style="margin: 0; font-size: 20px; color: #1a1a2e;">Ripple Support</h1>
@@ -73,8 +74,8 @@ export async function sendTicketConfirmation(
             <h2 style="font-size: 18px; margin: 0 0 16px;">Your support ticket has been created</h2>
             <table style="width: 100%; border-collapse: collapse;">
               <tr><td style="padding: 8px 0; color: #64748b; font-size: 14px;">Ticket ID</td><td style="padding: 8px 0; font-weight: 600; font-size: 14px;">${params.ticketNo}</td></tr>
-              <tr><td style="padding: 8px 0; color: #64748b; font-size: 14px;">Customer</td><td style="padding: 8px 0; font-size: 14px;">${params.customerName}</td></tr>
-              <tr><td style="padding: 8px 0; color: #64748b; font-size: 14px;">Site</td><td style="padding: 8px 0; font-size: 14px;">${params.siteName}</td></tr>
+              <tr><td style="padding: 8px 0; color: #64748b; font-size: 14px;">Customer</td><td style="padding: 8px 0; font-size: 14px;">${escapeHtml(params.customerName)}</td></tr>
+              <tr><td style="padding: 8px 0; color: #64748b; font-size: 14px;">Site</td><td style="padding: 8px 0; font-size: 14px;">${escapeHtml(params.siteName)}</td></tr>
               <tr><td style="padding: 8px 0; color: #64748b; font-size: 14px;">Issue</td><td style="padding: 8px 0; font-size: 14px;">${escapeHtml(params.title)}</td></tr>
             </table>
             <div style="margin: 24px 0; padding: 16px; background: #f0f9ff; border-radius: 8px; border: 1px solid #bae6fd;">
@@ -90,7 +91,11 @@ export async function sendTicketConfirmation(
           </div>
         </div>
       `,
-    });
+      },
+      params.idempotencyKey
+        ? { idempotencyKey: params.idempotencyKey }
+        : undefined
+    );
     if (error || !data) {
       console.error("[email] confirmation send failed:", error);
       return { sent: false, reason: "send_failed", error: error?.message };
