@@ -86,7 +86,7 @@ Vercel.
 │   │   ├── ticket.ts                    # ⭐ All domain enums + labels
 │   │   └── spare-parts.ts               # ⭐ Spare parts + field service enums
 │   └── middleware.ts                    # ⭐ Route guard + session refresh
-├── supabase/migrations/                 # 001–031, apply in order
+├── supabase/migrations/                 # 001–032, apply in order
 ├── plans/                               # Architecture + phase planning docs
 │   ├── architecture.md
 │   ├── phase2-customer-auth-and-user-management.md
@@ -105,7 +105,7 @@ Vercel.
 - Ticket detail UI → `src/app/(auth)/tickets/[ticketId]/page.tsx` (server) + `ticket-actions-panel.tsx` (client)
 - Slack ticket creation → `src/app/api/slack/command/ticket/route.ts` + `src/lib/slack/blocks/ticket-form.ts`
 - AI assist → `src/app/api/ai/suggest/route.ts` + `src/lib/ai/suggest.ts`
-- DB schema → `supabase/migrations/001_*.sql` … `031_atomic_team_site_assignment.sql`
+- DB schema → `supabase/migrations/001_*.sql` … `032_guard_ticket_status_transitions.sql`
 
 ---
 
@@ -143,8 +143,8 @@ const isInternal = role ? INTERNAL_ROLES.includes(role) : email ? isInternalEmai
 
 ## 5. Database Schema (Supabase)
 
-31 migrations, to be applied in order. Migrations 001–031 are confirmed
-applied as of 2026-07-30. Key tables:
+32 migrations, to be applied in order. Migrations 001–031 are confirmed
+applied as of 2026-07-30; migration 032 awaits application. Key tables:
 
 | Table | Purpose | Notes |
 |---|---|---|
@@ -259,7 +259,7 @@ if ("error" in auth) return NextResponse.json({ error: auth.error }, { status: a
 npm install
 cp .env.local.example .env.local   # fill in real values
 # Run migrations in Supabase SQL editor (or `supabase db push` if using CLI):
-#   001 → 031 in order
+#   001 → 032 in order
 # Enable pgvector: CREATE EXTENSION IF NOT EXISTS vector;
 npm run dev
 ```
@@ -269,7 +269,7 @@ npm run dev
 - `npm run build` — production build
 - `npm run start` — production server
 - `npm run lint` — direct ESLint CLI across the repository; warnings fail the gate
-- `npm test` — Vitest unit/contract suite (226 tests)
+- `npm test` — Vitest unit/contract suite (240 tests)
 - `npm run test:e2e` — 21-check production HTTP smoke plus optional credentialed Playwright/API/RLS matrix; requires a successful build
 - `npm run test:e2e:credentialed` — real six-account/two-tenant matrix; set `RIPPLE_E2E_FIXTURES_FILE`
 - `npm run test:e2e:install-browser` — install the pinned Chromium runtime
@@ -576,6 +576,33 @@ Authenticate at the boundary, pass typed actor/context data into a shared
 application service, and keep provider limits and domain behavior below the
 transport layer.
 
+### State machines must be guarded below every transport
+Found 2026-07-30 while closing INT-001. The web status selector exposed every
+status, Slack always rendered In Progress / Request Info / Resolve, and
+`apply_ticket_patch_with_sla` only checked whether the target code existed.
+Live history contained 50 `new → in_progress` jumps and one
+`new → resolved` jump. The database also contained 25 legacy
+Assigned/In Progress tickets without owners and three Resolved tickets without
+customer summaries.
+
+Commit `b344d18` and migration 032 define the current eight-state compatibility
+truth table in TypeScript and Postgres. Web and Slack only offer legal actions;
+the database trigger remains authoritative under concurrency and direct
+service-role access. Entering Assigned/In Progress requires an owner, and
+entering or clearing Resolved requires a non-empty customer-visible summary.
+Guard failures map to HTTP 409 or a Slack-visible error.
+
+Migration 032 is deliberately non-retroactive. Existing inconsistent rows do
+not block deployment or unrelated edits, but the missing invariant is required
+when a row next enters/changes a guarded state. PRD v1.1's additional TRIAGE,
+WAITING_THIRD_PARTY, PENDING_ONSITE_WORK, DUPLICATE, REJECTED, and CANCELLED
+states remain future schema work.
+
+**Lesson:** front-end action filtering is usability, not integrity. Put the
+truth table and entry guards inside the same transaction as the mutation,
+return a typed conflict to each transport, test every allowed/rejected pair,
+and audit legacy data before activating the guard.
+
 ### Supabase SSR auth cookies belong on the response you return
 Found 2026-07-29 while adding password recovery. The authorization-code
 callback created a redirect inside the Supabase `setAll` callback, attached
@@ -685,8 +712,9 @@ resume work; this section remains the broader historical summary.
   order/engineer writes atomic and aligned PostgreSQL DATE handling; replaced
   team access delete-all/reinsert with an atomic role-preserving set diff;
   routed Slack Ripple Assist through the shared, rate-limited AI service;
+  added database-authoritative guarded ticket transitions and entry invariants;
   added password recovery, fixed SSR auth-cookie propagation, rebuilt the
-  responsive support experience, and established 226 unit/contract tests plus
+  responsive support experience, and established 240 unit/contract tests plus
   a zero-vulnerability dependency baseline.
 
 ### Known issues / open work
@@ -698,6 +726,7 @@ resume work; this section remains the broader historical summary.
 | 🟡 Med | `/settings` is read-only integration status | `src/app/(auth)/settings/page.tsx` | Add notification preferences, user timezone, and theme controls |
 | 🟡 Med | In-memory rate limit not production-grade | `src/lib/rate-limit.ts` | Fine for now (Vercel cold starts reset the counter, but worst case is a fresh window per cold start). Swap for Upstash/Redis when traffic warrants. |
 | 🟡 Verify | Migration 031 protected business probes remain | `supabase/migrations/031_atomic_team_site_assignment.sql` | RPC presence and validation behavior are confirmed; run same-tenant, cross-tenant, role-preservation, explicit-clear, and rollback probes with staging fixtures |
+| 🟡 Deploy | Migration 032 awaits application | `supabase/migrations/032_guard_ticket_status_transitions.sql` | Apply before deploying `b344d18`, then probe one allowed and one rejected transition plus owner/summary guards |
 | 🟢 Low | Slack `events` route doesn't route customer messages to a ticket comment yet | `src/app/api/slack/events/route.ts` | Sprint 3 — bidirectional thread sync (SLK-008) |
 | 🟡 Med | Credentialed role/tenant matrix has not had its first staging execution | `scripts/credentialed-role-matrix.mjs` | Harness, fixture validation, and Chromium launch are committed/green; provision six dedicated accounts and non-vacuous two-tenant/archive/internal-artifact IDs, then run with required credentials |
 | 🟡 Activate | Hosted quality workflow and protected staging job are not activated yet | `.github/workflows/ci.yml` | After pushing, require `Quality gates`; create a reviewer-protected `staging` environment and add only `RIPPLE_E2E_FIXTURES_JSON` there |
@@ -728,9 +757,9 @@ resume work; this section remains the broader historical summary.
 14. **Dashboard timezone** — derive from user or first site.
 15. **Sprint 3 feature work** — Kanban view (INT-5), SLA monitoring (INT-6), notifications center (INT-7).
 16. **Start real Slack Connect work** — see PRD §8.5 / SLK-015.
-17. **Guard ticket state transitions (INT-001).** Move the transition truth
-    table below both web and Slack mutations and reject invalid jumps in the
-    atomic database command.
+17. **Guard ticket state transitions (INT-001).** ✅ code complete in
+    `b344d18`; apply migration 032 and run allowed/rejected transition plus
+    owner/summary probes.
 
 ### Open architectural questions
 - The RLS recursion bug surfaces a bigger question: do we keep `createAdminClient() + code filter` (the current pattern in `lib/supabase/scope.ts`) or move back to proper RLS once migration 019 + similar fixes are in place? The current pattern scales fine but has a lower safety margin for new queries.
@@ -752,7 +781,7 @@ npm audit
 ```
 
 **Apply a new migration:**
-1. Create `supabase/migrations/032_xxx.sql` (next number)
+1. Create `supabase/migrations/033_xxx.sql` (next number)
 2. Test locally: `supabase db reset` (drops + re-applies all)
 3. Apply to prod via Supabase SQL editor
 4. Document in this file's §5 + §10

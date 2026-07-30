@@ -7,12 +7,14 @@ meaningful change and before ending a work session. Newest entries go first.
 
 - **Branch:** `codex/prd-v1-1-gap-closure`
 - **Active phase:** Phase 0 — Containment and reproducible baseline
-- **Active work item:** INT-001 guarded ticket transitions plus the P0-I
-  external staging execution gate
-- **Last verified implementation commit:** `3f7d296` (`fix: route Slack assist through domain service`)
+- **Active work item:** migration 032 deployment/probes, then INT-011
+  notification parity or INT-007 audit/outbox atomicity plus the P0-I external
+  staging execution gate
+- **Last verified implementation commit:** `b344d18` (`fix: guard ticket status transitions`)
 - **Uncommitted work:** none expected; verify with `git status` before resuming
-- **Deployment gate:** migrations 001–031 are user-confirmed applied; protected
-  business probes for migrations 028–031 still require staging fixtures
+- **Deployment gate:** migrations 001–031 are user-confirmed applied;
+  `032_guard_ticket_status_transitions.sql` awaits application, and protected
+  business probes for migrations 028–032 still require staging fixtures
 - **External validation gate:** populate the gitignored credential fixture with six
   dedicated staging accounts, two tenants, a decommissioned site/ticket, and
   real internal artifact IDs; then run
@@ -32,11 +34,103 @@ meaningful change and before ending a work session. Newest entries go first.
   created for read-only protected-page visits and fully deleted afterward.
   Password-based login passed; recovery-email delivery and one-time link
   consumption still require a dedicated staging mailbox.
-- **Exact next local step:** implement INT-001 with one transition truth table
-  enforced by the atomic ticket command and shared by web/Slack; with protected
-  fixtures, run the outstanding request, field-service, and team transaction
-  probes
+- **Exact next local step:** apply migration 032 and run safe allowed/rejected
+  transition plus owner/summary guard probes; then close Slack notification
+  parity or continue atomic audit/outbox work
 - **Primary plan:** [`plans/prd-v1.1-gap-closure-plan.md`](./prd-v1.1-gap-closure-plan.md)
+
+## Session record — 2026-07-30 (P0-S / INT-001 guarded ticket transitions)
+
+### Objective
+
+Replace arbitrary ticket status writes with a documented compatibility state
+machine enforced below web and Slack, while preserving a deployable path for
+legacy inconsistent records.
+
+### Live read-only audit
+
+- Queried 413 tickets through the service-role client without mutations:
+  331 New, 3 Assigned, 22 In Progress, 3 Waiting Customer, and 54 Resolved.
+- Found 25 legacy Assigned/In Progress tickets without owners and three
+  Resolved tickets without customer-visible summaries.
+- Aggregated 82 historical `status_changed` events. Fifty were
+  `new → in_progress`, 31 were `in_progress → resolved`, and one was
+  `new → resolved`.
+- The direct New shortcuts were historical behavior, not PRD-compliant
+  transitions; web and Slack now require assignment before active work.
+
+### Changes completed
+
+- Added a typed eight-state transition table mapping the richer PRD v1.1 model
+  onto the statuses that exist in the compatibility schema.
+- Added migration `032_guard_ticket_status_transitions.sql` with an immutable
+  SQL truth table and a `BEFORE UPDATE` trigger that rejects illegal jumps.
+- Added entry invariants: Assigned/In Progress requires an owner; entering or
+  clearing Resolved requires a non-empty customer-visible summary.
+- Kept the migration non-retroactive. Historical inconsistent rows do not
+  block application or unrelated edits, but must satisfy the invariant on the
+  next guarded state/field change.
+- Web status controls now show only the current state and legal next states;
+  Resolve remains a dedicated summary-capturing path, and failed guards render
+  an accessible inline error.
+- Slack master cards render only legal lifecycle shortcuts. Stale Slack cards
+  still fail safely at the database guard and return an ephemeral error.
+- Slack Assign to Me preserves an active/waiting state and moves only New or
+  Reopened tickets into Assigned.
+- Database SQLSTATE `23514` is mapped to a safe domain error and HTTP 409 or
+  Slack modal/action feedback.
+- The API now accepts explicit `owner_id: null`, while the state invariant
+  prevents unassigning active Assigned/In Progress work.
+- Added 14 exhaustive truth-table, migration-parity, transport, wrapper, and
+  Slack-card checks, bringing the suite from 226 to 240 tests.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| Focused transition regression checks | Passed; 4 files, 17 tests |
+| Live current-state audit | Passed; 413 tickets summarized without writes |
+| Live transition-history audit | Passed; 82 events summarized without writes |
+| `npm ci` | Passed; 533 packages installed, 0 vulnerabilities |
+| `npm test` | Passed; 35 files, 240 tests |
+| `npm run lint` | Passed; 0 warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build |
+| `npm run test:e2e` | Passed; 21 HTTP checks, credentialed matrix skipped explicitly because the secret fixture is unset |
+| `npm audit` | Passed; 0 vulnerabilities |
+| `git diff --check` | Passed |
+| Immediate pre-commit E2E rerun | Passed before `b344d18` |
+
+### Commit
+
+- `b344d18` — `fix: guard ticket status transitions`
+
+### Migration and rollback
+
+- Apply `supabase/migrations/032_guard_ticket_status_transitions.sql` after 031
+  and before deploying `b344d18`.
+- Safe probes should cover at least one allowed same-row transition, one
+  rejected jump (`23514`), ownerless Assigned/In Progress rejection, and empty
+  Resolved-summary rejection. Positive probes need a disposable staging ticket
+  and active internal actor.
+- Application rollback can revert `b344d18`. Database rollback requires a
+  reviewed migration that drops trigger `enforce_ticket_status_transition` and
+  its two functions; do not manually edit migration 032 after application.
+
+### External gates
+
+- Migration 032 is not yet applied.
+- The credentialed role/tenant matrix and protected transition/business probes
+  still require the gitignored six-account staging fixture.
+- The richer PRD states and reopen SLA-cycle ledger are not introduced by this
+  compatibility checkpoint.
+
+### Next
+
+1. Apply migration 032 and run its safe presence/validation probes.
+2. With a disposable staging ticket, run allowed/rejected transition and
+   owner/summary invariant probes.
+3. Close remaining Slack notification parity or continue INT-007's atomic
+   audit/outbox work.
 
 ## Session record — 2026-07-30 (P0-R / INT-010 Slack Ripple Assist)
 

@@ -33,7 +33,7 @@ Ripple is a useful support-ticket prototype with meaningful Phase 1–4 work:
 - spare-parts and field-service skeletons
 - simple wall-clock SLA targets
 - email and AI integrations with graceful failure
-- 226 committed unit/contract tests, production HTTP smoke, and an opt-in
+- 240 committed unit/contract tests, production HTTP smoke, and an opt-in
   credentialed browser/API/RLS matrix
 
 It is not yet the operations platform described by PRD v1.1. The old
@@ -66,12 +66,12 @@ The correct approach is therefore:
 
 | Gate | Result through 2026-07-30 | Meaning |
 |---|---|---|
-| Unit tests | 226/226 passed | Scope, lifecycle, visibility, auth recovery/redirects, public/responsive UI contracts, Slack authentication/configuration and direct AI-service invocation, readiness, CI policy, filters, SLA, fixture validation, migration/RPC contracts, spare-part, field-service, and team-access transaction containment, DATE handling, and audit coverage is green |
+| Unit tests | 240/240 passed | Scope, lifecycle and exhaustive ticket-transition guards, visibility, auth recovery/redirects, public/responsive UI contracts, Slack authentication/configuration/action filtering and direct AI-service invocation, readiness, CI policy, filters, SLA, fixture validation, migration/RPC contracts, spare-part, field-service, and team-access transaction containment, DATE handling, and audit coverage is green |
 | Lint | Passed, no warnings | Direct ESLint CLI with zero-warning enforcement and generated-artifact ignores |
 | Production build | Passed on Next.js 15.5.22 | Environment-free build is reproducible |
 | Dependency audit | 0 vulnerabilities | Patched direct/transitive versions are lockfile-pinned and compatibility-tested |
 | Worktree | Clean at baseline | Work started on `codex/prd-v1-1-gap-closure` |
-| Committed end-to-end tests | 21 production HTTP checks + credentialed Playwright/API/RLS matrix | Public/recovery/negative/configuration smoke always runs; migrations 001–031 are applied, while protected request/field-service/team probes and the six-account two-tenant matrix await staging credentials/fixtures |
+| Committed end-to-end tests | 21 production HTTP checks + credentialed Playwright/API/RLS matrix | Public/recovery/negative/configuration smoke always runs; migrations 001–031 are applied and migration 032 is pending, while protected request/field-service/team/transition probes and the six-account two-tenant matrix await staging credentials/fixtures |
 | Hosted CI | Workflow committed in `4ceacd0`; first hosted run pending | Read-only, SHA-pinned quality job is reproducible; repository branch protection and the protected staging environment still require activation |
 
 ## 4. PRD capability gap map
@@ -128,7 +128,7 @@ has a release-blocking security or integrity problem.
 
 | ID | Finding | Required mitigation |
 |---|---|---|
-| INT-001 | Ticket statuses can jump to any state; domain guards exist only in UI convention | Introduce a single ticket transition service and truth-table tests |
+| INT-001 | Ticket statuses can jump to any state; domain guards exist only in UI convention | **Code closed; deployment verification pending:** `b344d18` + migration 032 define the eight-state compatibility truth table, enforce it below web/Slack, require owner/customer-summary entry invariants, and map guard failures to typed transport errors |
 | INT-002 | Internal-only comments count as first response while customer-visible engineer comments do not; status changes can also count | **Closed in `b71b3d7`:** human + internal author + customer visibility + non-automated truth table and atomic persistence |
 | INT-003 | A ticket resolved after its due time can be recorded as SLA met | **Closed in `b71b3d7`:** actual `resolved_at` is compared with the due timestamp and milestone breach is persisted |
 | INT-004 | Part-request header and items, and field order plus engineer assignments, are non-atomic | **Deployed; protected verification pending:** part-request update/create are deployed in `1f49ecc`/`64cee3d` + migrations 028/029. `2557760` + migration 030 make field-order create/update, complete engineer assignment sets, numbering, and audit atomic; both RPCs are live and protected rollback probes remain |
@@ -138,7 +138,7 @@ has a release-blocking security or integrity problem.
 | INT-008 | Site detail assigns the inventory query to an unused tuple slot and always renders empty inventory | **Closed in `9083ece`:** the inventory query result is wired to the inventory tab and covered by the external-resource containment regression checkpoint |
 | INT-009 | `/sites` links to `?site_id=...`, while the ticket parser expects `?site=...` | **Closed in `9083ece`:** site links and the ticket filter parser use the canonical `site` query key |
 | INT-010 | Slack Ripple Assist calls an internal authenticated HTTP API without a session cookie | **Closed in `3f7d296`:** web and signed Slack ingress authorize independently, then call the shared rate-limited AI application service; Slack preserves channel delivery context |
-| INT-011 | Slack mutations bypass ticket events, SLA stamping, state guards, and some notification paths | SLA/ticket/audit parity is closed for current Slack patch/comment actions in `b71b3d7`; state guards, AI direct service, and notification parity remain |
+| INT-011 | Slack mutations bypass ticket events, SLA stamping, state guards, and some notification paths | SLA/ticket/audit parity is closed in `b71b3d7`; AI direct service is closed in `3f7d296`; state guards are code-closed in `b344d18` pending migration 032; notification parity remains |
 | INT-012 | Clean builds fail on `/login` without Supabase env because the client is created during prerender | Construct the browser client only inside the submit action |
 
 ### Platform gaps that become risks at scale
@@ -395,5 +395,15 @@ Every implementation slice must:
     Slack Ripple Assist now calls the shared AI application service instead of
     a cookie-bound internal HTTP route, preserves channel context, and shares
     the paid-call rate limit with the web route.
-19. **Next local integrity work:** close INT-001 by enforcing a single guarded
-    ticket transition truth table below both web and Slack mutation paths.
+19. **P0-S — code complete, deployment pending:** Commit `b344d18` and
+    migration 032 define one compatibility truth table for the current eight
+    ticket statuses, reject invalid jumps under the database row update, and
+    require owners for Assigned/In Progress plus customer-visible summaries
+    for Resolved. Web and Slack only render legal actions and surface typed
+    conflicts. A live read-only audit found 50 historical `new → in_progress`
+    and one `new → resolved` event; the migration is intentionally
+    non-retroactive for 25 ownerless active-work rows and three resolved rows
+    without summaries.
+20. **Next local integrity work:** apply/probe migration 032, then close the
+    remaining INT-011 notification parity gap or continue INT-007's atomic
+    audit/outbox migration.
