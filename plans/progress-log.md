@@ -7,14 +7,13 @@ meaningful change and before ending a work session. Newest entries go first.
 
 - **Branch:** `codex/prd-v1-1-gap-closure`
 - **Active phase:** Phase 0 — Containment and reproducible baseline
-- **Active work item:** migration 032 deployment/probes, then INT-011
-  notification parity or INT-007 audit/outbox atomicity plus the P0-I external
+- **Active work item:** INT-007 audit/outbox atomicity plus the P0-I external
   staging execution gate
-- **Last verified implementation commit:** `b344d18` (`fix: guard ticket status transitions`)
+- **Last verified implementation commit:** `4892dcb` (`fix: unify ticket resolution notifications`)
 - **Uncommitted work:** none expected; verify with `git status` before resuming
-- **Deployment gate:** migrations 001–031 are user-confirmed applied;
-  `032_guard_ticket_status_transitions.sql` awaits application, and protected
-  business probes for migrations 028–032 still require staging fixtures
+- **Deployment gate:** migrations 001–032 are user-confirmed applied;
+  protected positive business probes for migrations 028–032 still require
+  staging fixtures
 - **External validation gate:** populate the gitignored credential fixture with six
   dedicated staging accounts, two tenants, a decommissioned site/ticket, and
   real internal artifact IDs; then run
@@ -34,10 +33,96 @@ meaningful change and before ending a work session. Newest entries go first.
   created for read-only protected-page visits and fully deleted afterward.
   Password-based login passed; recovery-email delivery and one-time link
   consumption still require a dedicated staging mailbox.
-- **Exact next local step:** apply migration 032 and run safe allowed/rejected
-  transition plus owner/summary guard probes; then close Slack notification
-  parity or continue atomic audit/outbox work
+- **Exact next local step:** inventory remaining best-effort audit and
+  integration-delivery writes, then design the first transactional outbox
+  migration and idempotent worker seam
 - **Primary plan:** [`plans/prd-v1.1-gap-closure-plan.md`](./prd-v1.1-gap-closure-plan.md)
+
+## Session record — 2026-07-30 (P0-T / INT-011 notification parity)
+
+### Objective
+
+Confirm migration 032 without committed writes and make current web and Slack
+ticket mutations deliver the same resolution notifications.
+
+### Migration 032 deployment verification
+
+- The user confirmed migration 032 was applied.
+- `ticket_status_transition_allowed('new', 'assigned')` returned `true`;
+  `ticket_status_transition_allowed('new', 'resolved')` returned `false`.
+- Three deliberately rejected `apply_ticket_patch_with_sla` probes exercised
+  an invalid jump, missing active-work owner, and empty resolution summary.
+  Every probe returned SQLSTATE `23514`.
+- Status, owner, summary, and `updated_at` remained unchanged after every
+  rejected call, confirming full rollback.
+- Migrations 001–032 are therefore confirmed applied in order. A disposable
+  positive transition/restore still requires protected staging fixtures.
+
+### Confirmed parity defect
+
+- Web resolution refreshed the Slack master card and attempted the resolution
+  email, but did not post a thread notice.
+- Slack resolution refreshed the card and posted the thread notice, but did
+  not attempt the submitter email.
+- Engineers therefore produced different customer-visible effects for the
+  same committed domain transition depending on ingress.
+
+### Changes completed
+
+- Added `notifyTicketMutation()` as the shared post-commit notification policy
+  for web and signed Slack ticket mutations.
+- Every supported mutation refreshes the Slack master card through the same
+  dispatcher.
+- A new resolution now posts one plain-text Slack thread reply and attempts
+  one submitter email from either ingress.
+- Resolved-to-resolved summary edits update the master card without duplicating
+  resolution notices.
+- Resolution thread replies set `mrkdwn: false`, preventing summaries from
+  creating mentions or Slack formatting side effects.
+- Refactored Slack target/client resolution so master updates and thread
+  replies share the same recorded-message lookup behavior.
+- Delivery failures remain non-fatal after the ticket transaction and return
+  structured results; durable retry/idempotency remains INT-007.
+- Added six notification parity, duplicate-suppression, missing-email,
+  failure-containment, and call-site contract checks, bringing the suite from
+  240 to 246 tests.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| Migration 032 truth-table probe | Passed; expected true/false decisions |
+| Migration 032 rollback probes | Passed; three `23514`, all target fields unchanged |
+| Focused notification checks | Passed; 6 tests |
+| `npm ci` | Passed; 533 packages installed, 0 vulnerabilities |
+| `npm test` | Passed; 36 files, 246 tests |
+| `npm run lint` | Passed; 0 warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build |
+| `npm run test:e2e` | Passed; 21 HTTP checks, credentialed matrix skipped explicitly because the secret fixture is unset |
+| `npm audit` | Passed; 0 vulnerabilities |
+| `git diff --check` | Passed |
+| Immediate pre-commit E2E rerun | Passed before `4892dcb` |
+
+### Commit
+
+- `4892dcb` — `fix: unify ticket resolution notifications`
+
+### External gates and limitation
+
+- No new migration was introduced.
+- The Resend sender domain remains unverified, so real email delivery still
+  returns the existing structured `send_failed` result until configured.
+- Real Slack thread delivery requires the configured bot and a recorded master
+  message in staging.
+- In-process best effort is parity, not durability. Transactional outbox,
+  idempotent workers, retries, and dead-letter handling remain INT-007.
+
+### Next
+
+1. Inventory remaining best-effort audit and external-delivery writes.
+2. Establish the first transactional outbox schema/command seam.
+3. Add idempotent dispatch, retry/backoff, and dead-letter contracts before
+   moving more notifications onto the worker.
 
 ## Session record — 2026-07-30 (P0-S / INT-001 guarded ticket transitions)
 
