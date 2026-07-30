@@ -27,9 +27,9 @@ Vercel.
 | Layer | Choice | Why |
 |---|---|---|
 | Framework | **Next.js 15.5.22** (App Router) + React 19 + TypeScript | RSC + server actions simplify the Supabase cookie flow |
-| Styling | **Tailwind CSS v4** + shadcn/ui patterns | Fast, consistent, no design-system build |
+| Styling | **Tailwind CSS v4** + self-hosted Inter + shadcn/ui patterns | Fast, consistent, no design-system build |
 | Database | **Supabase Postgres** | Single source of truth; RLS handles row scoping |
-| Auth | **Supabase Auth** (email + password) | `@supabase/ssr` cookie flow; `handle_new_user()` trigger mirrors `auth.users` → `public.users` |
+| Auth | **Supabase Auth** (email + password + recovery) | `@supabase/ssr` cookie flow; `handle_new_user()` trigger mirrors `auth.users` → `public.users` |
 | Storage | **Supabase Storage** | Bucket `ripple-attachments`, 50MB cap per file |
 | Slack | **@slack/bolt** + **@slack/web-api** | Bolt runs inside Next.js API routes (no separate process) |
 | AI | **MiniMax AI** (OpenAI-compatible) | Was OpenAI → Zhipu (BigModel GLM-4.7-FlashX) → now MiniMax. Model `M2.7-highspeed`. **Note:** base URL `https://api.minimax.chat/v1/` looks suspicious (not a known major LLM endpoint) — verify before deploy. See §9. |
@@ -45,13 +45,13 @@ Vercel.
 /Ripple
 ├── src/
 │   ├── app/
-│   │   ├── (public)/                    # No-auth: /, /login, /submit, /t/[token]
+│   │   ├── (public)/                    # No-auth: login, recovery/reset, submit
 │   │   ├── (auth)/                      # Auth-required, sidebar layout
 │   │   │   ├── dashboard/               # 3 variants: internal / customer_manager / customer
 │   │   │   ├── tickets/                 # List + [id] detail + create modal
 │   │   │   ├── sites/                   # Customer-facing: "My Sites"
 │   │   │   ├── profile/                 # Name / phone / password
-│   │   │   ├── settings/                # Placeholder
+│   │   │   ├── settings/                # Integration readiness summary
 │   │   │   ├── team/                    # customer_manager only: manage their team
 │   │   │   └── admin/                   # admin only
 │   │   │       ├── customers-sites/     # Merged list view
@@ -267,8 +267,8 @@ npm run dev
 - `npm run build` — production build
 - `npm run start` — production server
 - `npm run lint` — direct ESLint CLI across the repository; warnings fail the gate
-- `npm test` — Vitest unit/contract suite (174 tests)
-- `npm run test:e2e` — 19-check production HTTP smoke plus optional credentialed Playwright/API/RLS matrix; requires a successful build
+- `npm test` — Vitest unit/contract suite (188 tests)
+- `npm run test:e2e` — 21-check production HTTP smoke plus optional credentialed Playwright/API/RLS matrix; requires a successful build
 - `npm run test:e2e:credentialed` — real six-account/two-tenant matrix; set `RIPPLE_E2E_FIXTURES_FILE`
 - `npm run test:e2e:install-browser` — install the pinned Chromium runtime
 
@@ -507,10 +507,49 @@ search path. The same migration makes request header, item, cost, number, and
 audit creation one database transaction with actor, tenant, ticket, and part
 validation.
 
+The connected project's anonymous OpenAPI document already omitted these five
+functions before migration 029, so no live anonymous exploit is claimed from
+that probe. The explicit revokes remain the portable PostgreSQL privilege
+invariant and prevent future API/configuration changes from reopening them.
+
 **Lesson:** treat function privilege setup as `REVOKE` then `GRANT`, not
 `GRANT` alone. Every security-definer command must have a safe search path,
 independent actor checks, explicit execution roles, and one transactional
 boundary for the complete business action.
+
+### Supabase SSR auth cookies belong on the response you return
+Found 2026-07-29 while adding password recovery. The authorization-code
+callback created a redirect inside the Supabase `setAll` callback, attached
+session cookies to it, and then discarded it. The route returned a fresh
+redirect without those cookies. This can make successful sign-in or recovery
+look like an expired link.
+
+Commit `7cd876b` creates the success redirect once, lets `setAll` mutate that
+exact response, and returns it after `exchangeCodeForSession`. Post-auth paths
+pass through a same-origin allow-list. Logout uses an HTTP 303 with a relative
+`Location: /login`, avoiding environment/host drift and open redirects.
+
+**Lesson:** cookie adapters do not replace route control flow. In an SSR auth
+callback, construct one response, attach every exchanged cookie to it, and
+return that same object. Validate continuation paths and prefer relative
+post-action redirects when the target is same-origin.
+
+### Responsive audits need real data, not only empty shells
+Found 2026-07-29 during the support-experience review. The new mobile
+navigation shell fit correctly in a synthetic preview, but live dashboard
+ticket titles/dates and ticket filter option labels widened the document to
+447–498 px on a 390 px viewport.
+
+Commit `7cd876b` used a short-lived admin identity to visit the real protected
+pages, then deleted both auth and profile records. Dashboard rows now reflow;
+filters become a single-column mobile grid; the dense ticket table scrolls
+inside its own container. Public form controls now have explicit labels, and
+attachment outcomes are awaited and shown.
+
+**Lesson:** test responsive layouts against long production-shaped content.
+Measure document `scrollWidth`, inspect both desktop and mobile, and keep wide
+data tables in a deliberate local scroller. Temporary test identities must be
+scoped, read-only in use, and verified deleted.
 
 ---
 
@@ -572,7 +611,7 @@ resume work; this section remains the broader historical summary.
       to detail-tabs-helpers.ts (no "use client" directive).
   - **Helper upgrade**: `requireAdmin()` now also returns `email` (it was already selecting it — just not exposing).
   - **New tests**: 4 new e2e scripts (21_audit_fixes, 22_list_pii, 23_web_pages_full, 24_feature_flows), 272 new test cases. Full suite: 7 e2e mjs (182) + 2 e2e Python (187) + 7 unit (83) = **452 tests, all green**.
-- **PRD v1.1 Phase 0 containment** (`9083ece`, `211843e`, `b71b3d7`, `b9a7a12`, `e83156f`, `4ceacd0`, `1f49ecc`, `64cee3d`): centralized
+- **PRD v1.1 Phase 0 containment** (`9083ece`, `211843e`, `b71b3d7`, `b9a7a12`, `e83156f`, `4ceacd0`, `1f49ecc`, `64cee3d`, `7cd876b`): centralized
   tenant scoping and response shaping; removed client service-role imports;
   restricted Slack actions; hid customer-internal ticket fields; retired
   customer/site/user hard delete; added transactional archive/deactivation,
@@ -583,8 +622,10 @@ resume work; this section remains the broader historical summary.
   Playwright/API/RLS matrix, direct ESLint enforcement, SHA-pinned GitHub
   Actions quality gates; made spare-part creation and fulfillment changes
   parent-contained, quantity-bounded, atomic, and transactionally audited;
-  restricted number-minting RPCs to the service role; added 174
-  unit/contract tests and a zero-vulnerability dependency baseline.
+  restricted number-minting RPCs to the service role; added password recovery,
+  fixed SSR auth-cookie propagation, rebuilt the responsive support
+  experience, and established 188 unit/contract tests plus a
+  zero-vulnerability dependency baseline.
 
 ### Known issues / open work
 | Priority | Item | Where | Notes |
@@ -592,7 +633,7 @@ resume work; this section remains the broader historical summary.
 | 🟡 Med | MiniMax AI key invalid (`401 invalid api key (2049)`). | `.env` `MINIMAX_API_KEY` | Mock fallback is in place; real AI works once key is fixed. Provider URL `https://api.minimax.chat/v1/` resolves and returns proper error responses, so the gateway is real — just the key is wrong. |
 | 🟡 Med | Resend sender domain `dropletai.services` not verified | `src/lib/email/send.ts` | Email send returns `send_failed` until domain is verified at resend.com/domains. Ticket creation still works. |
 | 🟡 Med | Dashboard timezone hardcoded to `America/New_York` for some widgets | `src/app/(auth)/dashboard/page.tsx` | Should derive from user or first site; ticket detail already uses `site.timezone` |
-| 🟡 Med | `/settings` page is a placeholder | `src/app/(auth)/settings/page.tsx` | Notification preferences, timezone, theme |
+| 🟡 Med | `/settings` is read-only integration status | `src/app/(auth)/settings/page.tsx` | Add notification preferences, user timezone, and theme controls |
 | 🟡 Med | In-memory rate limit not production-grade | `src/lib/rate-limit.ts` | Fine for now (Vercel cold starts reset the counter, but worst case is a fresh window per cold start). Swap for Upstash/Redis when traffic warrants. |
 | 🟡 Deploy | Migration 029 awaits application | `supabase/migrations/029_atomic_spare_part_request_creation.sql` | Apply before deploying `64cee3d`; then run the protected request-creation positive/negative probes |
 | 🟢 Low | Field-service numbering still uses the legacy sequence RPC | `src/app/api/field-service-orders/route.ts` | Consolidate on `next_order_no()` inside the planned atomic field-order command; both current paths are sequence-backed |

@@ -33,7 +33,7 @@ Ripple is a useful support-ticket prototype with meaningful Phase 1–4 work:
 - spare-parts and field-service skeletons
 - simple wall-clock SLA targets
 - email and AI integrations with graceful failure
-- 174 committed unit/contract tests, production HTTP smoke, and an opt-in
+- 188 committed unit/contract tests, production HTTP smoke, and an opt-in
   credentialed browser/API/RLS matrix
 
 It is not yet the operations platform described by PRD v1.1. The old
@@ -66,12 +66,12 @@ The correct approach is therefore:
 
 | Gate | Result through 2026-07-29 | Meaning |
 |---|---|---|
-| Unit tests | 174/174 passed | Scope, lifecycle, visibility, Slack authentication/configuration, readiness, CI policy, filters, SLA, fixture validation, migration/RPC contracts, spare-part creation/update containment, and audit coverage is green |
+| Unit tests | 188/188 passed | Scope, lifecycle, visibility, auth recovery/redirects, public/responsive UI contracts, Slack authentication/configuration, readiness, CI policy, filters, SLA, fixture validation, migration/RPC contracts, spare-part creation/update containment, and audit coverage is green |
 | Lint | Passed, no warnings | Direct ESLint CLI with zero-warning enforcement and generated-artifact ignores |
 | Production build | Passed on Next.js 15.5.22 | Environment-free build is reproducible |
 | Dependency audit | 0 vulnerabilities | Patched direct/transitive versions are lockfile-pinned and compatibility-tested |
 | Worktree | Clean at baseline | Work started on `codex/prd-v1-1-gap-closure` |
-| Committed end-to-end tests | 19 production HTTP checks + credentialed Playwright/API/RLS matrix | Public/negative/configuration smoke always runs; migrations 001–028 are applied and migration 029 is pending, while part-request runtime probes and the six-account two-tenant matrix await staging credentials/fixtures |
+| Committed end-to-end tests | 21 production HTTP checks + credentialed Playwright/API/RLS matrix | Public/recovery/negative/configuration smoke always runs; migrations 001–028 are applied and migration 029 is pending, while part-request runtime probes and the six-account two-tenant matrix await staging credentials/fixtures |
 | Hosted CI | Workflow committed in `4ceacd0`; first hosted run pending | Read-only, SHA-pinned quality job is reproducible; repository branch protection and the protected staging environment still require activation |
 
 ## 4. PRD capability gap map
@@ -367,6 +367,13 @@ Every implementation slice must:
     migration 029 make spare-part request header, items, total calculation,
     sequence allocation, and audit atomic. The migration also restricts all
     current number-minting RPCs to `service_role`.
-15. **Next local integrity work:** Complete INT-004 by making field-service
+15. **P0-O — completed in `7cd876b`:** Rebuilt the public support experience,
+    added non-enumerating password recovery, fixed Supabase callback cookie
+    propagation and redirect safety, introduced the responsive role-aware
+    shell, and removed real-data mobile overflow from dashboard/ticket pages.
+    A disposable admin identity was used for read-only protected-page review
+    and deleted afterward. Recovery-link delivery/consumption remains a
+    protected staging-mailbox gate.
+16. **Next local integrity work:** Complete INT-004 by making field-service
     order creation and engineer-assignment replacement atomic, and repair the
     API/UI mismatch for PostgreSQL `DATE` values.

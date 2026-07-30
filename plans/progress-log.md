@@ -7,9 +7,9 @@ meaningful change and before ending a work session. Newest entries go first.
 
 - **Branch:** `codex/prd-v1-1-gap-closure`
 - **Active phase:** Phase 0 — Containment and reproducible baseline
-- **Active work item:** INT-004 field-service transaction gaps plus the P0-I
-  external staging execution gate
-- **Last verified implementation commit:** `64cee3d` (`fix: create part requests atomically`)
+- **Active work item:** INT-004 field-service transaction gaps plus migration
+  029 and the P0-I external staging execution gate
+- **Last verified implementation commit:** `7cd876b` (`feat: redesign support experience`)
 - **Uncommitted work:** none expected; verify with `git status` before resuming
 - **Deployment gate:** migrations 001–028 are user-confirmed applied;
   `029_atomic_spare_part_request_creation.sql` awaits application
@@ -24,10 +24,124 @@ meaningful change and before ending a work session. Newest entries go first.
 - **Runtime verification debt:** when staging credentials become available,
   test request creation plus fulfillment positive/negative cases, including
   cross-site ticket, inactive part, foreign item, and over-fulfillment
+- **Support UX verification:** public pages and the real admin shell were
+  reviewed at 1440×1000 and 390×844. A short-lived admin test identity was
+  created for read-only protected-page visits and fully deleted afterward.
+  Password-based login passed; recovery-email delivery and one-time link
+  consumption still require a dedicated staging mailbox.
 - **Exact next local step:** after migration 029 is applied, make field-service
   order creation and engineer-assignment replacement atomic and correct the
   `YYYY-MM-DD` API contract for database `DATE` fields
 - **Primary plan:** [`plans/prd-v1.1-gap-closure-plan.md`](./prd-v1.1-gap-closure-plan.md)
+
+## Session record — 2026-07-29 (P0-O / support experience)
+
+### Objective
+
+Review and improve the complete customer entry experience from the public home
+page through sign-in, account recovery, ticket intake, and the responsive
+authenticated shell, using the supplied DropletAI automation imagery and one
+consistent Inter type system.
+
+### Confirmed defects
+
+- Sign-in had no password-recovery path.
+- The Supabase authorization-code callback wrote exchanged session cookies to
+  a redirect response that was discarded, then returned a fresh response.
+- The callback trusted an unvalidated `next` query value.
+- Sign-out depended on an absolute configured origin rather than a relative
+  same-origin redirect.
+- The public home page did not explain support intake, severity, evidence, or
+  Slack/web channel choices.
+- Public attachment uploads were awaited only as fire-and-forget work, so a
+  ticket could show success while attachment failures remained invisible.
+- Public form labels were not explicitly associated with their controls.
+- The authenticated navigation was a fixed desktop sidebar with no mobile
+  drawer.
+- Real mobile data exposed horizontal overflow in dashboard ticket rows and in
+  the ticket filters/table.
+
+### Changes
+
+- Rebuilt the public home page around the supplied AMR-fleet image with
+  structured “how it works,” evidence checklist, severity, capabilities, and
+  support-channel sections.
+- Added shared public navigation/footer and self-hosted Inter Variable.
+- Rebuilt sign-in with accessible labels, password visibility, generic auth
+  errors, safe post-login routing, and a prominent recovery link.
+- Added non-enumerating `/forgot-password` and session-gated
+  `/reset-password` flows with a 12-character minimum.
+- Corrected the Supabase SSR callback so exchanged cookies are attached to the
+  response that is actually returned, and allow-listed same-origin redirect
+  paths.
+- Made logout return a standards-based relative HTTP 303 redirect.
+- Added a responsive authenticated shell with role-aware navigation, an
+  accessible mobile dialog/drawer, Escape handling, focus restoration, and
+  scroll locking.
+- Improved public ticket intake guidance, autocomplete/labels, live site-code
+  feedback, success tracking, and awaited attachment results with visible
+  partial-failure warnings.
+- Fixed mobile dashboard rows and ticket filters; dense ticket tables now
+  scroll inside their own container instead of widening the document.
+- Raised profile password validation to the same 12-character minimum.
+- Added auth, recovery, UI, accessibility, redirect, and production HTTP
+  regression contracts.
+
+### Browser and live-environment verification
+
+- Reviewed `/`, `/login`, `/forgot-password`, `/reset-password`, and `/submit`
+  at desktop and mobile viewport sizes; all measured without page-level
+  horizontal overflow.
+- Signed in with a short-lived test-only admin account and visited the real
+  dashboard, ticket list/detail, customers/sites/users, spare parts, part
+  requests, field service, SLA, audit, settings, and profile pages.
+- The temporary auth identity and `public.users` profile were deleted after the
+  read-only review; verification found zero remaining rows.
+- `GET /api/health/ready` returned HTTP 200 with database and Slack both ready.
+- A safe RPC-presence probe still reports migration 029 missing; it remains a
+  deployment dependency.
+- Recovery-email dispatch and final password mutation were intentionally not
+  performed against a real mailbox/account. The protected credential fixture
+  is still absent, so the six-account matrix prints its explicit local skip.
+
+### Verification before implementation commit
+
+| Command | Result |
+|---|---|
+| `npm ci` | Passed; 533 packages installed and 534 audited |
+| `npm test` | Passed; 23 files, 188 tests |
+| `npm run lint` | Passed via ESLint CLI; 0 warnings/errors |
+| `npm run build` | Passed on Next.js 15.5.22 |
+| `npm run test:e2e` | Passed 21 production HTTP checks; credentialed matrix explicitly skipped because the secret fixture is unavailable |
+| `npm audit` | Passed; 0 vulnerabilities |
+| `git diff --check` | Passed |
+| Staged secret-pattern scan | Passed |
+
+The implementation was committed only after the full gate and a second
+`npm run test:e2e` in the same command immediately before commit.
+
+### Decisions and rollback
+
+- The user-supplied image is stored as an optimized 460 KB JPEG; no generated
+  derivative service or external runtime dependency is required.
+- Password-recovery responses remain identical for known and unknown accounts.
+- The browser audit used only a disposable identity and read-only page visits;
+  it did not create or modify tickets, customers, sites, parts, or field work.
+- Rollback can revert `7cd876b` without a database migration. Keep the auth
+  callback cookie fix and safe redirects if selectively reverting visual work.
+
+### Commit
+
+- Hash: `7cd876b`
+- Message: `feat: redesign support experience`
+
+### Exact next step
+
+1. Apply migration `029_atomic_spare_part_request_creation.sql`.
+2. Provision the protected six-account fixture and a dedicated staging mailbox
+   to run the role/tenant matrix and complete recovery-link consumption.
+3. Continue INT-004 with an atomic field-service order/engineer-assignment
+   command and aligned PostgreSQL `DATE` input contracts.
 
 ## Session record — 2026-07-29 (P0-N / INT-004 create path)
 

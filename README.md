@@ -7,6 +7,8 @@ A Slack-native support portal for DropletAI Services. Centralises customer suppo
 - **Slack-Native Tickets** — Create, assign, update, and resolve tickets directly in site Slack channels via `/ticket` slash command + interactive Block Kit cards.
 - **Web Portal** — Authenticated dashboard for internal engineers + customer managers; public token page for guest customers to view their ticket.
 - **Customer-Side Submit Form** — Public, no-account-needed form for guest customers at `/submit`.
+- **Account Recovery** — Non-enumerating email recovery and one-time password reset flow.
+- **Responsive Support Experience** — Detailed support guidance, supplied industrial automation visuals, self-hosted Inter, and a role-aware mobile application drawer.
 - **Ripple Assist (AI)** — Internal troubleshooting copilot. **Sprint 2: gracefully falls back to mock output if the AI provider key is invalid/missing** (does not block core ticket flow).
 - **Spare Parts + Field Service** — Phase 3 modules: catalog, per-site inventory, request workflow, dispatch.
 - **Audit Log** — Cross-entity audit trail (`audit_logs` table) covering tickets, customers, sites, users, security events.
@@ -17,15 +19,15 @@ A Slack-native support portal for DropletAI Services. Centralises customer suppo
 
 | Layer | Tool |
 |-------|------|
-| Frontend | Next.js 15.5.22 (App Router) + React 19 + TypeScript + Tailwind CSS v4 |
+| Frontend | Next.js 15.5.22 (App Router) + React 19 + TypeScript + Tailwind CSS v4 + self-hosted Inter |
 | Database | Supabase Postgres (29 migrations, see `supabase/migrations/`) |
-| Auth | Supabase Auth (email + password) + new `sb_publishable_` / `sb_secret_` key format |
+| Auth | Supabase Auth (email + password + recovery) + new `sb_publishable_` / `sb_secret_` key format |
 | Storage | Supabase Storage — bucket `ripple-attachments`, **50 MB cap per file** |
 | Slack | `@slack/bolt` + `@slack/web-api` (runs inside Next.js API routes, no separate process) |
 | AI | **MiniMax AI** (OpenAI-compatible) — was OpenAI → Zhipu → MiniMax. **See "AI provider" section below.** |
 | Email | Resend (transactional: ticket confirmation, resolution notice) |
 | Validation | Zod (all API request bodies) |
-| Testing | Vitest (174 unit/contract tests) + 19-check production HTTP smoke + credentialed Playwright/API/RLS matrix |
+| Testing | Vitest (188 unit/contract tests) + 21-check production HTTP smoke + credentialed Playwright/API/RLS matrix |
 | Hosting | Vercel (serverless API routes) |
 
 ## Phases
@@ -156,8 +158,8 @@ protected CI should set `RIPPLE_E2E_REQUIRE_CREDENTIALS=1` so it fails closed.
 
 ### GitHub Actions
 
-`.github/workflows/ci.yml` runs the locked install, 174 unit/contract tests,
-lint, production build, 19-check HTTP E2E, and dependency audit for pull
+`.github/workflows/ci.yml` runs the locked install, 188 unit/contract tests,
+lint, production build, 21-check HTTP E2E, and dependency audit for pull
 requests and pushes to `main`. GitHub-owned actions are pinned to full commit
 SHAs and the workflow has read-only repository permissions.
 
@@ -204,13 +206,13 @@ MINIMAX_MODEL=M2.7-highspeed
 ```
 src/
 ├── app/
-│   ├── (public)/                # No-auth: /, /login, /submit, /t/[token]
+│   ├── (public)/                # No-auth: login/recovery/reset/submit
 │   ├── (auth)/                  # Auth-required, sidebar layout
 │   │   ├── dashboard/           # 3 variants: internal / customer_manager / customer
 │   │   ├── tickets/             # List + [id] detail + create modal
 │   │   ├── sites/               # Customer-facing: "My Sites"
 │   │   ├── profile/             # Name / phone / password
-│   │   ├── settings/            # Placeholder
+│   │   ├── settings/            # Integration readiness/configuration summary
 │   │   ├── team/                # customer_manager only
 │   │   └── admin/               # admin only
 │   │       ├── audit/
