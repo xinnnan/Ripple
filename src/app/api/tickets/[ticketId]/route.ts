@@ -7,8 +7,10 @@ import { sendTicketResolved } from "@/lib/email/send";
 import { resolveTicketQuery } from "@/lib/tickets/lookup";
 import {
   applyTicketPatchWithSla,
+  InvalidTicketTransitionError,
   type TicketPatch,
 } from "@/lib/tickets/mutations";
+import { TICKET_STATUSES } from "@/types/ticket";
 import { z } from "zod";
 
 interface RouteContext {
@@ -16,18 +18,9 @@ interface RouteContext {
 }
 
 const patchTicketSchema = z.object({
-  status: z.enum([
-    "new",
-    "assigned",
-    "in_progress",
-    "waiting_customer",
-    "waiting_droplet",
-    "resolved",
-    "closed",
-    "reopened",
-  ]).optional(),
+  status: z.enum(TICKET_STATUSES).optional(),
   severity: z.enum(["P1", "P2", "P3", "P4"]).optional(),
-  owner_id: z.string().uuid().optional(),
+  owner_id: z.string().uuid().nullable().optional(),
   customer_visible_summary: z.string().optional(),
   internal_summary: z.string().optional(),
   root_cause_category: z.string().optional(),
@@ -237,6 +230,9 @@ export async function PATCH(
 
     return NextResponse.json({ ticket });
   } catch (error) {
+    if (error instanceof InvalidTicketTransitionError) {
+      return NextResponse.json({ error: error.message }, { status: 409 });
+    }
     if (error instanceof z.ZodError) {
       return NextResponse.json(
         { error: "Validation error", details: error.errors },

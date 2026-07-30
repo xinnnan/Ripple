@@ -8,6 +8,7 @@ import { INTERNAL_ROLES } from "@/lib/roles";
 import type { Ticket } from "@/types/ticket";
 import {
   applyTicketPatchWithSla,
+  InvalidTicketTransitionError,
   recordTicketCommentWithSla,
   type TicketPatch,
 } from "@/lib/tickets/mutations";
@@ -38,11 +39,13 @@ async function applySlackTicketPatch(args: {
   supabase: SupabaseClient;
   ticketNo: string;
   actorId: string;
-  patch: TicketPatch;
+  patch:
+    | TicketPatch
+    | ((currentStatus: Ticket["status"]) => TicketPatch);
 }) {
   const { data: currentTicket, error: lookupError } = await args.supabase
     .from("tickets")
-    .select("id")
+    .select("id, status")
     .eq("ticket_no", args.ticketNo)
     .maybeSingle();
 
@@ -52,11 +55,16 @@ async function applySlackTicketPatch(args: {
     );
   }
 
+  const patch =
+    typeof args.patch === "function"
+      ? args.patch(currentTicket.status as Ticket["status"])
+      : args.patch;
+
   await applyTicketPatchWithSla({
     supabase: args.supabase,
     ticketId: currentTicket.id,
     actorId: args.actorId,
-    patch: args.patch,
+    patch,
     source: "slack",
   });
 
@@ -121,7 +129,8 @@ export async function handleBlockAction(
     return;
   }
 
-  switch (action.action_id) {
+  try {
+    switch (action.action_id) {
     case "assign_to_me": {
       if (!ticketNo) break;
 
@@ -129,10 +138,12 @@ export async function handleBlockAction(
         supabase,
         ticketNo,
         actorId: internalUser.id,
-        patch: {
+        patch: (currentStatus) => ({
           owner_id: internalUser.id,
-          status: "assigned",
-        },
+          ...(currentStatus === "new" || currentStatus === "reopened"
+            ? { status: "assigned" as const }
+            : {}),
+        }),
       });
 
       if (ticket) {
@@ -264,8 +275,26 @@ export async function handleBlockAction(
       break;
     }
 
-    default:
-      console.log(`Unknown action: ${action.action_id}`);
+      default:
+        console.log(`Unknown action: ${action.action_id}`);
+    }
+  } catch (error) {
+    if (error instanceof InvalidTicketTransitionError && channelId) {
+      try {
+        await client.chat.postEphemeral({
+          channel: channelId,
+          user: userId,
+          text: `❌ ${error.message}`,
+        });
+      } catch (postError) {
+        console.warn(
+          "[slack/handlers] transition error reply failed (non-fatal):",
+          postError instanceof Error ? postError.message : postError
+        );
+      }
+      return;
+    }
+    throw error;
   }
 }
 
@@ -397,18 +426,29 @@ export async function handleViewSubmission(
       // The same row-locked command used by the web PATCH path records the
       // actual resolution time, compares it to resolve_due_at, and commits
       // the ticket + milestone + timeline + audit rows together.
-      const ticket = await applySlackTicketPatch({
-        supabase,
-        ticketNo,
-        actorId: internalUser!.id,
-        patch: {
-          status: "resolved",
-          customer_visible_summary: customerSummary,
-          root_cause_category: rootCause,
-          follow_up_needed: followUp === "yes",
-          internal_summary: internalNotes || null,
-        },
-      });
+      let ticket;
+      try {
+        ticket = await applySlackTicketPatch({
+          supabase,
+          ticketNo,
+          actorId: internalUser!.id,
+          patch: {
+            status: "resolved",
+            customer_visible_summary: customerSummary,
+            root_cause_category: rootCause,
+            follow_up_needed: followUp === "yes",
+            internal_summary: internalNotes || null,
+          },
+        });
+      } catch (error) {
+        if (error instanceof InvalidTicketTransitionError) {
+          return {
+            response_action: "errors",
+            errors: { customer_summary_block: error.message },
+          };
+        }
+        throw error;
+      }
 
       if (ticket) {
         await updateMasterMessage(ticket as unknown as Ticket, {
