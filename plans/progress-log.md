@@ -7,16 +7,16 @@ meaningful change and before ending a work session. Newest entries go first.
 
 - **Branch:** `codex/prd-v1-1-gap-closure`
 - **Active phase:** Phase 0 — Containment and reproducible baseline
-- **Active work item:** apply/probe migration 034, configure the production
-  outbox worker secret, then move remaining best-effort audit domains onto
-  atomic commands
-- **Last verified implementation commit:** `21f7781` (`feat: make ticket creation atomic`)
+- **Active work item:** apply/probe migration 035, configure the production
+  outbox worker secret, then continue moving remaining best-effort audit
+  domains onto atomic commands
+- **Last verified implementation commit:** `a14ec45` (`fix: make site access changes atomic`)
 - **Uncommitted work:** documentation checkpoint only; verify with `git status`
   before resuming
-- **Deployment gate:** migrations 001–033 are confirmed applied; migration 034
-  must be applied before deploying `21f7781`. Production `CRON_SECRET` remains
+- **Deployment gate:** migrations 001–034 are confirmed applied; migration 035
+  must be applied before deploying `a14ec45`. Production `CRON_SECRET` remains
   unset in this workspace. Protected positive business probes for migrations
-  028–034 still require staging fixtures
+  028–035 still require staging fixtures
 - **External validation gate:** populate the gitignored credential fixture with six
   dedicated staging accounts, two tenants, a decommissioned site/ticket, and
   real internal artifact IDs; then run
@@ -36,11 +36,111 @@ meaningful change and before ending a work session. Newest entries go first.
   created for read-only protected-page visits and fully deleted afterward.
   Password-based login passed; recovery-email delivery and one-time link
   consumption still require a dedicated staging mailbox.
-- **Exact next local step:** after the user applies migration 034, verify the
-  expanded constraint and atomic command with non-writing probes, then run one
-  disposable ticket-creation/rollback probe when protected staging fixtures
-  exist. Configure `CRON_SECRET` separately before production worker activation
+- **Exact next local step:** after the user applies migration 035, verify both
+  service-role commands, revoked caller privileges, validation guards, and
+  zero-residue behavior with non-writing probes. Run disposable
+  same/cross-tenant membership and ticket-creation rollback probes when
+  protected staging fixtures exist. Configure `CRON_SECRET` separately before
+  production worker activation
 - **Primary plan:** [`plans/prd-v1.1-gap-closure-plan.md`](./prd-v1.1-gap-closure-plan.md)
+
+## Session record — 2026-07-30 (P0-W / atomic admin site access)
+
+### Objective
+
+Verify migration 034 without committed writes, inventory the remaining
+best-effort audit paths, then harden the highest-risk authorization mutation:
+admin-managed customer site membership.
+
+### Migration 034 verification
+
+- The user confirmed migration 034 was applied.
+- The service role can resolve `create_ticket_atomic(jsonb)`.
+- An empty command and a command with an unsupported key both failed with
+  SQLSTATE `22023`, before any write.
+- The anonymous role cannot execute the command (`42501`).
+- An invalid outbox event type was rejected by the table constraint
+  (`23514`).
+- The disposable probe identifiers had zero residual ticket, event, audit, or
+  outbox rows.
+- Production worker readiness still intentionally fails closed because
+  `CRON_SECRET` is not configured locally.
+
+### Audit findings
+
+- `POST /api/admin/site-members` inserted/deleted the authorization row first
+  and called best-effort `logAudit()` afterward. A crash or audit failure could
+  change access without durable attribution.
+- The add route verified only that the user and site existed. It did not
+  require a customer user to belong to the selected site's customer, allowing
+  an admin request to create cross-tenant access.
+- The site detail UI accepted a raw user UUID and offered an invalid `admin`
+  membership role even though the database permits only
+  owner/manager/member/viewer.
+- The user detail UI listed already-assigned sites and active sites under
+  inactive customers, producing avoidable failed or duplicate submissions.
+
+### Changes completed
+
+- Added rollout-safe migration `035_atomic_admin_site_membership.sql`.
+- Added service-role-only atomic add/remove commands that:
+  - re-check an active admin inside the transaction;
+  - row-lock the target user or membership;
+  - require an active/invited customer user and an active site under an
+    active/trial customer;
+  - reject cross-customer existing access and a mismatched `users.customer_id`;
+  - derive a legacy null `customer_id` from the first valid assigned site;
+  - commit membership/customer changes and their audit rows together.
+- The API now uses only these command wrappers for membership writes, retains
+  the legacy JSON/form contracts, maps expected database codes to stable HTTP
+  responses, and never returns database messages.
+- Admin site/user detail forms now use constrained selectors, exclude existing
+  memberships, hide invalid lifecycle choices, and offer only valid
+  owner/manager/member/viewer roles.
+- Added six command/migration/route/UI contract tests and an unauthenticated
+  production HTTP mutation check.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| Focused site-membership checks | Passed; 6 tests |
+| `npm ci` | Passed; 533 packages installed |
+| `npm test` | Passed; 39 files, 264 tests |
+| `npm run lint` | Passed; 0 warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build |
+| `npm run test:e2e` | Passed; 23 HTTP checks, credentialed matrix skipped explicitly because the secret fixture is unset |
+| `npm audit` | Passed; 0 vulnerabilities |
+| `git diff --check` | Passed |
+| Immediate pre-commit E2E rerun | Passed before `a14ec45` |
+
+### Commit
+
+- `a14ec45` — `fix: make site access changes atomic`
+
+### Deployment gates and limitations
+
+- Apply migration 035 before deploying `a14ec45`. The migration is
+  rollout-safe because it only adds opt-in RPCs; the old deployment does not
+  call them.
+- Do not deploy the application commit first. The API intentionally fails
+  closed when either command is absent.
+- Existing inconsistent cross-tenant memberships are not rewritten. The add
+  command blocks further mixed-tenant assignment; removal remains available
+  so admins can repair legacy rows.
+- Positive add/remove/rollback evidence still needs disposable staging
+  customer users and sites. The local credential fixture is intentionally
+  absent.
+
+### Exact next step
+
+1. Apply migration 035 in order.
+2. Verify function presence, service-role-only execution, validation failures,
+   and zero-residue behavior.
+3. With protected fixtures, add/remove one same-tenant membership, reject one
+   cross-tenant assignment, and prove audit/membership rollback together.
+4. Continue converting the next high-risk best-effort admin mutation to an
+   atomic command.
 
 ## Session record — 2026-07-30 (P0-V / atomic ticket creation)
 
