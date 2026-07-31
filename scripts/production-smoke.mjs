@@ -298,6 +298,16 @@ try {
     { site_name: "Unauthorized probe" }
   );
   await expectUnauthorizedMutation(
+    "/api/customers",
+    "POST",
+    { name: "Unauthorized customer", status: "active" }
+  );
+  await expectUnauthorizedMutation(
+    "/api/customers/11111111-1111-4111-8111-111111111111",
+    "PATCH",
+    { name: "Unauthorized customer" }
+  );
+  await expectUnauthorizedMutation(
     "/api/admin/users/11111111-1111-4111-8111-111111111111",
     "PATCH",
     { role: "engineer" }

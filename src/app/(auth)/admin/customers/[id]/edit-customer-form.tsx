@@ -11,6 +11,7 @@ interface CustomerData {
 }
 
 export function EditCustomerForm({ customer }: { customer: CustomerData }) {
+  const isArchived = customer.status === "inactive";
   const [name, setName] = useState(customer.name);
   const [domain, setDomain] = useState(customer.domain || "");
   const [status, setStatus] = useState(customer.status);
@@ -60,6 +61,8 @@ export function EditCustomerForm({ customer }: { customer: CustomerData }) {
 
       {message && (
         <div
+          role={message.type === "error" ? "alert" : "status"}
+          aria-live="polite"
           className={`mb-4 rounded-lg px-4 py-3 text-sm ${
             message.type === "success"
               ? "bg-green-50 text-green-800 border border-green-200"
@@ -70,39 +73,68 @@ export function EditCustomerForm({ customer }: { customer: CustomerData }) {
         </div>
       )}
 
-      <form onSubmit={handleSave} className="space-y-4">
-        <div className="grid grid-cols-2 gap-4">
+      <form
+        onSubmit={handleSave}
+        className="space-y-4"
+        aria-describedby="customer-edit-lifecycle-guidance"
+      >
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1">
+            <label
+              htmlFor="customer-edit-name"
+              className="block text-sm font-medium text-foreground mb-1"
+            >
               Customer Name
             </label>
             <input
+              id="customer-edit-name"
               type="text"
+              autoComplete="organization"
               value={name}
               onChange={(e) => setName(e.target.value)}
+              required
+              maxLength={200}
+              disabled={isArchived}
               className="w-full rounded-lg border border-border px-3 py-2 text-sm text-foreground bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1">
+            <label
+              htmlFor="customer-edit-domain"
+              className="block text-sm font-medium text-foreground mb-1"
+            >
               Domain
             </label>
             <input
+              id="customer-edit-domain"
               type="text"
+              inputMode="url"
+              autoCapitalize="none"
+              spellCheck={false}
               value={domain}
               onChange={(e) => setDomain(e.target.value)}
+              maxLength={253}
+              disabled={isArchived}
               placeholder="e.g. acme.com"
               className="w-full rounded-lg border border-border px-3 py-2 text-sm text-foreground bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
             />
+            <p className="mt-1 text-xs text-muted-foreground">
+              Hostname only—do not include https:// or a path.
+            </p>
           </div>
         </div>
         <div>
-          <label className="block text-sm font-medium text-foreground mb-1">
+          <label
+            htmlFor="customer-edit-status"
+            className="block text-sm font-medium text-foreground mb-1"
+          >
             Status
           </label>
           <select
+            id="customer-edit-status"
             value={status}
             onChange={(e) => setStatus(e.target.value)}
+            disabled={isArchived}
             className="w-full rounded-lg border border-border px-3 py-2 text-sm text-foreground bg-background max-w-xs"
           >
             <option value="active">Active</option>
@@ -113,14 +145,18 @@ export function EditCustomerForm({ customer }: { customer: CustomerData }) {
               </option>
             )}
           </select>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Archive customers from Customers &amp; Sites so related access is
-            retired without deleting history.
+          <p
+            id="customer-edit-lifecycle-guidance"
+            className="mt-1 text-xs text-muted-foreground"
+          >
+            {isArchived
+              ? "Archived customers are read-only. History and related access remain preserved."
+              : "Archive customers from Customers & Sites so related access is retired without deleting history."}
           </p>
         </div>
         <button
           type="submit"
-          disabled={saving}
+          disabled={saving || isArchived}
           className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
         >
           {saving ? "Saving..." : "Save Changes"}
