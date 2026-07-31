@@ -7,16 +7,17 @@ meaningful change and before ending a work session. Newest entries go first.
 
 - **Branch:** `codex/prd-v1-1-gap-closure`
 - **Active phase:** Phase 0 — Containment and reproducible baseline
-- **Active work item:** apply/probe migration 036, configure the production
+- **Active work item:** apply/probe migration 037, configure the production
   outbox worker secret, then continue moving remaining best-effort audit
   domains onto atomic commands
-- **Last verified implementation commit:** `9f4b9c9` (`fix: make site administration tenant-safe`)
+- **Last verified implementation commit:** `4c516bc` (`fix: repair atomic command sql expressions`)
 - **Uncommitted work:** documentation checkpoint only; verify with `git status`
   before resuming
-- **Deployment gate:** migrations 001–035 are confirmed applied; migration 036
-  must be applied before deploying `9f4b9c9`. Production `CRON_SECRET` remains
-  unset in this workspace. Protected positive business probes for migrations
-  028–036 still require staging fixtures
+- **Deployment gate:** migrations 001–036 are confirmed applied; migration 037
+  must be applied before using the affected request, field-service, team, or
+  site atomic commands. Production `CRON_SECRET` remains unset in this
+  workspace. Protected positive business probes for migrations 028–037 still
+  require staging fixtures
 - **External validation gate:** populate the gitignored credential fixture with six
   dedicated staging accounts, two tenants, a decommissioned site/ticket, and
   real internal artifact IDs; then run
@@ -36,13 +37,71 @@ meaningful change and before ending a work session. Newest entries go first.
   created for read-only protected-page visits and fully deleted afterward.
   Password-based login passed; recovery-email delivery and one-time link
   consumption still require a dedicated staging mailbox.
-- **Exact next local step:** after the user applies migration 036, verify both
-  service-role site commands, revoked caller privileges, immutable ownership,
-  validation guards, and zero-residue behavior with non-writing probes. Run
-  disposable site create/update/rollback and cross-tenant rejection probes
-  when protected staging fixtures exist. Configure `CRON_SECRET` separately
-  before production worker activation
+- **Exact next local step:** after the user applies migration 037, verify all
+  six repaired command definitions reach expected validation rather than
+  `42883`, retain revoked caller privileges, and leave zero residue. Run
+  disposable positive/rollback and cross-tenant rejection probes when
+  protected staging fixtures exist. Configure `CRON_SECRET` separately before
+  production worker activation
 - **Primary plan:** [`plans/prd-v1.1-gap-closure-plan.md`](./prd-v1.1-gap-closure-plan.md)
+
+## Session record — 2026-07-31 (P0-Y / atomic SQL-expression repair)
+
+### Objective
+
+Verify migration 036 safely after application and continue with the next
+highest-risk integrity gap only after its live command boundary was proven.
+
+### Migration 036 verification and finding
+
+- The user confirmed migration 036 was applied.
+- The service-role site patch command rejected attempted `customer_id` change
+  with `22023` and a missing site with `P0002`.
+- Anonymous create and patch execution were both denied with `42501`.
+- Random site/customer identifiers and a unique probe code left zero `sites`
+  residue; no secret values or live identifiers were printed.
+- The corrected service-role create probe reached the deployed function but
+  failed with `42883`: `pg_catalog.coalesce(text, unknown)` does not exist.
+  The failure occurred before ordinary customer/timezone validation.
+- A complete migration scan found invalid qualified `COALESCE`/`NULLIF`
+  expressions in six active definitions introduced by migrations 029, 030,
+  031, and 036: spare-part request create, field-service create/update,
+  team-member patch, and site create/update.
+
+### Implementation
+
+- Commit `4c516bc` adds rollout-safe migration
+  `037_repair_qualified_sql_expressions.sql`.
+- Migration 037 uses an exact six-signature allowlist, reads each deployed
+  definition, replaces only the invalid qualified expression tokens, and
+  recompiles inside one transaction. A missing expected command aborts the
+  migration.
+- It explicitly revokes `PUBLIC`, `anon`, and `authenticated` again and grants
+  only `service_role` after replacement.
+- Two migration contracts prove the complete allowlist, catalog-definition
+  repair, fail-closed transaction, and all six hardened grants.
+
+### Verification before commit
+
+| Gate | Result |
+|---|---|
+| `npm ci` | Passed; lockfile install, 0 install-time vulnerabilities |
+| `npm test` | Passed; 41 files, 273 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build |
+| `npm run test:e2e` | Passed; all 25 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+| Immediate pre-commit `npm run test:e2e` | Passed with the same 25 checks and explicit protected-fixture skip |
+
+### Rollout and next
+
+1. Apply migration 037 in order before using the six affected command paths.
+2. Rerun non-writing validation, caller-privilege, and zero-residue probes for
+   all six commands; the expected result is domain validation, never `42883`.
+3. With protected staging fixtures, run positive and rollback probes for
+   request, field-service, team-access, and site workflows.
+4. Then audit and convert the next highest-risk best-effort admin mutation.
 
 ## Session record — 2026-07-30 (P0-X / tenant-safe site administration)
 

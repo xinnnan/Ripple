@@ -27,14 +27,14 @@ A Slack-native support portal for DropletAI Services. Centralises customer suppo
 | Layer | Tool |
 |-------|------|
 | Frontend | Next.js 15.5.22 (App Router) + React 19 + TypeScript + Tailwind CSS v4 + self-hosted Inter |
-| Database | Supabase Postgres (36 migrations, see `supabase/migrations/`) |
+| Database | Supabase Postgres (37 migrations, see `supabase/migrations/`) |
 | Auth | Supabase Auth (email + password + recovery) + new `sb_publishable_` / `sb_secret_` key format |
 | Storage | Supabase Storage — bucket `ripple-attachments`, **50 MB cap per file** |
 | Slack | `@slack/bolt` + `@slack/web-api` (runs inside Next.js API routes, no separate process) |
 | AI | **MiniMax AI** (OpenAI-compatible) — was OpenAI → Zhipu → MiniMax. **See "AI provider" section below.** |
 | Email | Resend (transactional: ticket confirmation, resolution notice) |
 | Validation | Zod (all API request bodies) |
-| Testing | Vitest (271 unit/contract tests) + 25-check production HTTP smoke + credentialed Playwright/API/RLS matrix |
+| Testing | Vitest (273 unit/contract tests) + 25-check production HTTP smoke + credentialed Playwright/API/RLS matrix |
 | Hosting | Vercel (serverless API routes) |
 
 ## Phases
@@ -69,7 +69,7 @@ cp .env.local.example .env.local
 
 ### Run database migrations
 
-Apply the SQL files in `supabase/migrations/` **in order** (001 → 036) via the Supabase SQL editor or `supabase db push`:
+Apply the SQL files in `supabase/migrations/` **in order** (001 → 037) via the Supabase SQL editor or `supabase db push`:
 
 ```
 001_create_customers.sql
@@ -108,13 +108,16 @@ Apply the SQL files in `supabase/migrations/` **in order** (001 → 036) via the
 034_atomic_ticket_creation_outbox.sql
 035_atomic_admin_site_membership.sql
 036_atomic_admin_site_commands.sql
+037_repair_qualified_sql_expressions.sql
 ```
 
 Later migrations replace policies/functions and should be applied once in
 order. Migration `017` also performs role data updates and must not be re-run
-blindly. Migrations 001–035 are confirmed applied as of 2026-07-30;
-migration 036 is committed and awaiting application. Apply 036 before
-deploying application commit `9f4b9c9`.
+blindly. Migrations 001–036 are confirmed applied as of 2026-07-31. Apply
+migration 037 before deploying the affected atomic request, field-service,
+team-access, or site commands. It repairs invalid schema qualification of SQL
+`COALESCE`/`NULLIF` expressions discovered during the live migration 036
+probe; migration 036 alone does not make site creation operational.
 
 ### Enable pgvector (for AI features)
 
@@ -177,7 +180,7 @@ protected CI should set `RIPPLE_E2E_REQUIRE_CREDENTIALS=1` so it fails closed.
 
 ### GitHub Actions
 
-`.github/workflows/ci.yml` runs the locked install, 271 unit/contract tests,
+`.github/workflows/ci.yml` runs the locked install, 273 unit/contract tests,
 lint, production build, 25-check HTTP E2E, and dependency audit for pull
 requests and pushes to `main`. GitHub-owned actions are pinned to full commit
 SHAs and the workflow has read-only repository permissions.
@@ -264,7 +267,7 @@ src/
 │   ├── ticket.ts                # ⭐ all ticket domain enums + labels
 │   └── spare-parts.ts
 └── middleware.ts                # ⭐ route guard + session refresh
-supabase/migrations/             # 001-036
+supabase/migrations/             # 001-037
 plans/                           # Architecture + phase planning docs
 AGENTS.md                        # ⭐ project context, lessons learned, roadmap
 ```
@@ -275,7 +278,7 @@ AGENTS.md                        # ⭐ project context, lessons learned, roadmap
 - Ticket detail → `app/(auth)/tickets/[ticketId]/page.tsx` + `ticket-actions-panel.tsx`
 - Slack actions → `lib/slack/handlers/actions.ts` + `app/api/slack/interactive/route.ts`
 - AI assist → `app/api/ai/suggest/route.ts` + `lib/ai/suggest.ts`
-- DB schema → `supabase/migrations/001_*.sql` … `036_atomic_admin_site_commands.sql`
+- DB schema → `supabase/migrations/001_*.sql` … `037_repair_qualified_sql_expressions.sql`
 
 ## Ticket Lifecycle
 
