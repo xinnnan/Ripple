@@ -66,12 +66,12 @@ The correct approach is therefore:
 
 | Gate | Result through 2026-07-31 | Meaning |
 |---|---|---|
-| Unit tests | 305/305 passed | Scope, lifecycle and exhaustive ticket-transition guards, atomic ticket creation, notification outbox leases/idempotency/retry contracts, tenant-safe site/user administration, secure user provisioning and membership containment, qualified-SQL-expression repair, visibility, auth recovery/redirects, public/responsive/admin-user UI contracts, Slack authentication/configuration/action filtering and direct AI-service invocation, readiness, CI policy, filters, SLA, fixture validation, migration/RPC contracts, spare-part, field-service, and team-access transaction containment, DATE handling, and audit coverage is green |
+| Unit tests | 321/321 passed | Scope, lifecycle and exhaustive ticket-transition guards, atomic ticket/customer creation, notification outbox leases/idempotency/retry contracts, tenant-safe site/user/customer administration, secure user provisioning and membership containment, qualified-SQL-expression repair, visibility, auth recovery/redirects, public/responsive/admin UI contracts, Slack authentication/configuration/action filtering and direct AI-service invocation, readiness, CI policy, filters, SLA, fixture validation, migration/RPC contracts, spare-part, field-service, and team-access transaction containment, DATE handling, and audit coverage is green |
 | Lint | Passed, no warnings | Direct ESLint CLI with zero-warning enforcement and generated-artifact ignores |
 | Production build | Passed on Next.js 15.5.22 | Environment-free build is reproducible |
 | Dependency audit | 0 vulnerabilities | Patched direct/transitive versions are lockfile-pinned and compatibility-tested |
 | Worktree | Clean at baseline | Work started on `codex/prd-v1-1-gap-closure` |
-| Committed end-to-end tests | 28 production HTTP checks + credentialed Playwright/API/RLS matrix | Public/recovery/negative/configuration smoke always runs, including fail-closed outbox-worker configuration plus site-membership/site/user-write/provisioning denials; migrations 001–038 are applied and migration 039 awaits application, while protected positive request/field-service/team/site-access/site/user-administration/provisioning/transition/outbox/create probes and the six-account two-tenant matrix await staging credentials/fixtures |
+| Committed end-to-end tests | 30 production HTTP checks + credentialed Playwright/API/RLS matrix | Public/recovery/negative/configuration smoke always runs, including fail-closed outbox-worker configuration plus site-membership/site/user/customer-write/provisioning denials; migrations 001–039 are applied and migration 040 awaits application, while protected positive request/field-service/team/site-access/site/user/customer-administration/provisioning/transition/outbox/create probes and the six-account two-tenant matrix await staging credentials/fixtures |
 | Hosted CI | Workflow committed in `4ceacd0`; first hosted run pending | Read-only, SHA-pinned quality job is reproducible; repository branch protection and the protected staging environment still require activation |
 
 ## 4. PRD capability gap map
@@ -82,7 +82,7 @@ has a release-blocking security or integrity problem.
 
 | PRD capability | Current state | Main gap |
 |---|---|---|
-| Identity and account lifecycle | Partial | Same-family global role/status edits and deactivation are serialized and atomically audited; privileged signup metadata is contained and admin/team provisioning has guarded finalizers, but migration 039 still needs deployment and there is no complete invite/reactivation lifecycle, MFA, session/device management, or scoped internal access |
+| Identity and account lifecycle | Partial | Same-family global role/status edits and deactivation are serialized and atomically audited; privileged signup metadata is contained and deployed admin/team provisioning finalizers are live-verified, but there is no complete invite/reactivation lifecycle, MFA, session/device management, or scoped internal access |
 | Membership and Site Assignment | Unsafe/Partial | Admin-managed customer site access is tenant-contained and transactionally audited, and unsafe global role-family transfers are blocked, but global `users.role` + `users.customer_id` still conflicts with the PRD per-membership/per-site authorization model |
 | Tenant isolation | Unsafe/Partial | Site ownership is now immutable through ordinary administration and membership assignment is tenant-contained, but admin-client queries still depend on manual filters and the PRD authorization model is incomplete |
 | Customer Portal | Partial | Basic dashboard/tickets/sites/profile only; no onsite requests, assets, history, preferences, or PRD wizard |
@@ -101,7 +101,7 @@ has a release-blocking security or integrity problem.
 | Notifications / Templates | Partial | Durable ticket creation/update/resolution delivery records/retry/dead-letter are committed; template versioning, locale fallback, preferences, and in-app inbox remain |
 | Reporting / Export | Partial | Ticket CSV and dashboard counts only; no metric contract, SLA/operations reports, scheduled generation, or permission-aware exports |
 | Internationalization | Absent | English strings are embedded in code; no locale resolution, translation catalog, formatting rules, or four-language QA |
-| Administration | Partial | Site/membership/user authorization writes now have atomic command foundations; configuration hierarchy, form/custom-field builder, workflow publishing, feature flags, retention, and integration console remain absent |
+| Administration | Partial | Site/membership/user authorization writes have atomic command foundations, and customer create/update commands are code-complete pending migration 040; configuration hierarchy, form/custom-field builder, workflow publishing, feature flags, retention, and integration console remain absent |
 | External API / Webhooks | Absent | Unversioned internal REST only; no client credentials, scopes, idempotency, concurrency, stable errors, signed webhooks, or docs |
 | Security / Privacy | Unsafe/Partial | Slack request verification now fails closed and direct ticket-column/Storage exposure is contained; weak file validation, incomplete audit guarantees, and other authorization gaps remain |
 | SRE / Operations | Partial | Minimal liveness and configuration-readiness endpoints exist; structured observability, SLOs, alerting, runbooks, tested recovery, capacity/performance evidence, and release automation remain |
@@ -123,7 +123,7 @@ has a release-blocking security or integrity problem.
 | SEC-008 | Runtime dependency audit reports six high-severity production advisories | **Closed in `211843e`:** Next 15.5.22 + patched overrides/transitives; full `npm audit` reports 0 |
 | SEC-009 | Permissive legacy RLS allows customer roles to query internal comments/attachments and raw ticket events directly | **Closed in `b71b3d7`:** migration 026 replaces the OR-composed policies with customer-visible artifact scope and internal-only raw events |
 | SEC-010 | Authenticated PostgREST can request ticket secrets/PII columns and any active account can directly access the attachment bucket | **Closed in `b9a7a12`; deployment confirmed 2026-07-29:** migration 027 replaces broad ticket SELECT with a customer-safe column grant and removes direct authenticated Storage access |
-| SEC-011 | Public Auth signup metadata can select `admin` because `handle_new_user()` trusts caller-controlled `raw_user_meta_data.role` | **Code complete in `33b3a66`; migration 039 pending:** the trigger permits only the safe customer bootstrap role, keeps unconfirmed signups invited, and privileged roles are assigned only by guarded service-role finalizers |
+| SEC-011 | Public Auth signup metadata can select `admin` because `handle_new_user()` trusts caller-controlled `raw_user_meta_data.role` | **Closed in `33b3a66`; deployment confirmed 2026-07-31:** migration 039 permits only the safe customer bootstrap role, keeps unconfirmed signups invited, and assigns privileged roles only through guarded service-role finalizers; a 25-assertion disposable matrix passed |
 
 ### High-priority integrity defects
 
@@ -135,7 +135,7 @@ has a release-blocking security or integrity problem.
 | INT-004 | Part-request header and items, and field order plus engineer assignments, are non-atomic | **Deployed; protected verification pending:** part-request update/create are deployed in `1f49ecc`/`64cee3d` + migrations 028/029. `2557760` + migration 030 make field-order create/update, complete engineer assignment sets, numbering, and audit atomic; both RPCs are live and protected rollback probes remain |
 | INT-005 | Part fulfillment updates do not verify the item belongs to the request in the URL | **Closed in `1f49ecc`; migration 028 confirmed applied 2026-07-29:** the row-locked command constrains every item by both `request_id` and item ID and rejects invalid quantity bounds; protected runtime probes remain |
 | INT-006 | Team site assignments are delete-all then insert, so a failed insert removes all access | **Deployed; protected verification pending:** `c0c2354` + migration 031 atomically update profile/status, apply a role-preserving membership set diff, validate the manager/tenant/target/sites, and write audit evidence; RPC presence and non-writing validation behavior are confirmed |
-| INT-007 | Audit writes are best-effort and separate from the business transaction | **Platform foundation extended through `33b3a66`:** migrations 033–038 are applied/live-verified for ticket delivery/create, admin site-membership, site mutations, command repair, and admin-user patch/deactivation. Migration 039 adds transactionally audited admin/team provisioning finalizers and awaits application. Remaining best-effort admin audit domains still need conversion |
+| INT-007 | Audit writes are best-effort and separate from the business transaction | **Platform foundation extended through `d46a3af`:** migrations 033–039 are applied/live-verified for ticket delivery/create, admin site-membership, site mutations, command repair, admin-user patch/deactivation, and secure provisioning. Migration 040 adds transactionally audited customer create/update commands and awaits application. Remaining best-effort admin audit domains still need conversion |
 | INT-008 | Site detail assigns the inventory query to an unused tuple slot and always renders empty inventory | **Closed in `9083ece`:** the inventory query result is wired to the inventory tab and covered by the external-resource containment regression checkpoint |
 | INT-009 | `/sites` links to `?site_id=...`, while the ticket parser expects `?site=...` | **Closed in `9083ece`:** site links and the ticket filter parser use the canonical `site` query key |
 | INT-010 | Slack Ripple Assist calls an internal authenticated HTTP API without a session cookie | **Closed in `3f7d296`:** web and signed Slack ingress authorize independently, then call the shared rate-limited AI application service; Slack preserves channel delivery context |
@@ -144,7 +144,8 @@ has a release-blocking security or integrity problem.
 | INT-013 | Ordinary site PATCH can reassign an established site and its historical resources across customers while retaining old memberships | **Deployed; protected positive verification pending:** `9f4b9c9` + migration 036 make ownership immutable, validate active tenant/configuration state, row-lock updates, and commit site/audit writes atomically. Migration 037 is applied; ownership, not-found, privilege, repaired validation, and zero-residue probes passed |
 | INT-014 | Atomic commands qualify `COALESCE`/`NULLIF` as catalog functions and fail at runtime with `42883` | **Closed in `4c516bc`; deployment confirmed 2026-07-31:** migration 037 repaired the six exact deployed part-request, field-service, team-access, and site command definitions, re-hardened service-role-only execution, and passed domain-validation/anonymous-denial/zero-residue probes |
 | INT-015 | Admin user PATCH changes global authorization state before best-effort/duplicate audit and permits unsafe internal/customer role-family transfers | **Closed in `b5d636a`; deployment confirmed 2026-07-31:** migration 038 serializes patch/deactivation, rechecks active-admin authority, guards lifecycle/tenant/role-family invariants, and passed a 30-assertion live matrix including exact audit cardinality and concurrent last-admin safety |
-| INT-016 | Admin/team user creation splits Auth identity, profile, tenant, membership, and audit writes and ignores partial failures | **Code complete in `33b3a66`; migration 039 pending:** guarded finalizers commit database state atomically; the cross-system wrapper confirms success, compensates only a proven provisional identity, and flags ambiguous outcomes for reconciliation |
+| INT-016 | Admin/team user creation splits Auth identity, profile, tenant, membership, and audit writes and ignores partial failures | **Closed in `33b3a66`; deployment confirmed 2026-07-31:** guarded finalizers commit database state atomically; the cross-system wrapper confirms success, compensates only a proven provisional identity, and flags ambiguous outcomes for reconciliation. Migration 039 passed a 25-assertion disposable matrix |
+| INT-017 | Customer create/update commits the tenant row before best-effort audit, ignores update read/write failures, can report success for a missing target, and leaks database messages | **Code complete in `d46a3af`; migration 040 pending:** service-role-only commands lock and validate the target/lifecycle, commit customer and exact audit rows together, return the committed row, and expose stable application errors without database detail leakage |
 
 ### Platform gaps that become risks at scale
 
@@ -458,12 +459,19 @@ Every implementation slice must:
     A 30-assertion disposable matrix passed positive patch/deactivation, exact
     audit cardinality, rejection, anonymous denial, concurrent last-admin
     safety, and zero-residue checks.
-27. **P0-AA — code complete in `33b3a66`; migration pending:** Migration 039
+27. **P0-AA — deployed and live-verified:** Migration 039
     removes caller-controlled role selection from the Auth signup trigger and
     adds service-role-only admin/team provisioning finalizers. Profile,
     tenant, membership, and audit writes finalize atomically; the application
     wrapper handles confirmed commit, proven provisional compensation, and
-    ambiguous reconciliation as distinct outcomes.
-28. **Next local integrity work:** apply and live-probe migration 039, then
+    ambiguous reconciliation as distinct outcomes. A 25-assertion disposable
+    matrix passed privilege, positive, rollback, replay, and zero-residue cases.
+28. **P0-AB — code complete in `d46a3af`; migration pending:** Migration 040
+    adds service-role-only customer create/update commands with strict known
+    fields, bounded hostname normalization, active-admin rechecks, target
+    locking, inactive lifecycle protection, exact audit evidence, and committed
+    row returns. Routes use stable error mappings, customer forms are responsive
+    and accessible, and unauthenticated create/update HTTP probes fail closed.
+29. **Next local integrity work:** apply and live-probe migration 040, then
     convert the next high-risk best-effort administrative audit domain to an
     atomic command and run protected positive/rollback delivery probes.

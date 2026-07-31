@@ -7,16 +7,16 @@ meaningful change and before ending a work session. Newest entries go first.
 
 - **Branch:** `codex/prd-v1-1-gap-closure`
 - **Active phase:** Phase 0 — Containment and reproducible baseline
-- **Active work item:** apply/probe migration 039, configure the production
+- **Active work item:** apply/probe migration 040, configure the production
   outbox worker secret, then continue moving remaining best-effort audit
   domains onto atomic commands
-- **Last verified implementation commit:** `33b3a66` (`fix: secure user provisioning`)
+- **Last verified implementation commit:** `d46a3af` (`fix: make customer administration atomic`)
 - **Uncommitted work:** none expected after the documentation checkpoint;
   verify with `git status` before resuming
-- **Deployment gate:** migrations 001–038 are confirmed applied; migration 039
-  must be applied before deploying secure admin/team user provisioning.
+- **Deployment gate:** migrations 001–039 are confirmed applied; migration 040
+  must be applied before deploying atomic customer create/update.
   Production `CRON_SECRET` remains unset in this workspace. Protected positive
-  business probes for migrations 028–039 still require staging fixtures
+  business probes for migrations 028–040 still require staging fixtures
 - **External validation gate:** populate the gitignored credential fixture with six
   dedicated staging accounts, two tenants, a decommissioned site/ticket, and
   real internal artifact IDs; then run
@@ -34,15 +34,93 @@ meaningful change and before ending a work session. Newest entries go first.
 - **Support UX verification:** public pages and the real admin shell were
   reviewed at 1440×1000 and 390×844. A short-lived admin test identity was
   created for read-only protected-page visits and fully deleted afterward.
-  Password-based login passed; recovery-email delivery and one-time link
-  consumption still require a dedicated staging mailbox.
-- **Exact next local step:** after the user applies migration 039, verify the
-  hardened signup trigger and both service-role-only finalizers. Prove
-  privileged metadata rejection, safe customer bootstrap, admin/team positive
-  finalization, rollback/compensation, anonymous/cross-tenant rejection, and
-  zero residue. Configure `CRON_SECRET` separately before production worker
+  Customer create/edit pages were additionally reviewed at 1280 px and
+  390×844 with bound labels, responsive fit, hostname guidance, and archived
+  read-only state. Password-based login passed; recovery-email delivery and
+  one-time link consumption still require a dedicated staging mailbox.
+- **Exact next local step:** after the user applies migration 040, verify both
+  service-role-only customer commands. Prove active/trial create and update,
+  normalized hostname storage, exact audit cardinality, missing/inactive/
+  invalid-actor rollback, anonymous denial, archive-race behavior, and zero
+  residue. Configure `CRON_SECRET` separately before production worker
   activation
 - **Primary plan:** [`plans/prd-v1.1-gap-closure-plan.md`](./prd-v1.1-gap-closure-plan.md)
+
+## Session record — 2026-07-31 (P0-AB / atomic customer administration)
+
+### Objective
+
+Live-verify migration 039 after application, then close the highest-risk
+remaining best-effort administrative mutation without bypassing customer
+lifecycle controls.
+
+### Migration 039 live verification
+
+- The user confirmed migration 039 was applied. A disposable 25-assertion
+  matrix proved privileged signup metadata rejection with no profile residue,
+  safe customer bootstrap, positive admin and tenant-bound team finalization,
+  normalized profile fields, exact membership/audit state, cross-tenant and
+  non-admin rejection, anonymous denial, replay rejection, and zero residue.
+- A confirmed identity created through the Supabase Admin API can still reach
+  the insert trigger without `confirmed_at` populated, so its provisional
+  profile was observed as `invited`. The finalizers intentionally accept a
+  recent `active` or `invited` safe provisional profile; the successful rerun
+  asserted exact before/after profile equality instead of assuming one state.
+- Cleanup confirmed zero disposable Auth identities, profiles, customers,
+  sites, memberships, and audit rows. No credentials or live identifiers were
+  printed.
+
+### Finding and implementation
+
+- Customer creation inserted the tenant before a best-effort audit write.
+  Customer PATCH ignored before-state/read and update-return errors, could
+  report success for a missing row, and returned raw database messages. The
+  archive invariant existed only in route/UI behavior.
+- Commit `d46a3af` adds rollout-safe migration
+  `040_atomic_admin_customer_commands.sql`. Its service-role-only create and
+  patch commands recheck an active admin actor, accept only known bounded
+  fields, normalize hostname-only domains, lock updates, keep inactive
+  customers read-only, require the archive workflow for deactivation, commit
+  exact audit evidence with the customer write, and return the committed row.
+- `src/lib/customers/mutations.ts` provides stable command errors. The customer
+  routes use strict JSON/Zod validation, UUID and hostname contracts, explicit
+  not-found/conflict/authorization mappings, projections, and generic server
+  errors without database detail leakage.
+- Customer create/edit forms now bind labels, cap input lengths, provide
+  hostname and lifecycle guidance, use safe button semantics, stack cleanly on
+  mobile, and disable every edit control for archived customers.
+- Sixteen new wrapper/migration/route checks bring the repository to 321
+  unit/contract tests. Two unauthenticated customer-mutation probes bring the
+  production HTTP smoke to 30 checks.
+
+### Verification before commit
+
+| Gate | Result |
+|---|---|
+| `npm ci` | Passed; lockfile install, 0 install-time vulnerabilities |
+| `npm test` | Passed; 47 files, 321 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build |
+| `npm run test:e2e` | Passed; all 30 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+| Manual browser E2E | Passed at 1280 px and 390×844 for active customer creation and archived customer detail: bound labels, bounded inputs, responsive fit with zero horizontal overflow, hostname guidance, complete archived read-only state, and zero console errors. Disposable admin/customer data was fully removed |
+| Immediate pre-commit `npm run test:e2e` | Passed before `d46a3af` with the same 30 checks and explicit protected-fixture skip |
+
+The first full-gate attempt found a TypeScript narrowing error during the
+production build. After the fix, the exact full sequence was restarted from
+`npm ci` and passed in full before the separate immediate E2E rerun.
+
+### Rollout and next
+
+1. Apply migration 040 before deploying `d46a3af`.
+2. Verify exact function definitions and execution grants: only
+   `service_role` may execute either command.
+3. With disposable data, prove active/trial create and update, hostname
+   normalization, exact audit cardinality, missing/inactive/invalid-actor
+   rollback, anonymous denial, archive/update race safety, and zero residue.
+4. Continue converting the next highest-risk best-effort admin mutation and
+   run the protected credentialed matrix when its staging fixture is available.
 
 ## Session record — 2026-07-31 (P0-AA / secure user provisioning)
 
