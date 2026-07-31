@@ -160,12 +160,7 @@ export default async function AdminUserDetailPage({ params, searchParams }: Prop
 
       {activeTab === "overview" && (
         <div className="space-y-6">
-          <div className="rounded-xl border border-border p-6">
-            <h2 className="text-base font-semibold text-foreground mb-4">
-              User details
-            </h2>
-            <EditUserForm user={user} />
-          </div>
+          <EditUserForm user={user} />
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="rounded-xl border border-border p-6">

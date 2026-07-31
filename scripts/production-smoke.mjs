@@ -297,6 +297,11 @@ try {
     "PATCH",
     { site_name: "Unauthorized probe" }
   );
+  await expectUnauthorizedMutation(
+    "/api/admin/users/11111111-1111-4111-8111-111111111111",
+    "PATCH",
+    { role: "engineer" }
+  );
   await expectLoginRedirect("/admin/users");
   await expectLogoutRedirect();
   await expectHealth("/api/health/live", 200, "live");
