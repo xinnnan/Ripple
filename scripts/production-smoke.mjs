@@ -280,6 +280,23 @@ try {
       role: "member",
     }
   );
+  await expectUnauthorizedMutation(
+    "/api/sites",
+    "POST",
+    {
+      customer_id: "11111111-1111-4111-8111-111111111111",
+      site_name: "Unauthorized probe",
+      site_code: "UNAUTHORIZED-PROBE",
+      timezone: "UTC",
+      status: "active",
+      project_status: "pre_signoff",
+    }
+  );
+  await expectUnauthorizedMutation(
+    "/api/admin/sites/11111111-1111-4111-8111-111111111111",
+    "PATCH",
+    { site_name: "Unauthorized probe" }
+  );
   await expectLoginRedirect("/admin/users");
   await expectLogoutRedirect();
   await expectHealth("/api/health/live", 200, "live");

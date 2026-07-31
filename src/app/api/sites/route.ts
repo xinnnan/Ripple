@@ -2,18 +2,26 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthUser, requireAdmin } from "@/lib/supabase/auth-helpers";
 import { getUserScope, scopeSites } from "@/lib/supabase/scope";
-import { logAudit } from "@/lib/audit";
+import {
+  AdminSiteMutationError,
+  createAdminSiteAtomic,
+} from "@/lib/sites/mutations";
 import { z } from "zod";
 
 const createSiteSchema = z.object({
   customer_id: z.string().uuid(),
-  site_name: z.string().min(1).max(200),
-  site_code: z.string().min(1).max(50),
-  timezone: z.string().default("America/New_York"),
-  address: z.string().optional(),
-  slack_channel_id: z.string().optional(),
-  default_owner_id: z.string().uuid().optional(),
-  status: z.enum(["active", "inactive", "commissioning", "decommissioned"]).default("active"),
+  site_name: z.string().trim().min(1).max(200),
+  site_code: z
+    .string()
+    .trim()
+    .min(1)
+    .max(50)
+    .regex(/^[A-Za-z0-9][A-Za-z0-9-]*$/),
+  timezone: z.string().trim().min(1).max(100).default("America/New_York"),
+  address: z.string().trim().max(500).nullable().optional(),
+  slack_channel_id: z.string().trim().max(50).nullable().optional(),
+  default_owner_id: z.string().uuid().nullable().optional(),
+  status: z.enum(["active", "commissioning"]).default("active"),
   project_status: z.enum([
     "pre_signoff",
     "in_warranty",
@@ -21,7 +29,7 @@ const createSiteSchema = z.object({
     "essential_coverage",
     "out_of_service",
   ]).default("pre_signoff"),
-});
+}).strict();
 
 export async function GET(request: NextRequest) {
   try {
@@ -71,44 +79,34 @@ export async function POST(request: NextRequest) {
     if ("error" in auth) {
       return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
-    const body = await request.json();
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
     const data = createSiteSchema.parse(body);
     const supabase = createAdminClient();
 
-    const { data: site, error } = await supabase
-      .from("sites")
-      .insert({
+    const siteId = await createAdminSiteAtomic({
+      supabase,
+      actorId: auth.userId,
+      input: {
         ...data,
         site_code: data.site_code.toUpperCase(),
-      })
+      },
+    });
+
+    const { data: site, error } = await supabase
+      .from("sites")
       .select("*, customer:customers(id, name)")
+      .eq("id", siteId)
       .single();
 
     if (error) {
-      console.error("Failed to create site:", error);
-      if (error.code === "23505") {
-        return NextResponse.json(
-          { error: "Site code already exists" },
-          { status: 409 }
-        );
-      }
-      return NextResponse.json({ error: "Failed to create site" }, { status: 500 });
+      console.error("Created site lookup failed:", error);
+      return NextResponse.json({ error: "Failed to load created site" }, { status: 500 });
     }
-
-    await logAudit({
-      actorId: auth.userId,
-      actorEmail: auth.email,
-      actorRole: auth.role,
-      entityType: "site",
-      entityId: site.id,
-      action: "created",
-      newValue: site.site_code,
-      metadata: {
-        site_name: site.site_name,
-        customer_id: site.customer_id,
-        project_status: site.project_status,
-      },
-    });
 
     return NextResponse.json({ site }, { status: 201 });
   } catch (error) {
@@ -117,6 +115,23 @@ export async function POST(request: NextRequest) {
         { error: "Validation error", details: error.errors },
         { status: 400 }
       );
+    }
+    if (error instanceof AdminSiteMutationError) {
+      if (error.code === "23505") {
+        return NextResponse.json(
+          { error: "Site code already exists" },
+          { status: 409 }
+        );
+      }
+      if (error.code === "22023") {
+        return NextResponse.json(
+          { error: "Site configuration is not valid" },
+          { status: 400 }
+        );
+      }
+      if (error.code === "42501") {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
     }
     console.error("Create site error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });

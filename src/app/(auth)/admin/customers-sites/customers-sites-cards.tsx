@@ -278,12 +278,14 @@ export function CustomersSitesCards({
                     >
                       {customer.status}
                     </span>
-                    <CreateSiteForm
-                      customers={customerOptions}
-                      defaultCustomerId={customer.id}
-                      defaultCustomerName={customer.name}
-                      compact
-                    />
+                    {customer.status !== "inactive" && (
+                      <CreateSiteForm
+                        customers={customerOptions}
+                        defaultCustomerId={customer.id}
+                        defaultCustomerName={customer.name}
+                        compact
+                      />
+                    )}
                     <Link
                       href={`/admin/customers/${customer.id}`}
                       className="text-xs font-medium text-primary hover:text-primary/80 transition-colors"

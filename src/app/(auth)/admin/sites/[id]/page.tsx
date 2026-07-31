@@ -66,7 +66,6 @@ export default async function AdminSiteDetailPage({ params, searchParams }: Prop
   // Run all per-tab data fetches in parallel
   const [
     membersRes,
-    customersRes,
     ticketsRes,
     auditRes,
     inventoryRes,
@@ -77,7 +76,6 @@ export default async function AdminSiteDetailPage({ params, searchParams }: Prop
         .from("site_members")
         .select(`id, role, user_id, users(id, email, full_name, role)`)
         .eq("site_id", id),
-      supabase.from("customers").select("id, name").order("name"),
       supabase
         .from("tickets")
         .select(
@@ -114,7 +112,6 @@ export default async function AdminSiteDetailPage({ params, searchParams }: Prop
     user_id: string;
     users: { id: string; email: string; full_name: string; role: string }[] | null;
   }[];
-  const customers = customersRes.data || [];
   const tickets = (ticketsRes.data || []) as unknown as {
     ticket_no: string;
     title: string;
@@ -169,6 +166,9 @@ export default async function AdminSiteDetailPage({ params, searchParams }: Prop
   const canAddMembers =
     site.status === "active" &&
     (customerData?.status === "active" || customerData?.status === "trial");
+  const canEditSite =
+    (site.status === "active" || site.status === "commissioning") &&
+    (customerData?.status === "active" || customerData?.status === "trial");
 
   return (
     <div className="p-8">
@@ -215,7 +215,18 @@ export default async function AdminSiteDetailPage({ params, searchParams }: Prop
             <h2 className="text-base font-semibold text-foreground mb-4">
               Site details
             </h2>
-            <EditSiteForm site={site} customers={customers} />
+            {canEditSite ? (
+              <EditSiteForm
+                site={site}
+                customerName={customerData?.name || "Unknown customer"}
+              />
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Archived sites and sites under inactive customers are
+                read-only. Use a dedicated lifecycle workflow to restore
+                service before editing.
+              </p>
+            )}
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

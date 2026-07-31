@@ -199,12 +199,14 @@ export default async function AdminCustomerDetailPage({ params, searchParams }: 
             <h2 className="text-base font-semibold text-foreground">
               Sites ({sites.length})
             </h2>
-            <CreateSiteForm
-              customers={[{ id: customer.id, name: customer.name }]}
-              defaultCustomerId={customer.id}
-              defaultCustomerName={customer.name}
-              compact
-            />
+            {customer.status !== "inactive" && (
+              <CreateSiteForm
+                customers={[{ id: customer.id, name: customer.name }]}
+                defaultCustomerId={customer.id}
+                defaultCustomerName={customer.name}
+                compact
+              />
+            )}
           </div>
           {sites.length === 0 ? (
             <TableEmpty

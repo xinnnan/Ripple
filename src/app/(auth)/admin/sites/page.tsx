@@ -56,6 +56,7 @@ export default async function AdminSitesPage() {
   const { data: customers } = await admin
     .from("customers")
     .select("id, name")
+    .in("status", ["active", "trial"])
     .order("name");
 
   interface SiteRow {
