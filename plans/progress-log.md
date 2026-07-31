@@ -7,16 +7,16 @@ meaningful change and before ending a work session. Newest entries go first.
 
 - **Branch:** `codex/prd-v1-1-gap-closure`
 - **Active phase:** Phase 0 — Containment and reproducible baseline
-- **Active work item:** apply/probe migration 038, configure the production
+- **Active work item:** apply/probe migration 039, configure the production
   outbox worker secret, then continue moving remaining best-effort audit
   domains onto atomic commands
-- **Last verified implementation commit:** `b5d636a` (`fix: make admin user changes atomic`)
+- **Last verified implementation commit:** `33b3a66` (`fix: secure user provisioning`)
 - **Uncommitted work:** none expected after the documentation checkpoint;
   verify with `git status` before resuming
-- **Deployment gate:** migrations 001–037 are confirmed applied; migration 038
-  must be applied before deploying the atomic admin-user PATCH route.
+- **Deployment gate:** migrations 001–038 are confirmed applied; migration 039
+  must be applied before deploying secure admin/team user provisioning.
   Production `CRON_SECRET` remains unset in this workspace. Protected positive
-  business probes for migrations 028–038 still require staging fixtures
+  business probes for migrations 028–039 still require staging fixtures
 - **External validation gate:** populate the gitignored credential fixture with six
   dedicated staging accounts, two tenants, a decommissioned site/ticket, and
   real internal artifact IDs; then run
@@ -36,13 +36,93 @@ meaningful change and before ending a work session. Newest entries go first.
   created for read-only protected-page visits and fully deleted afterward.
   Password-based login passed; recovery-email delivery and one-time link
   consumption still require a dedicated staging mailbox.
-- **Exact next local step:** after the user applies migration 038, verify its
-  two command definitions, service-role-only grants, lifecycle/role-family
-  rejection paths, atomic audit behavior, and zero residue. Run disposable
-  positive/rollback and cross-tenant rejection probes when protected staging
-  fixtures exist. Configure `CRON_SECRET` separately before production worker
+- **Exact next local step:** after the user applies migration 039, verify the
+  hardened signup trigger and both service-role-only finalizers. Prove
+  privileged metadata rejection, safe customer bootstrap, admin/team positive
+  finalization, rollback/compensation, anonymous/cross-tenant rejection, and
+  zero residue. Configure `CRON_SECRET` separately before production worker
   activation
 - **Primary plan:** [`plans/prd-v1.1-gap-closure-plan.md`](./prd-v1.1-gap-closure-plan.md)
+
+## Session record — 2026-07-31 (P0-AA / secure user provisioning)
+
+### Objective
+
+Live-verify migration 038, then close the highest-risk remaining account
+creation gap without trusting caller metadata or leaving partially provisioned
+authorization state.
+
+### Migration 038 live verification
+
+- The user confirmed migration 038 was applied.
+- A 30-assertion disposable matrix proved a successful same-family patch,
+  exactly one audit row per changed field, cross-family rejection (`55000`)
+  with no state/audit residue, self-demotion rejection (`22023`), dedicated
+  deactivation with exactly one audit row, and inactive-target rejection.
+- Anonymous patch/deactivation calls were denied with `42501`.
+- A concurrent reciprocal-admin test produced exactly one committed change;
+  the losing command returned `42501`, at least one active admin remained, and
+  exactly one audit row committed.
+- Cleanup confirmed zero disposable `public.users`, `audit_logs`, and
+  `auth.users` rows. No secret values or live identifiers were printed.
+
+### Finding and implementation
+
+- Public email signup is enabled, while the deployed `handle_new_user()`
+  trigger trusted caller-controlled `raw_user_meta_data.role`. A caller with a
+  deliverable email could therefore request `admin` and have a privileged
+  public profile created before application authorization.
+- Admin and team routes also split Auth identity creation, profile/tenant
+  updates, memberships, and audit across separate writes while ignoring some
+  failures.
+- Commit `33b3a66` adds rollout-safe migration
+  `039_secure_user_provisioning.sql`. The trigger now permits only the safe
+  customer bootstrap role, keeps unconfirmed public signups invited, trims
+  bounded profile metadata, and cannot be invoked directly.
+- `finalize_admin_user_creation` and `finalize_team_user_creation` share an
+  authorization lock, recheck active actor/tenant/site state, accept only a
+  recent provisional customer profile, and atomically commit profile,
+  tenant/membership, and audit state. Both use empty search paths and expose
+  execution only to `service_role`.
+- `src/lib/users/provisioning.ts` treats Auth plus Postgres as a provisioning
+  saga: it creates only a safe provisional customer identity, confirms the
+  expected committed profile after an RPC error/response loss, compensates
+  only when the identity is provably still provisional, and reports ambiguous
+  outcomes for operator reconciliation without destructive cleanup.
+- Admin creation is restricted to `admin`/`engineer`; customer creation remains
+  tenant-bound through the manager workflow. Both routes use strict bounded
+  schemas, stable error codes, and no provider/database message leakage.
+- The create-user forms now require 12-character passwords, bind every label,
+  use correct autocomplete/button semantics, stack cleanly on mobile, and make
+  team-site toggles expose `aria-pressed` state.
+- Eighteen new wrapper, migration, route, and UI checks plus two production
+  HTTP authorization probes bring the repository to 305 unit/contract tests
+  and 28 production HTTP checks.
+
+### Verification before commit
+
+| Gate | Result |
+|---|---|
+| `npm ci` | Passed; lockfile install, 0 install-time vulnerabilities |
+| `npm test` | Passed; 45 files, 305 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build |
+| `npm run test:e2e` | Passed; all 28 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+| Manual browser E2E | Passed at 1280 px and 390×844 for admin/team creation forms: constrained roles, bound labels, 12-character passwords, responsive fit with zero horizontal overflow, and correct team-site pressed state. No create mutation was submitted; console errors and disposable data residue were zero |
+| Immediate pre-commit `npm run test:e2e` | Passed before `33b3a66` with the same 28 checks and explicit protected-fixture skip |
+
+### Rollout and next
+
+1. Apply migration 039 before deploying `33b3a66`.
+2. Verify trigger/finalizer definitions and exact execution grants; public
+   signup with privileged role metadata must fail without a privileged profile.
+3. With disposable identities, prove safe customer bootstrap plus positive
+   admin/team finalization, exact audit/membership state, invalid actor/site/
+   tenant rollback, anonymous denial, response-loss confirmation,
+   provisional-only compensation, and zero residue.
+4. Continue converting the next highest-risk best-effort admin mutation.
 
 ## Session record — 2026-07-31 (P0-Z / atomic admin-user authorization changes)
 

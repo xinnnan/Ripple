@@ -86,14 +86,15 @@ Vercel.
 │   │   ├── sites/
 │   │   │   └── mutations.ts             # Atomic tenant-safe site commands
 │   │   ├── users/
-│   │   │   └── mutations.ts             # Atomic admin-user command wrapper
+│   │   │   ├── mutations.ts             # Atomic admin-user patch wrapper
+│   │   │   └── provisioning.ts          # Safe Auth + DB provisioning orchestration
 │   │   └── email/
 │   │       └── send.ts                  # Resend templates + idempotency keys
 │   ├── types/
 │   │   ├── ticket.ts                    # ⭐ All domain enums + labels
 │   │   └── spare-parts.ts               # ⭐ Spare parts + field service enums
 │   └── middleware.ts                    # ⭐ Route guard + session refresh
-├── supabase/migrations/                 # 001–038, apply in order
+├── supabase/migrations/                 # 001–039, apply in order
 ├── plans/                               # Architecture + phase planning docs
 │   ├── architecture.md
 │   ├── phase2-customer-auth-and-user-management.md
@@ -112,7 +113,7 @@ Vercel.
 - Ticket detail UI → `src/app/(auth)/tickets/[ticketId]/page.tsx` (server) + `ticket-actions-panel.tsx` (client)
 - Slack ticket creation → `src/app/api/slack/command/ticket/route.ts` + `src/lib/slack/blocks/ticket-form.ts`
 - AI assist → `src/app/api/ai/suggest/route.ts` + `src/lib/ai/suggest.ts`
-- DB schema → `supabase/migrations/001_*.sql` … `038_atomic_admin_user_patch.sql`
+- DB schema → `supabase/migrations/001_*.sql` … `039_secure_user_provisioning.sql`
 
 ---
 
@@ -150,14 +151,14 @@ const isInternal = role ? INTERNAL_ROLES.includes(role) : email ? isInternalEmai
 
 ## 5. Database Schema (Supabase)
 
-38 migrations, to be applied in order. Migrations 001–037 are confirmed
-applied as of 2026-07-31; migration 038 awaits application. Key tables:
+39 migrations, to be applied in order. Migrations 001–038 are confirmed
+applied as of 2026-07-31; migration 039 awaits application. Key tables:
 
 | Table | Purpose | Notes |
 |---|---|---|
 | `customers` | Customer orgs | `name`, `domain`, `status` |
 | `sites` | Customer locations | `site_code` (unique), `slack_channel_id`, `project_status`; migration 036 makes customer ownership immutable through normal admin updates and makes create/update audit atomic; migration 037 repairs its SQL-expression runtime defect and is live-verified |
-| `users` | All users (internal + external) | `role` (4 values, see §4), `customer_id`, `slack_user_id`; migration 038 makes same-family admin PATCH/deactivation authorization decisions serialized and transactionally audited |
+| `users` | All users (internal + external) | `role` (4 values, see §4), `customer_id`, `slack_user_id`; migration 038 makes same-family admin PATCH/deactivation serialized and transactionally audited. Migration 039 stops trusting signup role metadata and adds atomic admin/team provisioning finalizers |
 | `site_members` | User ↔ Site (M:N) | Customers join via this; customer_manager bypasses. Migration 035 adds tenant-contained, transactionally audited admin add/remove commands |
 | `tickets` | Core ticket entity | `ticket_no` (RPL-XXXXXX), `secure_token` (32-byte hex), `severity` (P1–P4), 8-state `status`, response/resolution due/achieved/breached timestamps; migration 027 column-limits direct authenticated SELECT |
 | `ticket_comments` | Discussion, `visibility: customer\|internal` | `is_automated`; only human internal-authored customer-visible messages satisfy First Response |
@@ -267,7 +268,7 @@ if ("error" in auth) return NextResponse.json({ error: auth.error }, { status: a
 npm install
 cp .env.local.example .env.local   # fill in real values
 # Run migrations in Supabase SQL editor (or `supabase db push` if using CLI):
-#   001 → 038 in order
+#   001 → 039 in order
 # Enable pgvector: CREATE EXTENSION IF NOT EXISTS vector;
 npm run dev
 ```
@@ -277,8 +278,8 @@ npm run dev
 - `npm run build` — production build
 - `npm run start` — production server
 - `npm run lint` — direct ESLint CLI across the repository; warnings fail the gate
-- `npm test` — Vitest unit/contract suite (287 tests)
-- `npm run test:e2e` — 26-check production HTTP smoke plus optional credentialed Playwright/API/RLS matrix; requires a successful build
+- `npm test` — Vitest unit/contract suite (305 tests)
+- `npm run test:e2e` — 28-check production HTTP smoke plus optional credentialed Playwright/API/RLS matrix; requires a successful build
 - `npm run test:e2e:credentialed` — real six-account/two-tenant matrix; set `RIPPLE_E2E_FIXTURES_FILE`
 - `npm run test:e2e:install-browser` — install the pinned Chromium runtime
 
@@ -732,6 +733,30 @@ profile data. Guard it at the database command boundary, serialize related
 lifecycle commands, and never let the permission change commit separately from
 its audit evidence. UI option filtering is guidance, not enforcement.
 
+### Auth signup metadata is caller-controlled input
+Found 2026-07-31 while auditing user creation after migration 038. The
+`handle_new_user()` trigger copied `raw_user_meta_data.role` into
+`public.users`, while public email signup was enabled. A caller who controlled
+a deliverable email address could therefore request `admin` at signup and have
+an active privileged profile materialized before application authorization ran.
+The existing admin and team creation routes also split Auth identity creation,
+profile/tenant updates, memberships, and audit across independent writes.
+
+Commit `33b3a66` and migration 039 make the trigger accept only the safe
+`customer` bootstrap role, keep unconfirmed public signups invited, revoke
+direct trigger execution, and add service-role-only admin/team finalizers. The
+finalizers recheck the actor and tenant under a shared lock and commit profile,
+membership, and audit state together. The application creates only a
+provisional customer identity, confirms the final database outcome after the
+RPC, compensates only when the account is provably still provisional, and
+otherwise raises an explicit reconciliation condition.
+
+**Lesson:** never derive authorization from Auth user metadata supplied during
+signup. Treat cross-system provisioning as a saga: minimize the provisional
+state, finalize business authorization transactionally, distinguish confirmed
+commit from safe compensation, and never delete an identity after an ambiguous
+outcome unless its provisional state is proven.
+
 ### Supabase SSR auth cookies belong on the response you return
 Found 2026-07-29 while adding password recovery. The authorization-code
 callback created a redirect inside the Supabase `setAll` callback, attached
@@ -852,7 +877,9 @@ resume work; this section remains the broader historical summary.
   ownership immutable through ordinary administration, live-verified the
   migration 037 runtime repair for six atomic commands, made admin-user
   authorization changes serialized and transactionally audited through
-  migration 038, and established 287 unit/contract tests plus
+  migration 038, closed caller-controlled signup role escalation and made
+  admin/team provisioning transaction-aware through migration 039, and
+  established 305 unit/contract tests plus
   a zero-vulnerability dependency baseline.
 
 ### Known issues / open work
@@ -869,16 +896,18 @@ resume work; this section remains the broader historical summary.
 | 🟡 Verify | Migration 034 protected creation probes remain | `supabase/migrations/034_atomic_ticket_creation_outbox.sql` | Command privilege, validation, constraint, and zero-residue probes are live/green; run disposable web/Slack creation and outbox-delivery probes with staging fixtures |
 | 🟡 Verify | Migration 035 protected membership probes remain | `supabase/migrations/035_atomic_admin_site_membership.sql` | Service validation/not-found and anonymous-denial probes are live/green with zero residue; run disposable same/cross-tenant add/remove/rollback probes |
 | 🟡 Verify | Migration 037 protected positive probes remain | `supabase/migrations/037_repair_qualified_sql_expressions.sql` | All six definitions now reach domain validation instead of `42883`; anonymous denial and zero-residue probes are green. Run disposable positive/rollback business probes with staging fixtures |
-| 🔴 Apply | Migration 038 is not deployed yet | `supabase/migrations/038_atomic_admin_user_patch.sql` | Apply before deploying `b5d636a`; then verify same-family edits/deactivation, lifecycle and tenant rejection, audit rollback, caller denial, zero residue, and last-admin race behavior |
+| 🔴 Apply | Migration 039 is not deployed yet | `supabase/migrations/039_secure_user_provisioning.sql` | Apply before deploying `33b3a66`; then verify privileged signup metadata rejection, safe customer bootstrap, service-role-only finalizers, positive admin/team provisioning, rollback/compensation, cross-tenant denial, and zero residue |
 | 🟡 Med | Vercel recovery cron runs daily for plan compatibility | `vercel.json` | Request-path dispatch is immediate; use a supported 1–5 minute schedule or external scheduler when the production Vercel plan permits |
 | 🟢 Low | Slack `events` route doesn't route customer messages to a ticket comment yet | `src/app/api/slack/events/route.ts` | Sprint 3 — bidirectional thread sync (SLK-008) |
 | 🟡 Med | Credentialed role/tenant matrix has not had its first staging execution | `scripts/credentialed-role-matrix.mjs` | Harness, fixture validation, and Chromium launch are committed/green; provision six dedicated accounts and non-vacuous two-tenant/archive/internal-artifact IDs, then run with required credentials |
 | 🟡 Activate | Hosted quality workflow and protected staging job are not activated yet | `.github/workflows/ci.yml` | After pushing, require `Quality gates`; create a reviewer-protected `staging` environment and add only `RIPPLE_E2E_FIXTURES_JSON` there |
 
 ### Next priorities (Sprint 3, in proposed order)
-1. **Apply and verify migration 038.** Confirm both admin-user commands retain
-   service-role-only execution, enforce lifecycle/role-family/tenant guards,
-   serialize patch and deactivation, and roll back business state with audit.
+1. **Apply and verify migration 039.** Confirm public signup cannot mint a
+   privileged profile; both finalizers retain service-role-only execution and
+   atomically enforce actor, tenant, site, lifecycle, membership, and audit
+   invariants. Exercise positive, rollback, compensation, ambiguous-outcome,
+   anonymous, cross-tenant, and zero-residue cases.
 2. **Run migrations 028–029 part-request probes.** Both migrations are
    applied; staging credentials are not present in this workspace.
 3. **Run migration 030 field-service transaction probes.** Both command RPCs
@@ -886,7 +915,7 @@ resume work; this section remains the broader historical summary.
 4. **Run migration 031 team-access transaction probes.** The command is live;
    protected same/cross-tenant, role-preservation, explicit-clear, and rollback
    fixtures remain unavailable.
-5. **Run the required credentialed staging matrix.** Migrations 027–037 are applied;
+5. **Run the required credentialed staging matrix.** Migrations 027–038 are applied;
    the secret six-account/two-tenant fixture is the remaining external gate.
 6. **Apply migration 019** ✅ done (2026-07-14).
 7. **Migrate `next lint` and add protected CI quality gates.** ✅ code done
@@ -923,10 +952,15 @@ resume work; this section remains the broader historical summary.
     migration 037 repaired the SQL-expression defect and all six affected
     commands now pass validation/privilege/zero-residue probes. Disposable
     site/audit positive and rollback probes still require protected fixtures.
-24. **Deploy atomic admin-user authorization changes.** Code is committed in
-    `b5d636a`; apply migration 038, run safe privilege/validation/zero-residue
-    probes, then execute disposable same-family, deactivation, rollback, and
-    last-admin race cases with protected staging fixtures.
+24. **Deploy atomic admin-user authorization changes.** ✅ migration 038 is
+    applied and passed a 30-assertion disposable live matrix covering positive
+    patch/deactivation, audit cardinality, cross-family/inactive/self-demotion
+    rejection, anonymous denial, concurrent last-admin safety, and zero
+    residue.
+25. **Deploy secure user provisioning.** Code is committed in `33b3a66`;
+    apply migration 039, run trigger/finalizer privilege and validation probes,
+    then execute disposable admin/team positive, rollback, compensation,
+    cross-tenant, and zero-residue cases.
 
 ### Open architectural questions
 - The RLS recursion bug surfaces a bigger question: do we keep `createAdminClient() + code filter` (the current pattern in `lib/supabase/scope.ts`) or move back to proper RLS once migration 019 + similar fixes are in place? The current pattern scales fine but has a lower safety margin for new queries.
@@ -948,7 +982,7 @@ npm audit
 ```
 
 **Apply a new migration:**
-1. Create `supabase/migrations/039_xxx.sql` (next number)
+1. Create `supabase/migrations/040_xxx.sql` (next number)
 2. Test locally: `supabase db reset` (drops + re-applies all)
 3. Apply to prod via Supabase SQL editor
 4. Document in this file's §5 + §10
