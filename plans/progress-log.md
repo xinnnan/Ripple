@@ -7,16 +7,16 @@ meaningful change and before ending a work session. Newest entries go first.
 
 - **Branch:** `codex/prd-v1-1-gap-closure`
 - **Active phase:** Phase 0 — Containment and reproducible baseline
-- **Active work item:** apply/probe migration 035, configure the production
+- **Active work item:** apply/probe migration 036, configure the production
   outbox worker secret, then continue moving remaining best-effort audit
   domains onto atomic commands
-- **Last verified implementation commit:** `a14ec45` (`fix: make site access changes atomic`)
+- **Last verified implementation commit:** `9f4b9c9` (`fix: make site administration tenant-safe`)
 - **Uncommitted work:** documentation checkpoint only; verify with `git status`
   before resuming
-- **Deployment gate:** migrations 001–034 are confirmed applied; migration 035
-  must be applied before deploying `a14ec45`. Production `CRON_SECRET` remains
+- **Deployment gate:** migrations 001–035 are confirmed applied; migration 036
+  must be applied before deploying `9f4b9c9`. Production `CRON_SECRET` remains
   unset in this workspace. Protected positive business probes for migrations
-  028–035 still require staging fixtures
+  028–036 still require staging fixtures
 - **External validation gate:** populate the gitignored credential fixture with six
   dedicated staging accounts, two tenants, a decommissioned site/ticket, and
   real internal artifact IDs; then run
@@ -36,13 +36,104 @@ meaningful change and before ending a work session. Newest entries go first.
   created for read-only protected-page visits and fully deleted afterward.
   Password-based login passed; recovery-email delivery and one-time link
   consumption still require a dedicated staging mailbox.
-- **Exact next local step:** after the user applies migration 035, verify both
-  service-role commands, revoked caller privileges, validation guards, and
-  zero-residue behavior with non-writing probes. Run disposable
-  same/cross-tenant membership and ticket-creation rollback probes when
-  protected staging fixtures exist. Configure `CRON_SECRET` separately before
-  production worker activation
+- **Exact next local step:** after the user applies migration 036, verify both
+  service-role site commands, revoked caller privileges, immutable ownership,
+  validation guards, and zero-residue behavior with non-writing probes. Run
+  disposable site create/update/rollback and cross-tenant rejection probes
+  when protected staging fixtures exist. Configure `CRON_SECRET` separately
+  before production worker activation
 - **Primary plan:** [`plans/prd-v1.1-gap-closure-plan.md`](./prd-v1.1-gap-closure-plan.md)
+
+## Session record — 2026-07-30 (P0-X / tenant-safe site administration)
+
+### Objective
+
+Verify migration 035 without committed writes, rank the remaining best-effort
+admin mutations, and close the highest-risk site-administration boundary.
+
+### Migration 035 verification
+
+- The user confirmed migration 035 was applied.
+- With a read-only lookup of one active admin, service-role add probes rejected
+  a missing target and invalid membership role with SQLSTATE `22023`.
+- The remove command rejected a random missing membership with `P0002`.
+- Anonymous add and remove execution were both denied with `42501`.
+- Random probe user/site/membership identifiers left zero `site_members`
+  residue. No secret values or user identifiers were printed.
+
+### Audit findings
+
+- `PATCH /api/admin/sites/[id]` accepted `customer_id`. Reassigning an
+  established site moved its tickets and related history into another tenant
+  while retaining the old customer users' site memberships.
+- Site creation and update committed the business row before calling
+  best-effort `logAudit()` / `logDiff()`, so audit failure could leave an
+  unattributed tenant configuration change.
+- Creation accepted inactive customers and arbitrary status/timezone/default
+  owner combinations.
+- Archived sites and sites under inactive customers still presented ordinary
+  edit/create controls.
+
+### Changes completed
+
+- Added rollout-safe migration `036_atomic_admin_site_commands.sql`.
+- Added service-role-only atomic create/update commands that:
+  - re-check and lock an active admin;
+  - validate active/trial customer ownership, real PostgreSQL timezone,
+    lifecycle, project status, site-code format, bounds, and optional active
+    internal default owner;
+  - make `customer_id` immutable after site creation;
+  - prevent ordinary edits from restoring archived/decommissioned sites;
+  - row-lock updates and commit site changes plus per-field audit evidence in
+    one transaction.
+- Both site write routes now use typed wrappers, strict Zod input, stable
+  error-code mapping, and no direct site/audit writes.
+- The site edit UI renders customer ownership as immutable, makes archived or
+  inactive-tenant sites read-only, and only offers creation for active/trial
+  customers.
+- Added seven command/migration/route/UI contract tests plus unauthenticated
+  create and update HTTP probes.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| Focused site and membership checks | Passed; 13 tests |
+| `npm ci` | Passed; 533 packages installed |
+| `npm test` | Passed; 40 files, 271 tests |
+| `npm run lint` | Passed; 0 warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build |
+| `npm run test:e2e` | Passed; 25 HTTP checks, credentialed matrix skipped explicitly because the secret fixture is unset |
+| `npm audit` | Passed; 0 vulnerabilities |
+| `git diff --check` | Passed |
+| Immediate pre-commit E2E rerun | Passed before `9f4b9c9` |
+
+### Commit
+
+- `9f4b9c9` — `fix: make site administration tenant-safe`
+
+### Deployment gates and limitations
+
+- Apply migration 036 before deploying `9f4b9c9`. It is rollout-safe because
+  it only adds opt-in RPCs; the old deployment does not call them.
+- Do not deploy the application commit first. Site writes intentionally fail
+  closed when the commands are unavailable.
+- Migration 036 does not rewrite historical ownership or site codes.
+- A future, separately authorized ownership-transfer workflow would need to
+  migrate memberships and every dependent tenant reference explicitly; normal
+  PATCH intentionally cannot do this.
+- Positive create/update/audit rollback evidence still requires protected
+  disposable staging fixtures.
+
+### Exact next step
+
+1. Apply migration 036 in order.
+2. Verify command presence, service-role-only execution, ownership rejection,
+   lifecycle/configuration validation, and zero-residue behavior.
+3. With protected fixtures, create/update one disposable site, reject an
+   ownership transfer, and prove site/audit rollback together.
+4. Continue converting the next high-risk best-effort admin mutation to an
+   atomic command.
 
 ## Session record — 2026-07-30 (P0-W / atomic admin site access)
 
