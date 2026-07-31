@@ -20,6 +20,9 @@ A Slack-native support portal for DropletAI Services. Centralises customer suppo
   validate, and audit customer/site authorization atomically.
 - **Immutable Site Ownership** — Normal administration cannot move an
   established site or its service history across customer tenants.
+- **Atomic User Authorization Changes** — Admin profile, same-family role,
+  status, and deactivation changes are serialized, invariant-checked, and
+  audited in their database transaction.
 - **Site Channel Model** — Each customer site has a dedicated Slack support channel, mapped via `slack_channels`.
 
 ## Tech Stack
@@ -27,14 +30,14 @@ A Slack-native support portal for DropletAI Services. Centralises customer suppo
 | Layer | Tool |
 |-------|------|
 | Frontend | Next.js 15.5.22 (App Router) + React 19 + TypeScript + Tailwind CSS v4 + self-hosted Inter |
-| Database | Supabase Postgres (37 migrations, see `supabase/migrations/`) |
+| Database | Supabase Postgres (38 migrations, see `supabase/migrations/`) |
 | Auth | Supabase Auth (email + password + recovery) + new `sb_publishable_` / `sb_secret_` key format |
 | Storage | Supabase Storage — bucket `ripple-attachments`, **50 MB cap per file** |
 | Slack | `@slack/bolt` + `@slack/web-api` (runs inside Next.js API routes, no separate process) |
 | AI | **MiniMax AI** (OpenAI-compatible) — was OpenAI → Zhipu → MiniMax. **See "AI provider" section below.** |
 | Email | Resend (transactional: ticket confirmation, resolution notice) |
 | Validation | Zod (all API request bodies) |
-| Testing | Vitest (273 unit/contract tests) + 25-check production HTTP smoke + credentialed Playwright/API/RLS matrix |
+| Testing | Vitest (287 unit/contract tests) + 26-check production HTTP smoke + credentialed Playwright/API/RLS matrix |
 | Hosting | Vercel (serverless API routes) |
 
 ## Phases
@@ -69,7 +72,7 @@ cp .env.local.example .env.local
 
 ### Run database migrations
 
-Apply the SQL files in `supabase/migrations/` **in order** (001 → 037) via the Supabase SQL editor or `supabase db push`:
+Apply the SQL files in `supabase/migrations/` **in order** (001 → 038) via the Supabase SQL editor or `supabase db push`:
 
 ```
 001_create_customers.sql
@@ -109,15 +112,16 @@ Apply the SQL files in `supabase/migrations/` **in order** (001 → 037) via the
 035_atomic_admin_site_membership.sql
 036_atomic_admin_site_commands.sql
 037_repair_qualified_sql_expressions.sql
+038_atomic_admin_user_patch.sql
 ```
 
 Later migrations replace policies/functions and should be applied once in
 order. Migration `017` also performs role data updates and must not be re-run
-blindly. Migrations 001–036 are confirmed applied as of 2026-07-31. Apply
-migration 037 before deploying the affected atomic request, field-service,
-team-access, or site commands. It repairs invalid schema qualification of SQL
-`COALESCE`/`NULLIF` expressions discovered during the live migration 036
-probe; migration 036 alone does not make site creation operational.
+blindly. Migrations 001–037 are confirmed applied as of 2026-07-31. Migration
+037's six repaired commands passed live validation, privilege, and zero-residue
+probes. Apply migration 038 before deploying the atomic admin-user PATCH route;
+it serializes role/status changes and deactivation under one authorization
+lock and commits their audit evidence in the same transaction.
 
 ### Enable pgvector (for AI features)
 
@@ -180,8 +184,8 @@ protected CI should set `RIPPLE_E2E_REQUIRE_CREDENTIALS=1` so it fails closed.
 
 ### GitHub Actions
 
-`.github/workflows/ci.yml` runs the locked install, 273 unit/contract tests,
-lint, production build, 25-check HTTP E2E, and dependency audit for pull
+`.github/workflows/ci.yml` runs the locked install, 287 unit/contract tests,
+lint, production build, 26-check HTTP E2E, and dependency audit for pull
 requests and pushes to `main`. GitHub-owned actions are pinned to full commit
 SHAs and the workflow has read-only repository permissions.
 
@@ -260,6 +264,7 @@ src/
 │   ├── sites/                   # tenant-safe atomic site wrappers
 │   ├── team/                    # team contracts + atomic set-diff wrapper
 │   ├── tickets/                 # lifecycle + durable notification outbox
+│   ├── users/                   # atomic admin-user mutation wrapper
 │   ├── audit.ts                 # logAudit / logDiff
 │   ├── roles.ts                 # ⭐ single source of role constants + helpers
 │   └── utils.ts                 # cn, tokens, instant + DATE-only formatting
@@ -267,7 +272,7 @@ src/
 │   ├── ticket.ts                # ⭐ all ticket domain enums + labels
 │   └── spare-parts.ts
 └── middleware.ts                # ⭐ route guard + session refresh
-supabase/migrations/             # 001-037
+supabase/migrations/             # 001-038
 plans/                           # Architecture + phase planning docs
 AGENTS.md                        # ⭐ project context, lessons learned, roadmap
 ```

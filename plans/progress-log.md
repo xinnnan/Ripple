@@ -7,17 +7,16 @@ meaningful change and before ending a work session. Newest entries go first.
 
 - **Branch:** `codex/prd-v1-1-gap-closure`
 - **Active phase:** Phase 0 — Containment and reproducible baseline
-- **Active work item:** apply/probe migration 037, configure the production
+- **Active work item:** apply/probe migration 038, configure the production
   outbox worker secret, then continue moving remaining best-effort audit
   domains onto atomic commands
-- **Last verified implementation commit:** `4c516bc` (`fix: repair atomic command sql expressions`)
-- **Uncommitted work:** documentation checkpoint only; verify with `git status`
-  before resuming
-- **Deployment gate:** migrations 001–036 are confirmed applied; migration 037
-  must be applied before using the affected request, field-service, team, or
-  site atomic commands. Production `CRON_SECRET` remains unset in this
-  workspace. Protected positive business probes for migrations 028–037 still
-  require staging fixtures
+- **Last verified implementation commit:** `b5d636a` (`fix: make admin user changes atomic`)
+- **Uncommitted work:** none expected after the documentation checkpoint;
+  verify with `git status` before resuming
+- **Deployment gate:** migrations 001–037 are confirmed applied; migration 038
+  must be applied before deploying the atomic admin-user PATCH route.
+  Production `CRON_SECRET` remains unset in this workspace. Protected positive
+  business probes for migrations 028–038 still require staging fixtures
 - **External validation gate:** populate the gitignored credential fixture with six
   dedicated staging accounts, two tenants, a decommissioned site/ticket, and
   real internal artifact IDs; then run
@@ -37,13 +36,83 @@ meaningful change and before ending a work session. Newest entries go first.
   created for read-only protected-page visits and fully deleted afterward.
   Password-based login passed; recovery-email delivery and one-time link
   consumption still require a dedicated staging mailbox.
-- **Exact next local step:** after the user applies migration 037, verify all
-  six repaired command definitions reach expected validation rather than
-  `42883`, retain revoked caller privileges, and leave zero residue. Run
-  disposable positive/rollback and cross-tenant rejection probes when
-  protected staging fixtures exist. Configure `CRON_SECRET` separately before
-  production worker activation
+- **Exact next local step:** after the user applies migration 038, verify its
+  two command definitions, service-role-only grants, lifecycle/role-family
+  rejection paths, atomic audit behavior, and zero residue. Run disposable
+  positive/rollback and cross-tenant rejection probes when protected staging
+  fixtures exist. Configure `CRON_SECRET` separately before production worker
+  activation
 - **Primary plan:** [`plans/prd-v1.1-gap-closure-plan.md`](./prd-v1.1-gap-closure-plan.md)
+
+## Session record — 2026-07-31 (P0-Z / atomic admin-user authorization changes)
+
+### Objective
+
+Verify migration 037 after application, then close the highest-risk remaining
+best-effort admin mutation without broadening the PRD role model.
+
+### Migration 037 live verification
+
+- The user confirmed migration 037 was applied.
+- All six repaired service-role commands reached their intended domain
+  validation (`22023`) instead of the prior runtime-resolution error `42883`:
+  spare-part request create, field-service create/update, team-member patch,
+  and site create/update.
+- Anonymous execution of all six commands remained denied with `42501`.
+- The site and field-service update probes exercised the repaired default/
+  `NULLIF` branches and left their target, child-assignment, and audit state
+  unchanged after validation failure.
+- All disposable business identifiers were checked after the probes; ticket,
+  request, order, site, membership, and audit residue counts were zero. No
+  secret values or live business identifiers were printed.
+
+### Implementation
+
+- Commit `b5d636a` adds rollout-safe migration
+  `038_atomic_admin_user_patch.sql`.
+- `apply_admin_user_patch` serializes global authorization changes, rechecks
+  and locks the active admin/target, rejects self-demotion and unsafe
+  internal/customer role-family transfers, validates external tenant state,
+  and commits the user update plus exactly one audit row per changed field.
+- The migration replaces `deactivate_users` under the same advisory-lock
+  boundary so concurrent patch/deactivation requests cannot authorize against
+  stale administrator state. Both commands retain empty search paths and
+  service-role-only execution.
+- The admin route now uses the atomic command, strictly validates identifiers
+  and request bodies, keeps deactivation behind its dedicated lifecycle path,
+  maps stable SQLSTATE classes, and never exposes database messages.
+- The admin edit UI is role-family constrained, prevents customer-manager
+  selection without a customer, renders inactive users read-only, restores
+  explicit label/control associations, and removes a duplicated nested detail
+  card. A disposable active admin and inactive customer were used only for
+  read-only browser validation and were fully deleted afterward.
+- Fourteen new wrapper, migration, route, and UI checks plus one production
+  HTTP authorization probe bring the repository to 287 unit/contract tests and
+  26 production HTTP checks.
+
+### Verification before commit
+
+| Gate | Result |
+|---|---|
+| `npm ci` | Passed; lockfile install, 0 install-time vulnerabilities |
+| `npm test` | Passed; 43 files, 287 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build |
+| `npm run test:e2e` | Passed; all 26 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+| Manual browser E2E | Passed for active/inactive admin-user detail states, role constraints, enabled/disabled controls, accessible labels, and final single-card layout; no mutation submitted and both temporary identities were deleted |
+| Immediate pre-commit `npm run test:e2e` | Passed before `b5d636a` with the same 26 checks and explicit protected-fixture skip |
+
+### Rollout and next
+
+1. Apply migration 038 before deploying `b5d636a`.
+2. Rerun command-presence, privilege, non-writing validation, and zero-residue
+   probes for both admin-user commands.
+3. With protected staging fixtures, prove same-family role/status/name changes,
+   deactivation, cross-family/tenant rejection, rollback on audit failure, and
+   last-admin race behavior.
+4. Continue converting the next highest-risk best-effort admin mutation.
 
 ## Session record — 2026-07-31 (P0-Y / atomic SQL-expression repair)
 

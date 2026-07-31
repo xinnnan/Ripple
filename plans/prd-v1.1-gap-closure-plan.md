@@ -33,7 +33,7 @@ Ripple is a useful support-ticket prototype with meaningful Phase 1–4 work:
 - spare-parts and field-service skeletons
 - simple wall-clock SLA targets
 - email and AI integrations with graceful failure
-- 273 committed unit/contract tests, production HTTP smoke, and an opt-in
+- 287 committed unit/contract tests, production HTTP smoke, and an opt-in
   credentialed browser/API/RLS matrix
 
 It is not yet the operations platform described by PRD v1.1. The old
@@ -66,12 +66,12 @@ The correct approach is therefore:
 
 | Gate | Result through 2026-07-31 | Meaning |
 |---|---|---|
-| Unit tests | 273/273 passed | Scope, lifecycle and exhaustive ticket-transition guards, atomic ticket creation, notification outbox leases/idempotency/retry contracts, tenant-safe site administration and membership containment, qualified-SQL-expression repair, visibility, auth recovery/redirects, public/responsive UI contracts, Slack authentication/configuration/action filtering and direct AI-service invocation, readiness, CI policy, filters, SLA, fixture validation, migration/RPC contracts, spare-part, field-service, and team-access transaction containment, DATE handling, and audit coverage is green |
+| Unit tests | 287/287 passed | Scope, lifecycle and exhaustive ticket-transition guards, atomic ticket creation, notification outbox leases/idempotency/retry contracts, tenant-safe site/user administration and membership containment, qualified-SQL-expression repair, visibility, auth recovery/redirects, public/responsive/admin-user UI contracts, Slack authentication/configuration/action filtering and direct AI-service invocation, readiness, CI policy, filters, SLA, fixture validation, migration/RPC contracts, spare-part, field-service, and team-access transaction containment, DATE handling, and audit coverage is green |
 | Lint | Passed, no warnings | Direct ESLint CLI with zero-warning enforcement and generated-artifact ignores |
 | Production build | Passed on Next.js 15.5.22 | Environment-free build is reproducible |
 | Dependency audit | 0 vulnerabilities | Patched direct/transitive versions are lockfile-pinned and compatibility-tested |
 | Worktree | Clean at baseline | Work started on `codex/prd-v1-1-gap-closure` |
-| Committed end-to-end tests | 25 production HTTP checks + credentialed Playwright/API/RLS matrix | Public/recovery/negative/configuration smoke always runs, including fail-closed outbox-worker configuration plus site-membership/site-write denials; migrations 001–036 are applied and migration 037 awaits application, while protected positive request/field-service/team/site-access/site-administration/transition/outbox/create probes and the six-account two-tenant matrix await staging credentials/fixtures |
+| Committed end-to-end tests | 26 production HTTP checks + credentialed Playwright/API/RLS matrix | Public/recovery/negative/configuration smoke always runs, including fail-closed outbox-worker configuration plus site-membership/site/user-write denials; migrations 001–037 are applied and migration 038 awaits application, while protected positive request/field-service/team/site-access/site/user-administration/transition/outbox/create probes and the six-account two-tenant matrix await staging credentials/fixtures |
 | Hosted CI | Workflow committed in `4ceacd0`; first hosted run pending | Read-only, SHA-pinned quality job is reproducible; repository branch protection and the protected staging environment still require activation |
 
 ## 4. PRD capability gap map
@@ -82,8 +82,8 @@ has a release-blocking security or integrity problem.
 
 | PRD capability | Current state | Main gap |
 |---|---|---|
-| Identity and account lifecycle | Partial | No invite lifecycle, MFA, session/device management, enforced suspension/revocation, or scoped internal access |
-| Membership and Site Assignment | Unsafe/Partial | Admin-managed customer site access is now tenant-contained and transactionally audited, but global `users.role` + `users.customer_id` still conflicts with the PRD per-membership/per-site authorization model |
+| Identity and account lifecycle | Partial | Same-family global role/status edits and deactivation are now serialized and atomically audited, but there is no complete invite/reactivation lifecycle, MFA, session/device management, or scoped internal access |
+| Membership and Site Assignment | Unsafe/Partial | Admin-managed customer site access is tenant-contained and transactionally audited, and unsafe global role-family transfers are blocked, but global `users.role` + `users.customer_id` still conflicts with the PRD per-membership/per-site authorization model |
 | Tenant isolation | Unsafe/Partial | Site ownership is now immutable through ordinary administration and membership assignment is tenant-contained, but admin-client queries still depend on manual filters and the PRD authorization model is incomplete |
 | Customer Portal | Partial | Basic dashboard/tickets/sites/profile only; no onsite requests, assets, history, preferences, or PRD wizard |
 | Ticket Core | Partial | Current creation plus eight-state transitions and resolution entry rules are database-guarded/atomic; PRD states, merge/relations, visibility scopes, versioning, and optimistic concurrency remain |
@@ -101,7 +101,7 @@ has a release-blocking security or integrity problem.
 | Notifications / Templates | Partial | Durable ticket creation/update/resolution delivery records/retry/dead-letter are committed; template versioning, locale fallback, preferences, and in-app inbox remain |
 | Reporting / Export | Partial | Ticket CSV and dashboard counts only; no metric contract, SLA/operations reports, scheduled generation, or permission-aware exports |
 | Internationalization | Absent | English strings are embedded in code; no locale resolution, translation catalog, formatting rules, or four-language QA |
-| Administration | Partial | CRUD exists; no configuration hierarchy, form/custom-field builder, workflow publishing, feature flags, retention, or integration console |
+| Administration | Partial | Site/membership/user authorization writes now have atomic command foundations; configuration hierarchy, form/custom-field builder, workflow publishing, feature flags, retention, and integration console remain absent |
 | External API / Webhooks | Absent | Unversioned internal REST only; no client credentials, scopes, idempotency, concurrency, stable errors, signed webhooks, or docs |
 | Security / Privacy | Unsafe/Partial | Slack request verification now fails closed and direct ticket-column/Storage exposure is contained; weak file validation, incomplete audit guarantees, and other authorization gaps remain |
 | SRE / Operations | Partial | Minimal liveness and configuration-readiness endpoints exist; structured observability, SLOs, alerting, runbooks, tested recovery, capacity/performance evidence, and release automation remain |
@@ -134,14 +134,15 @@ has a release-blocking security or integrity problem.
 | INT-004 | Part-request header and items, and field order plus engineer assignments, are non-atomic | **Deployed; protected verification pending:** part-request update/create are deployed in `1f49ecc`/`64cee3d` + migrations 028/029. `2557760` + migration 030 make field-order create/update, complete engineer assignment sets, numbering, and audit atomic; both RPCs are live and protected rollback probes remain |
 | INT-005 | Part fulfillment updates do not verify the item belongs to the request in the URL | **Closed in `1f49ecc`; migration 028 confirmed applied 2026-07-29:** the row-locked command constrains every item by both `request_id` and item ID and rejects invalid quantity bounds; protected runtime probes remain |
 | INT-006 | Team site assignments are delete-all then insert, so a failed insert removes all access | **Deployed; protected verification pending:** `c0c2354` + migration 031 atomically update profile/status, apply a role-preserving membership set diff, validate the manager/tenant/target/sites, and write audit evidence; RPC presence and non-writing validation behavior are confirmed |
-| INT-007 | Audit writes are best-effort and separate from the business transaction | **Platform foundation extended through `9f4b9c9`:** migrations 033–036 are applied and make ticket delivery/create, admin site-membership, and site mutations atomic/durable. Migration 037 must repair affected command runtime expressions before release. Remaining best-effort admin audit domains still need conversion |
+| INT-007 | Audit writes are best-effort and separate from the business transaction | **Platform foundation extended through `b5d636a`:** migrations 033–037 are applied/live-verified for ticket delivery/create, admin site-membership, site mutations, and repaired command execution. Migration 038 adds serialized, atomically audited admin-user patch/deactivation and awaits application. Remaining best-effort admin audit domains still need conversion |
 | INT-008 | Site detail assigns the inventory query to an unused tuple slot and always renders empty inventory | **Closed in `9083ece`:** the inventory query result is wired to the inventory tab and covered by the external-resource containment regression checkpoint |
 | INT-009 | `/sites` links to `?site_id=...`, while the ticket parser expects `?site=...` | **Closed in `9083ece`:** site links and the ticket filter parser use the canonical `site` query key |
 | INT-010 | Slack Ripple Assist calls an internal authenticated HTTP API without a session cookie | **Closed in `3f7d296`:** web and signed Slack ingress authorize independently, then call the shared rate-limited AI application service; Slack preserves channel delivery context |
 | INT-011 | Slack mutations bypass ticket events, SLA stamping, state guards, and some notification paths | **Closed for current supported actions:** SLA/ticket/audit parity in `b71b3d7`, AI direct service in `3f7d296`, deployed state guards in `b344d18`, shared resolution effects in `4892dcb`, and durable ticket-update delivery in `a6ccd33` / migration 033 |
 | INT-012 | Clean builds fail on `/login` without Supabase env because the client is created during prerender | Construct the browser client only inside the submit action |
-| INT-013 | Ordinary site PATCH can reassign an established site and its historical resources across customers while retaining old memberships | **Migration applied; runtime repair pending:** `9f4b9c9` + migration 036 make ownership immutable, validate active tenant/configuration state, row-lock updates, and commit site/audit writes atomically. Ownership, not-found, privilege, and zero-residue probes passed; apply migration 037 before positive site create/update use |
-| INT-014 | Atomic commands qualify `COALESCE`/`NULLIF` as catalog functions and fail at runtime with `42883` | **Forward fix committed in `4c516bc`; migration pending:** migration 037 repairs the six exact deployed part-request, field-service, team-access, and site command definitions inside one transaction and re-hardens service-role-only execution |
+| INT-013 | Ordinary site PATCH can reassign an established site and its historical resources across customers while retaining old memberships | **Deployed; protected positive verification pending:** `9f4b9c9` + migration 036 make ownership immutable, validate active tenant/configuration state, row-lock updates, and commit site/audit writes atomically. Migration 037 is applied; ownership, not-found, privilege, repaired validation, and zero-residue probes passed |
+| INT-014 | Atomic commands qualify `COALESCE`/`NULLIF` as catalog functions and fail at runtime with `42883` | **Closed in `4c516bc`; deployment confirmed 2026-07-31:** migration 037 repaired the six exact deployed part-request, field-service, team-access, and site command definitions, re-hardened service-role-only execution, and passed domain-validation/anonymous-denial/zero-residue probes |
+| INT-015 | Admin user PATCH changes global authorization state before best-effort/duplicate audit and permits unsafe internal/customer role-family transfers | **Code complete in `b5d636a`; migration 038 pending:** the command serializes patch/deactivation, rechecks active-admin authority, locks targets, guards lifecycle/tenant/role-family invariants, and commits one audit row per changed field with the update |
 
 ### Platform gaps that become risks at scale
 
@@ -437,16 +438,23 @@ Every implementation slice must:
     choices and the HTTP smoke denies unauthenticated mutation. Service
     validation/not-found and anonymous-denial probes are live/green with zero
     residue; protected positive/rollback probes remain.
-24. **P0-X — migration applied; runtime repair pending:** Migration 036 adds
+24. **P0-X — deployed; protected positive verification pending:** Migration 036 adds
     service-role-only atomic site create/update commands. Ordinary tenant
     reassignment is rejected, active tenant/lifecycle/configuration invariants
     run under locks, archived sites are read-only, and site/audit writes commit
-    together. Live ownership, missing-row, caller-privilege, and zero-residue
-    probes passed, but site creation exposed the `42883` defect below.
-25. **P0-Y — committed in `4c516bc`; migration pending:** Migration 037
+    together. Live ownership, missing-row, caller-privilege, repaired
+    validation, and zero-residue probes passed; disposable positive/rollback
+    cases remain protected-fixture work.
+25. **P0-Y — deployed and live-verified:** Migration 037
     forward-repairs invalid qualified `COALESCE`/`NULLIF` expressions in all
     six affected deployed atomic commands and re-applies their execution
-    boundaries. Apply and live-probe 037 before using those command paths.
-26. **Next local integrity work:** after migration 037 is applied/probed,
+    boundaries. All six reach domain validation instead of `42883`, deny
+    anonymous execution, and leave zero probe residue.
+26. **P0-Z — code complete in `b5d636a`; migration pending:** Migration 038
+    serializes admin-user patch and deactivation authorization, blocks unsafe
+    lifecycle/role-family/tenant changes, and commits changed-field audit
+    evidence with the user update. Apply and safely probe both commands before
+    deploying the route.
+27. **Next local integrity work:** after migration 038 is applied/probed,
     convert the next high-risk best-effort administrative audit domain to an
     atomic command and run protected positive/rollback delivery probes.
