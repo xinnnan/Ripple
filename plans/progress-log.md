@@ -7,14 +7,16 @@ meaningful change and before ending a work session. Newest entries go first.
 
 - **Branch:** `codex/prd-v1-1-gap-closure`
 - **Active phase:** Phase 0 — Containment and reproducible baseline
-- **Active work item:** deploy/probe INT-007 migration 033, then move ticket
-  creation delivery and remaining best-effort audit domains onto atomic seams
-- **Last verified implementation commit:** `a6ccd33` (`feat: add durable ticket notification outbox`)
-- **Uncommitted work:** documentation checkpoint only; verify with `git status`
-  before resuming
-- **Deployment gate:** migrations 001–032 are user-confirmed applied;
-  migration 033 and production `CRON_SECRET` are pending. Protected positive
-  business probes for migrations 028–033 still require staging fixtures
+- **Active work item:** apply/probe migration 039, configure the production
+  outbox worker secret, then continue moving remaining best-effort audit
+  domains onto atomic commands
+- **Last verified implementation commit:** `33b3a66` (`fix: secure user provisioning`)
+- **Uncommitted work:** none expected after the documentation checkpoint;
+  verify with `git status` before resuming
+- **Deployment gate:** migrations 001–038 are confirmed applied; migration 039
+  must be applied before deploying secure admin/team user provisioning.
+  Production `CRON_SECRET` remains unset in this workspace. Protected positive
+  business probes for migrations 028–039 still require staging fixtures
 - **External validation gate:** populate the gitignored credential fixture with six
   dedicated staging accounts, two tenants, a decommissioned site/ticket, and
   real internal artifact IDs; then run
@@ -34,11 +36,513 @@ meaningful change and before ending a work session. Newest entries go first.
   created for read-only protected-page visits and fully deleted afterward.
   Password-based login passed; recovery-email delivery and one-time link
   consumption still require a dedicated staging mailbox.
-- **Exact next local step:** after the user applies migration 033, verify the
-  table/trigger/RPC surface and fail-closed worker authorization without
-  exposing secrets; then migrate ticket-create Slack/email effects onto the
-  outbox and continue the best-effort audit inventory
+- **Exact next local step:** after the user applies migration 039, verify the
+  hardened signup trigger and both service-role-only finalizers. Prove
+  privileged metadata rejection, safe customer bootstrap, admin/team positive
+  finalization, rollback/compensation, anonymous/cross-tenant rejection, and
+  zero residue. Configure `CRON_SECRET` separately before production worker
+  activation
 - **Primary plan:** [`plans/prd-v1.1-gap-closure-plan.md`](./prd-v1.1-gap-closure-plan.md)
+
+## Session record — 2026-07-31 (P0-AA / secure user provisioning)
+
+### Objective
+
+Live-verify migration 038, then close the highest-risk remaining account
+creation gap without trusting caller metadata or leaving partially provisioned
+authorization state.
+
+### Migration 038 live verification
+
+- The user confirmed migration 038 was applied.
+- A 30-assertion disposable matrix proved a successful same-family patch,
+  exactly one audit row per changed field, cross-family rejection (`55000`)
+  with no state/audit residue, self-demotion rejection (`22023`), dedicated
+  deactivation with exactly one audit row, and inactive-target rejection.
+- Anonymous patch/deactivation calls were denied with `42501`.
+- A concurrent reciprocal-admin test produced exactly one committed change;
+  the losing command returned `42501`, at least one active admin remained, and
+  exactly one audit row committed.
+- Cleanup confirmed zero disposable `public.users`, `audit_logs`, and
+  `auth.users` rows. No secret values or live identifiers were printed.
+
+### Finding and implementation
+
+- Public email signup is enabled, while the deployed `handle_new_user()`
+  trigger trusted caller-controlled `raw_user_meta_data.role`. A caller with a
+  deliverable email could therefore request `admin` and have a privileged
+  public profile created before application authorization.
+- Admin and team routes also split Auth identity creation, profile/tenant
+  updates, memberships, and audit across separate writes while ignoring some
+  failures.
+- Commit `33b3a66` adds rollout-safe migration
+  `039_secure_user_provisioning.sql`. The trigger now permits only the safe
+  customer bootstrap role, keeps unconfirmed public signups invited, trims
+  bounded profile metadata, and cannot be invoked directly.
+- `finalize_admin_user_creation` and `finalize_team_user_creation` share an
+  authorization lock, recheck active actor/tenant/site state, accept only a
+  recent provisional customer profile, and atomically commit profile,
+  tenant/membership, and audit state. Both use empty search paths and expose
+  execution only to `service_role`.
+- `src/lib/users/provisioning.ts` treats Auth plus Postgres as a provisioning
+  saga: it creates only a safe provisional customer identity, confirms the
+  expected committed profile after an RPC error/response loss, compensates
+  only when the identity is provably still provisional, and reports ambiguous
+  outcomes for operator reconciliation without destructive cleanup.
+- Admin creation is restricted to `admin`/`engineer`; customer creation remains
+  tenant-bound through the manager workflow. Both routes use strict bounded
+  schemas, stable error codes, and no provider/database message leakage.
+- The create-user forms now require 12-character passwords, bind every label,
+  use correct autocomplete/button semantics, stack cleanly on mobile, and make
+  team-site toggles expose `aria-pressed` state.
+- Eighteen new wrapper, migration, route, and UI checks plus two production
+  HTTP authorization probes bring the repository to 305 unit/contract tests
+  and 28 production HTTP checks.
+
+### Verification before commit
+
+| Gate | Result |
+|---|---|
+| `npm ci` | Passed; lockfile install, 0 install-time vulnerabilities |
+| `npm test` | Passed; 45 files, 305 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build |
+| `npm run test:e2e` | Passed; all 28 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+| Manual browser E2E | Passed at 1280 px and 390×844 for admin/team creation forms: constrained roles, bound labels, 12-character passwords, responsive fit with zero horizontal overflow, and correct team-site pressed state. No create mutation was submitted; console errors and disposable data residue were zero |
+| Immediate pre-commit `npm run test:e2e` | Passed before `33b3a66` with the same 28 checks and explicit protected-fixture skip |
+
+### Rollout and next
+
+1. Apply migration 039 before deploying `33b3a66`.
+2. Verify trigger/finalizer definitions and exact execution grants; public
+   signup with privileged role metadata must fail without a privileged profile.
+3. With disposable identities, prove safe customer bootstrap plus positive
+   admin/team finalization, exact audit/membership state, invalid actor/site/
+   tenant rollback, anonymous denial, response-loss confirmation,
+   provisional-only compensation, and zero residue.
+4. Continue converting the next highest-risk best-effort admin mutation.
+
+## Session record — 2026-07-31 (P0-Z / atomic admin-user authorization changes)
+
+### Objective
+
+Verify migration 037 after application, then close the highest-risk remaining
+best-effort admin mutation without broadening the PRD role model.
+
+### Migration 037 live verification
+
+- The user confirmed migration 037 was applied.
+- All six repaired service-role commands reached their intended domain
+  validation (`22023`) instead of the prior runtime-resolution error `42883`:
+  spare-part request create, field-service create/update, team-member patch,
+  and site create/update.
+- Anonymous execution of all six commands remained denied with `42501`.
+- The site and field-service update probes exercised the repaired default/
+  `NULLIF` branches and left their target, child-assignment, and audit state
+  unchanged after validation failure.
+- All disposable business identifiers were checked after the probes; ticket,
+  request, order, site, membership, and audit residue counts were zero. No
+  secret values or live business identifiers were printed.
+
+### Implementation
+
+- Commit `b5d636a` adds rollout-safe migration
+  `038_atomic_admin_user_patch.sql`.
+- `apply_admin_user_patch` serializes global authorization changes, rechecks
+  and locks the active admin/target, rejects self-demotion and unsafe
+  internal/customer role-family transfers, validates external tenant state,
+  and commits the user update plus exactly one audit row per changed field.
+- The migration replaces `deactivate_users` under the same advisory-lock
+  boundary so concurrent patch/deactivation requests cannot authorize against
+  stale administrator state. Both commands retain empty search paths and
+  service-role-only execution.
+- The admin route now uses the atomic command, strictly validates identifiers
+  and request bodies, keeps deactivation behind its dedicated lifecycle path,
+  maps stable SQLSTATE classes, and never exposes database messages.
+- The admin edit UI is role-family constrained, prevents customer-manager
+  selection without a customer, renders inactive users read-only, restores
+  explicit label/control associations, and removes a duplicated nested detail
+  card. A disposable active admin and inactive customer were used only for
+  read-only browser validation and were fully deleted afterward.
+- Fourteen new wrapper, migration, route, and UI checks plus one production
+  HTTP authorization probe bring the repository to 287 unit/contract tests and
+  26 production HTTP checks.
+
+### Verification before commit
+
+| Gate | Result |
+|---|---|
+| `npm ci` | Passed; lockfile install, 0 install-time vulnerabilities |
+| `npm test` | Passed; 43 files, 287 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build |
+| `npm run test:e2e` | Passed; all 26 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+| Manual browser E2E | Passed for active/inactive admin-user detail states, role constraints, enabled/disabled controls, accessible labels, and final single-card layout; no mutation submitted and both temporary identities were deleted |
+| Immediate pre-commit `npm run test:e2e` | Passed before `b5d636a` with the same 26 checks and explicit protected-fixture skip |
+
+### Rollout and next
+
+1. Apply migration 038 before deploying `b5d636a`.
+2. Rerun command-presence, privilege, non-writing validation, and zero-residue
+   probes for both admin-user commands.
+3. With protected staging fixtures, prove same-family role/status/name changes,
+   deactivation, cross-family/tenant rejection, rollback on audit failure, and
+   last-admin race behavior.
+4. Continue converting the next highest-risk best-effort admin mutation.
+
+## Session record — 2026-07-31 (P0-Y / atomic SQL-expression repair)
+
+### Objective
+
+Verify migration 036 safely after application and continue with the next
+highest-risk integrity gap only after its live command boundary was proven.
+
+### Migration 036 verification and finding
+
+- The user confirmed migration 036 was applied.
+- The service-role site patch command rejected attempted `customer_id` change
+  with `22023` and a missing site with `P0002`.
+- Anonymous create and patch execution were both denied with `42501`.
+- Random site/customer identifiers and a unique probe code left zero `sites`
+  residue; no secret values or live identifiers were printed.
+- The corrected service-role create probe reached the deployed function but
+  failed with `42883`: `pg_catalog.coalesce(text, unknown)` does not exist.
+  The failure occurred before ordinary customer/timezone validation.
+- A complete migration scan found invalid qualified `COALESCE`/`NULLIF`
+  expressions in six active definitions introduced by migrations 029, 030,
+  031, and 036: spare-part request create, field-service create/update,
+  team-member patch, and site create/update.
+
+### Implementation
+
+- Commit `4c516bc` adds rollout-safe migration
+  `037_repair_qualified_sql_expressions.sql`.
+- Migration 037 uses an exact six-signature allowlist, reads each deployed
+  definition, replaces only the invalid qualified expression tokens, and
+  recompiles inside one transaction. A missing expected command aborts the
+  migration.
+- It explicitly revokes `PUBLIC`, `anon`, and `authenticated` again and grants
+  only `service_role` after replacement.
+- Two migration contracts prove the complete allowlist, catalog-definition
+  repair, fail-closed transaction, and all six hardened grants.
+
+### Verification before commit
+
+| Gate | Result |
+|---|---|
+| `npm ci` | Passed; lockfile install, 0 install-time vulnerabilities |
+| `npm test` | Passed; 41 files, 273 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build |
+| `npm run test:e2e` | Passed; all 25 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+| Immediate pre-commit `npm run test:e2e` | Passed with the same 25 checks and explicit protected-fixture skip |
+
+### Rollout and next
+
+1. Apply migration 037 in order before using the six affected command paths.
+2. Rerun non-writing validation, caller-privilege, and zero-residue probes for
+   all six commands; the expected result is domain validation, never `42883`.
+3. With protected staging fixtures, run positive and rollback probes for
+   request, field-service, team-access, and site workflows.
+4. Then audit and convert the next highest-risk best-effort admin mutation.
+
+## Session record — 2026-07-30 (P0-X / tenant-safe site administration)
+
+### Objective
+
+Verify migration 035 without committed writes, rank the remaining best-effort
+admin mutations, and close the highest-risk site-administration boundary.
+
+### Migration 035 verification
+
+- The user confirmed migration 035 was applied.
+- With a read-only lookup of one active admin, service-role add probes rejected
+  a missing target and invalid membership role with SQLSTATE `22023`.
+- The remove command rejected a random missing membership with `P0002`.
+- Anonymous add and remove execution were both denied with `42501`.
+- Random probe user/site/membership identifiers left zero `site_members`
+  residue. No secret values or user identifiers were printed.
+
+### Audit findings
+
+- `PATCH /api/admin/sites/[id]` accepted `customer_id`. Reassigning an
+  established site moved its tickets and related history into another tenant
+  while retaining the old customer users' site memberships.
+- Site creation and update committed the business row before calling
+  best-effort `logAudit()` / `logDiff()`, so audit failure could leave an
+  unattributed tenant configuration change.
+- Creation accepted inactive customers and arbitrary status/timezone/default
+  owner combinations.
+- Archived sites and sites under inactive customers still presented ordinary
+  edit/create controls.
+
+### Changes completed
+
+- Added rollout-safe migration `036_atomic_admin_site_commands.sql`.
+- Added service-role-only atomic create/update commands that:
+  - re-check and lock an active admin;
+  - validate active/trial customer ownership, real PostgreSQL timezone,
+    lifecycle, project status, site-code format, bounds, and optional active
+    internal default owner;
+  - make `customer_id` immutable after site creation;
+  - prevent ordinary edits from restoring archived/decommissioned sites;
+  - row-lock updates and commit site changes plus per-field audit evidence in
+    one transaction.
+- Both site write routes now use typed wrappers, strict Zod input, stable
+  error-code mapping, and no direct site/audit writes.
+- The site edit UI renders customer ownership as immutable, makes archived or
+  inactive-tenant sites read-only, and only offers creation for active/trial
+  customers.
+- Added seven command/migration/route/UI contract tests plus unauthenticated
+  create and update HTTP probes.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| Focused site and membership checks | Passed; 13 tests |
+| `npm ci` | Passed; 533 packages installed |
+| `npm test` | Passed; 40 files, 271 tests |
+| `npm run lint` | Passed; 0 warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build |
+| `npm run test:e2e` | Passed; 25 HTTP checks, credentialed matrix skipped explicitly because the secret fixture is unset |
+| `npm audit` | Passed; 0 vulnerabilities |
+| `git diff --check` | Passed |
+| Immediate pre-commit E2E rerun | Passed before `9f4b9c9` |
+
+### Commit
+
+- `9f4b9c9` — `fix: make site administration tenant-safe`
+
+### Deployment gates and limitations
+
+- Apply migration 036 before deploying `9f4b9c9`. It is rollout-safe because
+  it only adds opt-in RPCs; the old deployment does not call them.
+- Do not deploy the application commit first. Site writes intentionally fail
+  closed when the commands are unavailable.
+- Migration 036 does not rewrite historical ownership or site codes.
+- A future, separately authorized ownership-transfer workflow would need to
+  migrate memberships and every dependent tenant reference explicitly; normal
+  PATCH intentionally cannot do this.
+- Positive create/update/audit rollback evidence still requires protected
+  disposable staging fixtures.
+
+### Exact next step
+
+1. Apply migration 036 in order.
+2. Verify command presence, service-role-only execution, ownership rejection,
+   lifecycle/configuration validation, and zero-residue behavior.
+3. With protected fixtures, create/update one disposable site, reject an
+   ownership transfer, and prove site/audit rollback together.
+4. Continue converting the next high-risk best-effort admin mutation to an
+   atomic command.
+
+## Session record — 2026-07-30 (P0-W / atomic admin site access)
+
+### Objective
+
+Verify migration 034 without committed writes, inventory the remaining
+best-effort audit paths, then harden the highest-risk authorization mutation:
+admin-managed customer site membership.
+
+### Migration 034 verification
+
+- The user confirmed migration 034 was applied.
+- The service role can resolve `create_ticket_atomic(jsonb)`.
+- An empty command and a command with an unsupported key both failed with
+  SQLSTATE `22023`, before any write.
+- The anonymous role cannot execute the command (`42501`).
+- An invalid outbox event type was rejected by the table constraint
+  (`23514`).
+- The disposable probe identifiers had zero residual ticket, event, audit, or
+  outbox rows.
+- Production worker readiness still intentionally fails closed because
+  `CRON_SECRET` is not configured locally.
+
+### Audit findings
+
+- `POST /api/admin/site-members` inserted/deleted the authorization row first
+  and called best-effort `logAudit()` afterward. A crash or audit failure could
+  change access without durable attribution.
+- The add route verified only that the user and site existed. It did not
+  require a customer user to belong to the selected site's customer, allowing
+  an admin request to create cross-tenant access.
+- The site detail UI accepted a raw user UUID and offered an invalid `admin`
+  membership role even though the database permits only
+  owner/manager/member/viewer.
+- The user detail UI listed already-assigned sites and active sites under
+  inactive customers, producing avoidable failed or duplicate submissions.
+
+### Changes completed
+
+- Added rollout-safe migration `035_atomic_admin_site_membership.sql`.
+- Added service-role-only atomic add/remove commands that:
+  - re-check an active admin inside the transaction;
+  - row-lock the target user or membership;
+  - require an active/invited customer user and an active site under an
+    active/trial customer;
+  - reject cross-customer existing access and a mismatched `users.customer_id`;
+  - derive a legacy null `customer_id` from the first valid assigned site;
+  - commit membership/customer changes and their audit rows together.
+- The API now uses only these command wrappers for membership writes, retains
+  the legacy JSON/form contracts, maps expected database codes to stable HTTP
+  responses, and never returns database messages.
+- Admin site/user detail forms now use constrained selectors, exclude existing
+  memberships, hide invalid lifecycle choices, and offer only valid
+  owner/manager/member/viewer roles.
+- Added six command/migration/route/UI contract tests and an unauthenticated
+  production HTTP mutation check.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| Focused site-membership checks | Passed; 6 tests |
+| `npm ci` | Passed; 533 packages installed |
+| `npm test` | Passed; 39 files, 264 tests |
+| `npm run lint` | Passed; 0 warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build |
+| `npm run test:e2e` | Passed; 23 HTTP checks, credentialed matrix skipped explicitly because the secret fixture is unset |
+| `npm audit` | Passed; 0 vulnerabilities |
+| `git diff --check` | Passed |
+| Immediate pre-commit E2E rerun | Passed before `a14ec45` |
+
+### Commit
+
+- `a14ec45` — `fix: make site access changes atomic`
+
+### Deployment gates and limitations
+
+- Apply migration 035 before deploying `a14ec45`. The migration is
+  rollout-safe because it only adds opt-in RPCs; the old deployment does not
+  call them.
+- Do not deploy the application commit first. The API intentionally fails
+  closed when either command is absent.
+- Existing inconsistent cross-tenant memberships are not rewritten. The add
+  command blocks further mixed-tenant assignment; removal remains available
+  so admins can repair legacy rows.
+- Positive add/remove/rollback evidence still needs disposable staging
+  customer users and sites. The local credential fixture is intentionally
+  absent.
+
+### Exact next step
+
+1. Apply migration 035 in order.
+2. Verify function presence, service-role-only execution, validation failures,
+   and zero-residue behavior.
+3. With protected fixtures, add/remove one same-tenant membership, reject one
+   cross-tenant assignment, and prove audit/membership rollback together.
+4. Continue converting the next high-risk best-effort admin mutation to an
+   atomic command.
+
+## Session record — 2026-07-30 (P0-V / atomic ticket creation)
+
+### Objective
+
+Safely verify migration 033, audit ticket-creation authorization and
+transaction boundaries, then move ticket creation, timeline/audit evidence,
+Slack master posting, and confirmation email onto the durable outbox seam.
+
+### Migration 033 verification
+
+- The user confirmed migration 033 was applied.
+- `integration_outbox` is readable through the service role with every expected
+  lease, retry, delivery, and dead-letter column; it contained zero rows and no
+  queued work during the probe.
+- `slack_messages.outbox_event_id` exists.
+- `claim_integration_outbox(p_limit := 0, ...)` rejected with SQLSTATE `22023`
+  before mutation; random event/lock-token acknowledgements returned `false`.
+- Local worker readiness remains intentionally fail-closed because
+  `CRON_SECRET` is not configured. No secret value was generated, printed, or
+  committed.
+
+### Audit findings
+
+- Ticket creation inserted the ticket and creation event separately, then
+  called Slack and Resend directly. A failure between those steps could leave
+  incomplete audit/timeline evidence or permanently lose delivery.
+- Authenticated customers were not scope-checked before creating a ticket for
+  a supplied site.
+- An authenticated inactive account could be silently treated as an anonymous
+  submitter because every `getAuthUser()` error took the guest path.
+- The web API accepted client-supplied `source` provenance, and the
+  authenticated modal still submitted a client-controlled `created_by`.
+- A migration-trigger design would have duplicated direct confirmation emails
+  if the database migration was applied before application deployment. It was
+  discarded in favor of an opt-in service-role command.
+
+### Changes completed
+
+- Added rollout-safe migration `034_atomic_ticket_creation_outbox.sql`.
+  Applying it first does not alter the old direct-insert deployment.
+- Added service-role-only `create_ticket_atomic(jsonb)`, which:
+  - allowlists and bounds input;
+  - locks and validates the active site/customer, active actor, tenant/site
+    membership, source, secure token, and optional SLA policy;
+  - consumes the concurrency-safe ticket sequence;
+  - inserts the ticket, creation event, audit row, Slack-master outbox event,
+    and optional confirmation-email event in one transaction.
+- The web endpoint now derives the tenant from the active site, checks the
+  authenticated caller's current site scope, distinguishes a missing session
+  from an inactive account, bounds public text/contact fields, and assigns
+  `source = web` server-side.
+- Removed client-supplied actor/source fields from both web forms.
+- `createTicketCore()` now invokes the atomic command and never falls back to
+  racy `MAX+1`, separate event writes, or direct providers.
+- Added durable initial Slack master delivery with local event identity and
+  confirmation-email delivery with Resend idempotency.
+- Escaped customer and site names in confirmation-email HTML.
+- Added seven net-new contract/delivery tests, bringing the suite to 258 tests
+  across 38 files.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| Focused creation/scope/outbox checks | Passed; 29 tests |
+| `npm ci` | Passed; 533 packages installed |
+| `npm test` | Passed; 38 files, 258 tests |
+| `npm run lint` | Passed; 0 warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build |
+| `npm run test:e2e` | Passed; 22 HTTP checks, credentialed matrix skipped explicitly because the secret fixture is unset |
+| `npm audit` | Passed; 0 vulnerabilities |
+| `git diff --check` | Passed |
+| Immediate pre-commit E2E rerun | Passed before `21f7781` |
+
+### Commit
+
+- `21f7781` — `feat: make ticket creation atomic`
+
+### Deployment gates and limitations
+
+- Apply migration 034 before deploying `21f7781`. The old deployed code remains
+  compatible when the migration is applied first.
+- Do not deploy the new application code before the RPC exists; ticket
+  creation intentionally fails closed instead of returning to non-atomic
+  writes.
+- Set a long random production `CRON_SECRET` through deployment-secret
+  management. Local readiness correctly remains not ready until configured.
+- Slack delivery is at-least-once. A crash after Slack accepts the post but
+  before the local message record still creates a narrow duplicate window.
+- Protected positive/cross-tenant/rollback probes require the dedicated
+  staging fixture; the local matrix skipped rather than using personal or
+  production identities.
+
+### Exact next step
+
+1. Apply migration 034 in order.
+2. Run non-writing presence, privilege, allowlist, and authorization probes.
+3. With protected fixtures, create one disposable web and signed-Slack ticket,
+   verify one creation event/audit row and both applicable outbox deliveries,
+   then remove only the disposable fixture data.
+4. Continue converting best-effort administrative audit writes into atomic
+   commands.
 
 ## Session record — 2026-07-30 (P0-U / INT-007 durable ticket notifications)
 

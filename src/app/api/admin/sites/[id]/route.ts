@@ -1,13 +1,21 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAdmin } from "@/lib/supabase/auth-helpers";
-import { logDiff } from "@/lib/audit";
+import {
+  AdminSiteMutationError,
+  applyAdminSitePatch,
+} from "@/lib/sites/mutations";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
 const updateSiteSchema = z.object({
   site_name: z.string().trim().min(1).max(200).optional(),
-  site_code: z.string().trim().min(1).max(50).optional(),
-  customer_id: z.string().uuid().optional(),
+  site_code: z
+    .string()
+    .trim()
+    .min(1)
+    .max(50)
+    .regex(/^[A-Za-z0-9][A-Za-z0-9-]*$/)
+    .optional(),
   timezone: z.string().trim().min(1).max(100).optional(),
   address: z.string().trim().max(500).nullable().optional(),
   project_status: z.enum([
@@ -17,9 +25,9 @@ const updateSiteSchema = z.object({
     "essential_coverage",
     "out_of_service",
   ]).optional(),
-  status: z.enum(["active", "inactive", "commissioning", "decommissioned"]).optional(),
+  status: z.enum(["active", "commissioning"]).optional(),
   slack_channel_id: z.string().trim().max(50).nullable().optional(),
-});
+}).strict();
 
 export async function PATCH(
   request: NextRequest,
@@ -32,19 +40,13 @@ export async function PATCH(
       return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
 
-    const body = await request.json();
-    const data = updateSiteSchema.parse(body);
-
-    if (data.status === "inactive" || data.status === "decommissioned") {
-      return NextResponse.json(
-        {
-          error: "Use the archive workflow to decommission a site.",
-          code: "ARCHIVE_REQUIRED",
-          replacement: "/api/admin/sites/bulk-archive",
-        },
-        { status: 409 }
-      );
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
     }
+    const data = updateSiteSchema.parse(body);
 
     if (Object.keys(data).length === 0) {
       return NextResponse.json(
@@ -53,51 +55,21 @@ export async function PATCH(
       );
     }
 
-    // Normalise site_code to uppercase (the column is upper-cased on
-    // the public submit path; we keep that convention here too).
-    if (data.site_code) {
-      data.site_code = data.site_code.toUpperCase();
-    }
-
     const supabase = createAdminClient();
 
-    // Fetch before-state for the audit diff
-    const { data: before } = await supabase
-      .from("sites")
-      .select(
-        "site_name, site_code, customer_id, timezone, address, project_status, status, slack_channel_id"
-      )
-      .eq("id", id)
-      .single();
-
-    const { error } = await supabase
-      .from("sites")
-      .update(data)
-      .eq("id", id);
-
-    if (error) {
-      console.error("PATCH /api/admin/sites/[id] failed:", error);
-      if (error.code === "23505") {
-        return NextResponse.json(
-          { error: "Site code already exists" },
-          { status: 409 }
-        );
-      }
-      return NextResponse.json({ error: "Failed to update site" }, { status: 500 });
-    }
-
-    // Audit log (best-effort)
-    await logDiff({
+    await applyAdminSitePatch({
+      supabase,
       actorId: auth.userId,
-      actorEmail: auth.email,
-      actorRole: auth.role,
-      entityType: "site",
-      entityId: id,
-      before,
-      after: data,
+      siteId: id,
+      patch: {
+        ...data,
+        ...(data.site_code
+          ? { site_code: data.site_code.toUpperCase() }
+          : {}),
+      },
     });
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, id });
   } catch (error) {
     if (error instanceof z.ZodError) {
       return NextResponse.json(
@@ -105,9 +77,36 @@ export async function PATCH(
         { status: 400 }
       );
     }
+    if (error instanceof AdminSiteMutationError) {
+      if (error.code === "23505") {
+        return NextResponse.json(
+          { error: "Site code already exists" },
+          { status: 409 }
+        );
+      }
+      if (error.code === "P0002") {
+        return NextResponse.json({ error: "Site not found" }, { status: 404 });
+      }
+      if (error.code === "22023") {
+        return NextResponse.json(
+          { error: "Site update is not valid" },
+          { status: 400 }
+        );
+      }
+      if (error.code === "42501") {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
+      if (error.code === "55000") {
+        return NextResponse.json(
+          { error: "Archived site cannot be edited" },
+          { status: 409 }
+        );
+      }
+    }
+    console.error("Update site error:", error);
     return NextResponse.json(
-      { error: "Invalid request body" },
-      { status: 400 }
+      { error: "Internal server error" },
+      { status: 500 }
     );
   }
 }

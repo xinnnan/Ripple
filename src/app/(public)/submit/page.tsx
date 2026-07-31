@@ -189,7 +189,6 @@ export default function SubmitTicketPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...formData,
-          source: "web",
         }),
       });
 

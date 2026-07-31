@@ -73,6 +73,7 @@ export function CreateTeamMemberForm({ sites }: { sites: SiteOption[] }) {
     return (
       <div className="mb-6">
         <button
+          type="button"
           onClick={() => setExpanded(true)}
           className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
         >
@@ -89,6 +90,7 @@ export function CreateTeamMemberForm({ sites }: { sites: SiteOption[] }) {
           Add Team Member
         </h2>
         <button
+          type="button"
           onClick={() => setExpanded(false)}
           className="text-sm text-muted-foreground hover:text-foreground transition-colors"
         >
@@ -109,13 +111,18 @@ export function CreateTeamMemberForm({ sites }: { sites: SiteOption[] }) {
       )}
 
       <form onSubmit={handleCreate} className="space-y-4">
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1">
+            <label
+              htmlFor="team-create-user-email"
+              className="block text-sm font-medium text-foreground mb-1"
+            >
               Email *
             </label>
             <input
+              id="team-create-user-email"
               type="email"
+              autoComplete="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
@@ -124,26 +131,36 @@ export function CreateTeamMemberForm({ sites }: { sites: SiteOption[] }) {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1">
+            <label
+              htmlFor="team-create-user-password"
+              className="block text-sm font-medium text-foreground mb-1"
+            >
               Password *
             </label>
             <input
+              id="team-create-user-password"
               type="password"
+              autoComplete="new-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              minLength={6}
-              placeholder="At least 6 characters"
+              minLength={12}
+              maxLength={128}
+              placeholder="At least 12 characters"
               className="w-full rounded-lg border border-border px-3 py-2 text-sm text-foreground bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
             />
           </div>
         </div>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1">
+            <label
+              htmlFor="team-create-user-name"
+              className="block text-sm font-medium text-foreground mb-1"
+            >
               Full Name *
             </label>
             <input
+              id="team-create-user-name"
               type="text"
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
@@ -153,13 +170,19 @@ export function CreateTeamMemberForm({ sites }: { sites: SiteOption[] }) {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1">
+            <label
+              htmlFor="team-create-user-phone"
+              className="block text-sm font-medium text-foreground mb-1"
+            >
               Phone
             </label>
             <input
+              id="team-create-user-phone"
               type="tel"
+              autoComplete="tel"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
+              maxLength={50}
               placeholder="+1 (555) 000-0000"
               className="w-full rounded-lg border border-border px-3 py-2 text-sm text-foreground bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
             />
@@ -180,6 +203,7 @@ export function CreateTeamMemberForm({ sites }: { sites: SiteOption[] }) {
                   key={site.id}
                   type="button"
                   onClick={() => toggleSite(site.id)}
+                  aria-pressed={selectedSites.includes(site.id)}
                   className={`inline-flex items-center rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
                     selectedSites.includes(site.id)
                       ? "bg-primary text-primary-foreground"

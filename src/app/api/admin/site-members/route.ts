@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAdmin } from "@/lib/supabase/auth-helpers";
-import { logAudit } from "@/lib/audit";
+import {
+  addAdminSiteMembership,
+  AdminSiteMembershipMutationError,
+  removeAdminSiteMembership,
+} from "@/lib/site-members/mutations";
 
 /**
  * GET /api/admin/site-members — list site memberships (admin only).
@@ -149,61 +153,10 @@ export async function POST(request: NextRequest) {
       }
       const { membership_id } = parsed.data;
 
-      // Verify the membership exists before deleting. A bare .delete()
-      // returns success with 0 rows affected for a non-existent id,
-      // which we'd mis-report as a successful delete. The .select()
-      // forces the row count to be known.
-      const { data: existing, error: lookupErr } = await supabase
-        .from("site_members")
-        .select("id, user_id, site_id, role")
-        .eq("id", membership_id)
-        .maybeSingle();
-      if (lookupErr) {
-        console.error("site-members remove lookup failed:", lookupErr);
-        return NextResponse.json({ error: "Lookup failed" }, { status: 500 });
-      }
-      if (!existing) {
-        return NextResponse.json(
-          { error: "Membership not found" },
-          { status: 404 }
-        );
-      }
-
-      const { data: deletedRows, error } = await supabase
-        .from("site_members")
-        .delete()
-        .eq("id", membership_id)
-        .select("id");
-      if (error) {
-        console.error("site-members remove failed:", error);
-        return NextResponse.json({ error: "Delete failed" }, { status: 500 });
-      }
-      if (!deletedRows || deletedRows.length === 0) {
-        // Race: row was deleted between the lookup and the delete.
-        return NextResponse.json(
-          { error: "Membership not found" },
-          { status: 404 }
-        );
-      }
-
-      await logAudit({
+      await removeAdminSiteMembership({
+        supabase,
         actorId: auth.userId,
-        actorEmail: auth.email,
-        actorRole: auth.role,
-        entityType: "user",
-        // entity_id is the membership row id, but the meaningful
-        // change is the (user, site) link. Stash both in metadata.
-        entityId: existing.user_id ?? null,
-        action: "left",
-        fieldName: "site_membership",
-        oldValue: existing.role ?? null,
-        newValue: null,
-        metadata: {
-          source: "site-members",
-          membership_id,
-          user_id: existing.user_id,
-          site_id: existing.site_id,
-        },
+        membershipId: membership_id,
       });
 
       return NextResponse.json({ deleted: membership_id });
@@ -219,79 +172,44 @@ export async function POST(request: NextRequest) {
     }
     const { user_id, site_id, role } = parsed.data;
 
-    // Verify both the user and the site exist. Without these checks
-    // the FK violation would surface as a 500 with the Postgres
-    // error message; we want a clean 400 with a friendly reason.
-    const [{ data: userRow }, { data: siteRow }] = await Promise.all([
-      supabase.from("users").select("id, role").eq("id", user_id).maybeSingle(),
-      supabase.from("sites").select("id, customer_id").eq("id", site_id).maybeSingle(),
-    ]);
-    if (!userRow) {
-      return NextResponse.json(
-        { error: "User not found" },
-        { status: 400 }
-      );
-    }
-    if (!siteRow) {
-      return NextResponse.json(
-        { error: "Site not found" },
-        { status: 400 }
-      );
-    }
-
-    // Adding a customer_manager to a site is meaningless (they
-    // bypass site_members entirely via customer_id) and would be
-    // confusing in the UI. Block it.
-    if (userRow.role === "customer_manager" || userRow.role === "admin" || userRow.role === "engineer") {
-      return NextResponse.json(
-        { error: `Cannot add a ${userRow.role} user via site_members; their access is managed at the org level` },
-        { status: 400 }
-      );
-    }
-
-    const { data: inserted, error } = await supabase
-      .from("site_members")
-      .insert({ user_id, site_id, role })
-      .select("id")
-      .single();
-
-    if (error) {
-      // 23505 = unique_violation on (site_id, user_id).
-      if (error.code === "23505") {
-        return NextResponse.json(
-          { error: "User is already a member of this site" },
-          { status: 409 }
-        );
-      }
-      console.error("site-members add failed:", error);
-      return NextResponse.json({ error: "Insert failed" }, { status: 500 });
-    }
-
-    await logAudit({
+    const membershipId = await addAdminSiteMembership({
+      supabase,
       actorId: auth.userId,
-      actorEmail: auth.email,
-      actorRole: auth.role,
-      entityType: "user",
-      entityId: user_id,
-      action: "joined",
-      fieldName: "site_membership",
-      newValue: role,
-      metadata: {
-        source: "site-members",
-        membership_id: inserted?.id,
-        user_id,
-        site_id,
-        site_customer_id: (siteRow as { customer_id?: string }).customer_id,
-      },
+      userId: user_id,
+      siteId: site_id,
+      role,
     });
 
-    return NextResponse.json({ id: inserted?.id, user_id, site_id, role }, { status: 201 });
+    return NextResponse.json(
+      { id: membershipId, user_id, site_id, role },
+      { status: 201 }
+    );
   } catch (error) {
     if (error instanceof z.ZodError) {
       return NextResponse.json(
         { error: "Validation error", details: error.errors },
         { status: 400 }
       );
+    }
+    if (error instanceof AdminSiteMembershipMutationError) {
+      if (error.code === "23505") {
+        return NextResponse.json(
+          { error: "User is already a member of this site" },
+          { status: 409 }
+        );
+      }
+      if (error.code === "P0002") {
+        return NextResponse.json(
+          { error: "Membership not found" },
+          { status: 404 }
+        );
+      }
+      if (error.code === "22023" || error.code === "42501") {
+        return NextResponse.json(
+          { error: "Membership is not valid for this user and site" },
+          { status: error.code === "42501" ? 403 : 400 }
+        );
+      }
     }
     console.error("site-members POST error:", error);
     return NextResponse.json(

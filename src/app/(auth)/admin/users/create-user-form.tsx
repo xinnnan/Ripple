@@ -1,15 +1,18 @@
 "use client";
 
 import { useState } from "react";
-import type { UserRole } from "@/types/ticket";
-import { ROLE_OPTIONS } from "@/lib/roles";
+
+const INTERNAL_ROLE_OPTIONS = [
+  { value: "engineer", label: "Engineer" },
+  { value: "admin", label: "Admin" },
+] as const;
 
 export function CreateUserForm() {
   const [expanded, setExpanded] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
-  const [role, setRole] = useState<UserRole>("customer");
+  const [role, setRole] = useState<"admin" | "engineer">("engineer");
   const [phone, setPhone] = useState("");
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{
@@ -44,7 +47,7 @@ export function CreateUserForm() {
       setEmail("");
       setPassword("");
       setFullName("");
-      setRole("customer");
+      setRole("engineer");
       setPhone("");
       setTimeout(() => window.location.reload(), 1000);
     } catch (err) {
@@ -61,6 +64,7 @@ export function CreateUserForm() {
     return (
       <div className="mb-6">
         <button
+          type="button"
           onClick={() => setExpanded(true)}
           className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
         >
@@ -77,6 +81,7 @@ export function CreateUserForm() {
           Create New User
         </h2>
         <button
+          type="button"
           onClick={() => setExpanded(false)}
           className="text-sm text-muted-foreground hover:text-foreground transition-colors"
         >
@@ -96,14 +101,24 @@ export function CreateUserForm() {
         </div>
       )}
 
+      <p className="mb-4 text-sm text-muted-foreground">
+        Create internal DropletAI staff here. Customer users and managers must
+        use a tenant-bound provisioning workflow.
+      </p>
+
       <form onSubmit={handleCreate} className="space-y-4">
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1">
+            <label
+              htmlFor="admin-create-user-email"
+              className="block text-sm font-medium text-foreground mb-1"
+            >
               Email *
             </label>
             <input
+              id="admin-create-user-email"
               type="email"
+              autoComplete="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
@@ -112,26 +127,36 @@ export function CreateUserForm() {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1">
+            <label
+              htmlFor="admin-create-user-password"
+              className="block text-sm font-medium text-foreground mb-1"
+            >
               Password *
             </label>
             <input
+              id="admin-create-user-password"
               type="password"
+              autoComplete="new-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              minLength={6}
-              placeholder="At least 6 characters"
+              minLength={12}
+              maxLength={128}
+              placeholder="At least 12 characters"
               className="w-full rounded-lg border border-border px-3 py-2 text-sm text-foreground bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
             />
           </div>
         </div>
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1">
+            <label
+              htmlFor="admin-create-user-name"
+              className="block text-sm font-medium text-foreground mb-1"
+            >
               Full Name *
             </label>
             <input
+              id="admin-create-user-name"
               type="text"
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
@@ -141,15 +166,21 @@ export function CreateUserForm() {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1">
+            <label
+              htmlFor="admin-create-user-role"
+              className="block text-sm font-medium text-foreground mb-1"
+            >
               Role *
             </label>
             <select
+              id="admin-create-user-role"
               value={role}
-              onChange={(e) => setRole(e.target.value as UserRole)}
+              onChange={(e) =>
+                setRole(e.target.value as "admin" | "engineer")
+              }
               className="w-full rounded-lg border border-border px-3 py-2 text-sm text-foreground bg-background"
             >
-              {ROLE_OPTIONS.map((opt) => (
+              {INTERNAL_ROLE_OPTIONS.map((opt) => (
                 <option key={opt.value} value={opt.value}>
                   {opt.label}
                 </option>
@@ -157,13 +188,19 @@ export function CreateUserForm() {
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1">
+            <label
+              htmlFor="admin-create-user-phone"
+              className="block text-sm font-medium text-foreground mb-1"
+            >
               Phone
             </label>
             <input
+              id="admin-create-user-phone"
               type="tel"
+              autoComplete="tel"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
+              maxLength={50}
               placeholder="+1 (555) 000-0000"
               className="w-full rounded-lg border border-border px-3 py-2 text-sm text-foreground bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
             />

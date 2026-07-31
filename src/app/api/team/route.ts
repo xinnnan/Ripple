@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthUser } from "@/lib/supabase/auth-helpers";
-import { logAudit } from "@/lib/audit";
 import { z } from "zod";
+import {
+  UserProvisioningError,
+  provisionTeamUser,
+} from "@/lib/users/provisioning";
 
 export const dynamic = "force-dynamic";
 
@@ -61,111 +64,122 @@ export async function GET() {
   }
 }
 
-const createTeamMemberSchema = z.object({
-  email: z.string().email(),
-  password: z.string().min(6),
-  full_name: z.string().min(1).max(200),
-  phone: z.string().optional(),
-  site_ids: z.array(z.string().uuid()).optional(),
-});
+const createTeamMemberSchema = z
+  .object({
+    email: z.string().trim().email().max(320),
+    password: z.string().min(12).max(128),
+    full_name: z.string().trim().min(1).max(200),
+    phone: z.string().trim().max(50).optional(),
+    site_ids: z.array(z.string().uuid()).max(200).optional(),
+  })
+  .strict();
+
+function provisioningErrorResponse(error: UserProvisioningError) {
+  if (error.reconciliationRequired || error.phase === "reconcile") {
+    console.error("Team user provisioning requires reconciliation:", {
+      phase: error.phase,
+      code: error.code,
+    });
+    return NextResponse.json(
+      {
+        error:
+          "Team-member provisioning could not be confirmed. Review the account before retrying.",
+        code: "USER_PROVISIONING_RECONCILIATION_REQUIRED",
+      },
+      { status: 500 }
+    );
+  }
+
+  if (error.phase === "auth") {
+    const duplicateCodes = new Set([
+      "email_exists",
+      "user_already_exists",
+      "email_conflict_identity_not_deletable",
+    ]);
+    return NextResponse.json(
+      {
+        error: duplicateCodes.has(error.code ?? "")
+          ? "A user with that email already exists."
+          : "The Auth identity could not be created.",
+        code: duplicateCodes.has(error.code ?? "")
+          ? "USER_EMAIL_EXISTS"
+          : "AUTH_USER_CREATE_FAILED",
+      },
+      { status: duplicateCodes.has(error.code ?? "") ? 409 : 400 }
+    );
+  }
+
+  if (error.code === "42501") {
+    return NextResponse.json(
+      {
+        error: "Team-member provisioning is not authorized.",
+        code: "TEAM_USER_CREATE_FORBIDDEN",
+      },
+      { status: 403 }
+    );
+  }
+  if (["22023", "55000", "P0002"].includes(error.code ?? "")) {
+    return NextResponse.json(
+      {
+        error: "Team-member provisioning violates account invariants.",
+        code: "TEAM_USER_CREATE_INVALID",
+      },
+      { status: 409 }
+    );
+  }
+
+  console.error("Team user provisioning failed:", {
+    phase: error.phase,
+    code: error.code,
+  });
+  return NextResponse.json(
+    { error: "Failed to create team member" },
+    { status: 500 }
+  );
+}
 
 // POST /api/team — Create a new customer user under the manager's customer
 export async function POST(request: NextRequest) {
+  const auth = await getAuthUser();
+  if ("error" in auth) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status });
+  }
+
+  if (!auth.isManager || !auth.customerId) {
+    return NextResponse.json({ error: "Forbidden: Customer Manager access required" }, { status: 403 });
+  }
+
+  let body: unknown;
   try {
-    const auth = await getAuthUser();
-    if ("error" in auth) {
-      return NextResponse.json({ error: auth.error }, { status: auth.status });
-    }
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+  const parsed = createTeamMemberSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: "Validation error", details: parsed.error.errors },
+      { status: 400 }
+    );
+  }
+  const data = parsed.data;
 
-    if (!auth.isManager || !auth.customerId) {
-      return NextResponse.json({ error: "Forbidden: Customer Manager access required" }, { status: 403 });
-    }
-
-    let body: unknown;
-    try {
-      body = await request.json();
-    } catch {
-      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
-    }
-    const data = createTeamMemberSchema.parse(body);
-
-    const supabase = createAdminClient();
-
-    // Verify all site_ids belong to this customer. A manager could
-    // otherwise post { site_ids: [<other customer's site uuid>] }
-    // and the upsert would happily write a site_members row granting
-    // the new user access to a site they don't own.
-    if (data.site_ids && data.site_ids.length > 0) {
-      const { data: sites } = await supabase
-        .from("sites")
-        .select("id")
-        .eq("customer_id", auth.customerId)
-        .in("id", data.site_ids);
-
-      const validSiteIds = (sites || []).map((s: { id: string }) => s.id);
-      const invalidSites = data.site_ids.filter((id) => !validSiteIds.includes(id));
-      if (invalidSites.length > 0) {
-        return NextResponse.json(
-          { error: "Some sites do not belong to your organization" },
-          { status: 400 }
-        );
-      }
-    }
-
-    // Create auth user
-    const { data: authUser, error: authError } = await supabase.auth.admin.createUser({
+  try {
+    const user = await provisionTeamUser({
+      supabase: createAdminClient(),
+      actorId: auth.userId,
+      customerId: auth.customerId,
       email: data.email,
       password: data.password,
-      email_confirm: true,
-      user_metadata: {
-        full_name: data.full_name,
-        role: "customer",
-      },
+      fullName: data.full_name,
+      phone: data.phone,
+      siteIds: data.site_ids ?? [],
     });
-
-    if (authError) {
-      return NextResponse.json({ error: authError.message }, { status: 400 });
-    }
-
-    // Update the auto-created user row with customer_id and phone
-    const updateData: Record<string, string> = { customer_id: auth.customerId };
-    if (data.phone) updateData.phone = data.phone;
-    await supabase
-      .from("users")
-      .update(updateData)
-      .eq("id", authUser.user.id);
-
-    // Assign sites
-    if (data.site_ids && data.site_ids.length > 0) {
-      const memberInserts = data.site_ids.map((siteId) => ({
-        site_id: siteId,
-        user_id: authUser.user.id,
-        role: "member",
-      }));
-      await supabase.from("site_members").upsert(memberInserts, { onConflict: "site_id,user_id" });
-    }
-
-    await logAudit({
-      actorId: auth.userId,
-      actorEmail: auth.email,
-      actorRole: auth.role,
-      entityType: "user",
-      entityId: authUser.user.id,
-      action: "created",
-      newValue: data.email,
-      metadata: {
-        role: "customer",
-        full_name: data.full_name,
-        customer_id: auth.customerId,
-        site_ids: data.site_ids ?? [],
-      },
-    });
-
     return NextResponse.json(
       {
         user: {
-          id: authUser.user.id,
-          email: data.email,
+          id: user.id,
+          email: user.email,
           full_name: data.full_name,
           role: "customer",
         },
@@ -173,13 +187,13 @@ export async function POST(request: NextRequest) {
       { status: 201 }
     );
   } catch (error) {
-    if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        { error: "Validation error", details: error.errors },
-        { status: 400 }
-      );
+    if (error instanceof UserProvisioningError) {
+      return provisioningErrorResponse(error);
     }
-    console.error("Create team member error:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    console.error("POST /api/team failed");
+    return NextResponse.json(
+      { error: "Failed to create team member" },
+      { status: 500 }
+    );
   }
 }

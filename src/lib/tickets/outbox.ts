@@ -1,18 +1,22 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
+  postMasterMessage,
   postMasterThreadReply,
   updateMasterMessage,
   type SyncOptions,
   type SyncResult,
 } from "@/lib/slack/sync";
 import {
+  sendTicketConfirmation,
   sendTicketResolved,
   type SendResult,
 } from "@/lib/email/send";
 import type { Ticket } from "@/types/ticket";
 
 export const TICKET_OUTBOX_EVENT_TYPES = [
+  "ticket.slack_master_create",
+  "ticket.email_confirmation",
   "ticket.slack_master_sync",
   "ticket.slack_resolution_reply",
   "ticket.email_resolution",
@@ -59,14 +63,18 @@ export type OutboxDeliveryDecision =
     };
 
 interface TicketOutboxDeliveryDependencies {
+  postMasterMessage: typeof postMasterMessage;
   updateMasterMessage: typeof updateMasterMessage;
   postMasterThreadReply: typeof postMasterThreadReply;
+  sendTicketConfirmation: typeof sendTicketConfirmation;
   sendTicketResolved: typeof sendTicketResolved;
 }
 
 const defaultDeliveryDependencies: TicketOutboxDeliveryDependencies = {
+  postMasterMessage,
   updateMasterMessage,
   postMasterThreadReply,
+  sendTicketConfirmation,
   sendTicketResolved,
 };
 
@@ -142,6 +150,44 @@ export async function deliverTicketOutboxEvent(
     defaultDeliveryDependencies
 ): Promise<OutboxDeliveryDecision> {
   switch (event.event_type) {
+    case "ticket.slack_master_create":
+      return slackDecision(
+        await dependencies.postMasterMessage(ticket, {
+          ...slackOptions,
+          deliveryKey: event.id,
+        })
+      );
+
+    case "ticket.email_confirmation": {
+      if (!ticket.submitter_email) {
+        return {
+          delivered: true,
+          result: {
+            provider: "resend",
+            outcome: "skipped",
+            reason: "no_recipient",
+          },
+        };
+      }
+      const customer = (Array.isArray(ticket.customer)
+        ? ticket.customer[0]
+        : ticket.customer) as { name?: string } | null;
+      const site = (Array.isArray(ticket.site)
+        ? ticket.site[0]
+        : ticket.site) as { site_name?: string } | null;
+      return emailDecision(
+        await dependencies.sendTicketConfirmation({
+          to: ticket.submitter_email,
+          ticketNo: ticket.ticket_no,
+          title: ticket.title,
+          secureToken: ticket.secure_token,
+          customerName: customer?.name ?? "Customer",
+          siteName: site?.site_name ?? "Site",
+          idempotencyKey: `ripple-outbox/${event.id}`,
+        })
+      );
+    }
+
     case "ticket.slack_master_sync":
       return slackDecision(
         await dependencies.updateMasterMessage(ticket, {

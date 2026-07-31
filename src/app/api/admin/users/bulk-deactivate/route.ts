@@ -49,10 +49,14 @@ export async function POST(request: NextRequest) {
     });
 
     if (error) {
-      console.error("deactivate_users RPC failed:", error);
+      console.error("deactivate_users RPC failed:", { code: error.code });
+      let status = 500;
+      if (error.code === "42501") status = 403;
+      if (error.code === "22023") status = 400;
+      if (error.code === "P0002") status = 409;
       return NextResponse.json(
         { error: "User deactivation could not be completed. Refresh and retry." },
-        { status: error.code === "P0002" ? 409 : 500 }
+        { status }
       );
     }
 

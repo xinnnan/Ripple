@@ -48,7 +48,10 @@ export default async function AdminUserDetailPage({ params, searchParams }: Prop
       .eq("user_id", id),
     admin
       .from("sites")
-      .select("id, site_name, site_code, customer:customers(name)")
+      .select(
+        "id, site_name, site_code, customer_id, customer:customers(name, status)"
+      )
+      .eq("status", "active")
       .order("site_name"),
     admin
       .from("audit_logs")
@@ -72,7 +75,8 @@ export default async function AdminUserDetailPage({ params, searchParams }: Prop
     id: string;
     site_name: string;
     site_code: string;
-    customer: { name: string }[] | null;
+    customer_id: string;
+    customer: { name: string; status: string }[] | null;
   }[];
   const audit = (auditRes.data || []) as unknown as {
     id: string;
@@ -89,6 +93,22 @@ export default async function AdminUserDetailPage({ params, searchParams }: Prop
   const customerData = Array.isArray(user.customer)
     ? user.customer[0]
     : user.customer;
+  const membershipSiteIds = new Set(
+    memberships.map((membership) => membership.site_id)
+  );
+  const eligibleSites = allSites.filter((site) => {
+    const siteCustomer = Array.isArray(site.customer)
+      ? site.customer[0]
+      : site.customer;
+    return (
+      !membershipSiteIds.has(site.id) &&
+      (!user.customer_id || site.customer_id === user.customer_id) &&
+      (siteCustomer?.status === "active" || siteCustomer?.status === "trial")
+    );
+  });
+  const canManageSiteAccess =
+    user.role === "customer" &&
+    (user.status === "active" || user.status === "invited");
 
   const tabs = [
     { key: "overview", label: "Overview" },
@@ -140,12 +160,7 @@ export default async function AdminUserDetailPage({ params, searchParams }: Prop
 
       {activeTab === "overview" && (
         <div className="space-y-6">
-          <div className="rounded-xl border border-border p-6">
-            <h2 className="text-base font-semibold text-foreground mb-4">
-              User details
-            </h2>
-            <EditUserForm user={user} />
-          </div>
+          <EditUserForm user={user} />
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="rounded-xl border border-border p-6">
@@ -220,58 +235,65 @@ export default async function AdminUserDetailPage({ params, searchParams }: Prop
             )}
           </div>
 
-          <div className="rounded-xl border border-border p-6">
-            <h3 className="text-sm font-medium text-foreground mb-3">
-              Add Site Access
-            </h3>
-            <form
-              action={`/api/admin/site-members?userId=${id}`}
-              method="POST"
-              className="flex items-end gap-3"
-            >
-              <div className="flex-1">
-                <label className="block text-xs font-medium text-muted-foreground mb-1">
-                  Site
-                </label>
-                <select
-                  name="site_id"
-                  className="w-full rounded-lg border border-border px-3 py-2 text-sm text-foreground bg-background"
-                >
-                  <option value="">Select a site...</option>
-                  {allSites.map((site) => {
-                    const customerData = site.customer as unknown as { name: string }[] | null;
-                    const customerName = Array.isArray(customerData)
-                      ? customerData[0]?.name
-                      : undefined;
-                    return (
-                      <option key={site.id} value={site.id}>
-                        {site.site_name} ({site.site_code})
-                        {customerName ? ` — ${customerName}` : ""}
-                      </option>
-                    );
-                  })}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-muted-foreground mb-1">
-                  Role
-                </label>
-                <select
-                  name="role"
-                  className="rounded-lg border border-border px-3 py-2 text-sm text-foreground bg-background"
-                >
-                  <option value="member">Member</option>
-                  <option value="viewer">Viewer</option>
-                </select>
-              </div>
-              <button
-                type="submit"
-                className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+          {canManageSiteAccess && (
+            <div className="rounded-xl border border-border p-6">
+              <h3 className="text-sm font-medium text-foreground mb-3">
+                Add Site Access
+              </h3>
+              <form
+                action={`/api/admin/site-members?userId=${id}`}
+                method="POST"
+                className="flex items-end gap-3"
               >
-                Add
-              </button>
-            </form>
-          </div>
+                <div className="flex-1">
+                  <label className="block text-xs font-medium text-muted-foreground mb-1">
+                    Site
+                  </label>
+                  <select
+                    name="site_id"
+                    required
+                    className="w-full rounded-lg border border-border px-3 py-2 text-sm text-foreground bg-background"
+                  >
+                    <option value="">Select a site...</option>
+                    {eligibleSites.map((site) => {
+                      const customerData = site.customer as unknown as
+                        | { name: string }[]
+                        | null;
+                      const customerName = Array.isArray(customerData)
+                        ? customerData[0]?.name
+                        : undefined;
+                      return (
+                        <option key={site.id} value={site.id}>
+                          {site.site_name} ({site.site_code})
+                          {customerName ? ` — ${customerName}` : ""}
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-muted-foreground mb-1">
+                    Role
+                  </label>
+                  <select
+                    name="role"
+                    className="rounded-lg border border-border px-3 py-2 text-sm text-foreground bg-background"
+                  >
+                    <option value="member">Member</option>
+                    <option value="viewer">Viewer</option>
+                    <option value="manager">Manager</option>
+                    <option value="owner">Owner</option>
+                  </select>
+                </div>
+                <button
+                  type="submit"
+                  className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+                >
+                  Add
+                </button>
+              </form>
+            </div>
+          )}
         </div>
       )}
 

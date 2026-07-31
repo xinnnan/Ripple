@@ -129,6 +129,76 @@ export async function recordMasterMessage(args: {
 }
 
 /**
+ * Post the first master Block Kit message for a ticket.
+ *
+ * Existing master records make retries a no-op. The outbox event id is stored
+ * with the Slack record and attached as message metadata for traceability.
+ */
+export async function postMasterMessage(
+  ticket: Ticket,
+  options: SyncOptions = {}
+): Promise<SyncResult> {
+  const existing = await lookupMaster(ticket.id);
+  if (existing) return { ok: true, deduplicated: true };
+
+  const site = (Array.isArray(ticket.site)
+    ? ticket.site[0]
+    : ticket.site) as {
+      slack_channel_id?: string | null;
+    } | null;
+  const channelId = options.channelId ?? site?.slack_channel_id ?? null;
+  if (!channelId) return { ok: false, reason: "no_channel" };
+
+  const supabase = createAdminClient();
+  const { data: channelRecord, error: channelError } = await supabase
+    .from("slack_channels")
+    .select("id")
+    .eq("site_id", ticket.site_id)
+    .eq("channel_id", channelId)
+    .limit(1)
+    .maybeSingle();
+  if (channelError || !channelRecord) {
+    return { ok: false, reason: "no_channel" };
+  }
+
+  const client = resolveClient(options);
+  if (!client) return { ok: false, reason: "no_token" };
+
+  try {
+    const response = await client.chat.postMessage({
+      channel: channelId,
+      text: `🎫 New ticket: [${ticket.ticket_no}] ${ticket.title}`,
+      blocks: buildMasterTicketMessage(ticket),
+      metadata: options.deliveryKey
+        ? {
+            event_type: "ripple_ticket_delivery",
+            event_payload: { outbox_event_id: options.deliveryKey },
+          }
+        : undefined,
+    });
+    if (!response.ts) {
+      return {
+        ok: false,
+        reason: "slack_error",
+        error: "Slack did not return a message timestamp",
+      };
+    }
+
+    return recordMasterMessage({
+      ticketId: ticket.id,
+      slackChannelId: channelRecord.id,
+      messageTs: response.ts,
+      messageType: "master",
+      outboxEventId: options.deliveryKey,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("[slack/sync] master post failed:", message);
+    return { ok: false, reason: "slack_error", error: message };
+  }
+}
+
+/**
  * Look up the master message (channel + ts) for a ticket, if any.
  * Returns `null` if no master has been recorded.
  */

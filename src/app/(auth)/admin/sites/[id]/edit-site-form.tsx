@@ -17,7 +17,6 @@ interface SiteData {
   id: string;
   site_name: string;
   site_code: string;
-  customer_id: string;
   timezone: string;
   address: string | null;
   slack_channel_id: string | null;
@@ -27,21 +26,15 @@ interface SiteData {
   customer: unknown;
 }
 
-interface CustomerOption {
-  id: string;
-  name: string;
-}
-
 export function EditSiteForm({
   site,
-  customers,
+  customerName,
 }: {
   site: SiteData;
-  customers: CustomerOption[];
+  customerName: string;
 }) {
   const [siteName, setSiteName] = useState(site.site_name);
   const [siteCode, setSiteCode] = useState(site.site_code);
-  const [customerId, setCustomerId] = useState(site.customer_id);
   const [timezone, setTimezone] = useState(site.timezone);
   const [address, setAddress] = useState(site.address || "");
   const [projectStatus, setProjectStatus] = useState(site.project_status);
@@ -64,7 +57,6 @@ export function EditSiteForm({
         body: JSON.stringify({
           site_name: siteName,
           site_code: siteCode,
-          customer_id: customerId,
           timezone,
           address: address || null,
           project_status: projectStatus,
@@ -136,17 +128,13 @@ export function EditSiteForm({
           <label className="block text-sm font-medium text-foreground mb-1">
             Customer
           </label>
-          <select
-            value={customerId}
-            onChange={(e) => setCustomerId(e.target.value)}
-            className="w-full rounded-lg border border-border px-3 py-2 text-sm text-foreground bg-background"
-          >
-            {customers.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
+          <div className="w-full rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm text-foreground">
+            {customerName}
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Customer ownership is fixed after site creation to preserve tenant
+            isolation and historical records.
+          </p>
         </div>
 
         <div className="grid grid-cols-2 gap-4">

@@ -2,8 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthUser } from "@/lib/supabase/auth-helpers";
-import { getUserScope, scopeTickets } from "@/lib/supabase/scope";
-import { sendTicketConfirmation } from "@/lib/email/send";
+import {
+  canAccessSite,
+  getUserScope,
+  scopeTickets,
+} from "@/lib/supabase/scope";
 import { rateLimit, getClientIp } from "@/lib/rate-limit";
 import {
   createTicketCore,
@@ -13,10 +16,9 @@ import {
 const createTicketSchema = z.object({
   customer_id: z.string().uuid().optional(),
   site_id: z.string().uuid().optional(),
-  site_code: z.string().optional(),
-  source: z.enum(["slack", "web", "email", "internal"]),
-  title: z.string().min(1).max(200),
-  description: z.string().min(1),
+  site_code: z.string().trim().min(1).max(100).optional(),
+  title: z.string().trim().min(1).max(200),
+  description: z.string().trim().min(1).max(20_000),
   request_type: z.enum([
     "incident",
     "service_request",
@@ -36,12 +38,11 @@ const createTicketSchema = z.object({
       "no_impact",
     ])
     .optional(),
-  asset_id: z.string().optional(),
-  area: z.string().optional(),
-  created_by: z.string().optional(),
-  submitter_name: z.string().optional(),
-  submitter_email: z.string().email().optional(),
-  submitter_phone: z.string().optional(),
+  asset_id: z.string().trim().max(500).optional(),
+  area: z.string().trim().max(500).optional(),
+  submitter_name: z.string().trim().max(200).optional(),
+  submitter_email: z.string().trim().email().max(320).optional(),
+  submitter_phone: z.string().trim().max(50).optional(),
 });
 
 export async function POST(request: NextRequest) {
@@ -52,12 +53,18 @@ export async function POST(request: NextRequest) {
     // pass created_by=<engineer uuid> and have the ticket appear
     // engineer-created.
     //
-    // getAuthUser returns { error, status } if there's no session
-    // — we treat that as "unauthed, allow no created_by". A non-2xx
-    // response there is a real auth failure (which shouldn't happen
-    // for a guest submit, but if it does we fall through to null).
-    const auth = await getAuthUser();
-    const isAuthed = !("error" in auth);
+    // A missing session is the public guest path. An authenticated but
+    // inactive/invalid profile is a real authorization failure and must not
+    // be silently downgraded to a guest submission.
+    const authResult = await getAuthUser();
+    if ("error" in authResult && authResult.status !== 401) {
+      return NextResponse.json(
+        { error: authResult.error },
+        { status: authResult.status }
+      );
+    }
+    const auth = "error" in authResult ? null : authResult;
+    const isAuthed = auth !== null;
 
     // Rate-limit unauthed submissions. Authed users go through
     // the full RBAC path; their volume is bounded by the org
@@ -89,7 +96,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const data = createTicketSchema.parse(body);
 
-    const createdBy = isAuthed && !("error" in auth) ? auth.userId : null;
+    const createdBy = auth?.userId ?? null;
 
     const supabase = createAdminClient();
 
@@ -105,50 +112,59 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    if (!siteId || !customerId) {
+    if (!siteId) {
       return NextResponse.json(
         { error: "Could not determine site. Please provide a valid site_id or site_code." },
         { status: 400 }
       );
     }
 
-    // Security: if the caller passed BOTH site_id and customer_id
-    // explicitly, we MUST verify they match the row in DB. Otherwise
-    // a malicious caller could post { site_id: <SITE_A>,
-    // customer_id: <CUST_B> } and create a ticket that says it's for
-    // SITE_A but is attributed to CUST_B. The site_code path is
-    // safe because customer_id is derived from the same DB row.
-    if (data.site_id && data.customer_id) {
-      const { data: siteRow, error: siteErr } = await supabase
-        .from("sites")
-        .select("customer_id")
-        .eq("id", siteId)
-        .maybeSingle();
-      if (siteErr) {
-        console.error("POST /api/tickets site lookup failed:", siteErr);
-        return NextResponse.json(
-          { error: "Internal server error" },
-          { status: 500 }
-        );
+    // Always derive the tenant from the active site row. Never trust a client
+    // supplied customer_id independently from its site_id.
+    const { data: siteRow, error: siteErr } = await supabase
+      .from("sites")
+      .select("customer_id")
+      .eq("id", siteId)
+      .eq("status", "active")
+      .maybeSingle();
+    if (siteErr) {
+      console.error("POST /api/tickets site lookup failed:", siteErr);
+      return NextResponse.json(
+        { error: "Internal server error" },
+        { status: 500 }
+      );
+    }
+    if (!siteRow) {
+      return NextResponse.json({ error: "site_id not found" }, { status: 400 });
+    }
+    const resolvedCustomerId = siteRow.customer_id as string;
+    if (customerId && resolvedCustomerId !== customerId) {
+      return NextResponse.json(
+        { error: "site_id and customer_id do not match" },
+        { status: 400 }
+      );
+    }
+
+    // Authenticated external callers may create only within their current
+    // active-site scope. Inactive accounts were rejected above rather than
+    // silently downgraded to the public guest path.
+    if (auth) {
+      const scope = await getUserScope();
+      if (!scope) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
       }
-      if (!siteRow) {
-        return NextResponse.json(
-          { error: "site_id not found" },
-          { status: 400 }
-        );
-      }
-      if (siteRow.customer_id !== customerId) {
-        return NextResponse.json(
-          { error: "site_id and customer_id do not match" },
-          { status: 400 }
-        );
+      if (!canAccessSite(scope, siteId)) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
       }
     }
 
     const result = await createTicketCore({
-      customer_id: customerId,
+      customer_id: resolvedCustomerId,
       site_id: siteId,
-      source: data.source,
+      // Provenance belongs to the server endpoint, never the request body.
+      // Slack and future email intake call createTicketCore from their own
+      // verified server-side handlers.
+      source: "web",
       title: data.title,
       description: data.description,
       request_type: data.request_type,
@@ -161,32 +177,6 @@ export async function POST(request: NextRequest) {
       submitter_email: data.submitter_email,
       submitter_phone: data.submitter_phone,
     });
-
-    // Fire-and-forget confirmation email. Never fails the request —
-    // if RESEND_API_KEY is missing or Resend errors, the customer
-    // still has their ticket_no + secure_token in the response.
-    if (data.submitter_email) {
-      const customerName =
-        (result.ticket.customer as { name?: string } | undefined)?.name ??
-        "Customer";
-      const siteName =
-        (result.ticket.site as { site_name?: string } | undefined)?.site_name ??
-        "Site";
-      const emailRes = await sendTicketConfirmation({
-        to: data.submitter_email,
-        ticketNo: result.ticket_no,
-        title: data.title,
-        secureToken: result.secure_token,
-        customerName,
-        siteName,
-      });
-      if (!emailRes.sent) {
-        console.warn(
-          `[POST /api/tickets] confirmation email not sent: ${emailRes.reason}` +
-            (emailRes.error ? ` (${emailRes.error})` : "")
-        );
-      }
-    }
 
     return NextResponse.json(
       {
