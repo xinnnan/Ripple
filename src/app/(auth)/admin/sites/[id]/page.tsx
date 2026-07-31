@@ -43,7 +43,7 @@ export default async function AdminSiteDetailPage({ params, searchParams }: Prop
       status,
       project_status,
       created_at,
-      customer:customers(id, name)
+      customer:customers(id, name, status)
     `
     )
     .eq("id", id)
@@ -64,7 +64,14 @@ export default async function AdminSiteDetailPage({ params, searchParams }: Prop
   }
 
   // Run all per-tab data fetches in parallel
-  const [membersRes, customersRes, ticketsRes, auditRes, inventoryRes] =
+  const [
+    membersRes,
+    customersRes,
+    ticketsRes,
+    auditRes,
+    inventoryRes,
+    eligibleUsersRes,
+  ] =
     await Promise.all([
       supabase
         .from("site_members")
@@ -92,6 +99,13 @@ export default async function AdminSiteDetailPage({ params, searchParams }: Prop
           "id, quantity, location, spare_part:spare_parts(id, part_name, part_number, category)"
         )
         .eq("site_id", id),
+      supabase
+        .from("users")
+        .select("id, email, full_name, status, customer_id")
+        .eq("role", "customer")
+        .in("status", ["active", "invited"])
+        .or(`customer_id.eq.${site.customer_id},customer_id.is.null`)
+        .order("full_name"),
     ]);
 
   const members = (membersRes.data || []) as unknown as {
@@ -127,6 +141,16 @@ export default async function AdminSiteDetailPage({ params, searchParams }: Prop
     location: string | null;
     spare_part: { id: string; part_name: string; part_number: string; category: string } | { id: string; part_name: string; part_number: string; category: string }[] | null;
   }[];
+  const memberUserIds = new Set(members.map((member) => member.user_id));
+  const eligibleUsers = (eligibleUsersRes.data || []).filter(
+    (candidate) => !memberUserIds.has(candidate.id)
+  ) as {
+    id: string;
+    email: string;
+    full_name: string;
+    status: string;
+    customer_id: string | null;
+  }[];
   const inventoryCount = inventory.length;
   const openTicketCount = tickets.filter(
     (t) => !["resolved", "closed"].includes(t.status)
@@ -142,6 +166,9 @@ export default async function AdminSiteDetailPage({ params, searchParams }: Prop
   ];
 
   const customerData = Array.isArray(site.customer) ? site.customer[0] : site.customer;
+  const canAddMembers =
+    site.status === "active" &&
+    (customerData?.status === "active" || customerData?.status === "trial");
 
   return (
     <div className="p-8">
@@ -349,46 +376,59 @@ export default async function AdminSiteDetailPage({ params, searchParams }: Prop
             )}
           </div>
 
-          <div className="rounded-xl border border-border p-6">
-            <h3 className="text-sm font-medium text-foreground mb-3">
-              Add Member
-            </h3>
-            <form
-              action={`/api/admin/site-members?siteId=${id}`}
-              method="POST"
-              className="flex items-end gap-3"
-            >
-              <div className="flex-1">
-                <label className="block text-xs font-medium text-muted-foreground mb-1">
-                  User ID
-                </label>
-                <input
-                  type="text"
-                  name="user_id"
-                  placeholder="Enter user UUID..."
-                  className="w-full rounded-lg border border-border px-3 py-2 text-sm text-foreground bg-background"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-muted-foreground mb-1">
-                  Role
-                </label>
-                <select
-                  name="role"
-                  className="rounded-lg border border-border px-3 py-2 text-sm text-foreground bg-background"
-                >
-                  <option value="member">Member</option>
-                  <option value="admin">Admin</option>
-                </select>
-              </div>
-              <button
-                type="submit"
-                className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+          {canAddMembers && (
+            <div className="rounded-xl border border-border p-6">
+              <h3 className="text-sm font-medium text-foreground mb-3">
+                Add Member
+              </h3>
+              <form
+                action={`/api/admin/site-members?siteId=${id}`}
+                method="POST"
+                className="flex items-end gap-3"
               >
-                Add
-              </button>
-            </form>
-          </div>
+                <div className="flex-1">
+                  <label className="block text-xs font-medium text-muted-foreground mb-1">
+                    Customer user
+                  </label>
+                  <select
+                    name="user_id"
+                    required
+                    className="w-full rounded-lg border border-border px-3 py-2 text-sm text-foreground bg-background"
+                  >
+                    <option value="">Select a user...</option>
+                    {eligibleUsers.map((candidate) => (
+                      <option key={candidate.id} value={candidate.id}>
+                        {candidate.full_name} ({candidate.email})
+                        {candidate.customer_id
+                          ? ""
+                          : " — unassigned customer"}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-muted-foreground mb-1">
+                    Role
+                  </label>
+                  <select
+                    name="role"
+                    className="rounded-lg border border-border px-3 py-2 text-sm text-foreground bg-background"
+                  >
+                    <option value="member">Member</option>
+                    <option value="viewer">Viewer</option>
+                    <option value="manager">Manager</option>
+                    <option value="owner">Owner</option>
+                  </select>
+                </div>
+                <button
+                  type="submit"
+                  className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+                >
+                  Add
+                </button>
+              </form>
+            </div>
+          )}
         </div>
       )}
 
