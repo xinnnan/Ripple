@@ -302,6 +302,25 @@ try {
     "PATCH",
     { role: "engineer" }
   );
+  await expectUnauthorizedMutation(
+    "/api/admin/users",
+    "POST",
+    {
+      email: "unauthorized@example.com",
+      password: "unauthorized-password",
+      full_name: "Unauthorized Probe",
+      role: "engineer",
+    }
+  );
+  await expectUnauthorizedMutation(
+    "/api/team",
+    "POST",
+    {
+      email: "unauthorized@example.com",
+      password: "unauthorized-password",
+      full_name: "Unauthorized Probe",
+    }
+  );
   await expectLoginRedirect("/admin/users");
   await expectLogoutRedirect();
   await expectHealth("/api/health/live", 200, "live");
