@@ -33,7 +33,7 @@ Ripple is a useful support-ticket prototype with meaningful Phase 1–4 work:
 - spare-parts and field-service skeletons
 - simple wall-clock SLA targets
 - email and AI integrations with graceful failure
-- 379 committed unit/contract tests, production HTTP smoke, and an opt-in
+- 404 committed unit/contract tests, production HTTP smoke, and an opt-in
   credentialed browser/API/RLS matrix
 
 It is not yet the operations platform described by PRD v1.1. The old
@@ -66,12 +66,12 @@ The correct approach is therefore:
 
 | Gate | Result through 2026-08-01 | Meaning |
 |---|---|---|
-| Unit tests | 379/379 passed | Scope, lifecycle and exhaustive ticket-transition guards, atomic ticket/customer/catalog/inventory creation and updates, notification outbox leases/idempotency/retry contracts, tenant-safe site/user/customer/SLA/catalog/inventory administration, secure user provisioning and membership containment, qualified-SQL-expression repair, visibility, auth recovery/redirects, public/responsive/admin UI contracts, Slack authentication/configuration/action filtering and direct AI-service invocation, readiness, CI policy, filters, SLA, fixture validation, migration/RPC contracts, spare-part, field-service, and team-access transaction containment, DATE handling, and audit coverage is green |
+| Unit tests | 404/404 passed | Scope, lifecycle and exhaustive ticket-transition guards, atomic ticket/customer/catalog/inventory/attachment creation and updates, attachment content and storage-key validation, notification outbox leases/idempotency/retry contracts, tenant-safe site/user/customer/SLA/catalog/inventory administration, secure user provisioning and membership containment, qualified-SQL-expression repair, visibility, auth recovery/redirects, public/responsive/admin UI contracts, Slack authentication/configuration/action filtering and direct AI-service invocation, readiness, CI policy, filters, SLA, fixture validation, migration/RPC contracts, spare-part, field-service, and team-access transaction containment, DATE handling, and audit coverage is green |
 | Lint | Passed, no warnings | Direct ESLint CLI with zero-warning enforcement and generated-artifact ignores |
 | Production build | Passed on Next.js 15.5.22 | Environment-free build is reproducible |
 | Dependency audit | 0 vulnerabilities | Patched direct/transitive versions are lockfile-pinned and compatibility-tested |
 | Worktree | Clean at baseline | Work started on `codex/prd-v1-1-gap-closure` |
-| Committed end-to-end tests | 37 production HTTP checks + credentialed Playwright/API/RLS matrix | Public/recovery/negative/configuration smoke always runs, including fail-closed outbox-worker configuration plus site-membership/site/user/customer/SLA/catalog/inventory-write/provisioning denials; migrations 001–042 are applied and migration 043 awaits application, while protected positive request/field-service/team/site-access/site/user/customer/catalog/inventory-administration/provisioning/transition/outbox/create probes and the six-account two-tenant matrix await staging credentials/fixtures |
+| Committed end-to-end tests | 38 production HTTP checks + credentialed Playwright/API/RLS matrix | Public/recovery/negative/configuration smoke always runs, including fail-closed outbox-worker configuration, invalid attachment rejection, and site-membership/site/user/customer/SLA/catalog/inventory-write/provisioning denials; migrations 001–043 are applied and migration 044 awaits application, while protected positive request/field-service/team/site-access/site/user/customer/catalog/inventory/attachment-administration/provisioning/transition/outbox/create probes and the six-account two-tenant matrix await staging credentials/fixtures |
 | Hosted CI | Workflow committed in `4ceacd0`; first hosted run pending | Read-only, SHA-pinned quality job is reproducible; repository branch protection and the protected staging environment still require activation |
 
 ## 4. PRD capability gap map
@@ -93,17 +93,17 @@ has a release-blocking security or integrity problem.
 | Remote Support | Absent | No diagnosis record, structured information request, remote access approval, or onsite handover |
 | Field Service / Work Orders | Partial | Simple order/status table only; no readiness gate, visit lifecycle, checklist, evidence, mobile flow, or report versioning |
 | Appointment / Dispatch | Absent | No appointment object, preferred windows, conflict checks, reminders, reschedule/no-show logic, or dispatch calendar engine |
-| Parts / RMA | Partial | Atomic request creation/update and catalog commands are deployed/live-verified; inventory administration is code-complete in `20a8439` pending migration 043, while approval policy, reservations, consumption, and RMA remain |
+| Parts / RMA | Partial | Atomic request creation/update, catalog, and inventory commands are deployed/live-verified; approval policy, reservations, consumption, and RMA remain |
 | Assets / Entitlements | Absent | Ticket `asset_id` is free text; no hierarchy, lifecycle, versions, contracts, or coverage decision |
 | Communication / Email | Partial | Confirmation and resolution email are outbox-backed and provider-idempotent; recipient resolution, versioned templates, preferences, localization, and a unified communication model remain |
-| File Service | Unsafe/Partial | Extension/MIME trust only; no magic-byte check, malware scan, quarantine, checksum, tenant key, retention, or atomic metadata handling |
+| File Service | Partial | `03499f9` adds magic-byte/text/container checks, canonical MIME, environment/tenant/ticket-bound keys, null guest attribution, and atomic metadata/timeline handling pending migration 044; malware scanning, quarantine, checksums, retention, and durable ambiguous-outcome reconciliation remain |
 | Search / Knowledge | Absent | No permission-aware index, degradation mode, related history, KB lifecycle, or feedback |
 | Notifications / Templates | Partial | Durable ticket creation/update/resolution delivery records/retry/dead-letter are committed; template versioning, locale fallback, preferences, and in-app inbox remain |
 | Reporting / Export | Partial | Ticket CSV and dashboard counts only; no metric contract, SLA/operations reports, scheduled generation, or permission-aware exports |
 | Internationalization | Absent | English strings are embedded in code; no locale resolution, translation catalog, formatting rules, or four-language QA |
-| Administration | Partial | Site/membership/user/customer/SLA/catalog authorization-root writes are deployed atomically, and per-site inventory administration is code-complete pending migration 043; configuration hierarchy, form/custom-field builder, workflow publishing, feature flags, retention, and integration console remain absent |
+| Administration | Partial | Site/membership/user/customer/SLA/catalog/inventory authorization-root writes are deployed atomically; configuration hierarchy, form/custom-field builder, workflow publishing, feature flags, retention, and integration console remain absent |
 | External API / Webhooks | Absent | Unversioned internal REST only; no client credentials, scopes, idempotency, concurrency, stable errors, signed webhooks, or docs |
-| Security / Privacy | Unsafe/Partial | Slack request verification now fails closed and direct ticket-column/Storage exposure is contained; weak file validation, incomplete audit guarantees, and other authorization gaps remain |
+| Security / Privacy | Unsafe/Partial | Slack request verification fails closed, direct ticket-column/Storage exposure is contained, and attachment intake now validates content and attribution; malware/quarantine, incomplete audit guarantees in other domains, and other authorization gaps remain |
 | SRE / Operations | Partial | Minimal liveness and configuration-readiness endpoints exist; structured observability, SLOs, alerting, runbooks, tested recovery, capacity/performance evidence, and release automation remain |
 | Testing / Quality Gates | Partial | Unit, SLA truth tables, RPC/migration guards, production HTTP smoke, and a credentialed tenant/browser matrix are committed; the credentialed matrix still needs its first staging run, and recovery, i18n, and performance suites remain |
 
@@ -135,7 +135,7 @@ has a release-blocking security or integrity problem.
 | INT-004 | Part-request header and items, and field order plus engineer assignments, are non-atomic | **Deployed; protected verification pending:** part-request update/create are deployed in `1f49ecc`/`64cee3d` + migrations 028/029. `2557760` + migration 030 make field-order create/update, complete engineer assignment sets, numbering, and audit atomic; both RPCs are live and protected rollback probes remain |
 | INT-005 | Part fulfillment updates do not verify the item belongs to the request in the URL | **Closed in `1f49ecc`; migration 028 confirmed applied 2026-07-29:** the row-locked command constrains every item by both `request_id` and item ID and rejects invalid quantity bounds; protected runtime probes remain |
 | INT-006 | Team site assignments are delete-all then insert, so a failed insert removes all access | **Deployed; protected verification pending:** `c0c2354` + migration 031 atomically update profile/status, apply a role-preserving membership set diff, validate the manager/tenant/target/sites, and write audit evidence; RPC presence and non-writing validation behavior are confirmed |
-| INT-007 | Audit writes are best-effort and separate from the business transaction | **Platform foundation extended through `20a8439`:** migrations 033–042 are applied/live-verified for ticket delivery/create and admin site-membership/site/user/customer/SLA/catalog mutations, command repair, and secure provisioning. Migration 043 adds transactionally audited inventory administration and awaits application. Other best-effort domains still need conversion |
+| INT-007 | Audit writes are best-effort and separate from the business transaction | **Platform foundation extended through `03499f9`:** migrations 033–043 are applied/live-verified for ticket delivery/create and admin site-membership/site/user/customer/SLA/catalog/inventory mutations, command repair, and secure provisioning. Migration 044 adds transactional attachment metadata/timeline evidence and awaits application. Other best-effort domains still need conversion |
 | INT-008 | Site detail assigns the inventory query to an unused tuple slot and always renders empty inventory | **Closed in `9083ece`:** the inventory query result is wired to the inventory tab and covered by the external-resource containment regression checkpoint |
 | INT-009 | `/sites` links to `?site_id=...`, while the ticket parser expects `?site=...` | **Closed in `9083ece`:** site links and the ticket filter parser use the canonical `site` query key |
 | INT-010 | Slack Ripple Assist calls an internal authenticated HTTP API without a session cookie | **Closed in `3f7d296`:** web and signed Slack ingress authorize independently, then call the shared rate-limited AI application service; Slack preserves channel delivery context |
@@ -148,7 +148,8 @@ has a release-blocking security or integrity problem.
 | INT-017 | Customer create/update committed the tenant row before best-effort audit, ignored update failures, could report success for a missing target, and leaked database messages | **Closed in `d46a3af`; deployment confirmed 2026-07-31:** migration 040 passed a 25-assertion live matrix across positive/no-op, validation, lifecycle, privilege, concurrency, exact-audit, attribution, rollback, and zero-residue behavior |
 | INT-018 | SLA policy create/update committed contractual timing before best-effort audit, delete had no audit, scope/default could diverge, and reference checks raced deletion | **Closed in `c65bf9e`; deployment confirmed 2026-08-01:** migration 041 passed a 35-assertion live matrix across positive/no-op, validation, privilege, protected/referenced deletion, reference races, exact audit attribution, rollback, and zero residue |
 | INT-019 | Spare-part catalog create/update committed before best-effort audit, used case-sensitive identity, touched no-op timestamps, and lacked a database price guard | **Closed in `737d2a8` + `de54e20`; deployment confirmed 2026-08-01:** migration 042 passed a 57-assertion live matrix across normalized create/update/no-op, duplicate/shape/price/privilege/grant rejection, concurrency, exact audit attribution, rollback, and zero residue |
-| INT-020 | Inventory writes committed before best-effort audit, treated reductions as restocks, and lacked database-enforced final thresholds and parent lifecycle guards | **Code complete in `20a8439`; migration 043 pending:** serialized service-role upsert/PATCH commands lock active parents, enforce bounded stock/location shape, preserve no-ops, stamp only real restocks, and commit exact audit evidence; responsive desktop/mobile admin QA is green |
+| INT-020 | Inventory writes committed before best-effort audit, treated reductions as restocks, and lacked database-enforced final thresholds and parent lifecycle guards | **Closed in `20a8439`; deployment confirmed 2026-08-01:** migration 043 passed a 72-assertion live matrix across positive/no-op upsert/PATCH, constraints, active parents, privilege/grants, restock semantics, concurrency, exact audit attribution, rollback, and zero residue |
+| INT-021 | Attachment intake trusted browser MIME/extension, could orphan objects after metadata failure, attributed token guests to another user, and wrote metadata/timeline independently | **Code complete in `03499f9`; migration 044 pending:** actual content and filename/size/type are validated, keys bind environment/tenant/ticket, guests remain unattributed, inactive sessions fail closed, confirmed DB rollback compensates Storage, ambiguous outcomes preserve referential safety, and metadata plus timeline evidence commit atomically |
 
 ### Platform gaps that become risks at scale
 
@@ -157,8 +158,8 @@ has a release-blocking security or integrity problem.
   list APIs instead of all customer sites.
 - Guest site-code validation enables site/customer enumeration and lacks a
   durable distributed rate limiter.
-- Attachment type validation trusts the browser, DB failure can orphan stored
-  objects, and storage keys do not include environment/tenant.
+- Malware scanning/quarantine, checksums, retention, and a durable operator
+  reconciliation queue for ambiguous cross-system attachment outcomes remain.
 - Direct admin-client page queries can reintroduce hidden-field leaks even when
   the JSON API is sanitized.
 - Email templates do not escape every organization/site field.
@@ -493,14 +494,24 @@ Every implementation slice must:
     QA are green. A 57-assertion disposable live matrix passed positive/no-op,
     validation, privilege/grants, concurrency, exact audit attribution,
     rollback, and cleanup cases.
-31. **P0-AE — code complete in `20a8439`; migration pending:** Migration 043
+31. **P0-AE — deployed and live-verified:** Migration 043
     adds service-role-only inventory upsert/PATCH commands with one serialization
     lock, exact integer/location shape, active part/site/customer locks,
     nonnegative ordered thresholds, maximum-stock enforcement, no-op
     preservation, increase-only restock timestamps, exact transactional audit
     evidence, and committed row returns. Strict API contracts, 19 tests, two
     HTTP denials, a new inventory workspace, and responsive desktop/mobile
-    browser QA are green.
-32. **Next local integrity work:** apply and live-probe migration 043, then
+    browser QA are green. A 72-assertion disposable live matrix passed
+    positive/no-op, validation, lifecycle, privilege/grants, restock,
+    concurrency, exact-audit, attribution, rollback, and cleanup cases.
+32. **P0-AF — code complete in `03499f9`; migration pending:** Migration 044
+    constrains stored metadata and adds a service-role-only attachment command
+    that rechecks active tenant/uploader scope and commits metadata plus ticket
+    timeline evidence atomically. The upload route validates real file content,
+    uses environment/tenant/ticket-bound keys, keeps guest attribution null,
+    compensates only confirmed rollbacks, and flags ambiguous outcomes for
+    reconciliation. Twenty-five new tests, one HTTP rejection probe, protected
+    attachment UI assertions, and public desktop/mobile browser QA are green.
+33. **Next local integrity work:** apply and live-probe migration 044, then
     continue the next highest-risk best-effort domain and run protected
     positive/rollback delivery probes.

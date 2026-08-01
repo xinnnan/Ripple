@@ -7,13 +7,13 @@ meaningful change and before ending a work session. Newest entries go first.
 
 - **Branch:** `codex/prd-v1-1-gap-closure`
 - **Active phase:** Phase 0 — Containment and reproducible baseline
-- **Active work item:** apply/probe migration 043, configure the production
+- **Active work item:** apply/probe migration 044, configure the production
   outbox worker secret, then continue the next integrity milestone
-- **Last verified implementation commit:** `20a8439` (`fix: make spare-part inventory administration atomic`)
+- **Last verified implementation commit:** `03499f9` (`fix: harden ticket attachment uploads`)
 - **Uncommitted work:** none expected after the documentation checkpoint;
   verify with `git status` before resuming
-- **Deployment gate:** migrations 001–042 are confirmed applied; migration 043
-  must be applied before deploying atomic per-site inventory administration.
+- **Deployment gate:** migrations 001–043 are confirmed applied; migration 044
+  must be applied before deploying hardened attachment metadata handling.
   Production `CRON_SECRET` remains unset in this workspace. Protected positive
   business probes for migrations 028–037 still require staging fixtures
 - **External validation gate:** populate the gitignored credential fixture with six
@@ -43,16 +43,105 @@ meaningful change and before ending a work session. Newest entries go first.
   errors. Inventory list/create/edit and the site inventory tab were reviewed
   at 1280×900 and 390×844 with bound labels, site-prefilter persistence,
   immutable edit identity, threshold/duplicate validation, local table
-  scrolling, Inter, and zero console errors. Password-based login passed;
+  scrolling, Inter, and zero console errors. The public ticket form and its
+  exact attachment accept/help contract were reviewed at 1280×720 and 390×844
+  with Inter and no horizontal overflow. Password-based login passed;
   recovery-email delivery and one-time link consumption still require a
   dedicated staging mailbox.
-- **Exact next local step:** after the user applies migration 043, verify both
-  service-role-only inventory commands. Prove initial/existing upsert, exact
-  multi-field/no-op PATCH, threshold/location constraints, active part/site/
-  customer guards, increase-only restock timestamps, missing/non-admin/
-  anonymous rollback, serialization, audit attribution, and zero residue.
-  Configure `CRON_SECRET` separately before production worker activation
+- **Exact next local step:** after the user applies migration 044, verify the
+  service-role-only attachment command and the Storage/database handoff. Prove
+  supported internal/customer/guest metadata, null guest attribution, exact
+  timeline evidence, active tenant/uploader guards, internal-visibility denial,
+  metadata/path/duplicate constraints, direct grant denial, concurrent rollback,
+  confirmed object compensation, and zero residue. Configure `CRON_SECRET`
+  separately before production worker activation
 - **Primary plan:** [`plans/prd-v1.1-gap-closure-plan.md`](./prd-v1.1-gap-closure-plan.md)
+
+## Session record — 2026-08-01 (P0-AF / hardened ticket attachment intake)
+
+### Objective
+
+Live-verify migration 043 after application, then close the highest-risk
+remaining direct-write gap in ticket attachments without pretending that
+content validation is a complete malware-scanning file service.
+
+### Migration 043 live verification
+
+- Both inventory commands passed a disposable 72-assertion live matrix.
+  Coverage included initial and existing upsert, exact create/update audit,
+  no-op timestamp/audit preservation, increase-only restock timestamps,
+  decrease behavior, multi-field PATCH, missing/unknown/invalid inputs,
+  threshold/location/quantity constraints, inactive part/site/customer guards,
+  non-admin and direct anonymous/authenticated denial, concurrent PATCH/upsert
+  serialization, unique-row preservation, attribution, rollback, and cleanup.
+- A final residue query confirmed zero disposable inventory, part, site,
+  customer, Auth-profile, or audit artifacts.
+- A read-only attachment audit found eight rows and zero unsafe/padded names,
+  unsupported types, invalid sizes/paths, duplicate storage keys, invalid
+  visibility, missing tickets, retired sites, or inactive customers.
+
+### Finding and implementation
+
+- `/api/upload` trusted browser MIME/extension, used ticket-only object keys,
+  wrote attachment metadata and timeline rows independently, and could return
+  success or leave an untracked object after a metadata failure. Secure-token
+  guests were incorrectly attributed to the ticket creator, and an inactive
+  authenticated session could fall through to guest-token authorization.
+- Commit `03499f9` adds migration
+  `044_atomic_ticket_attachment_metadata.sql`, database shape constraints, a
+  unique storage-path index, and a service-role-only command that rechecks
+  active ticket/site/customer and uploader scope under locks before committing
+  metadata plus one `attachment_added` event atomically.
+- The route now validates safe names, 1-byte–50MB bounds, declared types, and
+  actual signatures/text/container structure for JPEG/PNG/GIF/WebP, MP4/MOV,
+  PDF, UTF-8 text/log/CSV, XLSX, and XLS. It canonicalizes MIME, rejects XLSX
+  VBA content, and derives environment/customer/ticket-bound object keys.
+- Attribution comes only from the active session; token guests remain null.
+  External users cannot request internal visibility. Confirmed database
+  rollback triggers object removal; ambiguous transport/commit outcomes keep
+  the object to avoid a committed metadata row pointing at deleted content and
+  return a reconciliation error.
+- The public and authenticated UIs no longer submit caller-controlled
+  attribution and advertise only the exact supported types. The credentialed
+  matrix now asserts external/internal attachment UI separation. The default
+  run skipped that matrix because `RIPPLE_E2E_FIXTURES_FILE` remains unset.
+- Twenty-five new unit/contract checks bring the suite to 404 tests. One
+  invalid-form upload probe brings production HTTP smoke to 38 checks.
+
+### Browser and quality verification
+
+- In-app browser QA passed the public form at 1280×720 and 390×844. It verified
+  the exact file `accept` contract, multiple selection, visible help copy,
+  self-hosted Inter, and no horizontal overflow. Protected navigation still
+  redirects to `/login?next=%2Ftickets` without credentials.
+- The 390px full-page capture produced a stitching artifact, so layout truth
+  was confirmed from the normal viewport and measured DOM geometry: the page
+  remained 390px wide with a 342px content column and stacked workflow steps.
+
+| Gate | Result |
+|---|---|
+| `npm ci` | Passed; locked install, 0 install-time vulnerabilities |
+| `npm test` | Passed; 56 files, 404 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build |
+| `npm run test:e2e` | Passed; all 38 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+| Manual browser E2E | Passed at desktop/mobile sizes; protected positive UI remains fixture-gated |
+| Immediate pre-commit `npm run test:e2e` | Passed before `03499f9` with the same 38 checks and explicit protected-fixture skip |
+
+### Rollout and next
+
+1. Apply migration 044 before deploying `03499f9`; the new upload route
+   intentionally depends on `create_ticket_attachment_atomic`.
+2. Run a disposable live matrix for metadata/path/role/lifecycle/grant/event
+   atomicity, duplicate/concurrent behavior, attribution, rollback, and zero
+   residue. Then exercise one real supported object upload and one spoofed
+   upload, verify compensation, and delete every test object and row.
+3. Add malware scanning/quarantine, checksums, retention, and a durable
+   ambiguous-outcome reconciliation queue as later file-service milestones.
+4. Configure `CRON_SECRET`, activate hosted quality/staging protections, and
+   run the credentialed tenant matrix when its secret fixture is provisioned.
 
 ## Session record — 2026-08-01 (P0-AE / atomic per-site inventory administration)
 
