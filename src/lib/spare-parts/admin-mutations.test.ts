@@ -211,6 +211,9 @@ describe("migration 042 spare-part catalog integrity", () => {
   it("uses safe expressions and service-role-only execution", () => {
     expect(migration).not.toContain("pg_catalog.coalesce");
     expect(migration).not.toContain("pg_catalog.nullif");
+    expect(migration).not.toContain("CASE v_field");
+    expect(migration).toContain("v_candidate_json := pg_catalog.jsonb_build_object(");
+    expect(migration).toContain("(v_candidate_json -> v_field)");
     expect(migration.match(/SET search_path = ''/g)).toHaveLength(2);
     expect(migration.match(/FROM PUBLIC, anon, authenticated;/g)).toHaveLength(
       2

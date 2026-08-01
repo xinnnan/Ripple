@@ -261,6 +261,7 @@ DECLARE
   v_before public.spare_parts%ROWTYPE;
   v_after public.spare_parts%ROWTYPE;
   v_before_json jsonb;
+  v_candidate_json jsonb;
   v_after_json jsonb;
   v_part_number text;
   v_part_name text;
@@ -465,33 +466,22 @@ BEGIN
   END IF;
 
   v_before_json := pg_catalog.to_jsonb(v_before);
+  v_candidate_json := pg_catalog.jsonb_build_object(
+    'part_number', v_part_number,
+    'part_name', v_part_name,
+    'description', v_description,
+    'category', v_category,
+    'unit', v_unit,
+    'unit_price', v_unit_price,
+    'compatible_models', v_compatible_models,
+    'image_url', v_image_url,
+    'is_active', v_is_active
+  );
 
   FOREACH v_field IN ARRAY v_allowed_fields
   LOOP
     IF (v_before_json -> v_field) IS DISTINCT FROM
-      CASE v_field
-        WHEN 'part_number' THEN pg_catalog.to_jsonb(v_part_number)
-        WHEN 'part_name' THEN pg_catalog.to_jsonb(v_part_name)
-        WHEN 'description' THEN COALESCE(
-          pg_catalog.to_jsonb(v_description),
-          'null'::jsonb
-        )
-        WHEN 'category' THEN pg_catalog.to_jsonb(v_category)
-        WHEN 'unit' THEN pg_catalog.to_jsonb(v_unit)
-        WHEN 'unit_price' THEN COALESCE(
-          pg_catalog.to_jsonb(v_unit_price),
-          'null'::jsonb
-        )
-        WHEN 'compatible_models' THEN COALESCE(
-          pg_catalog.to_jsonb(v_compatible_models),
-          'null'::jsonb
-        )
-        WHEN 'image_url' THEN COALESCE(
-          pg_catalog.to_jsonb(v_image_url),
-          'null'::jsonb
-        )
-        WHEN 'is_active' THEN pg_catalog.to_jsonb(v_is_active)
-      END
+      (v_candidate_json -> v_field)
     THEN
       v_has_changes := true;
       EXIT;
