@@ -66,12 +66,12 @@ The correct approach is therefore:
 
 | Gate | Result through 2026-07-31 | Meaning |
 |---|---|---|
-| Unit tests | 321/321 passed | Scope, lifecycle and exhaustive ticket-transition guards, atomic ticket/customer creation, notification outbox leases/idempotency/retry contracts, tenant-safe site/user/customer administration, secure user provisioning and membership containment, qualified-SQL-expression repair, visibility, auth recovery/redirects, public/responsive/admin UI contracts, Slack authentication/configuration/action filtering and direct AI-service invocation, readiness, CI policy, filters, SLA, fixture validation, migration/RPC contracts, spare-part, field-service, and team-access transaction containment, DATE handling, and audit coverage is green |
+| Unit tests | 340/340 passed | Scope, lifecycle and exhaustive ticket-transition guards, atomic ticket/customer creation, notification outbox leases/idempotency/retry contracts, tenant-safe site/user/customer/SLA policy administration, secure user provisioning and membership containment, qualified-SQL-expression repair, visibility, auth recovery/redirects, public/responsive/admin UI contracts, Slack authentication/configuration/action filtering and direct AI-service invocation, readiness, CI policy, filters, SLA, fixture validation, migration/RPC contracts, spare-part, field-service, and team-access transaction containment, DATE handling, and audit coverage is green |
 | Lint | Passed, no warnings | Direct ESLint CLI with zero-warning enforcement and generated-artifact ignores |
 | Production build | Passed on Next.js 15.5.22 | Environment-free build is reproducible |
 | Dependency audit | 0 vulnerabilities | Patched direct/transitive versions are lockfile-pinned and compatibility-tested |
 | Worktree | Clean at baseline | Work started on `codex/prd-v1-1-gap-closure` |
-| Committed end-to-end tests | 30 production HTTP checks + credentialed Playwright/API/RLS matrix | Public/recovery/negative/configuration smoke always runs, including fail-closed outbox-worker configuration plus site-membership/site/user/customer-write/provisioning denials; migrations 001–039 are applied and migration 040 awaits application, while protected positive request/field-service/team/site-access/site/user/customer-administration/provisioning/transition/outbox/create probes and the six-account two-tenant matrix await staging credentials/fixtures |
+| Committed end-to-end tests | 33 production HTTP checks + credentialed Playwright/API/RLS matrix | Public/recovery/negative/configuration smoke always runs, including fail-closed outbox-worker configuration plus site-membership/site/user/customer/SLA-policy-write/provisioning denials; migrations 001–040 are applied and migration 041 awaits application, while protected positive request/field-service/team/site-access/site/user/customer/SLA-administration/provisioning/transition/outbox/create probes and the six-account two-tenant matrix await staging credentials/fixtures |
 | Hosted CI | Workflow committed in `4ceacd0`; first hosted run pending | Read-only, SHA-pinned quality job is reproducible; repository branch protection and the protected staging environment still require activation |
 
 ## 4. PRD capability gap map
@@ -89,7 +89,7 @@ has a release-blocking security or integrity problem.
 | Ticket Core | Partial | Current creation plus eight-state transitions and resolution entry rules are database-guarded/atomic; PRD states, merge/relations, visibility scopes, versioning, and optimistic concurrency remain |
 | Workflow / Automation | Partial | Ticket creation/update/resolution delivery now shares an outbox with idempotency keys, leases, retry, and dead-letter handling; rule definitions/versioning and broader domain-event execution remain |
 | Queues / Routing | Absent | No queue, membership, skill, region, workload, routing, or fallback models |
-| SLA / Business Calendar | Partial | First-response and late-resolution persistence are corrected in `b71b3d7`; business calendars, independent clock rows, pause/resume, versioning, thresholds, and reopen cycles remain |
+| SLA / Business Calendar | Partial | First-response and late-resolution persistence are corrected in `b71b3d7`; atomic policy administration is code-complete in `c65bf9e` pending migration 041, while business calendars, independent clock rows, pause/resume, versioning, thresholds, and reopen cycles remain |
 | Remote Support | Absent | No diagnosis record, structured information request, remote access approval, or onsite handover |
 | Field Service / Work Orders | Partial | Simple order/status table only; no readiness gate, visit lifecycle, checklist, evidence, mobile flow, or report versioning |
 | Appointment / Dispatch | Absent | No appointment object, preferred windows, conflict checks, reminders, reschedule/no-show logic, or dispatch calendar engine |
@@ -101,7 +101,7 @@ has a release-blocking security or integrity problem.
 | Notifications / Templates | Partial | Durable ticket creation/update/resolution delivery records/retry/dead-letter are committed; template versioning, locale fallback, preferences, and in-app inbox remain |
 | Reporting / Export | Partial | Ticket CSV and dashboard counts only; no metric contract, SLA/operations reports, scheduled generation, or permission-aware exports |
 | Internationalization | Absent | English strings are embedded in code; no locale resolution, translation catalog, formatting rules, or four-language QA |
-| Administration | Partial | Site/membership/user authorization writes have atomic command foundations, and customer create/update commands are code-complete pending migration 040; configuration hierarchy, form/custom-field builder, workflow publishing, feature flags, retention, and integration console remain absent |
+| Administration | Partial | Site/membership/user/customer authorization-root writes are deployed atomically, and SLA policy administration is code-complete pending migration 041; configuration hierarchy, form/custom-field builder, workflow publishing, feature flags, retention, and integration console remain absent |
 | External API / Webhooks | Absent | Unversioned internal REST only; no client credentials, scopes, idempotency, concurrency, stable errors, signed webhooks, or docs |
 | Security / Privacy | Unsafe/Partial | Slack request verification now fails closed and direct ticket-column/Storage exposure is contained; weak file validation, incomplete audit guarantees, and other authorization gaps remain |
 | SRE / Operations | Partial | Minimal liveness and configuration-readiness endpoints exist; structured observability, SLOs, alerting, runbooks, tested recovery, capacity/performance evidence, and release automation remain |
@@ -113,11 +113,11 @@ has a release-blocking security or integrity problem.
 
 | ID | Finding | Required mitigation |
 |---|---|---|
-| SEC-001 | `GET /api/field-service-orders/[id]` returns any order to any authenticated user who knows its UUID | Apply centralized site scope before row retrieval and sanitize customer-visible fields |
-| SEC-002 | `GET /api/spare-part-requests/[id]` has the same cross-tenant leak and exposes internal prices | Apply centralized site scope and customer response shaping |
-| SEC-003 | Slack actions accept any linked Ripple user, including customer roles, as an engineer | Require an active `admin` or `engineer` account for every internal Slack action and modal |
-| SEC-004 | Authenticated ticket detail renders `internal_summary`, AI controls, submitter contact, and linked-request cost/navigation to customer roles | Make the page response and rendering visibility-aware |
-| SEC-005 | Browser code imports the service-role client in `scope.client.ts` | Remove the server-only import and use RLS-scoped browser queries |
+| SEC-001 | `GET /api/field-service-orders/[id]` returned any order to any authenticated user who knew its UUID | **Closed in `9083ece`:** centralized site scope runs before retrieval and customer responses omit internal completion, staff, and cost fields |
+| SEC-002 | `GET /api/spare-part-requests/[id]` had the same cross-tenant leak and exposed internal prices | **Closed in `9083ece`:** centralized collection/detail scope and explicit customer response shaping are regression-tested |
+| SEC-003 | Slack actions accepted any linked Ripple user, including customer roles, as an engineer | **Closed in `9083ece`:** every internal action/modal requires an active `admin` or `engineer` mapping |
+| SEC-004 | Authenticated ticket detail rendered internal summary, AI controls, submitter contact, and linked-request cost/navigation to customer roles | **Closed in `9083ece`:** customer rendering and projections are visibility-aware and exclude secure/internal fields and controls |
+| SEC-005 | Browser code imported the service-role client in `scope.client.ts` | **Closed in `9083ece`:** browser scope uses RLS-scoped queries and a repository scan rejects server/admin imports from client modules |
 | SEC-006 | Admin bulk delete physically cascades customer/site/ticket history | **Closed in `211843e`:** hard-delete tombstones, transactional archive/deactivate commands, active-account/lifecycle RLS |
 | SEC-007 | Slack signature verification succeeds when the signing secret is missing | **Closed in `e83156f`:** all three Slack ingress routes fail closed; liveness and secret-safe configuration readiness are exposed separately |
 | SEC-008 | Runtime dependency audit reports six high-severity production advisories | **Closed in `211843e`:** Next 15.5.22 + patched overrides/transitives; full `npm audit` reports 0 |
@@ -135,17 +135,18 @@ has a release-blocking security or integrity problem.
 | INT-004 | Part-request header and items, and field order plus engineer assignments, are non-atomic | **Deployed; protected verification pending:** part-request update/create are deployed in `1f49ecc`/`64cee3d` + migrations 028/029. `2557760` + migration 030 make field-order create/update, complete engineer assignment sets, numbering, and audit atomic; both RPCs are live and protected rollback probes remain |
 | INT-005 | Part fulfillment updates do not verify the item belongs to the request in the URL | **Closed in `1f49ecc`; migration 028 confirmed applied 2026-07-29:** the row-locked command constrains every item by both `request_id` and item ID and rejects invalid quantity bounds; protected runtime probes remain |
 | INT-006 | Team site assignments are delete-all then insert, so a failed insert removes all access | **Deployed; protected verification pending:** `c0c2354` + migration 031 atomically update profile/status, apply a role-preserving membership set diff, validate the manager/tenant/target/sites, and write audit evidence; RPC presence and non-writing validation behavior are confirmed |
-| INT-007 | Audit writes are best-effort and separate from the business transaction | **Platform foundation extended through `d46a3af`:** migrations 033–039 are applied/live-verified for ticket delivery/create, admin site-membership, site mutations, command repair, admin-user patch/deactivation, and secure provisioning. Migration 040 adds transactionally audited customer create/update commands and awaits application. Remaining best-effort admin audit domains still need conversion |
+| INT-007 | Audit writes are best-effort and separate from the business transaction | **Platform foundation extended through `c65bf9e`:** migrations 033–040 are applied/live-verified for ticket delivery/create, admin site-membership/site/user/customer mutations, command repair, and secure provisioning. Migration 041 adds transactionally audited SLA policy administration and awaits application. Spare-parts catalog/inventory and other best-effort domains still need conversion |
 | INT-008 | Site detail assigns the inventory query to an unused tuple slot and always renders empty inventory | **Closed in `9083ece`:** the inventory query result is wired to the inventory tab and covered by the external-resource containment regression checkpoint |
 | INT-009 | `/sites` links to `?site_id=...`, while the ticket parser expects `?site=...` | **Closed in `9083ece`:** site links and the ticket filter parser use the canonical `site` query key |
 | INT-010 | Slack Ripple Assist calls an internal authenticated HTTP API without a session cookie | **Closed in `3f7d296`:** web and signed Slack ingress authorize independently, then call the shared rate-limited AI application service; Slack preserves channel delivery context |
 | INT-011 | Slack mutations bypass ticket events, SLA stamping, state guards, and some notification paths | **Closed for current supported actions:** SLA/ticket/audit parity in `b71b3d7`, AI direct service in `3f7d296`, deployed state guards in `b344d18`, shared resolution effects in `4892dcb`, and durable ticket-update delivery in `a6ccd33` / migration 033 |
-| INT-012 | Clean builds fail on `/login` without Supabase env because the client is created during prerender | Construct the browser client only inside the submit action |
+| INT-012 | Clean builds failed on `/login` without Supabase env because the client was created during prerender | **Closed in `9083ece`:** browser-client construction is deferred until form submission and clean production builds pass |
 | INT-013 | Ordinary site PATCH can reassign an established site and its historical resources across customers while retaining old memberships | **Deployed; protected positive verification pending:** `9f4b9c9` + migration 036 make ownership immutable, validate active tenant/configuration state, row-lock updates, and commit site/audit writes atomically. Migration 037 is applied; ownership, not-found, privilege, repaired validation, and zero-residue probes passed |
 | INT-014 | Atomic commands qualify `COALESCE`/`NULLIF` as catalog functions and fail at runtime with `42883` | **Closed in `4c516bc`; deployment confirmed 2026-07-31:** migration 037 repaired the six exact deployed part-request, field-service, team-access, and site command definitions, re-hardened service-role-only execution, and passed domain-validation/anonymous-denial/zero-residue probes |
 | INT-015 | Admin user PATCH changes global authorization state before best-effort/duplicate audit and permits unsafe internal/customer role-family transfers | **Closed in `b5d636a`; deployment confirmed 2026-07-31:** migration 038 serializes patch/deactivation, rechecks active-admin authority, guards lifecycle/tenant/role-family invariants, and passed a 30-assertion live matrix including exact audit cardinality and concurrent last-admin safety |
 | INT-016 | Admin/team user creation splits Auth identity, profile, tenant, membership, and audit writes and ignores partial failures | **Closed in `33b3a66`; deployment confirmed 2026-07-31:** guarded finalizers commit database state atomically; the cross-system wrapper confirms success, compensates only a proven provisional identity, and flags ambiguous outcomes for reconciliation. Migration 039 passed a 25-assertion disposable matrix |
-| INT-017 | Customer create/update commits the tenant row before best-effort audit, ignores update read/write failures, can report success for a missing target, and leaks database messages | **Code complete in `d46a3af`; migration 040 pending:** service-role-only commands lock and validate the target/lifecycle, commit customer and exact audit rows together, return the committed row, and expose stable application errors without database detail leakage |
+| INT-017 | Customer create/update committed the tenant row before best-effort audit, ignored update failures, could report success for a missing target, and leaked database messages | **Closed in `d46a3af`; deployment confirmed 2026-07-31:** migration 040 passed a 25-assertion live matrix across positive/no-op, validation, lifecycle, privilege, concurrency, exact-audit, attribution, rollback, and zero-residue behavior |
+| INT-018 | SLA policy create/update committed contractual timing before best-effort audit, delete had no audit, scope/default could diverge, and reference checks raced deletion | **Code complete in `c65bf9e`; migration 041 pending:** serialized service-role commands derive scope, order targets, protect default/referenced deletion, commit exact audit evidence, and expose stable errors; responsive admin browser QA is green |
 
 ### Platform gaps that become risks at scale
 
@@ -466,12 +467,20 @@ Every implementation slice must:
     wrapper handles confirmed commit, proven provisional compensation, and
     ambiguous reconciliation as distinct outcomes. A 25-assertion disposable
     matrix passed privilege, positive, rollback, replay, and zero-residue cases.
-28. **P0-AB — code complete in `d46a3af`; migration pending:** Migration 040
+28. **P0-AB — deployed and live-verified:** Commit `d46a3af` and migration 040
     adds service-role-only customer create/update commands with strict known
     fields, bounded hostname normalization, active-admin rechecks, target
     locking, inactive lifecycle protection, exact audit evidence, and committed
     row returns. Routes use stable error mappings, customer forms are responsive
     and accessible, and unauthenticated create/update HTTP probes fail closed.
-29. **Next local integrity work:** apply and live-probe migration 040, then
-    convert the next high-risk best-effort administrative audit domain to an
-    atomic command and run protected positive/rollback delivery probes.
+    A 25-assertion disposable live matrix passed positive/no-op, rollback,
+    lifecycle, privilege, concurrency, exact-audit, attribution, and cleanup.
+29. **P0-AC — code complete in `c65bf9e`; migration pending:** Migration 041
+    adds service-role-only SLA policy create/update/delete commands with one
+    serialization lock, derived scope shape, ordered bounded targets,
+    protected default/referenced deletion, exact transactional audit evidence,
+    and committed row returns. Strict API contracts, 19 tests, three HTTP
+    denials, and responsive desktop/mobile admin QA are green.
+30. **Next local integrity work:** apply and live-probe migration 041, then
+    convert spare-parts catalog/inventory best-effort audit writes to atomic
+    commands and run protected positive/rollback delivery probes.
