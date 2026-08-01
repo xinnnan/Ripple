@@ -7,16 +7,15 @@ meaningful change and before ending a work session. Newest entries go first.
 
 - **Branch:** `codex/prd-v1-1-gap-closure`
 - **Active phase:** Phase 0 — Containment and reproducible baseline
-- **Active work item:** apply/probe migration 042, configure the production
-  outbox worker secret, then move per-site inventory administration onto an
-  atomic command
-- **Last verified implementation commit:** `de54e20` (`fix: repair spare-part migration parser`), following `737d2a8` (`fix: make spare-part catalog administration atomic`)
+- **Active work item:** apply/probe migration 043, configure the production
+  outbox worker secret, then continue the next integrity milestone
+- **Last verified implementation commit:** `20a8439` (`fix: make spare-part inventory administration atomic`)
 - **Uncommitted work:** none expected after the documentation checkpoint;
   verify with `git status` before resuming
-- **Deployment gate:** migrations 001–041 are confirmed applied; migration 042
-  must be applied before deploying atomic spare-parts catalog administration.
+- **Deployment gate:** migrations 001–042 are confirmed applied; migration 043
+  must be applied before deploying atomic per-site inventory administration.
   Production `CRON_SECRET` remains unset in this workspace. Protected positive
-  business probes for migrations 028–040 still require staging fixtures
+  business probes for migrations 028–037 still require staging fixtures
 - **External validation gate:** populate the gitignored credential fixture with six
   dedicated staging accounts, two tenants, a decommissioned site/ticket, and
   real internal artifact IDs; then run
@@ -41,17 +40,109 @@ meaningful change and before ending a work session. Newest entries go first.
   table overflow, and zero console errors. Spare-parts list/create/edit was
   reviewed at 1280×900 and 390×844 with every control labeled, local table
   overflow, lifecycle guidance, bounded-model validation, and zero console
-  errors. Password-based login passed;
+  errors. Inventory list/create/edit and the site inventory tab were reviewed
+  at 1280×900 and 390×844 with bound labels, site-prefilter persistence,
+  immutable edit identity, threshold/duplicate validation, local table
+  scrolling, Inter, and zero console errors. Password-based login passed;
   recovery-email delivery and one-time link consumption still require a
   dedicated staging mailbox.
-- **Exact next local step:** after the user applies migration 042, verify both
-  service-role-only catalog commands. Prove normalized create, case-folded
-  duplicate rejection, exact multi-field/no-op patch, price/shape constraints,
-  missing/non-admin/anonymous rollback, create/update serialization, audit
-  attribution, and zero residue. Then convert per-site inventory create/update
-  to migration 043. Configure `CRON_SECRET` separately before production
-  worker activation
+- **Exact next local step:** after the user applies migration 043, verify both
+  service-role-only inventory commands. Prove initial/existing upsert, exact
+  multi-field/no-op PATCH, threshold/location constraints, active part/site/
+  customer guards, increase-only restock timestamps, missing/non-admin/
+  anonymous rollback, serialization, audit attribution, and zero residue.
+  Configure `CRON_SECRET` separately before production worker activation
 - **Primary plan:** [`plans/prd-v1.1-gap-closure-plan.md`](./prd-v1.1-gap-closure-plan.md)
+
+## Session record — 2026-08-01 (P0-AE / atomic per-site inventory administration)
+
+### Objective
+
+Live-verify migration 042 after application, then close the per-site inventory
+write/audit gap with an independently deployable atomic command boundary and a
+complete admin workflow.
+
+### Migration 042 live verification
+
+- The corrected migration was present and both catalog commands passed a
+  disposable 57-assertion live matrix: normalized create/persistence, exact
+  create audit, case-folded duplicate rejection, missing/unknown/negative
+  validation, non-admin denial, exact multi-field patch/audits, no-op
+  timestamp/audit preservation, invalid/missing patch, collision rollback,
+  serialized competing patch/create, direct authenticated/anonymous RPC
+  denial, database constraints, attribution, and zero catalog residue.
+- The first disposable Auth creation used privileged role metadata and was
+  rejected by migration 039, confirming that signup escalation
+  remains closed. The successful run used safe bootstrap metadata and finalized
+  authorization through the service path.
+- Supabase Admin Auth deletion removed the disposable Auth identities but left
+  two mirrored `public.users` rows during cleanup. Those test-only profiles
+  were explicitly deleted and a final query confirmed zero catalog/profile
+  residue. This was an Auth/profile cleanup behavior, not a catalog transaction
+  failure.
+- A live read-only inventory audit found eight rows and zero negative quantities
+  or bounds, inverted thresholds, quantities above maximum, oversized/padded
+  locations, inactive parts, retired sites, or inactive customers.
+
+### Finding and implementation
+
+- Inventory POST/PATCH previously changed stock before best-effort audit,
+  accepted only application-level threshold relationships, and stamped
+  `last_restocked_at` for reductions as well as true replenishment.
+- Commit `20a8439` adds migration
+  `043_atomic_admin_spare_part_inventory_commands.sql`. Service-role-only
+  upsert/PATCH commands share one advisory lock, recheck an active admin, lock
+  active part/site/customer parents, enforce exact JSON and bounded integer/
+  location shape, preserve no-op state, and commit exact changed-field audit
+  evidence with stock. Initial positive stock and later increases alone update
+  the restock timestamp.
+- Database constraints enforce nonnegative quantity/min/max, ordered bounds,
+  `quantity <= max_quantity`, and normalized locations. Strict Zod contracts,
+  typed result parsing, stable SQLSTATE mappings, and explicit response
+  projections replace direct route writes and provider-detail leakage.
+- Added `/admin/inventory` with site filtering, stock totals, low-stock status,
+  labeled create/edit controls, immutable part/site identity during edits, and
+  duplicate/threshold validation. The site inventory tab links into the new
+  workspace with its site filter already selected.
+- Twelve migration/contract/wrapper/UI tests and seven route tests bring the
+  suite to 379 tests. Two unauthenticated inventory mutation probes bring the
+  production HTTP smoke to 37 checks.
+
+### Browser and quality verification
+
+- In-app browser E2E passed the inventory workspace and site inventory tab at
+  1280×900 and 390×844. It verified Inter, active navigation, labels, one-column
+  mobile controls, duplicate/over-maximum alerts, immutable edit selectors,
+  persisted site prefilter, and zero browser console errors.
+- The first populated mobile pass found page-level overflow caused by an
+  absolutely positioned `sr-only` Actions header inside the wide table. Moving
+  the header into visible normal flow kept the document at 390 px while the
+  table scrolled locally at 900 px. The site tab likewise remained page-contained
+  with a local 660 px table.
+- The disposable browser admin was deleted from Auth and the mirrored profile
+  was explicitly checked/cleaned; zero test profile residue remained.
+
+| Gate | Result |
+|---|---|
+| `npm ci` | Passed; locked install, 0 install-time vulnerabilities |
+| `npm test` | Passed; 53 files, 379 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build including `/admin/inventory` |
+| `npm run test:e2e` | Passed; all 37 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+| Immediate pre-commit `npm run test:e2e` | Passed before `20a8439` with the same 37 checks and explicit protected-fixture skip |
+
+### Rollout and next
+
+1. Apply migration 043 before deploying `20a8439`; the new routes intentionally
+   depend on its RPCs. The migration is additive and can remain if application
+   rollback is required; roll back application code first.
+2. Run disposable positive/no-op/rollback/privilege/concurrency/exact-audit
+   probes for both inventory commands and confirm increase-only restock
+   semantics plus zero residue.
+3. Run the protected credentialed matrix when its staging fixture is available
+   and configure `CRON_SECRET` separately for production worker activation.
 
 ## Session record — 2026-08-01 (P0-AD / atomic spare-parts catalog administration)
 
