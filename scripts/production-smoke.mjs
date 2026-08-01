@@ -120,6 +120,28 @@ async function expectUnauthorizedMutation(path, method, body) {
   );
 }
 
+async function expectInvalidAttachmentRejected() {
+  const form = new FormData();
+  form.set(
+    "file",
+    new Blob(["%PDF-1.7"], { type: "application/pdf" }),
+    "evidence.pdf"
+  );
+  form.set("ticket_id", "11111111-1111-4111-8111-111111111111");
+  form.set("visibility", "not-a-visibility");
+  const response = await fetch(`${baseUrl}/api/upload`, {
+    method: "POST",
+    body: form,
+    signal: AbortSignal.timeout(5000),
+  });
+  if (response.status !== 400) {
+    throw new Error(
+      `/api/upload expected invalid-form 400, received ${response.status}`
+    );
+  }
+  process.stdout.write("PASS invalid attachment form rejected before writes\n");
+}
+
 async function expectLoginRedirect(path) {
   const response = await fetch(`${baseUrl}${path}`, {
     redirect: "manual",
@@ -383,6 +405,7 @@ try {
     "PATCH",
     { quantity: 1 }
   );
+  await expectInvalidAttachmentRejected();
   await expectLoginRedirect("/admin/users");
   await expectLogoutRedirect();
   await expectHealth("/api/health/live", 200, "live");

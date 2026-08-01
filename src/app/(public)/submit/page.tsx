@@ -667,7 +667,7 @@ export default function SubmitTicketPage() {
                 type="file"
                 multiple
                 onChange={handleFileChange}
-                accept="image/*,.pdf,.log,.txt,.csv,.xlsx"
+                accept=".jpg,.jpeg,.png,.gif,.webp,.mp4,.mov,.pdf,.txt,.csv,.log,.xlsx,.xls"
                 className="hidden"
                 id="file-upload"
               />
@@ -693,7 +693,8 @@ export default function SubmitTicketPage() {
                 </span>{" "}
                 or drag and drop
                 <p className="text-xs mt-1">
-                  Photos, videos, logs, documents (max 50MB each)
+                  JPEG/PNG/GIF/WebP, MP4/MOV, PDF, UTF-8 text, CSV/log, or
+                  Excel (max 50MB each)
                 </p>
               </label>
               {files.length > 0 && (

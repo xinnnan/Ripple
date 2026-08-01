@@ -304,7 +304,7 @@ export function TicketActionsPanel({
       <CommentForm ticketId={ticketId} isInternal={isInternal} />
 
       {/* Upload Attachment */}
-      <AttachmentUpload ticketId={ticketId} isInternal={isInternal} currentUserId={currentUserId} />
+      <AttachmentUpload ticketId={ticketId} isInternal={isInternal} />
     </div>
   );
 }
@@ -601,11 +601,9 @@ function CommentForm({
 function AttachmentUpload({
   ticketId,
   isInternal,
-  currentUserId,
 }: {
   ticketId: string;
   isInternal: boolean;
-  currentUserId: string;
 }) {
   const [uploading, setUploading] = useState(false);
   const [visibility, setVisibility] = useState<"customer" | "internal">(
@@ -630,7 +628,6 @@ function AttachmentUpload({
       const formData = new FormData();
       formData.append("file", file);
       formData.append("ticket_id", ticketId);
-      formData.append("uploaded_by", currentUserId);
       formData.append("visibility", visibility);
 
       const res = await fetch("/api/upload", {
@@ -699,11 +696,11 @@ function AttachmentUpload({
               onChange={handleUpload}
               disabled={uploading}
               className="hidden"
-              accept="image/*,video/*,.pdf,.txt,.csv,.log,.xlsx,.xls"
+              accept=".jpg,.jpeg,.png,.gif,.webp,.mp4,.mov,.pdf,.txt,.csv,.log,.xlsx,.xls"
             />
           </label>
           <span className="text-xs text-muted-foreground">
-            Max 50MB. Images, videos, PDF, text files.
+            Max 50MB. JPEG/PNG/GIF/WebP, MP4/MOV, PDF, UTF-8 text, or Excel.
           </span>
         </div>
       </div>

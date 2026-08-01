@@ -24,6 +24,8 @@ const SENSITIVE_TICKET_FIELDS = Object.freeze([
   "root_cause_category",
   "follow_up_needed",
 ]);
+const ATTACHMENT_ACCEPT =
+  ".jpg,.jpeg,.png,.gif,.webp,.mp4,.mov,.pdf,.txt,.csv,.log,.xlsx,.xls";
 
 function requiredObject(value, label, errors) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -258,12 +260,13 @@ export function validateCredentialedFixtures(raw) {
   if (
     normalized.resources.internalArtifacts.internalAttachmentPath &&
     normalized.resources.tenantA.activeTicketId &&
-    !normalized.resources.internalArtifacts.internalAttachmentPath.startsWith(
-      `attachments/${normalized.resources.tenantA.activeTicketId}/`
+    !attachmentPathBelongsToTicket(
+      normalized.resources.internalArtifacts.internalAttachmentPath,
+      normalized.resources.tenantA.activeTicketId
     )
   ) {
     errors.push(
-      "internalAttachmentPath must be under attachments/<tenant A ticket UUID>/"
+      "internalAttachmentPath must be under the tenant A ticket's attachment prefix"
     );
   }
 
@@ -271,6 +274,16 @@ export function validateCredentialedFixtures(raw) {
     throw new Error(`Invalid credentialed E2E fixture:\n- ${errors.join("\n- ")}`);
   }
   return normalized;
+}
+
+function attachmentPathBelongsToTicket(storagePath, ticketId) {
+  const parts = storagePath.split("/");
+  return (
+    parts[0] === "attachments" &&
+    parts.length >= 3 &&
+    parts.at(-2) === ticketId &&
+    Boolean(parts.at(-1))
+  );
 }
 
 export async function loadCredentialedFixtures(env = process.env) {
@@ -353,6 +366,27 @@ async function expectRedirect(page, pathName, expectedPath, expectedParam) {
     );
   }
   pass(`page denial ${pathName} -> ${expectedPath}`);
+}
+
+async function expectAttachmentUi(page, { internal }) {
+  const fileInput = page.locator(
+    `input[type="file"][accept="${ATTACHMENT_ACCEPT}"]`
+  );
+  assert((await fileInput.count()) === 1, "attachment input contract is missing");
+  await page
+    .getByText("Max 50MB. JPEG/PNG/GIF/WebP, MP4/MOV, PDF, UTF-8 text, or Excel.")
+    .waitFor();
+
+  const internalVisibility = page
+    .locator("select")
+    .filter({ has: page.locator('option[value="internal"]') });
+  assert(
+    (await internalVisibility.count()) === (internal ? 1 : 0),
+    internal
+      ? "internal attachment visibility control is missing"
+      : "external user received an internal visibility control"
+  );
+  pass(`${internal ? "internal" : "external"} attachment UI contract`);
 }
 
 async function getJson(context, pathName, expectedStatus) {
@@ -514,6 +548,7 @@ async function runBrowserAndApiMatrix(browser, fixture) {
       `/tickets/${tenantA.activeTicketId}`,
       tenantA.activeTicketNo
     );
+    await expectAttachmentUi(sessions.customerA.page, { internal: false });
     await expectPage(
       sessions.customerA.page,
       `/tickets/${tenantB.activeTicketId}`,
@@ -544,6 +579,12 @@ async function runBrowserAndApiMatrix(browser, fixture) {
       `/tickets/${tenantA.archivedTicketId}`,
       tenantA.archivedTicketNo
     );
+    await expectPage(
+      sessions.engineer.page,
+      `/tickets/${tenantA.activeTicketId}`,
+      tenantA.activeTicketNo
+    );
+    await expectAttachmentUi(sessions.engineer.page, { internal: true });
     await expectPage(
       sessions.customerA.page,
       `/tickets/${tenantA.archivedTicketId}`,
