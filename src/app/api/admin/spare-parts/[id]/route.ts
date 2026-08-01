@@ -1,29 +1,38 @@
 import { NextRequest, NextResponse } from "next/server";
-import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAdmin } from "@/lib/supabase/auth-helpers";
-import { logAudit } from "@/lib/audit";
+import {
+  sparePartIdSchema,
+  sparePartPatchRequestSchema,
+} from "@/lib/spare-parts/admin-contracts";
+import {
+  AdminSparePartMutationError,
+  applyAdminSparePartPatch,
+} from "@/lib/spare-parts/admin-mutations";
 
 export const dynamic = "force-dynamic";
 
-const PART_CATEGORIES = [
-  "sensor", "motor", "controller", "belt", "roller", "cable",
-  "connector", "battery", "pcb", "mechanical", "safety", "tool", "other",
-] as const;
+const PART_PROJECTION = `
+  id,
+  part_number,
+  part_name,
+  description,
+  category,
+  unit,
+  unit_price,
+  compatible_models,
+  image_url,
+  is_active,
+  created_at,
+  updated_at
+`;
 
-const PART_UNITS = ["piece", "set", "meter", "kg", "liter", "roll"] as const;
-
-const partPatchSchema = z.object({
-  part_number: z.string().trim().min(1).max(100).optional(),
-  part_name: z.string().trim().min(1).max(200).optional(),
-  description: z.string().max(2000).nullable().optional(),
-  category: z.enum(PART_CATEGORIES).optional(),
-  unit: z.enum(PART_UNITS).optional(),
-  unit_price: z.number().nonnegative().finite().nullable().optional(),
-  compatible_models: z.array(z.string().trim().min(1).max(100)).max(50).nullable().optional(),
-  image_url: z.string().url().max(2000).nullable().optional(),
-  is_active: z.boolean().optional(),
-});
+function invalidPartId() {
+  return NextResponse.json(
+    { error: "Invalid spare-part id" },
+    { status: 400 }
+  );
+}
 
 // GET /api/admin/spare-parts/[id]
 export async function GET(
@@ -36,19 +45,38 @@ export async function GET(
   }
 
   const { id } = await params;
-  const supabase = createAdminClient();
+  if (!sparePartIdSchema.safeParse(id).success) return invalidPartId();
 
-  const { data, error } = await supabase
-    .from("spare_parts")
-    .select("*")
-    .eq("id", id)
-    .single();
+  try {
+    const { data, error } = await createAdminClient()
+      .from("spare_parts")
+      .select(PART_PROJECTION)
+      .eq("id", id)
+      .maybeSingle();
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 404 });
+    if (error) {
+      console.error("GET /api/admin/spare-parts/[id] failed:", {
+        code: error.code,
+      });
+      return NextResponse.json(
+        { error: "Failed to fetch spare part" },
+        { status: 500 }
+      );
+    }
+    if (!data) {
+      return NextResponse.json(
+        { error: "Spare part not found" },
+        { status: 404 }
+      );
+    }
+    return NextResponse.json({ data });
+  } catch (error) {
+    console.error("GET /api/admin/spare-parts/[id] error:", error);
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
   }
-
-  return NextResponse.json({ data });
 }
 
 // PATCH /api/admin/spare-parts/[id]
@@ -62,6 +90,7 @@ export async function PATCH(
   }
 
   const { id } = await params;
+  if (!sparePartIdSchema.safeParse(id).success) return invalidPartId();
 
   let body: unknown;
   try {
@@ -70,72 +99,56 @@ export async function PATCH(
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const parsed = partPatchSchema.safeParse(body);
+  const parsed = sparePartPatchRequestSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(
       { error: "Validation error", details: parsed.error.errors },
       { status: 400 }
     );
   }
-  const data = parsed.data;
 
-  const supabase = createAdminClient();
-
-  // Fetch the current row so we can log a meaningful diff and detect
-  // "no-op" PATCHes early.
-  const before = await supabase
-    .from("spare_parts")
-    .select("*")
-    .eq("id", id)
-    .maybeSingle();
-  if (before.error) {
-    console.error("PATCH /api/admin/spare-parts/[id] before fetch failed:", before.error);
-    return NextResponse.json({ error: "Failed to load spare part" }, { status: 500 });
-  }
-  if (!before.data) {
-    return NextResponse.json({ error: "Spare part not found" }, { status: 404 });
-  }
-
-  const updateFields: Record<string, unknown> = { updated_at: new Date().toISOString() };
-  for (const [k, v] of Object.entries(data)) {
-    updateFields[k] = v;
-  }
-
-  let row;
   try {
-    const result = await supabase
-      .from("spare_parts")
-      .update(updateFields)
-      .eq("id", id)
-      .select()
-      .single();
-    if (result.error) throw result.error;
-    row = result.data;
-  } catch (e) {
-    console.error("PATCH /api/admin/spare-parts/[id] update failed:", e);
+    const part = await applyAdminSparePartPatch({
+      supabase: createAdminClient(),
+      actorId: auth.userId,
+      sparePartId: id,
+      patch: parsed.data,
+    });
+    return NextResponse.json({ data: part });
+  } catch (error) {
+    if (error instanceof AdminSparePartMutationError) {
+      if (error.code === "P0002") {
+        return NextResponse.json(
+          { error: "Spare part not found" },
+          { status: 404 }
+        );
+      }
+      if (error.code === "23505") {
+        return NextResponse.json(
+          { error: "A spare part with this part number already exists" },
+          { status: 409 }
+        );
+      }
+      if (error.code === "42501") {
+        return NextResponse.json(
+          { error: "Forbidden: Active admin access required" },
+          { status: 403 }
+        );
+      }
+      if (
+        ["22003", "22023", "22P02", "23514"].includes(error.code ?? "")
+      ) {
+        return NextResponse.json(
+          { error: "Invalid spare-part update" },
+          { status: 400 }
+        );
+      }
+    }
+
+    console.error("PATCH /api/admin/spare-parts/[id] command failed:", error);
     return NextResponse.json(
       { error: "Failed to update spare part" },
       { status: 500 }
     );
   }
-
-  // One audit entry per changed field. Spare-part edits are rare
-  // and admin-only, so the noise is fine.
-  for (const [field, newVal] of Object.entries(data)) {
-    const oldVal = (before.data as Record<string, unknown>)[field];
-    if (oldVal === newVal) continue;
-    await logAudit({
-      actorId: auth.userId,
-      actorEmail: auth.email,
-      actorRole: auth.role,
-      entityType: "spare_part",
-      entityId: id,
-      action: "updated",
-      fieldName: field,
-      oldValue: oldVal == null ? null : String(oldVal),
-      newValue: newVal == null ? null : String(newVal),
-    });
-  }
-
-  return NextResponse.json({ data: row });
 }

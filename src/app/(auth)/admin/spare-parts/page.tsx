@@ -16,8 +16,8 @@ export default async function AdminSparePartsPage() {
   const typedParts = (parts || []) as unknown as SparePart[];
 
   return (
-    <div className="p-8">
-      <div className="mb-8 flex items-center justify-between">
+    <div className="p-4 sm:p-8">
+      <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Spare Parts</h1>
           <p className="text-sm text-muted-foreground mt-1">
@@ -26,14 +26,14 @@ export default async function AdminSparePartsPage() {
         </div>
         <Link
           href="/admin/spare-parts/create"
-          className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+          className="rounded-lg bg-primary px-4 py-2 text-center text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
         >
           + Add Part
         </Link>
       </div>
 
-      <div className="rounded-xl border border-border overflow-hidden">
-        <table className="w-full">
+      <div className="overflow-x-auto rounded-xl border border-border">
+        <table className="min-w-[860px] w-full">
           <thead>
             <tr className="border-b border-border bg-muted/50">
               <th className="text-left text-xs font-medium text-muted-foreground p-3">
@@ -92,7 +92,9 @@ export default async function AdminSparePartsPage() {
                   </td>
                   <td className="p-3">
                     <span className="text-sm text-foreground">
-                      {part.unit_price ? `$${Number(part.unit_price).toFixed(2)}` : "—"}
+                      {part.unit_price != null
+                        ? `$${Number(part.unit_price).toFixed(2)}`
+                        : "—"}
                     </span>
                   </td>
                   <td className="p-3">
