@@ -10,7 +10,7 @@ meaningful change and before ending a work session. Newest entries go first.
 - **Active work item:** apply/probe migration 042, configure the production
   outbox worker secret, then move per-site inventory administration onto an
   atomic command
-- **Last verified implementation commit:** `737d2a8` (`fix: make spare-part catalog administration atomic`)
+- **Last verified implementation commit:** `de54e20` (`fix: repair spare-part migration parser`), following `737d2a8` (`fix: make spare-part catalog administration atomic`)
 - **Uncommitted work:** none expected after the documentation checkpoint;
   verify with `git status` before resuming
 - **Deployment gate:** migrations 001–041 are confirmed applied; migration 042
@@ -100,7 +100,24 @@ rollouts.
   to 360 tests. Two unauthenticated catalog mutation probes bring production
   HTTP smoke to 35 checks.
 
-### Verification before implementation commit
+### Migration 042 rollout correction
+
+- The first SQL-editor application failed with PostgreSQL `42601` while
+  compiling the PATCH function's no-op comparison. The multiline `CASE`
+  expression appeared directly inside a PL/pgSQL `IF ... THEN`; the parser
+  treated the first inner `THEN` as the outer terminator and reported an
+  incomplete expression. Because the file begins with `BEGIN` and never
+  reached `COMMIT`, PostgreSQL aborts that attempted transaction.
+- Commit `de54e20` replaces the nested expression with one
+  `jsonb_build_object` candidate and a simple key-to-key `IS DISTINCT FROM`
+  comparison. A static regression rejects the ambiguous `CASE v_field` form
+  and requires the candidate-object comparison.
+- Retry requirement: rerun the complete corrected migration 042 file from the
+  beginning. Do not run only the changed function fragment because the aborted
+  transaction also rolled back the preceding constraints, index, grants, and
+  create command.
+
+### Verification after parser repair
 
 | Gate | Result |
 |---|---|
@@ -112,11 +129,12 @@ rollouts.
 | `npm audit` | Passed; 0 known vulnerabilities |
 | `git diff --check` | Passed |
 | Manual browser E2E | Passed list/create/edit at 1280×900 and 390×844: all eight create and nine edit controls labeled, zero page-level overflow, local 860 px table scrolling, bounded-model alert without a write, lifecycle guidance, and zero console errors. The disposable admin was fully deleted |
-| Immediate pre-commit `npm run test:e2e` | Passed before `737d2a8` with the same 35 checks and explicit protected-fixture skip |
+| Immediate pre-commit `npm run test:e2e` | Passed before `de54e20` with the same 35 checks and explicit protected-fixture skip |
 
 ### Rollout and next
 
-1. Apply migration 042 before deploying `737d2a8`.
+1. Apply the complete corrected migration 042 from `de54e20` before deploying
+   the catalog changes from `737d2a8`.
 2. Run disposable positive/no-op/rollback/privilege/concurrency/exact-audit
    probes for both catalog commands and confirm zero residue.
 3. Convert per-site inventory create/update and audit to one row-locked command

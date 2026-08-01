@@ -138,10 +138,14 @@ blindly. Migrations 001–041 are confirmed applied as of 2026-08-01. Migration
 041 passed a 35-assertion disposable live matrix covering create, normalized
 multi-field/no-op patch, protected and referenced deletion, validation,
 privilege, reference races, exact audit attribution, rollback, and zero
-residue. Apply migration 042 before deploying `737d2a8`; it makes spare-part
-catalog create/update and audit one transaction, normalizes catalog identity,
-enforces case-insensitive part-number uniqueness and safe data shape, and keeps
-no-op edits from touching timestamps or audit history.
+residue. Apply the complete corrected migration 042 from `de54e20` before
+deploying the catalog changes from `737d2a8`; it makes spare-part catalog
+create/update and audit one transaction, normalizes catalog identity, enforces
+case-insensitive part-number uniqueness and safe data shape, and keeps no-op
+edits from touching timestamps or audit history. An earlier migration 042
+version failed with `42601` inside the PATCH no-op comparison; its surrounding
+transaction aborted, so retry the full file rather than only the repaired
+function fragment.
 
 ### Enable pgvector (for AI features)
 

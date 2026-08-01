@@ -135,7 +135,7 @@ has a release-blocking security or integrity problem.
 | INT-004 | Part-request header and items, and field order plus engineer assignments, are non-atomic | **Deployed; protected verification pending:** part-request update/create are deployed in `1f49ecc`/`64cee3d` + migrations 028/029. `2557760` + migration 030 make field-order create/update, complete engineer assignment sets, numbering, and audit atomic; both RPCs are live and protected rollback probes remain |
 | INT-005 | Part fulfillment updates do not verify the item belongs to the request in the URL | **Closed in `1f49ecc`; migration 028 confirmed applied 2026-07-29:** the row-locked command constrains every item by both `request_id` and item ID and rejects invalid quantity bounds; protected runtime probes remain |
 | INT-006 | Team site assignments are delete-all then insert, so a failed insert removes all access | **Deployed; protected verification pending:** `c0c2354` + migration 031 atomically update profile/status, apply a role-preserving membership set diff, validate the manager/tenant/target/sites, and write audit evidence; RPC presence and non-writing validation behavior are confirmed |
-| INT-007 | Audit writes are best-effort and separate from the business transaction | **Platform foundation extended through `737d2a8`:** migrations 033–041 are applied/live-verified for ticket delivery/create and admin site-membership/site/user/customer/SLA mutations, command repair, and secure provisioning. Migration 042 adds transactionally audited spare-parts catalog administration and awaits application. Inventory and other best-effort domains still need conversion |
+| INT-007 | Audit writes are best-effort and separate from the business transaction | **Platform foundation extended through `de54e20`:** migrations 033–041 are applied/live-verified for ticket delivery/create and admin site-membership/site/user/customer/SLA mutations, command repair, and secure provisioning. Corrected migration 042 adds transactionally audited spare-parts catalog administration and awaits application. Inventory and other best-effort domains still need conversion |
 | INT-008 | Site detail assigns the inventory query to an unused tuple slot and always renders empty inventory | **Closed in `9083ece`:** the inventory query result is wired to the inventory tab and covered by the external-resource containment regression checkpoint |
 | INT-009 | `/sites` links to `?site_id=...`, while the ticket parser expects `?site=...` | **Closed in `9083ece`:** site links and the ticket filter parser use the canonical `site` query key |
 | INT-010 | Slack Ripple Assist calls an internal authenticated HTTP API without a session cookie | **Closed in `3f7d296`:** web and signed Slack ingress authorize independently, then call the shared rate-limited AI application service; Slack preserves channel delivery context |
@@ -147,7 +147,7 @@ has a release-blocking security or integrity problem.
 | INT-016 | Admin/team user creation splits Auth identity, profile, tenant, membership, and audit writes and ignores partial failures | **Closed in `33b3a66`; deployment confirmed 2026-07-31:** guarded finalizers commit database state atomically; the cross-system wrapper confirms success, compensates only a proven provisional identity, and flags ambiguous outcomes for reconciliation. Migration 039 passed a 25-assertion disposable matrix |
 | INT-017 | Customer create/update committed the tenant row before best-effort audit, ignored update failures, could report success for a missing target, and leaked database messages | **Closed in `d46a3af`; deployment confirmed 2026-07-31:** migration 040 passed a 25-assertion live matrix across positive/no-op, validation, lifecycle, privilege, concurrency, exact-audit, attribution, rollback, and zero-residue behavior |
 | INT-018 | SLA policy create/update committed contractual timing before best-effort audit, delete had no audit, scope/default could diverge, and reference checks raced deletion | **Closed in `c65bf9e`; deployment confirmed 2026-08-01:** migration 041 passed a 35-assertion live matrix across positive/no-op, validation, privilege, protected/referenced deletion, reference races, exact audit attribution, rollback, and zero residue |
-| INT-019 | Spare-part catalog create/update committed before best-effort audit, used case-sensitive identity, touched no-op timestamps, and lacked a database price guard | **Code complete in `737d2a8`; migration 042 pending:** serialized service-role commands normalize and validate catalog shape, commit exact audit evidence, preserve no-op timestamps, enforce case-folded uniqueness/nonnegative pricing, and expose stable errors; responsive admin browser QA is green |
+| INT-019 | Spare-part catalog create/update committed before best-effort audit, used case-sensitive identity, touched no-op timestamps, and lacked a database price guard | **Code complete in `737d2a8`, parser repair `de54e20`; corrected migration 042 pending:** serialized service-role commands normalize and validate catalog shape, commit exact audit evidence, preserve no-op timestamps, enforce case-folded uniqueness/nonnegative pricing, and expose stable errors; responsive admin browser QA is green |
 
 ### Platform gaps that become risks at scale
 
@@ -483,13 +483,15 @@ Every implementation slice must:
     and committed row returns. A 35-assertion disposable live matrix passed
     positive/no-op, validation, privilege, protected/referenced deletion,
     reference-race, exact-audit, attribution, rollback, and cleanup cases.
-30. **P0-AD — code complete in `737d2a8`; migration pending:** Migration 042
+30. **P0-AD — code complete in `737d2a8`, parser repair `de54e20`; corrected migration pending:** Migration 042
     adds service-role-only spare-part catalog create/update commands with one
     serialization lock, strict normalized shape, case-folded part identity,
     nonnegative pricing, active creation, no-op preservation, exact
     transactional audit evidence, and committed row returns. Strict API
     contracts, 20 tests, two HTTP denials, and responsive desktop/mobile admin
-    QA are green.
+    QA are green. The first apply failed transactionally with `42601`; rerun
+    the complete corrected file because the aborted transaction rolled back
+    every preceding migration statement.
 31. **Next local integrity work:** apply and live-probe migration 042, then
     convert per-site inventory best-effort audit writes to an atomic command in
     migration 043 and run protected positive/rollback delivery probes.

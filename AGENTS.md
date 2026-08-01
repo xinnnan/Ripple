@@ -831,6 +831,13 @@ case-folded part number. The shared create/edit form binds every control,
 explains lifecycle and identity behavior, contains its mobile table, and
 correctly distinguishes `$0.00` from an unavailable price.
 
+The first SQL-editor rollout attempt failed with `42601`: a multiline `CASE`
+expression sat directly inside `IF ... IS DISTINCT FROM ... THEN`, so PL/pgSQL
+treated the first inner `THEN` as the outer terminator. Commit `de54e20`
+prebuilds one candidate JSON object and compares its fields directly. The
+migration-level transaction never reached `COMMIT`, so retry the complete
+corrected file; do not apply only the repaired function fragment.
+
 **Lesson:** catalog master data is referenced by inventory and historical
 requests, so identity and lifecycle edits are not ordinary CRUD. Normalize and
 constrain the durable key at the database boundary, serialize competing admin
@@ -979,7 +986,7 @@ resume work; this section remains the broader historical summary.
 | 🟡 Verify | Migration 034 protected creation probes remain | `supabase/migrations/034_atomic_ticket_creation_outbox.sql` | Command privilege, validation, constraint, and zero-residue probes are live/green; run disposable web/Slack creation and outbox-delivery probes with staging fixtures |
 | 🟡 Verify | Migration 035 protected membership probes remain | `supabase/migrations/035_atomic_admin_site_membership.sql` | Service validation/not-found and anonymous-denial probes are live/green with zero residue; run disposable same/cross-tenant add/remove/rollback probes |
 | 🟡 Verify | Migration 037 protected positive probes remain | `supabase/migrations/037_repair_qualified_sql_expressions.sql` | All six definitions now reach domain validation instead of `42883`; anonymous denial and zero-residue probes are green. Run disposable positive/rollback business probes with staging fixtures |
-| 🔴 Apply | Migration 042 is not deployed yet | `supabase/migrations/042_atomic_admin_spare_part_commands.sql` | Apply before deploying `737d2a8`; then verify normalized create, case-folded duplicate rejection, multi-field/no-op patch, price/shape constraints, exact audit cardinality, invalid/missing/non-admin/anonymous rollback, create/update serialization, and zero residue |
+| 🔴 Apply | Corrected migration 042 is not deployed yet | `supabase/migrations/042_atomic_admin_spare_part_commands.sql` | The first attempt failed transactionally with `42601`; rerun the complete file from `de54e20` before deploying `737d2a8`, then verify normalized create, case-folded duplicate rejection, multi-field/no-op patch, price/shape constraints, exact audit cardinality, invalid/missing/non-admin/anonymous rollback, create/update serialization, and zero residue |
 | 🟡 Med | Vercel recovery cron runs daily for plan compatibility | `vercel.json` | Request-path dispatch is immediate; use a supported 1–5 minute schedule or external scheduler when the production Vercel plan permits |
 | 🟢 Low | Slack `events` route doesn't route customer messages to a ticket comment yet | `src/app/api/slack/events/route.ts` | Sprint 3 — bidirectional thread sync (SLK-008) |
 | 🟡 Med | Credentialed role/tenant matrix has not had its first staging execution | `scripts/credentialed-role-matrix.mjs` | Harness, fixture validation, and Chromium launch are committed/green; provision six dedicated accounts and non-vacuous two-tenant/archive/internal-artifact IDs, then run with required credentials |
@@ -1055,9 +1062,10 @@ resume work; this section remains the broader historical summary.
     matrix covering positive/no-op, rollback, scope, target order, privilege,
     reference/concurrency, exact audit, attribution, and zero residue.
 28. **Deploy atomic spare-parts catalog administration.** Code is committed in
-    `737d2a8`; apply migration 042 and run positive/no-op, duplicate, shape,
-    price, privilege, concurrency, exact-audit, attribution, and zero-residue
-    probes. Convert per-site inventory separately in migration 043.
+    `737d2a8` with the migration parser repaired in `de54e20`; apply the full
+    corrected migration 042 and run positive/no-op, duplicate, shape, price,
+    privilege, concurrency, exact-audit, attribution, and zero-residue probes.
+    Convert per-site inventory separately in migration 043.
 
 ### Open architectural questions
 - The RLS recursion bug surfaces a bigger question: do we keep `createAdminClient() + code filter` (the current pattern in `lib/supabase/scope.ts`) or move back to proper RLS once migration 019 + similar fixes are in place? The current pattern scales fine but has a lower safety margin for new queries.
