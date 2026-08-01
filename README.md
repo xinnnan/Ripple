@@ -32,6 +32,10 @@ A Slack-native support portal for DropletAI Services. Centralises customer suppo
 - **Atomic SLA Policy Administration** — Default/customer scope, ordered timing
   targets, protected deletion, and exact audit evidence share one serialized
   database command boundary; the admin UI is labeled and mobile-responsive.
+- **Atomic Spare-Parts Catalog Administration** — Catalog identity, shape,
+  pricing, lifecycle edits, and exact audit evidence share guarded database
+  commands; part numbers are unique across letter case and the shared admin
+  form is accessible and responsive.
 - **Site Channel Model** — Each customer site has a dedicated Slack support channel, mapped via `slack_channels`.
 
 ## Tech Stack
@@ -39,14 +43,14 @@ A Slack-native support portal for DropletAI Services. Centralises customer suppo
 | Layer | Tool |
 |-------|------|
 | Frontend | Next.js 15.5.22 (App Router) + React 19 + TypeScript + Tailwind CSS v4 + self-hosted Inter |
-| Database | Supabase Postgres (41 migrations, see `supabase/migrations/`) |
+| Database | Supabase Postgres (42 migrations, see `supabase/migrations/`) |
 | Auth | Supabase Auth (email + password + recovery) + new `sb_publishable_` / `sb_secret_` key format |
 | Storage | Supabase Storage — bucket `ripple-attachments`, **50 MB cap per file** |
 | Slack | `@slack/bolt` + `@slack/web-api` (runs inside Next.js API routes, no separate process) |
 | AI | **MiniMax AI** (OpenAI-compatible) — was OpenAI → Zhipu → MiniMax. **See "AI provider" section below.** |
 | Email | Resend (transactional: ticket confirmation, resolution notice) |
 | Validation | Zod (all API request bodies) |
-| Testing | Vitest (340 unit/contract tests) + 33-check production HTTP smoke + credentialed Playwright/API/RLS matrix |
+| Testing | Vitest (360 unit/contract tests) + 35-check production HTTP smoke + credentialed Playwright/API/RLS matrix |
 | Hosting | Vercel (serverless API routes) |
 
 ## Phases
@@ -81,7 +85,7 @@ cp .env.local.example .env.local
 
 ### Run database migrations
 
-Apply the SQL files in `supabase/migrations/` **in order** (001 → 041) via the Supabase SQL editor or `supabase db push`:
+Apply the SQL files in `supabase/migrations/` **in order** (001 → 042) via the Supabase SQL editor or `supabase db push`:
 
 ```
 001_create_customers.sql
@@ -125,18 +129,19 @@ Apply the SQL files in `supabase/migrations/` **in order** (001 → 041) via the
 039_secure_user_provisioning.sql
 040_atomic_admin_customer_commands.sql
 041_atomic_admin_sla_policy_commands.sql
+042_atomic_admin_spare_part_commands.sql
 ```
 
 Later migrations replace policies/functions and should be applied once in
 order. Migration `017` also performs role data updates and must not be re-run
-blindly. Migrations 001–040 are confirmed applied as of 2026-07-31. Migration
-040 passed a 25-assertion disposable live matrix covering normalized create and
-update, exact/no-op audit cardinality, invalid/missing/inactive/non-admin/
-anonymous rollback, archive/update serialization, attribution, and zero
-residue. Apply migration 041 before deploying `c65bf9e`; it makes SLA policy
-create/update/delete and audit one transaction, derives default scope from the
-customer relationship, orders response/resolution targets, and protects the
-default or ticket-referenced policy from deletion.
+blindly. Migrations 001–041 are confirmed applied as of 2026-08-01. Migration
+041 passed a 35-assertion disposable live matrix covering create, normalized
+multi-field/no-op patch, protected and referenced deletion, validation,
+privilege, reference races, exact audit attribution, rollback, and zero
+residue. Apply migration 042 before deploying `737d2a8`; it makes spare-part
+catalog create/update and audit one transaction, normalizes catalog identity,
+enforces case-insensitive part-number uniqueness and safe data shape, and keeps
+no-op edits from touching timestamps or audit history.
 
 ### Enable pgvector (for AI features)
 
@@ -199,8 +204,8 @@ protected CI should set `RIPPLE_E2E_REQUIRE_CREDENTIALS=1` so it fails closed.
 
 ### GitHub Actions
 
-`.github/workflows/ci.yml` runs the locked install, 340 unit/contract tests,
-lint, production build, 33-check HTTP E2E, and dependency audit for pull
+`.github/workflows/ci.yml` runs the locked install, 360 unit/contract tests,
+lint, production build, 35-check HTTP E2E, and dependency audit for pull
 requests and pushes to `main`. GitHub-owned actions are pinned to full commit
 SHAs and the workflow has read-only repository permissions.
 
@@ -288,7 +293,7 @@ src/
 │   ├── ticket.ts                # ⭐ all ticket domain enums + labels
 │   └── spare-parts.ts
 └── middleware.ts                # ⭐ route guard + session refresh
-supabase/migrations/             # 001-041
+supabase/migrations/             # 001-042
 plans/                           # Architecture + phase planning docs
 AGENTS.md                        # ⭐ project context, lessons learned, roadmap
 ```
@@ -299,7 +304,7 @@ AGENTS.md                        # ⭐ project context, lessons learned, roadmap
 - Ticket detail → `app/(auth)/tickets/[ticketId]/page.tsx` + `ticket-actions-panel.tsx`
 - Slack actions → `lib/slack/handlers/actions.ts` + `app/api/slack/interactive/route.ts`
 - AI assist → `app/api/ai/suggest/route.ts` + `lib/ai/suggest.ts`
-- DB schema → `supabase/migrations/001_*.sql` … `041_atomic_admin_sla_policy_commands.sql`
+- DB schema → `supabase/migrations/001_*.sql` … `042_atomic_admin_spare_part_commands.sql`
 
 ## Ticket Lifecycle
 

@@ -2,7 +2,7 @@
 
 > DropletAI's Slack-native support portal. Lightweight ticket system, web portal, and AI-assisted troubleshooting for industrial automation deployments (AMR / AGV / conveyor / sortation / RCS / WCS).
 
-This file is the **single source of truth for project context** — read it before touching anything. It also serves as the lessons-learned notebook and progress tracker. Last updated 2026-07-31.
+This file is the **single source of truth for project context** — read it before touching anything. It also serves as the lessons-learned notebook and progress tracker. Last updated 2026-08-01.
 
 ---
 
@@ -90,13 +90,16 @@ Vercel.
 │   │   ├── users/
 │   │   │   ├── mutations.ts             # Atomic admin-user patch wrapper
 │   │   │   └── provisioning.ts          # Safe Auth + DB provisioning orchestration
+│   │   ├── spare-parts/
+│   │   │   ├── admin-contracts.ts        # Strict admin catalog request contracts
+│   │   │   └── admin-mutations.ts        # Atomic admin catalog wrappers
 │   │   └── email/
 │   │       └── send.ts                  # Resend templates + idempotency keys
 │   ├── types/
 │   │   ├── ticket.ts                    # ⭐ All domain enums + labels
 │   │   └── spare-parts.ts               # ⭐ Spare parts + field service enums
 │   └── middleware.ts                    # ⭐ Route guard + session refresh
-├── supabase/migrations/                 # 001–041, apply in order
+├── supabase/migrations/                 # 001–042, apply in order
 ├── plans/                               # Architecture + phase planning docs
 │   ├── architecture.md
 │   ├── phase2-customer-auth-and-user-management.md
@@ -115,7 +118,7 @@ Vercel.
 - Ticket detail UI → `src/app/(auth)/tickets/[ticketId]/page.tsx` (server) + `ticket-actions-panel.tsx` (client)
 - Slack ticket creation → `src/app/api/slack/command/ticket/route.ts` + `src/lib/slack/blocks/ticket-form.ts`
 - AI assist → `src/app/api/ai/suggest/route.ts` + `src/lib/ai/suggest.ts`
-- DB schema → `supabase/migrations/001_*.sql` … `041_atomic_admin_sla_policy_commands.sql`
+- DB schema → `supabase/migrations/001_*.sql` … `042_atomic_admin_spare_part_commands.sql`
 
 ---
 
@@ -153,8 +156,8 @@ const isInternal = role ? INTERNAL_ROLES.includes(role) : email ? isInternalEmai
 
 ## 5. Database Schema (Supabase)
 
-41 migrations, to be applied in order. Migrations 001–040 are confirmed
-applied as of 2026-07-31; migration 041 awaits application. Key tables:
+42 migrations, to be applied in order. Migrations 001–041 are confirmed
+applied as of 2026-08-01; migration 042 awaits application. Key tables:
 
 | Table | Purpose | Notes |
 |---|---|---|
@@ -169,8 +172,8 @@ applied as of 2026-07-31; migration 041 awaits application. Key tables:
 | `ai_suggestions` | Ripple Assist outputs | `model_name`, `confidence_level`, accept/dismiss feedback |
 | `slack_channels` / `slack_messages` | Site ↔ Slack channel map, message tracking | |
 | `integration_outbox` | Durable external delivery | Unique event keys, bounded leases, exponential backoff, delivery evidence, dead-letter retention |
-| `sla_policies` | Default/customer SLA targets | Migration 041 derives scope shape, orders response/resolution targets, serializes create/update/delete, protects default/referenced rows, and commits exact audit evidence atomically |
-| `spare_parts` / `spare_part_inventory` / `spare_part_requests` / `spare_part_request_items` | Phase 3 catalog + per-site stock + request workflow | `request_no` SPR-XXXX |
+| `sla_policies` | Default/customer SLA targets | Migration 041 derives scope shape, orders response/resolution targets, serializes create/update/delete, protects default/referenced rows, and commits exact audit evidence atomically; its 35-assertion live matrix is green |
+| `spare_parts` / `spare_part_inventory` / `spare_part_requests` / `spare_part_request_items` | Phase 3 catalog + per-site stock + request workflow | `request_no` SPR-XXXX; migration 042 makes catalog create/update transactionally audited with normalized case-folded identity, bounded shape, nonnegative price, and no-op preservation |
 | `field_service_orders` / `field_service_engineers` | Phase 3 dispatch | `order_no` FSO-XXXX, M:N engineers |
 
 **Auto-numbering** — sequence-backed RPCs allocate `ticket_no` (RPL-XXXXXX),
@@ -271,7 +274,7 @@ if ("error" in auth) return NextResponse.json({ error: auth.error }, { status: a
 npm install
 cp .env.local.example .env.local   # fill in real values
 # Run migrations in Supabase SQL editor (or `supabase db push` if using CLI):
-#   001 → 041 in order
+#   001 → 042 in order
 # Enable pgvector: CREATE EXTENSION IF NOT EXISTS vector;
 npm run dev
 ```
@@ -281,8 +284,8 @@ npm run dev
 - `npm run build` — production build
 - `npm run start` — production server
 - `npm run lint` — direct ESLint CLI across the repository; warnings fail the gate
-- `npm test` — Vitest unit/contract suite (340 tests)
-- `npm run test:e2e` — 33-check production HTTP smoke plus optional credentialed Playwright/API/RLS matrix; requires a successful build
+- `npm test` — Vitest unit/contract suite (360 tests)
+- `npm run test:e2e` — 35-check production HTTP smoke plus optional credentialed Playwright/API/RLS matrix; requires a successful build
 - `npm run test:e2e:credentialed` — real six-account/two-tenant matrix; set `RIPPLE_E2E_FIXTURES_FILE`
 - `npm run test:e2e:install-browser` — install the pinned Chromium runtime
 
@@ -807,6 +810,33 @@ state, not a settings-table convenience. Enforce shape, uniqueness, ordering,
 reference safety, and audit inside the final write transaction; derive paired
 flags from one authoritative field instead of trusting two caller inputs.
 
+Migration 041 was applied on 2026-08-01 and passed a disposable 35-assertion
+matrix covering positive/no-op, validation, privilege, protected/referenced
+deletion, reference races, exact audit attribution, rollback, and zero residue.
+
+### Catalog identity and audit must share the final write boundary
+Found 2026-08-01 after migration 041 was live-verified. Spare-part catalog
+create/PATCH committed the row before best-effort audit, part-number uniqueness
+was case-sensitive, an empty PATCH still changed `updated_at`, and direct
+database writes could store a negative price. A live read-only audit found all
+13 existing parts clean enough for stricter constraints.
+
+Commit `737d2a8` and migration 042 add service-role-only create/update commands
+under one advisory lock. They recheck an active admin, accept only strict known
+fields, normalize identity and model values, enforce active creation, return
+committed rows, preserve timestamp/audit state on a no-op, and commit exact
+audit evidence with the change. Database constraints add normalized bounded
+identity, required category, text/model limits, nonnegative price, and a unique
+case-folded part number. The shared create/edit form binds every control,
+explains lifecycle and identity behavior, contains its mobile table, and
+correctly distinguishes `$0.00` from an unavailable price.
+
+**Lesson:** catalog master data is referenced by inventory and historical
+requests, so identity and lifecycle edits are not ordinary CRUD. Normalize and
+constrain the durable key at the database boundary, serialize competing admin
+writes, and treat audit as part of the commit. Keep per-site inventory in a
+separate migration so catalog rollout can be verified independently.
+
 ### Supabase SSR auth cookies belong on the response you return
 Found 2026-07-29 while adding password recovery. The authorization-code
 callback created a redirect inside the Supabase `setAll` callback, attached
@@ -930,9 +960,10 @@ resume work; this section remains the broader historical summary.
   migration 038, closed caller-controlled signup role escalation and made
   admin/team provisioning transaction-aware through deployed migration 039,
   made customer creation/update transactionally audited and live-verified
-  through migration 040, added atomic SLA policy administration through
-  migration 041, and established 340 unit/contract tests plus
-  a zero-vulnerability dependency baseline.
+  through migration 040, deployed and live-verified atomic SLA policy
+  administration through migration 041, added atomic spare-parts catalog
+  administration through migration 042, and established 360 unit/contract
+  tests plus a zero-vulnerability dependency baseline.
 
 ### Known issues / open work
 | Priority | Item | Where | Notes |
@@ -948,19 +979,19 @@ resume work; this section remains the broader historical summary.
 | 🟡 Verify | Migration 034 protected creation probes remain | `supabase/migrations/034_atomic_ticket_creation_outbox.sql` | Command privilege, validation, constraint, and zero-residue probes are live/green; run disposable web/Slack creation and outbox-delivery probes with staging fixtures |
 | 🟡 Verify | Migration 035 protected membership probes remain | `supabase/migrations/035_atomic_admin_site_membership.sql` | Service validation/not-found and anonymous-denial probes are live/green with zero residue; run disposable same/cross-tenant add/remove/rollback probes |
 | 🟡 Verify | Migration 037 protected positive probes remain | `supabase/migrations/037_repair_qualified_sql_expressions.sql` | All six definitions now reach domain validation instead of `42883`; anonymous denial and zero-residue probes are green. Run disposable positive/rollback business probes with staging fixtures |
-| 🔴 Apply | Migration 041 is not deployed yet | `supabase/migrations/041_atomic_admin_sla_policy_commands.sql` | Apply before deploying `c65bf9e`; then verify default/customer create, ordered multi-field/no-op patch, protected/referenced delete, exact audit cardinality, invalid/missing/non-admin/anonymous rollback, create/delete reference races, and zero residue |
+| 🔴 Apply | Migration 042 is not deployed yet | `supabase/migrations/042_atomic_admin_spare_part_commands.sql` | Apply before deploying `737d2a8`; then verify normalized create, case-folded duplicate rejection, multi-field/no-op patch, price/shape constraints, exact audit cardinality, invalid/missing/non-admin/anonymous rollback, create/update serialization, and zero residue |
 | 🟡 Med | Vercel recovery cron runs daily for plan compatibility | `vercel.json` | Request-path dispatch is immediate; use a supported 1–5 minute schedule or external scheduler when the production Vercel plan permits |
 | 🟢 Low | Slack `events` route doesn't route customer messages to a ticket comment yet | `src/app/api/slack/events/route.ts` | Sprint 3 — bidirectional thread sync (SLK-008) |
 | 🟡 Med | Credentialed role/tenant matrix has not had its first staging execution | `scripts/credentialed-role-matrix.mjs` | Harness, fixture validation, and Chromium launch are committed/green; provision six dedicated accounts and non-vacuous two-tenant/archive/internal-artifact IDs, then run with required credentials |
 | 🟡 Activate | Hosted quality workflow and protected staging job are not activated yet | `.github/workflows/ci.yml` | After pushing, require `Quality gates`; create a reviewer-protected `staging` environment and add only `RIPPLE_E2E_FIXTURES_JSON` there |
 
 ### Next priorities (Sprint 3, in proposed order)
-1. **Apply and verify migration 041.** Confirm all three SLA policy commands
-   retain service-role-only execution, derive default/customer scope, enforce
-   ordered targets, return committed rows, protect default/referenced deletion,
-   and roll back policy state with audit. Exercise positive, no-op, invalid,
-   missing/non-admin/anonymous, reference-race, exact audit-cardinality, and
-   zero-residue cases.
+1. **Apply and verify migration 042.** Confirm both spare-part catalog commands
+   retain service-role-only execution, normalize bounded catalog shape, enforce
+   case-folded identity and nonnegative pricing, return committed rows, preserve
+   no-op timestamps, and roll back part state with audit. Exercise positive,
+   duplicate, no-op, invalid, missing/non-admin/anonymous, concurrency, exact
+   audit-cardinality, attribution, and zero-residue cases.
 2. **Run migrations 028–029 part-request probes.** Both migrations are
    applied; staging credentials are not present in this workspace.
 3. **Run migration 030 field-service transaction probes.** Both command RPCs
@@ -968,7 +999,7 @@ resume work; this section remains the broader historical summary.
 4. **Run migration 031 team-access transaction probes.** The command is live;
    protected same/cross-tenant, role-preservation, explicit-clear, and rollback
    fixtures remain unavailable.
-5. **Run the required credentialed staging matrix.** Migrations 027–040 are applied;
+5. **Run the required credentialed staging matrix.** Migrations 027–041 are applied;
    the secret six-account/two-tenant fixture is the remaining external gate.
 6. **Apply migration 019** ✅ done (2026-07-14).
 7. **Migrate `next lint` and add protected CI quality gates.** ✅ code done
@@ -1020,9 +1051,13 @@ resume work; this section remains the broader historical summary.
     rollback, lifecycle, privilege, concurrency, exact-audit, attribution, and
     zero-residue behavior.
 27. **Deploy atomic SLA policy administration.** Code is committed in
-    `c65bf9e`; apply migration 041 and run positive/no-op, rollback, scope,
-    target-order, privilege, reference/concurrency, exact-audit, and
-    zero-residue probes.
+    `c65bf9e`; migration 041 is applied and passed a 35-assertion disposable
+    matrix covering positive/no-op, rollback, scope, target order, privilege,
+    reference/concurrency, exact audit, attribution, and zero residue.
+28. **Deploy atomic spare-parts catalog administration.** Code is committed in
+    `737d2a8`; apply migration 042 and run positive/no-op, duplicate, shape,
+    price, privilege, concurrency, exact-audit, attribution, and zero-residue
+    probes. Convert per-site inventory separately in migration 043.
 
 ### Open architectural questions
 - The RLS recursion bug surfaces a bigger question: do we keep `createAdminClient() + code filter` (the current pattern in `lib/supabase/scope.ts`) or move back to proper RLS once migration 019 + similar fixes are in place? The current pattern scales fine but has a lower safety margin for new queries.
@@ -1044,7 +1079,7 @@ npm audit
 ```
 
 **Apply a new migration:**
-1. Create `supabase/migrations/042_xxx.sql` (next number)
+1. Create `supabase/migrations/043_xxx.sql` (next number)
 2. Test locally: `supabase db reset` (drops + re-applies all)
 3. Apply to prod via Supabase SQL editor
 4. Document in this file's §5 + §10
