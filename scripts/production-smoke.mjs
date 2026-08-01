@@ -370,6 +370,19 @@ try {
     "PATCH",
     { part_name: "Unauthorized part" }
   );
+  await expectUnauthorizedMutation(
+    "/api/admin/inventory",
+    "POST",
+    {
+      spare_part_id: "11111111-1111-4111-8111-111111111111",
+      site_id: "22222222-2222-4222-8222-222222222222",
+    }
+  );
+  await expectUnauthorizedMutation(
+    "/api/admin/inventory/11111111-1111-4111-8111-111111111111",
+    "PATCH",
+    { quantity: 1 }
+  );
   await expectLoginRedirect("/admin/users");
   await expectLogoutRedirect();
   await expectHealth("/api/health/live", 200, "live");

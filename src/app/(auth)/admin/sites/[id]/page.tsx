@@ -444,59 +444,80 @@ export default async function AdminSiteDetailPage({ params, searchParams }: Prop
       )}
 
       {activeTab === "inventory" && (
-        <div className="rounded-xl border border-border overflow-hidden">
-          {inventory.length === 0 ? (
-            <div className="p-6">
-              <TableEmpty
-                colSpan={1}
-                icon="package"
-                title="No spare parts on site"
-                description="When spare parts are stocked at this site, they will appear here."
-              />
+        <div className="space-y-4">
+          <div className="flex flex-col gap-3 rounded-xl border border-border bg-background p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-sm font-semibold text-foreground">
+                Site inventory
+              </h2>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Stock levels shown here are managed in the inventory workspace.
+              </p>
             </div>
-          ) : (
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-border bg-muted/50">
-                  <th className="text-left text-xs font-medium text-muted-foreground p-3">
-                    Part
-                  </th>
-                  <th className="text-left text-xs font-medium text-muted-foreground p-3">
-                    Part #
-                  </th>
-                  <th className="text-left text-xs font-medium text-muted-foreground p-3">
-                    Quantity
-                  </th>
-                  <th className="text-left text-xs font-medium text-muted-foreground p-3">
-                    Location
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {inventory.map((inv) => {
-                  const part = Array.isArray(inv.spare_part)
-                    ? inv.spare_part[0]
-                    : inv.spare_part;
-                  return (
-                    <tr key={inv.id} className="hover:bg-muted/30 transition-colors">
-                      <td className="p-3 text-sm font-medium">
-                        {part?.part_name || "—"}
-                      </td>
-                      <td className="p-3 text-xs font-mono text-muted-foreground">
-                        {part?.part_number || "—"}
-                      </td>
-                      <td className="p-3 text-sm font-semibold">
-                        {inv.quantity}
-                      </td>
-                      <td className="p-3 text-sm text-muted-foreground">
-                        {inv.location || "—"}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          )}
+            <Link
+              href={`/admin/inventory?site=${id}`}
+              className="rounded-lg bg-primary px-4 py-2 text-center text-sm font-medium text-primary-foreground hover:bg-primary/90"
+            >
+              Manage inventory
+            </Link>
+          </div>
+          <div className="overflow-x-auto rounded-xl border border-border">
+            {inventory.length === 0 ? (
+              <div className="p-6">
+                <TableEmpty
+                  colSpan={1}
+                  icon="package"
+                  title="No spare parts on site"
+                  description="When spare parts are stocked at this site, they will appear here."
+                />
+              </div>
+            ) : (
+              <table className="min-w-[640px] w-full">
+                <thead>
+                  <tr className="border-b border-border bg-muted/50">
+                    <th className="text-left text-xs font-medium text-muted-foreground p-3">
+                      Part
+                    </th>
+                    <th className="text-left text-xs font-medium text-muted-foreground p-3">
+                      Part #
+                    </th>
+                    <th className="text-left text-xs font-medium text-muted-foreground p-3">
+                      Quantity
+                    </th>
+                    <th className="text-left text-xs font-medium text-muted-foreground p-3">
+                      Location
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {inventory.map((inv) => {
+                    const part = Array.isArray(inv.spare_part)
+                      ? inv.spare_part[0]
+                      : inv.spare_part;
+                    return (
+                      <tr
+                        key={inv.id}
+                        className="hover:bg-muted/30 transition-colors"
+                      >
+                        <td className="p-3 text-sm font-medium">
+                          {part?.part_name || "—"}
+                        </td>
+                        <td className="p-3 text-xs font-mono text-muted-foreground">
+                          {part?.part_number || "—"}
+                        </td>
+                        <td className="p-3 text-sm font-semibold">
+                          {inv.quantity}
+                        </td>
+                        <td className="p-3 text-sm text-muted-foreground">
+                          {inv.location || "—"}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
         </div>
       )}
 
