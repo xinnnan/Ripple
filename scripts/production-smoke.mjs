@@ -298,6 +298,16 @@ try {
     { site_name: "Unauthorized probe" }
   );
   await expectUnauthorizedMutation(
+    "/api/customers",
+    "POST",
+    { name: "Unauthorized customer", status: "active" }
+  );
+  await expectUnauthorizedMutation(
+    "/api/customers/11111111-1111-4111-8111-111111111111",
+    "PATCH",
+    { name: "Unauthorized customer" }
+  );
+  await expectUnauthorizedMutation(
     "/api/admin/users/11111111-1111-4111-8111-111111111111",
     "PATCH",
     { role: "engineer" }
@@ -320,6 +330,45 @@ try {
       password: "unauthorized-password",
       full_name: "Unauthorized Probe",
     }
+  );
+  await expectUnauthorizedMutation(
+    "/api/admin/sla-policies",
+    "POST",
+    {
+      name: "Unauthorized SLA policy",
+      customer_id: null,
+      p1_response_minutes: 15,
+      p1_resolution_minutes: 240,
+      p2_response_minutes: 60,
+      p2_resolution_minutes: 480,
+      p3_response_minutes: 240,
+      p3_resolution_minutes: 1440,
+      p4_response_minutes: 1440,
+      p4_resolution_minutes: 4320,
+    }
+  );
+  await expectUnauthorizedMutation(
+    "/api/admin/sla-policies/11111111-1111-4111-8111-111111111111",
+    "PATCH",
+    { name: "Unauthorized SLA policy" }
+  );
+  await expectUnauthorizedMutation(
+    "/api/admin/sla-policies/11111111-1111-4111-8111-111111111111",
+    "DELETE",
+    {}
+  );
+  await expectUnauthorizedMutation(
+    "/api/admin/spare-parts",
+    "POST",
+    {
+      part_number: "UNAUTHORIZED-PART",
+      part_name: "Unauthorized part",
+    }
+  );
+  await expectUnauthorizedMutation(
+    "/api/admin/spare-parts/11111111-1111-4111-8111-111111111111",
+    "PATCH",
+    { part_name: "Unauthorized part" }
   );
   await expectLoginRedirect("/admin/users");
   await expectLogoutRedirect();

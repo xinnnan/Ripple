@@ -13,23 +13,28 @@ export default async function EditSLAPolicyPage({
   const { id } = await params;
   const supabase = createAdminClient();
 
-  const [{ data: policy }, { data: customers }] = await Promise.all([
-    supabase
-      .from("sla_policies")
-      .select(
-        "id, name, customer_id, is_default, p1_response_minutes, p1_resolution_minutes, p2_response_minutes, p2_resolution_minutes, p3_response_minutes, p3_resolution_minutes, p4_response_minutes, p4_resolution_minutes"
-      )
-      .eq("id", id)
-      .maybeSingle(),
-    supabase.from("customers").select("id, name").order("name"),
-  ]);
+  const { data: policy } = await supabase
+    .from("sla_policies")
+    .select(
+      "id, name, customer_id, is_default, p1_response_minutes, p1_resolution_minutes, p2_response_minutes, p2_resolution_minutes, p3_response_minutes, p3_resolution_minutes, p4_response_minutes, p4_resolution_minutes"
+    )
+    .eq("id", id)
+    .maybeSingle();
 
   if (!policy) {
     notFound();
   }
 
+  const { data: customer } = policy.customer_id
+    ? await supabase
+        .from("customers")
+        .select("id, name")
+        .eq("id", policy.customer_id)
+        .maybeSingle()
+    : { data: null };
+
   return (
-    <div className="p-8 max-w-4xl">
+    <div className="max-w-4xl p-4 sm:p-8">
       <div className="mb-6">
         <Link
           href="/admin/sla-policies"
@@ -58,7 +63,8 @@ export default async function EditSLAPolicyPage({
           p4_response_minutes: policy.p4_response_minutes,
           p4_resolution_minutes: policy.p4_resolution_minutes,
         }}
-        customers={customers || []}
+        customers={customer ? [customer] : []}
+        allowDefault={policy.is_default}
       />
     </div>
   );

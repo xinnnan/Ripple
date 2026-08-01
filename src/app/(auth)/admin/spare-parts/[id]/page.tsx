@@ -1,6 +1,8 @@
 import { createAdminClient } from "@/lib/supabase/admin";
-import { EditSparePartForm } from "./edit-spare-part-form";
+import { SparePartForm } from "../spare-part-form";
 import Link from "next/link";
+import { notFound } from "next/navigation";
+import type { SparePart } from "@/types/spare-parts";
 
 export const dynamic = "force-dynamic";
 
@@ -15,16 +17,11 @@ export default async function EditSparePartPage({ params }: { params: Promise<{ 
     .single();
 
   if (!part) {
-    return (
-      <div className="p-8 text-center">
-        <p className="text-muted-foreground">Part not found.</p>
-        <Link href="/admin/spare-parts" className="text-primary mt-2 inline-block">Back to Parts</Link>
-      </div>
-    );
+    notFound();
   }
 
   return (
-    <div className="p-8">
+    <div className="max-w-4xl p-4 sm:p-8">
       <div className="mb-8">
         <div className="flex items-center gap-2 text-sm text-muted-foreground mb-2">
           <Link href="/admin/spare-parts" className="hover:text-foreground">Spare Parts</Link>
@@ -33,9 +30,7 @@ export default async function EditSparePartPage({ params }: { params: Promise<{ 
         </div>
         <h1 className="text-2xl font-bold text-foreground">Edit Spare Part</h1>
       </div>
-      <div className="max-w-2xl">
-        <EditSparePartForm part={part as Record<string, unknown>} />
-      </div>
+      <SparePartForm mode="edit" initial={part as SparePart} />
     </div>
   );
 }

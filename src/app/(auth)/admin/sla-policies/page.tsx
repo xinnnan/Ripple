@@ -55,8 +55,8 @@ export default async function AdminSLAPoliciesPage() {
   const typedPolicies = (policies || []) as unknown as SLAPolicyRow[];
 
   return (
-    <div className="p-8">
-      <div className="mb-8 flex items-center justify-between">
+    <div className="p-4 sm:p-8">
+      <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-foreground">SLA Policies</h1>
           <p className="text-sm text-muted-foreground mt-1">
@@ -71,8 +71,8 @@ export default async function AdminSLAPoliciesPage() {
         </Link>
       </div>
 
-      <div className="rounded-xl border border-border overflow-hidden">
-        <table className="w-full">
+      <div className="overflow-x-auto rounded-xl border border-border">
+        <table className="w-full min-w-[760px]">
           <thead>
             <tr className="border-b border-border bg-muted/50">
               <th className="text-left text-xs font-medium text-muted-foreground p-3">

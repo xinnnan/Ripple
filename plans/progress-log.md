@@ -7,16 +7,16 @@ meaningful change and before ending a work session. Newest entries go first.
 
 - **Branch:** `codex/prd-v1-1-gap-closure`
 - **Active phase:** Phase 0 — Containment and reproducible baseline
-- **Active work item:** apply/probe migration 039, configure the production
-  outbox worker secret, then continue moving remaining best-effort audit
-  domains onto atomic commands
-- **Last verified implementation commit:** `33b3a66` (`fix: secure user provisioning`)
+- **Active work item:** apply/probe migration 042, configure the production
+  outbox worker secret, then move per-site inventory administration onto an
+  atomic command
+- **Last verified implementation commit:** `de54e20` (`fix: repair spare-part migration parser`), following `737d2a8` (`fix: make spare-part catalog administration atomic`)
 - **Uncommitted work:** none expected after the documentation checkpoint;
   verify with `git status` before resuming
-- **Deployment gate:** migrations 001–038 are confirmed applied; migration 039
-  must be applied before deploying secure admin/team user provisioning.
+- **Deployment gate:** migrations 001–041 are confirmed applied; migration 042
+  must be applied before deploying atomic spare-parts catalog administration.
   Production `CRON_SECRET` remains unset in this workspace. Protected positive
-  business probes for migrations 028–039 still require staging fixtures
+  business probes for migrations 028–040 still require staging fixtures
 - **External validation gate:** populate the gitignored credential fixture with six
   dedicated staging accounts, two tenants, a decommissioned site/ticket, and
   real internal artifact IDs; then run
@@ -34,15 +34,258 @@ meaningful change and before ending a work session. Newest entries go first.
 - **Support UX verification:** public pages and the real admin shell were
   reviewed at 1440×1000 and 390×844. A short-lived admin test identity was
   created for read-only protected-page visits and fully deleted afterward.
-  Password-based login passed; recovery-email delivery and one-time link
-  consumption still require a dedicated staging mailbox.
-- **Exact next local step:** after the user applies migration 039, verify the
-  hardened signup trigger and both service-role-only finalizers. Prove
-  privileged metadata rejection, safe customer bootstrap, admin/team positive
-  finalization, rollback/compensation, anonymous/cross-tenant rejection, and
-  zero residue. Configure `CRON_SECRET` separately before production worker
-  activation
+  Customer create/edit pages were additionally reviewed at 1280 px and
+  390×844 with bound labels, responsive fit, hostname guidance, and archived
+  read-only state. SLA list/create/edit was reviewed at 1280×900 and 390×844
+  with bound labels, ordered-target validation, immutable edit scope, local
+  table overflow, and zero console errors. Spare-parts list/create/edit was
+  reviewed at 1280×900 and 390×844 with every control labeled, local table
+  overflow, lifecycle guidance, bounded-model validation, and zero console
+  errors. Password-based login passed;
+  recovery-email delivery and one-time link consumption still require a
+  dedicated staging mailbox.
+- **Exact next local step:** after the user applies migration 042, verify both
+  service-role-only catalog commands. Prove normalized create, case-folded
+  duplicate rejection, exact multi-field/no-op patch, price/shape constraints,
+  missing/non-admin/anonymous rollback, create/update serialization, audit
+  attribution, and zero residue. Then convert per-site inventory create/update
+  to migration 043. Configure `CRON_SECRET` separately before production
+  worker activation
 - **Primary plan:** [`plans/prd-v1.1-gap-closure-plan.md`](./prd-v1.1-gap-closure-plan.md)
+
+## Session record — 2026-08-01 (P0-AD / atomic spare-parts catalog administration)
+
+### Objective
+
+Live-verify migration 041 after application, then close the next best-effort
+administrative audit gap without coupling the catalog and per-site inventory
+rollouts.
+
+### Migration 041 live verification
+
+- A disposable 35-assertion matrix proved default and customer policy create,
+  normalization and persistence, exact create and changed-field audits, no-op
+  behavior, duplicate/scope/target/missing/inactive/privilege rejection,
+  protected default and referenced deletion, unreferenced deletion, direct
+  anonymous/authenticated command denial, and correct audit attribution.
+- The real delete/ticket-reference race serialized to one foreign-key-safe
+  outcome and the audit trail matched the committed state. Cleanup confirmed
+  zero disposable tickets, policies, sites, customers, profiles, Auth
+  identities, and audit rows. No credentials or live identifiers were printed.
+
+### Finding and implementation
+
+- A read-only live audit found 13 catalog rows, with zero negative prices,
+  case-insensitive part-number collisions, null/invalid categories, invalid
+  units, malformed identities, oversized descriptions/image URLs, or invalid
+  model arrays. The eight inventory rows also had zero negative values,
+  inverted bounds, inactive parts, or retired tenant/site references.
+- Catalog POST/PATCH previously committed `spare_parts` before best-effort
+  audit, part-number uniqueness was case-sensitive, empty PATCH changed the
+  timestamp, and the database did not reject negative pricing.
+- Commit `737d2a8` adds migration
+  `042_atomic_admin_spare_part_commands.sql`. Service-role-only create/patch
+  commands serialize catalog changes, recheck an active admin, validate exact
+  bounded fields, normalize identities/models, enforce active creation, return
+  committed rows, skip timestamp/audit writes for no-ops, and commit exact
+  audit evidence with the row. Database constraints preserve category,
+  normalized identity, text/model bounds, nonnegative price, and case-folded
+  part-number uniqueness.
+- Strict shared Zod contracts and typed wrappers replace direct route writes
+  and raw provider errors. One labeled responsive form now serves create/edit,
+  exposes the image URL, explains case-folded uniqueness and inactive history,
+  and the list contains wide tables on mobile. Zero-dollar prices now render as
+  `$0.00` instead of unavailable.
+- Twelve migration/wrapper/UI contracts and eight route tests bring the suite
+  to 360 tests. Two unauthenticated catalog mutation probes bring production
+  HTTP smoke to 35 checks.
+
+### Migration 042 rollout correction
+
+- The first SQL-editor application failed with PostgreSQL `42601` while
+  compiling the PATCH function's no-op comparison. The multiline `CASE`
+  expression appeared directly inside a PL/pgSQL `IF ... THEN`; the parser
+  treated the first inner `THEN` as the outer terminator and reported an
+  incomplete expression. Because the file begins with `BEGIN` and never
+  reached `COMMIT`, PostgreSQL aborts that attempted transaction.
+- Commit `de54e20` replaces the nested expression with one
+  `jsonb_build_object` candidate and a simple key-to-key `IS DISTINCT FROM`
+  comparison. A static regression rejects the ambiguous `CASE v_field` form
+  and requires the candidate-object comparison.
+- Retry requirement: rerun the complete corrected migration 042 file from the
+  beginning. Do not run only the changed function fragment because the aborted
+  transaction also rolled back the preceding constraints, index, grants, and
+  create command.
+
+### Verification after parser repair
+
+| Gate | Result |
+|---|---|
+| `npm ci` | Passed; locked install, 0 install-time vulnerabilities |
+| `npm test` | Passed; 51 files, 360 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build |
+| `npm run test:e2e` | Passed; all 35 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+| Manual browser E2E | Passed list/create/edit at 1280×900 and 390×844: all eight create and nine edit controls labeled, zero page-level overflow, local 860 px table scrolling, bounded-model alert without a write, lifecycle guidance, and zero console errors. The disposable admin was fully deleted |
+| Immediate pre-commit `npm run test:e2e` | Passed before `de54e20` with the same 35 checks and explicit protected-fixture skip |
+
+### Rollout and next
+
+1. Apply the complete corrected migration 042 from `de54e20` before deploying
+   the catalog changes from `737d2a8`.
+2. Run disposable positive/no-op/rollback/privilege/concurrency/exact-audit
+   probes for both catalog commands and confirm zero residue.
+3. Convert per-site inventory create/update and audit to one row-locked command
+   in migration 043, with part/site lifecycle and min/max/quantity invariants.
+4. Run the protected credentialed matrix when its staging fixture is available
+   and configure `CRON_SECRET` separately for production worker activation.
+
+## Session record — 2026-07-31 (P0-AC / atomic SLA policy administration)
+
+### Objective
+
+Live-verify migration 040 after application, then close the next contractual
+configuration/audit gap and review its admin UI at desktop and mobile sizes.
+
+### Migration 040 live verification
+
+- A disposable 25-assertion matrix proved active/trial create, trimmed name and
+  hostname normalization, persisted committed state, exact attributable create
+  and multi-field audit cardinality, no-op behavior, malformed/unknown fields,
+  missing targets, non-admin and anonymous denial, archived read-only state,
+  serialized patch/archive behavior, and active null-domain creation.
+- The concurrency probe confirmed the final customer remained inactive with
+  exactly one archive audit; any ordinary patch outcome and audit matched the
+  serialized result. Cleanup confirmed zero disposable customers, profiles,
+  Auth identities, and audit rows. No credentials or live identifiers were
+  printed.
+
+### Finding and implementation
+
+- The live SLA aggregate was clean before rollout: 16 policies, one default,
+  zero invalid scope shapes, and zero response-after-resolution rows.
+- SLA create/PATCH committed timing state before best-effort audit, DELETE had
+  no audit, the caller could choose inconsistent `customer_id`/`is_default`
+  values, and the ticket-reference check was separated from deletion.
+- Commit `c65bf9e` adds migration
+  `041_atomic_admin_sla_policy_commands.sql`. Service-role-only create/update/
+  delete commands share one advisory lock, recheck an active admin, derive
+  default scope from customer nullability, require active/trial customer scope,
+  bound and order all targets, keep edit scope immutable, protect default or
+  ticket-referenced deletion, return committed rows, and write exact audit
+  evidence in the same transaction.
+- Strict Zod contracts and typed wrappers give stable 400/403/404/409/500
+  responses without database detail leakage. Nineteen new wrapper/migration/
+  route checks bring the suite to 340 tests; three unauthenticated SLA mutation
+  probes bring production HTTP smoke to 33 checks.
+- The form derives scope instead of exposing a separate default flag, offers
+  only unassigned active/trial customer scopes, validates human-readable time
+  and response-before-resolution order, binds every control label, explains
+  immutable scope, and replaces the fixed table form with responsive cards.
+
+### Verification before commit
+
+| Gate | Result |
+|---|---|
+| `npm ci` | Passed; locked install, 0 install-time vulnerabilities |
+| `npm test` | Passed; 49 files, 340 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build |
+| `npm run test:e2e` | Passed; all 33 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+| Manual browser E2E | Passed create/edit/list at 1280×900 and 390×844: all ten form controls labeled with unique IDs, zero page-level mobile overflow, ordered-target client validation, immutable edit scope, contained list-table scrolling, and zero console errors. The validation probe performed no write; the disposable admin was fully deleted |
+| Immediate pre-commit `npm run test:e2e` | Passed before `c65bf9e` with the same 33 checks and explicit protected-fixture skip |
+
+### Rollout and next
+
+1. Apply migration 041 before deploying `c65bf9e`.
+2. Verify the two constraints, exact function definitions, and that only
+   `service_role` can execute all three commands.
+3. With disposable policies/customers/tickets, prove default/customer create,
+   multi-field and no-op patch, target-order rollback, protected/referenced
+   delete, exact audit cardinality, missing/non-admin/anonymous denial,
+   create/delete reference-race safety, attribution, and zero residue.
+4. Continue with atomic spare-parts catalog/inventory administration and run
+   the protected credentialed matrix when its staging fixture is available.
+
+## Session record — 2026-07-31 (P0-AB / atomic customer administration)
+
+### Objective
+
+Live-verify migration 039 after application, then close the highest-risk
+remaining best-effort administrative mutation without bypassing customer
+lifecycle controls.
+
+### Migration 039 live verification
+
+- The user confirmed migration 039 was applied. A disposable 25-assertion
+  matrix proved privileged signup metadata rejection with no profile residue,
+  safe customer bootstrap, positive admin and tenant-bound team finalization,
+  normalized profile fields, exact membership/audit state, cross-tenant and
+  non-admin rejection, anonymous denial, replay rejection, and zero residue.
+- A confirmed identity created through the Supabase Admin API can still reach
+  the insert trigger without `confirmed_at` populated, so its provisional
+  profile was observed as `invited`. The finalizers intentionally accept a
+  recent `active` or `invited` safe provisional profile; the successful rerun
+  asserted exact before/after profile equality instead of assuming one state.
+- Cleanup confirmed zero disposable Auth identities, profiles, customers,
+  sites, memberships, and audit rows. No credentials or live identifiers were
+  printed.
+
+### Finding and implementation
+
+- Customer creation inserted the tenant before a best-effort audit write.
+  Customer PATCH ignored before-state/read and update-return errors, could
+  report success for a missing row, and returned raw database messages. The
+  archive invariant existed only in route/UI behavior.
+- Commit `d46a3af` adds rollout-safe migration
+  `040_atomic_admin_customer_commands.sql`. Its service-role-only create and
+  patch commands recheck an active admin actor, accept only known bounded
+  fields, normalize hostname-only domains, lock updates, keep inactive
+  customers read-only, require the archive workflow for deactivation, commit
+  exact audit evidence with the customer write, and return the committed row.
+- `src/lib/customers/mutations.ts` provides stable command errors. The customer
+  routes use strict JSON/Zod validation, UUID and hostname contracts, explicit
+  not-found/conflict/authorization mappings, projections, and generic server
+  errors without database detail leakage.
+- Customer create/edit forms now bind labels, cap input lengths, provide
+  hostname and lifecycle guidance, use safe button semantics, stack cleanly on
+  mobile, and disable every edit control for archived customers.
+- Sixteen new wrapper/migration/route checks bring the repository to 321
+  unit/contract tests. Two unauthenticated customer-mutation probes bring the
+  production HTTP smoke to 30 checks.
+
+### Verification before commit
+
+| Gate | Result |
+|---|---|
+| `npm ci` | Passed; lockfile install, 0 install-time vulnerabilities |
+| `npm test` | Passed; 47 files, 321 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build |
+| `npm run test:e2e` | Passed; all 30 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+| Manual browser E2E | Passed at 1280 px and 390×844 for active customer creation and archived customer detail: bound labels, bounded inputs, responsive fit with zero horizontal overflow, hostname guidance, complete archived read-only state, and zero console errors. Disposable admin/customer data was fully removed |
+| Immediate pre-commit `npm run test:e2e` | Passed before `d46a3af` with the same 30 checks and explicit protected-fixture skip |
+
+The first full-gate attempt found a TypeScript narrowing error during the
+production build. After the fix, the exact full sequence was restarted from
+`npm ci` and passed in full before the separate immediate E2E rerun.
+
+### Rollout and next
+
+1. Apply migration 040 before deploying `d46a3af`.
+2. Verify exact function definitions and execution grants: only
+   `service_role` may execute either command.
+3. With disposable data, prove active/trial create and update, hostname
+   normalization, exact audit cardinality, missing/inactive/invalid-actor
+   rollback, anonymous denial, archive/update race safety, and zero residue.
+4. Continue converting the next highest-risk best-effort admin mutation and
+   run the protected credentialed matrix when its staging fixture is available.
 
 ## Session record — 2026-07-31 (P0-AA / secure user provisioning)
 
