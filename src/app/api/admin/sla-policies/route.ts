@@ -1,165 +1,138 @@
 import { NextRequest, NextResponse } from "next/server";
-import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAdmin } from "@/lib/supabase/auth-helpers";
-import { logAudit } from "@/lib/audit";
+import { slaPolicyCreateRequestSchema } from "@/lib/sla-policies/contracts";
+import {
+  AdminSLAPolicyMutationError,
+  createAdminSLAPolicyAtomic,
+} from "@/lib/sla-policies/mutations";
 
 export const dynamic = "force-dynamic";
 
-const minuteField = z.number().int().nonnegative().max(525600);
-
-const slaPolicyInputSchema = z.object({
-  name: z.string().trim().min(1).max(200),
-  customer_id: z.string().uuid().nullable().optional(),
-  is_default: z.boolean().optional(),
-  p1_response_minutes: minuteField.optional(),
-  p1_resolution_minutes: minuteField.optional(),
-  p2_response_minutes: minuteField.optional(),
-  p2_resolution_minutes: minuteField.optional(),
-  p3_response_minutes: minuteField.optional(),
-  p3_resolution_minutes: minuteField.optional(),
-  p4_response_minutes: minuteField.optional(),
-  p4_resolution_minutes: minuteField.optional(),
-});
-
-const slaPolicyCreateSchema = slaPolicyInputSchema.extend({
-  p1_response_minutes: minuteField,
-  p1_resolution_minutes: minuteField,
-  p2_response_minutes: minuteField,
-  p2_resolution_minutes: minuteField,
-  p3_response_minutes: minuteField,
-  p3_resolution_minutes: minuteField,
-  p4_response_minutes: minuteField,
-  p4_resolution_minutes: minuteField,
-  is_default: z.boolean().default(false),
-});
+const POLICY_PROJECTION = `
+  id,
+  created_at,
+  updated_at,
+  name,
+  customer_id,
+  is_default,
+  p1_response_minutes,
+  p1_resolution_minutes,
+  p2_response_minutes,
+  p2_resolution_minutes,
+  p3_response_minutes,
+  p3_resolution_minutes,
+  p4_response_minutes,
+  p4_resolution_minutes,
+  customer:customers(id, name, status)
+`;
 
 // GET /api/admin/sla-policies — list all policies
 export async function GET() {
-  try {
-    const auth = await requireAdmin();
-    if ("error" in auth) {
-      return NextResponse.json({ error: auth.error }, { status: auth.status });
-    }
+  const auth = await requireAdmin();
+  if ("error" in auth) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status });
+  }
 
+  try {
     const supabase = createAdminClient();
     const { data, error } = await supabase
       .from("sla_policies")
-      .select(
-        `
-        *,
-        customer:customers(id, name)
-      `
-      )
+      .select(POLICY_PROJECTION)
       .order("is_default", { ascending: false })
       .order("name");
 
     if (error) {
-      console.error("GET /api/admin/sla-policies failed:", error);
-      return NextResponse.json({ error: "Failed to fetch SLA policies" }, { status: 500 });
-    }
-    return NextResponse.json({ policies: data });
-  } catch (e) {
-    console.error("GET /api/admin/sla-policies error:", e);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
-  }
-}
-
-// POST /api/admin/sla-policies — create a new policy
-export async function POST(request: NextRequest) {
-  try {
-    const auth = await requireAdmin();
-    if ("error" in auth) {
-      return NextResponse.json({ error: auth.error }, { status: auth.status });
-    }
-
-    let body: unknown;
-    try {
-      body = await request.json();
-    } catch {
-      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
-    }
-    const parsed = slaPolicyCreateSchema.safeParse(body);
-    if (!parsed.success) {
+      console.error("GET /api/admin/sla-policies failed:", {
+        code: error.code,
+      });
       return NextResponse.json(
-        { error: "Validation error", details: parsed.error.errors },
-        { status: 400 }
+        { error: "Failed to fetch SLA policies" },
+        { status: 500 }
       );
     }
-    const data = parsed.data;
 
-    if (data.customer_id) {
-      const supabase = createAdminClient();
-      const { data: cust } = await supabase
-        .from("customers")
-        .select("id")
-        .eq("id", data.customer_id)
-        .maybeSingle();
-      if (!cust) {
+    return NextResponse.json({ policies: data ?? [] });
+  } catch (error) {
+    console.error("GET /api/admin/sla-policies error:", error);
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
+  }
+}
+// POST /api/admin/sla-policies — create one default or customer policy
+export async function POST(request: NextRequest) {
+  const auth = await requireAdmin();
+  if ("error" in auth) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status });
+  }
+
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+
+  const parsed = slaPolicyCreateRequestSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: "Validation error", details: parsed.error.errors },
+      { status: 400 }
+    );
+  }
+
+  const customerId = parsed.data.customer_id ?? null;
+
+  try {
+    const policy = await createAdminSLAPolicyAtomic({
+      supabase: createAdminClient(),
+      actorId: auth.userId,
+      input: {
+        ...parsed.data,
+        customer_id: customerId,
+        is_default: customerId === null,
+      },
+    });
+
+    return NextResponse.json({ policy }, { status: 201 });
+  } catch (error) {
+    if (error instanceof AdminSLAPolicyMutationError) {
+      if (error.code === "23505") {
         return NextResponse.json(
-          { error: "customer_id not found" },
+          { error: "An SLA policy already exists for this scope" },
+          { status: 409 }
+        );
+      }
+      if (error.code === "P0002") {
+        return NextResponse.json(
+          { error: "Customer not found or inactive" },
+          { status: 400 }
+        );
+      }
+      if (error.code === "42501") {
+        return NextResponse.json(
+          { error: "Forbidden: Active admin access required" },
+          { status: 403 }
+        );
+      }
+      if (
+        ["22003", "22023", "22P02", "23503", "23514"].includes(
+          error.code ?? ""
+        )
+      ) {
+        return NextResponse.json(
+          { error: "Invalid SLA policy" },
           { status: 400 }
         );
       }
     }
 
-    const supabase = createAdminClient();
-    let row;
-    try {
-      const result = await supabase
-        .from("sla_policies")
-        .insert({
-          name: data.name,
-          customer_id: data.customer_id ?? null,
-          is_default: data.is_default,
-          p1_response_minutes: data.p1_response_minutes,
-          p1_resolution_minutes: data.p1_resolution_minutes,
-          p2_response_minutes: data.p2_response_minutes,
-          p2_resolution_minutes: data.p2_resolution_minutes,
-          p3_response_minutes: data.p3_response_minutes,
-          p3_resolution_minutes: data.p3_resolution_minutes,
-          p4_response_minutes: data.p4_response_minutes,
-          p4_resolution_minutes: data.p4_resolution_minutes,
-        })
-        .select()
-        .single();
-      if (result.error) throw result.error;
-      row = result.data;
-    } catch (e) {
-      console.error("POST /api/admin/sla-policies insert failed:", e);
-      const msg = e instanceof Error ? e.message : String(e);
-      if (/sla_policies_default|sla_policies_customer/i.test(msg)) {
-        return NextResponse.json(
-          { error: "Only one default policy is allowed, and each customer can have at most one policy." },
-          { status: 409 }
-        );
-      }
-      return NextResponse.json({ error: "Failed to create SLA policy" }, { status: 500 });
-    }
-
-    await logAudit({
-      actorId: auth.userId,
-      actorEmail: auth.email,
-      actorRole: auth.role,
-      entityType: "sla_policy",
-      entityId: row.id,
-      action: "created",
-      newValue: data.name,
-      metadata: {
-        is_default: data.is_default,
-        customer_id: data.customer_id ?? null,
-      },
-    });
-
-    return NextResponse.json({ policy: row }, { status: 201 });
-  } catch (e) {
-    if (e instanceof z.ZodError) {
-      return NextResponse.json(
-        { error: "Validation error", details: e.errors },
-        { status: 400 }
-      );
-    }
-    console.error("Create SLA policy error:", e);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    console.error("POST /api/admin/sla-policies command failed:", error);
+    return NextResponse.json(
+      { error: "Failed to create SLA policy" },
+      { status: 500 }
+    );
   }
 }

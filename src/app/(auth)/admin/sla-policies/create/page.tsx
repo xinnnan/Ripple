@@ -6,13 +6,34 @@ export const dynamic = "force-dynamic";
 
 export default async function CreateSLAPolicyPage() {
   const supabase = createAdminClient();
-  const { data: customers } = await supabase
-    .from("customers")
-    .select("id, name")
-    .order("name");
+  const [customersResult, assignedPoliciesResult, defaultPolicyResult] =
+    await Promise.all([
+      supabase
+        .from("customers")
+        .select("id, name")
+        .in("status", ["active", "trial"])
+        .order("name"),
+      supabase
+        .from("sla_policies")
+        .select("customer_id")
+        .not("customer_id", "is", null),
+      supabase
+        .from("sla_policies")
+        .select("id")
+        .is("customer_id", null)
+        .limit(1)
+        .maybeSingle(),
+    ]);
+
+  const assignedCustomerIds = new Set(
+    (assignedPoliciesResult.data || []).map((policy) => policy.customer_id)
+  );
+  const availableCustomers = (customersResult.data || []).filter(
+    (customer) => !assignedCustomerIds.has(customer.id)
+  );
 
   return (
-    <div className="p-8 max-w-4xl">
+    <div className="max-w-4xl p-4 sm:p-8">
       <div className="mb-6">
         <Link
           href="/admin/sla-policies"
@@ -29,7 +50,8 @@ export default async function CreateSLAPolicyPage() {
       </div>
       <SLAPolicyForm
         mode="create"
-        customers={customers || []}
+        customers={availableCustomers}
+        allowDefault={!defaultPolicyResult.data}
       />
     </div>
   );

@@ -25,124 +25,168 @@ interface SLAPolicyFormProps {
     p4_resolution_minutes: number;
   };
   customers: CustomerOption[];
+  allowDefault: boolean;
 }
 
 const SEVERITIES = [
-  { key: "P1", label: "P1", color: "text-red-600" },
-  { key: "P2", label: "P2", color: "text-orange-600" },
-  { key: "P3", label: "P3", color: "text-blue-600" },
-  { key: "P4", label: "P4", color: "text-gray-600" },
+  { key: "P1", color: "text-red-600" },
+  { key: "P2", color: "text-orange-600" },
+  { key: "P3", color: "text-blue-600" },
+  { key: "P4", color: "text-gray-600" },
 ] as const;
 
 function minutesToHuman(min: number): string {
   if (min < 60) return `${min}m`;
   if (min < 60 * 24) {
-    const h = Math.floor(min / 60);
-    const m = min % 60;
-    return m === 0 ? `${h}h` : `${h}h${m}m`;
+    const hours = Math.floor(min / 60);
+    const minutes = min % 60;
+    return minutes === 0 ? `${hours}h` : `${hours}h${minutes}m`;
   }
-  const d = Math.floor(min / (60 * 24));
-  const h = Math.floor((min % (60 * 24)) / 60);
-  return h === 0 ? `${d}d` : `${d}d${h}h`;
+  const days = Math.floor(min / (60 * 24));
+  const hours = Math.floor((min % (60 * 24)) / 60);
+  return hours === 0 ? `${days}d` : `${days}d${hours}h`;
 }
 
-function humanToMinutes(s: string): number | null {
-  const trimmed = s.trim().toLowerCase();
+function humanToMinutes(value: string): number | null {
+  const trimmed = value.trim().toLowerCase();
   if (trimmed === "") return 0;
-  if (/^\d+$/.test(trimmed)) return parseInt(trimmed, 10);
-  const dMatch = trimmed.match(/(\d+)d/);
-  const hMatch = trimmed.match(/(\d+)h/);
-  const mMatch = trimmed.match(/(\d+)m/);
-  if (!dMatch && !hMatch && !mMatch) return null;
-  const d = dMatch ? parseInt(dMatch[1], 10) : 0;
-  const h = hMatch ? parseInt(hMatch[1], 10) : 0;
-  const m = mMatch ? parseInt(mMatch[1], 10) : 0;
-  return d * 24 * 60 + h * 60 + m;
+  if (/^\d+$/.test(trimmed)) return Number.parseInt(trimmed, 10);
+  if (!/^(?:\d+d)?(?:\d+h)?(?:\d+m)?$/.test(trimmed)) return null;
+
+  const days = Number.parseInt(trimmed.match(/(\d+)d/)?.[1] ?? "0", 10);
+  const hours = Number.parseInt(trimmed.match(/(\d+)h/)?.[1] ?? "0", 10);
+  const minutes = Number.parseInt(trimmed.match(/(\d+)m/)?.[1] ?? "0", 10);
+  return days * 24 * 60 + hours * 60 + minutes;
 }
 
-export function SLAPolicyForm({ mode, policyId, initial, customers }: SLAPolicyFormProps) {
+export function SLAPolicyForm({
+  mode,
+  policyId,
+  initial,
+  customers,
+  allowDefault,
+}: SLAPolicyFormProps) {
   const router = useRouter();
   const [name, setName] = useState(initial?.name ?? "");
   const [customerId, setCustomerId] = useState(initial?.customer_id ?? "");
-  const [isDefault, setIsDefault] = useState(initial?.is_default ?? false);
   const [minutes, setMinutes] = useState<Record<string, string>>(() => {
-    const m: Record<string, string> = {};
     if (initial) {
-      m.p1r = minutesToHuman(initial.p1_response_minutes);
-      m.p1s = minutesToHuman(initial.p1_resolution_minutes);
-      m.p2r = minutesToHuman(initial.p2_response_minutes);
-      m.p2s = minutesToHuman(initial.p2_resolution_minutes);
-      m.p3r = minutesToHuman(initial.p3_response_minutes);
-      m.p3s = minutesToHuman(initial.p3_resolution_minutes);
-      m.p4r = minutesToHuman(initial.p4_response_minutes);
-      m.p4s = minutesToHuman(initial.p4_resolution_minutes);
-    } else {
-      m.p1r = "15m"; m.p1s = "4h";
-      m.p2r = "1h";  m.p2s = "8h";
-      m.p3r = "4h";  m.p3s = "1d";
-      m.p4r = "1d";  m.p4s = "3d";
+      return {
+        p1r: minutesToHuman(initial.p1_response_minutes),
+        p1s: minutesToHuman(initial.p1_resolution_minutes),
+        p2r: minutesToHuman(initial.p2_response_minutes),
+        p2s: minutesToHuman(initial.p2_resolution_minutes),
+        p3r: minutesToHuman(initial.p3_response_minutes),
+        p3s: minutesToHuman(initial.p3_resolution_minutes),
+        p4r: minutesToHuman(initial.p4_response_minutes),
+        p4s: minutesToHuman(initial.p4_resolution_minutes),
+      };
     }
-    return m;
+
+    return {
+      p1r: "15m",
+      p1s: "4h",
+      p2r: "1h",
+      p2s: "8h",
+      p3r: "4h",
+      p3s: "1d",
+      p4r: "1d",
+      p4s: "3d",
+    };
   });
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const scopeUnavailable =
+    mode === "create" && !allowDefault && customers.length === 0;
 
-  function setM(key: string, value: string) {
-    setMinutes((m) => ({ ...m, [key]: value }));
+  function setMinute(key: string, value: string) {
+    setMinutes((current) => ({ ...current, [key]: value }));
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  async function handleSubmit(event: React.FormEvent) {
+    event.preventDefault();
     setError(null);
     setLoading(true);
 
-    const fields: Record<string, number> = {};
-    for (const k of ["p1r", "p1s", "p2r", "p2s", "p3r", "p3s", "p4r", "p4s"]) {
-      const v = humanToMinutes(minutes[k] ?? "");
-      if (v == null) {
-        setError(`Invalid time format for ${k}. Try "15m", "1h", "1h30m", "2d", "2d4h".`);
+    if (mode === "create" && !allowDefault && !customerId) {
+      setError("Select a customer for this SLA policy.");
+      setLoading(false);
+      return;
+    }
+
+    const parsedMinutes: Record<string, number> = {};
+    for (const key of [
+      "p1r",
+      "p1s",
+      "p2r",
+      "p2s",
+      "p3r",
+      "p3s",
+      "p4r",
+      "p4s",
+    ]) {
+      const parsed = humanToMinutes(minutes[key] ?? "");
+      if (parsed === null) {
+        setError(
+          `Invalid time format for ${key}. Use formats such as 15m, 1h30m, or 2d4h.`
+        );
         setLoading(false);
         return;
       }
-      if (v > 525600) {
-        setError(`Each value must be 525600 minutes (1 year) or less. Got ${v} for ${k}.`);
+      if (parsed > 525_600) {
+        setError(`Each target must be one year or less. Check ${key}.`);
         setLoading(false);
         return;
       }
-      fields[k] = v;
+      parsedMinutes[key] = parsed;
+    }
+
+    for (const severity of ["p1", "p2", "p3", "p4"]) {
+      if (parsedMinutes[`${severity}r`] > parsedMinutes[`${severity}s`]) {
+        setError(
+          `${severity.toUpperCase()} response time cannot exceed its resolution time.`
+        );
+        setLoading(false);
+        return;
+      }
     }
 
     const body: Record<string, unknown> = {
       name: name.trim(),
-      is_default: isDefault,
-      p1_response_minutes: fields.p1r,
-      p1_resolution_minutes: fields.p1s,
-      p2_response_minutes: fields.p2r,
-      p2_resolution_minutes: fields.p2s,
-      p3_response_minutes: fields.p3r,
-      p3_resolution_minutes: fields.p3s,
-      p4_response_minutes: fields.p4r,
-      p4_resolution_minutes: fields.p4s,
+      p1_response_minutes: parsedMinutes.p1r,
+      p1_resolution_minutes: parsedMinutes.p1s,
+      p2_response_minutes: parsedMinutes.p2r,
+      p2_resolution_minutes: parsedMinutes.p2s,
+      p3_response_minutes: parsedMinutes.p3r,
+      p3_resolution_minutes: parsedMinutes.p3s,
+      p4_response_minutes: parsedMinutes.p4r,
+      p4_resolution_minutes: parsedMinutes.p4s,
     };
-    if (customerId) body.customer_id = customerId;
+    if (mode === "create") body.customer_id = customerId || null;
 
-    const url = mode === "create" ? "/api/admin/sla-policies" : `/api/admin/sla-policies/${policyId}`;
-    const method = mode === "create" ? "POST" : "PATCH";
+    const url =
+      mode === "create"
+        ? "/api/admin/sla-policies"
+        : `/api/admin/sla-policies/${policyId}`;
 
     try {
-      const res = await fetch(url, {
-        method,
+      const response = await fetch(url, {
+        method: mode === "create" ? "POST" : "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || "Failed to save policy");
+      if (!response.ok) {
+        const responseBody = await response.json().catch(() => ({}));
+        throw new Error(responseBody.error || "Failed to save policy");
       }
       router.push("/admin/sla-policies");
       router.refresh();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save policy");
+    } catch (submitError) {
+      setError(
+        submitError instanceof Error
+          ? submitError.message
+          : "Failed to save policy"
+      );
     } finally {
       setLoading(false);
     }
@@ -151,111 +195,175 @@ export function SLAPolicyForm({ mode, policyId, initial, customers }: SLAPolicyF
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       {error && (
-        <div className="rounded-lg border border-red-200 bg-red-50 p-3">
+        <div
+          role="alert"
+          className="rounded-lg border border-red-200 bg-red-50 p-3"
+        >
           <p className="text-sm text-red-800">{error}</p>
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <div>
-          <label className="block text-sm font-medium text-foreground mb-1.5">Name *</label>
+          <label
+            htmlFor="sla-policy-name"
+            className="mb-1.5 block text-sm font-medium text-foreground"
+          >
+            Name *
+          </label>
           <input
+            id="sla-policy-name"
             type="text"
             value={name}
-            onChange={(e) => setName(e.target.value)}
+            onChange={(event) => setName(event.target.value)}
             required
-            placeholder="e.g., Acme Corp Premium SLA"
+            maxLength={200}
+            placeholder="e.g., Acme Premium SLA"
             className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
           />
         </div>
+
         <div>
-          <label className="block text-sm font-medium text-foreground mb-1.5">Customer</label>
+          <label
+            htmlFor="sla-policy-customer"
+            className="mb-1.5 block text-sm font-medium text-foreground"
+          >
+            Scope{mode === "create" && !allowDefault ? " *" : ""}
+          </label>
           <select
+            id="sla-policy-customer"
             value={customerId}
-            onChange={(e) => setCustomerId(e.target.value)}
+            onChange={(event) => setCustomerId(event.target.value)}
             disabled={mode === "edit"}
+            required={mode === "create" && !allowDefault}
             className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 disabled:opacity-50"
           >
-            <option value="">— Default policy (applies to all customers without an override) —</option>
-            {customers.map((c) => (
-              <option key={c.id} value={c.id}>{c.name}</option>
+            {allowDefault ? (
+              <option value="">
+                Default — customers without an override
+              </option>
+            ) : (
+              <option value="" disabled>
+                Select an available customer
+              </option>
+            )}
+            {customers.map((customer) => (
+              <option key={customer.id} value={customer.id}>
+                {customer.name}
+              </option>
             ))}
           </select>
           {mode === "edit" && (
-            <p className="text-xs text-muted-foreground mt-1">
-              Customer scope cannot be changed. Create a new policy to re-assign.
+            <p className="mt-1 text-xs text-muted-foreground">
+              Policy scope is immutable. Create a new policy for another
+              customer.
             </p>
           )}
         </div>
       </div>
 
-      <div className="flex items-center gap-2">
-        <input
-          id="is_default"
-          type="checkbox"
-          checked={isDefault}
-          onChange={(e) => setIsDefault(e.target.checked)}
-          className="h-4 w-4 rounded border-border"
-        />
-        <label htmlFor="is_default" className="text-sm text-foreground">
-          Mark as the <span className="font-semibold">default policy</span> (applies to any customer without a specific override)
-        </label>
+      <div className="rounded-lg border border-border bg-muted/30 p-3">
+        <p className="text-sm font-medium text-foreground">
+          {customerId
+            ? "Customer-specific policy"
+            : allowDefault
+              ? "Default policy"
+              : "Customer scope required"}
+        </p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          {customerId
+            ? "This override takes precedence over the default for the selected customer's new tickets."
+            : allowDefault
+              ? "This fallback applies only when a customer has no dedicated policy."
+              : scopeUnavailable
+                ? "Every active or trial customer already has an SLA policy."
+                : "Choose the customer that should receive this override."}
+        </p>
       </div>
 
-      <div className="rounded-lg border border-border overflow-hidden">
-        <table className="w-full">
-          <thead>
-            <tr className="border-b border-border bg-muted/50">
-              <th className="text-left text-xs font-medium text-muted-foreground p-3 w-20">Severity</th>
-              <th className="text-left text-xs font-medium text-muted-foreground p-3">Response time</th>
-              <th className="text-left text-xs font-medium text-muted-foreground p-3">Resolution time</th>
-            </tr>
-          </thead>
-          <tbody>
-            {SEVERITIES.map((s) => (
-              <tr key={s.key} className="border-b border-border last:border-0">
-                <td className="p-3">
-                  <span className={`text-sm font-bold ${s.color}`}>{s.label}</span>
-                </td>
-                <td className="p-3">
-                  <input
-                    type="text"
-                    value={minutes[`${s.key.toLowerCase()}r`] ?? ""}
-                    onChange={(e) => setM(`${s.key.toLowerCase()}r`, e.target.value)}
-                    placeholder="e.g., 15m, 1h, 1h30m, 1d"
-                    className="w-40 rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
-                  />
-                </td>
-                <td className="p-3">
-                  <input
-                    type="text"
-                    value={minutes[`${s.key.toLowerCase()}s`] ?? ""}
-                    onChange={(e) => setM(`${s.key.toLowerCase()}s`, e.target.value)}
-                    placeholder="e.g., 4h, 1d, 1d4h"
-                    className="w-40 rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
-                  />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <p className="text-xs text-muted-foreground -mt-4">
-        Time format: number + unit. Units: <code>m</code> (minutes), <code>h</code> (hours), <code>d</code> (days). Combined: <code>1d4h30m</code>.
+      <fieldset className="overflow-hidden rounded-lg border border-border">
+        <legend className="sr-only">Response and resolution targets</legend>
+        <div className="hidden grid-cols-[4rem_minmax(0,1fr)_minmax(0,1fr)] gap-3 border-b border-border bg-muted/50 px-3 py-2 text-xs font-medium text-muted-foreground sm:grid">
+          <span>Severity</span>
+          <span>Response time</span>
+          <span>Resolution time</span>
+        </div>
+
+        {SEVERITIES.map((severity) => {
+          const key = severity.key.toLowerCase();
+          const responseId = `sla-${key}-response`;
+          const resolutionId = `sla-${key}-resolution`;
+          return (
+            <div
+              key={severity.key}
+              className="grid grid-cols-1 gap-3 border-b border-border p-3 last:border-0 sm:grid-cols-[4rem_minmax(0,1fr)_minmax(0,1fr)] sm:items-end"
+            >
+              <span className={`text-sm font-bold ${severity.color}`}>
+                {severity.key}
+              </span>
+              <div className="min-w-0">
+                <label
+                  htmlFor={responseId}
+                  className="mb-1 block text-xs font-medium text-muted-foreground sm:sr-only"
+                >
+                  {severity.key} response time
+                </label>
+                <input
+                  id={responseId}
+                  type="text"
+                  value={minutes[`${key}r`] ?? ""}
+                  onChange={(event) =>
+                    setMinute(`${key}r`, event.target.value)
+                  }
+                  placeholder="e.g., 15m or 1h30m"
+                  className="w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+                />
+              </div>
+              <div className="min-w-0">
+                <label
+                  htmlFor={resolutionId}
+                  className="mb-1 block text-xs font-medium text-muted-foreground sm:sr-only"
+                >
+                  {severity.key} resolution time
+                </label>
+                <input
+                  id={resolutionId}
+                  type="text"
+                  value={minutes[`${key}s`] ?? ""}
+                  onChange={(event) =>
+                    setMinute(`${key}s`, event.target.value)
+                  }
+                  placeholder="e.g., 4h or 1d4h"
+                  className="w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+                />
+              </div>
+            </div>
+          );
+        })}
+      </fieldset>
+
+      <p className="text-xs text-muted-foreground">
+        Use minutes, hours, or days—for example <code>15m</code>,{" "}
+        <code>1h30m</code>, or <code>2d4h</code>. Response must not exceed
+        resolution for the same severity.
       </p>
 
-      <div className="flex gap-3 pt-2">
+      <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row">
         <button
           type="submit"
-          disabled={loading}
-          className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
+          disabled={loading || scopeUnavailable}
+          className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
         >
-          {loading ? "Saving..." : mode === "create" ? "Create Policy" : "Save Changes"}
+          {loading
+            ? "Saving..."
+            : mode === "create"
+              ? "Create Policy"
+              : "Save Changes"}
         </button>
         <button
           type="button"
           onClick={() => router.back()}
-          className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-accent transition-colors"
+          className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent"
         >
           Cancel
         </button>
