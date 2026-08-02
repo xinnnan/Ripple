@@ -7,15 +7,15 @@ meaningful change and before ending a work session. Newest entries go first.
 
 - **Branch:** `codex/prd-v1-1-gap-closure`
 - **Active phase:** Phase 0 — Containment and reproducible baseline
-- **Active work item:** apply/probe migration 045, configure the production
-  outbox worker secret, then continue the next integrity milestone
+- **Active work item:** contain public site-code validation and add durable
+  distributed throttling, then configure the production outbox worker secret
 - **Last verified implementation commit:** `0085db6` (`fix: restrict direct application writes`)
 - **Uncommitted work:** none expected after the documentation checkpoint;
   verify with `git status` before resuming
-- **Deployment gate:** migrations 001–044 are confirmed applied. Migration 044
+- **Deployment gate:** migrations 001–045 are confirmed applied. Migration 044
   passed a 130-assertion disposable live matrix with zero residue. Migration
-  045 must be applied before deploying the direct-write boundary from
-  `0085db6`. Production `CRON_SECRET` remains unset in this workspace.
+  045 passed a 110-assertion live matrix with zero residue. Production
+  `CRON_SECRET` remains unset in this workspace.
   Protected positive business probes for migrations 028–037 still require
   staging fixtures
 - **External validation gate:** populate the gitignored credential fixture with six
@@ -50,13 +50,41 @@ meaningful change and before ending a work session. Newest entries go first.
   with Inter and no horizontal overflow. Password-based login passed;
   recovery-email delivery and one-time link consumption still require a
   dedicated staging mailbox.
-- **Exact next local step:** after the user applies migration 045, verify direct
-  anonymous/authenticated mutation and sequence denial across the application,
-  reproduce the historical membership/SLA attempts as rejected, confirm safe
-  self-profile updates and protected-column denial, exercise representative
-  server/API commands, and leave zero residue. Configure `CRON_SECRET`
+- **Exact next local step:** minimize and lifecycle-align the public site-code
+  validator, add a durable service-only rate-limit command, cover route/query/
+  browser behavior, and run the full commit gate. Configure `CRON_SECRET`
   separately before production worker activation
 - **Primary plan:** [`plans/prd-v1.1-gap-closure-plan.md`](./prd-v1.1-gap-closure-plan.md)
+
+## Session record — 2026-08-01 (P0-AH / migration 045 live verification)
+
+### Objective
+
+Prove the deployed direct-write boundary against real anonymous,
+authenticated, and server-command paths without leaving test data behind.
+
+### Live verification
+
+- A disposable live matrix passed 110 assertions. Authenticated direct DELETE
+  was denied on all 22 command-owned tables; representative anonymous DML,
+  the exact engineer cross-tenant membership insert, and the exact admin SLA
+  insert were denied without residue.
+- Safe `full_name`/`phone` self-service remained functional. Protected role
+  updates plus direct user insert/delete were denied and preserved state.
+- Anonymous/authenticated access to all five number-minting RPC endpoints was
+  denied; the migration contract separately verifies sequence revocation.
+- A real local browser admin login and authenticated HTTP APIs successfully
+  added/removed membership and created/deleted an SLA policy. Read scope
+  appeared/disappeared as expected and each command produced exact joined/
+  left/created/deleted audit evidence.
+- Cleanup confirmed zero disposable profiles, memberships, policies, sites,
+  customers, or audits.
+
+### Decision and next step
+
+- Migration 045 is deployed and its release gate is closed.
+- Next, contain the public site-code lookup surface with minimal responses,
+  aligned tenant lifecycle, and a durable distributed rate limit.
 
 ## Session record — 2026-08-01 (P0-AG / direct application-write boundary)
 

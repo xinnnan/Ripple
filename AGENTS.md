@@ -162,15 +162,15 @@ const isInternal = role ? INTERNAL_ROLES.includes(role) : email ? isInternalEmai
 
 ## 5. Database Schema (Supabase)
 
-45 migrations, to be applied in order. Migrations 001–044 are confirmed
-applied as of 2026-08-01; migration 045 awaits application. Key tables:
+45 migrations, to be applied in order. Migrations 001–045 are confirmed
+applied as of 2026-08-01. Key tables:
 
 | Table | Purpose | Notes |
 |---|---|---|
 | `customers` | Customer orgs | `name`, `domain`, `status`; migration 040 makes active/trial creation and ordinary updates transactionally audited and keeps inactive lifecycle behind the archive workflow |
 | `sites` | Customer locations | `site_code` (unique), `slack_channel_id`, `project_status`; migration 036 makes customer ownership immutable through normal admin updates and makes create/update audit atomic; migration 037 repairs its SQL-expression runtime defect and is live-verified |
 | `users` | All users (internal + external) | `role` (4 values, see §4), `customer_id`, `slack_user_id`; migration 038 makes same-family admin PATCH/deactivation serialized and transactionally audited. Migration 039 stops trusting signup role metadata and adds atomic admin/team provisioning finalizers |
-| `site_members` | User ↔ Site (M:N) | Customers join via this; customer_manager bypasses. Migration 035 adds tenant-contained, transactionally audited admin add/remove commands. Migration 045 removes the legacy direct authenticated write path; it awaits application |
+| `site_members` | User ↔ Site (M:N) | Customers join via this; customer_manager bypasses. Migration 035 adds tenant-contained, transactionally audited admin add/remove commands. Migration 045 removes the legacy direct authenticated write path; its 110-assertion live matrix is green |
 | `tickets` | Core ticket entity | `ticket_no` (RPL-XXXXXX), `secure_token` (32-byte hex), `severity` (P1–P4), 8-state `status`, response/resolution due/achieved/breached timestamps; migration 027 column-limits direct authenticated SELECT |
 | `ticket_comments` | Discussion, `visibility: customer\|internal` | `is_automated`; only human internal-authored customer-visible messages satisfy First Response |
 | `ticket_attachments` | File refs (storage_path) | Bucket `ripple-attachments`, 50MB cap; direct authenticated bucket access is removed by migration 027 and app routes mediate objects. Migration 044 adds bounded metadata/path constraints and atomic metadata plus timeline creation; its 130-assertion live matrix is green |
@@ -178,7 +178,7 @@ applied as of 2026-08-01; migration 045 awaits application. Key tables:
 | `ai_suggestions` | Ripple Assist outputs | `model_name`, `confidence_level`, accept/dismiss feedback |
 | `slack_channels` / `slack_messages` | Site ↔ Slack channel map, message tracking | |
 | `integration_outbox` | Durable external delivery | Unique event keys, bounded leases, exponential backoff, delivery evidence, dead-letter retention |
-| `sla_policies` | Default/customer SLA targets | Migration 041 derives scope shape, orders response/resolution targets, serializes create/update/delete, protects default/referenced rows, and commits exact audit evidence atomically; its 35-assertion live matrix is green. Migration 045 removes the legacy direct admin write path; it awaits application |
+| `sla_policies` | Default/customer SLA targets | Migration 041 derives scope shape, orders response/resolution targets, serializes create/update/delete, protects default/referenced rows, and commits exact audit evidence atomically; its 35-assertion live matrix is green. Migration 045 removes the legacy direct admin write path; its 110-assertion live matrix is green |
 | `spare_parts` / `spare_part_inventory` / `spare_part_requests` / `spare_part_request_items` | Phase 3 catalog + per-site stock + request workflow | `request_no` SPR-XXXX; migration 042 makes catalog create/update transactionally audited with normalized case-folded identity, bounded shape, nonnegative price, and no-op preservation. Migration 043 adds guarded atomic stock upsert/PATCH, ordered quantity bounds, active-parent checks, exact audit evidence, and increase-only restock timestamps; its 72-assertion live matrix is green |
 | `field_service_orders` / `field_service_engineers` | Phase 3 dispatch | `order_no` FSO-XXXX, M:N engineers |
 
@@ -937,8 +937,10 @@ to all number sequences. Authenticated self-service retains only
 `users.full_name`, `phone`, and `avatar_url`; all business writes remain behind
 validated server routes and service-role commands. The credentialed matrix now
 uses non-mutating random-ID DELETE probes to prove the historical membership
-and SLA paths remain closed. Migration 045 awaits application and live
-verification.
+and SLA paths remain closed. Migration 045 was applied on 2026-08-01 and passed
+a disposable 110-assertion live matrix spanning all 22 command-owned tables,
+the exact historical exploits, safe/protected profile behavior, five minting
+RPCs, real admin API continuity, exact audit/scope effects, and zero residue.
 
 **Lesson:** an atomic `SECURITY DEFINER` command does not protect a domain while
 the caller can still write its tables directly. Review table privileges, every
@@ -1073,9 +1075,9 @@ resume work; this section remains the broader historical summary.
   spare-parts catalog administration through migration 042, added atomic
   per-site inventory administration and live-verified migration 043, hardened
   attachment intake and live-verified atomic metadata/timeline handling through
-  migration 044, proved legacy direct membership/SLA write bypasses, and added
-  the pending migration 045 whole-application write boundary, with 409
-  unit/contract tests plus a zero-vulnerability dependency baseline.
+  migration 044, then deployed and live-verified the migration 045
+  whole-application write boundary, with 409 unit/contract tests plus a
+  zero-vulnerability dependency baseline.
 
 ### Known issues / open work
 | Priority | Item | Where | Notes |
@@ -1091,7 +1093,7 @@ resume work; this section remains the broader historical summary.
 | 🟡 Verify | Migration 034 protected creation probes remain | `supabase/migrations/034_atomic_ticket_creation_outbox.sql` | Command privilege, validation, constraint, and zero-residue probes are live/green; run disposable web/Slack creation and outbox-delivery probes with staging fixtures |
 | 🟡 Verify | Migration 035 protected membership probes remain | `supabase/migrations/035_atomic_admin_site_membership.sql` | Service validation/not-found and anonymous-denial probes are live/green with zero residue; run disposable same/cross-tenant add/remove/rollback probes |
 | 🟡 Verify | Migration 037 protected positive probes remain | `supabase/migrations/037_repair_qualified_sql_expressions.sql` | All six definitions now reach domain validation instead of `42883`; anonymous denial and zero-residue probes are green. Run disposable positive/rollback business probes with staging fixtures |
-| 🔴 Apply | Migration 045 is not deployed yet | `supabase/migrations/045_restrict_direct_application_writes.sql` | Apply before deploying `0085db6`, then verify direct anonymous/authenticated DML denial across application tables, closed engineer membership/admin SLA bypasses, safe self-profile updates, protected-column denial, server-command continuity, sequence grants, and zero residue |
+| ✅ Verified | Migration 045 direct-write boundary | `supabase/migrations/045_restrict_direct_application_writes.sql` | Applied 2026-08-01; 110 live assertions covered all 22 command-owned tables, historical membership/SLA bypasses, profile continuity/protection, five minting RPCs, real admin APIs, exact audit evidence, scope continuity, and zero residue |
 | 🟡 Med | File-service malware/quarantine and durable reconciliation are incomplete | `src/lib/files/attachment-validation.ts`, `/api/upload` | Content/type/path validation and safe cross-system compensation are present; add malware scanning, quarantine/release, checksums, retention, and an operator queue for ambiguous outcomes |
 | 🟡 Med | Vercel recovery cron runs daily for plan compatibility | `vercel.json` | Request-path dispatch is immediate; use a supported 1–5 minute schedule or external scheduler when the production Vercel plan permits |
 | 🟢 Low | Slack `events` route doesn't route customer messages to a ticket comment yet | `src/app/api/slack/events/route.ts` | Sprint 3 — bidirectional thread sync (SLK-008) |
@@ -1099,11 +1101,9 @@ resume work; this section remains the broader historical summary.
 | 🟡 Activate | Hosted quality workflow and protected staging job are not activated yet | `.github/workflows/ci.yml` | After pushing, require `Quality gates`; create a reviewer-protected `staging` environment and add only `RIPPLE_E2E_FIXTURES_JSON` there |
 
 ### Next priorities (Sprint 3, in proposed order)
-1. **Apply and verify migration 045.** Confirm direct anonymous/authenticated
-   business-table mutations and sequence access are denied, the historical
-   engineer membership and admin SLA bypasses are closed, safe self-profile
-   edits still work, protected profile columns remain denied, server/API
-   commands remain functional, and disposable probes leave zero residue.
+1. **Contain public site-code validation.** Remove unnecessary tenant
+   identifiers, align site and customer lifecycle checks, bound inputs, and
+   replace process-local-only enumeration protection with a durable limit.
 2. **Run migrations 028–029 part-request probes.** Both migrations are
    applied; staging credentials are not present in this workspace.
 3. **Run migration 030 field-service transaction probes.** Both command RPCs
@@ -1111,9 +1111,9 @@ resume work; this section remains the broader historical summary.
 4. **Run migration 031 team-access transaction probes.** The command is live;
    protected same/cross-tenant, role-preservation, explicit-clear, and rollback
    fixtures remain unavailable.
-5. **Run the required credentialed staging matrix.** Migrations 027–044 are
-   applied; migration 045 and the secret six-account/two-tenant fixture are the
-   remaining database/external gates.
+5. **Run the required credentialed staging matrix.** Migrations 027–045 are
+   applied; the secret six-account/two-tenant fixture is the remaining
+   database/external gate.
 6. **Apply migration 019** ✅ done (2026-07-14).
 7. **Migrate `next lint` and add protected CI quality gates.** ✅ code done
    (`4ceacd0`); hosted activation remains.
@@ -1181,10 +1181,12 @@ resume work; this section remains the broader historical summary.
     lifecycle/grants, exact events, duplicate/concurrent writes, real guest
     upload, spoof rejection, compensation, attribution, rollback, and zero
     residue.
-31. **Close direct application-table write bypasses.** Code is committed in
-    `0085db6`; apply migration 045 and prove whole-table DML/control and sequence
-    denial, safe profile continuity, atomic-command continuity, historical
-    membership/SLA containment, and zero residue.
+31. **Close direct application-table write bypasses.** ✅ migration 045 is
+    applied. Its 110-assertion matrix proved direct authenticated DELETE denial
+    across all 22 command-owned tables, representative anonymous denial, exact
+    membership/SLA exploit closure, safe-profile continuity, protected-profile
+    denial, five minting-RPC denials, real admin-command continuity, exact audit
+    evidence, scope changes, and zero residue.
 
 ### Open architectural questions
 - The RLS recursion bug surfaces a bigger question: do we keep `createAdminClient() + code filter` (the current pattern in `lib/supabase/scope.ts`) or move back to proper RLS once migration 019 + similar fixes are in place? The current pattern scales fine but has a lower safety margin for new queries.
@@ -1206,7 +1208,7 @@ npm audit
 ```
 
 **Apply a new migration:**
-1. Create `supabase/migrations/045_xxx.sql` (next number)
+1. Create `supabase/migrations/046_xxx.sql` (next number)
 2. Test locally: `supabase db reset` (drops + re-applies all)
 3. Apply to prod via Supabase SQL editor
 4. Document in this file's §5 + §10

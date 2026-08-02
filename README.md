@@ -143,19 +143,20 @@ Apply the SQL files in `supabase/migrations/` **in order** (001 → 045) via the
 
 Later migrations replace policies/functions and should be applied once in
 order. Migration `017` also performs role data updates and must not be re-run
-blindly. Migrations 001–044 are confirmed applied as of 2026-08-01. Migration
+blindly. Migrations 001–045 are confirmed applied as of 2026-08-01. Migration
 043 passed a disposable 72-assertion live matrix covering create/existing
 upsert, positive/no-op PATCH, stock and location constraints, active-parent and
 privilege guards, direct-command grants, concurrent serialization, exact audit
 attribution, increase-only restock facts, rollback, and zero residue. Migration
 044 passed a 130-assertion live matrix spanning roles, lifecycle,
 shape, attribution, event atomicity, concurrency, Storage compensation, real
-guest HTTP upload, spoof rejection, and zero residue. Apply migration 045
-before deploying `0085db6`; it removes direct anonymous/authenticated mutation
-privileges from application-owned tables and number sequences while preserving
-only `users.full_name`, `phone`, and `avatar_url` self-service updates. Malware
-scanning, quarantine, checksums, and retention policy remain future file-service
-work.
+guest HTTP upload, spoof rejection, and zero residue. Migration 045 passed a
+110-assertion live matrix covering direct authenticated DELETE denial across
+all 22 command-owned tables, representative anonymous denial, exact historical
+membership/SLA exploit closure, safe-profile continuity, protected-profile
+denial, five minting-RPC denials, real admin-command continuity, exact audit
+evidence, scope changes, and zero residue. Malware scanning, quarantine,
+checksums, and retention policy remain future file-service work.
 
 ### Enable pgvector (for AI features)
 

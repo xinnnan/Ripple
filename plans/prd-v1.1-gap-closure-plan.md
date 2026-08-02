@@ -71,7 +71,7 @@ The correct approach is therefore:
 | Production build | Passed on Next.js 15.5.22 | Environment-free build is reproducible |
 | Dependency audit | 0 vulnerabilities | Patched direct/transitive versions are lockfile-pinned and compatibility-tested |
 | Worktree | Clean at baseline | Work started on `codex/prd-v1-1-gap-closure` |
-| Committed end-to-end tests | 38 production HTTP checks + credentialed Playwright/API/RLS matrix | Public/recovery/negative/configuration smoke always runs, including fail-closed outbox-worker configuration, invalid attachment rejection, and site-membership/site/user/customer/SLA/catalog/inventory-write/provisioning denials. Migration 044 passed a 130-assertion disposable live matrix; migrations 001–044 are applied and migration 045 awaits application. The credentialed matrix now checks direct membership/SLA mutation denial, while protected positive request/field-service/team/site-access/site/user/customer/catalog/inventory/attachment-administration/provisioning/transition/outbox/create probes and the six-account two-tenant matrix await staging credentials/fixtures |
+| Committed end-to-end tests | 38 production HTTP checks + credentialed Playwright/API/RLS matrix | Public/recovery/negative/configuration smoke always runs, including fail-closed outbox-worker configuration, invalid attachment rejection, and site-membership/site/user/customer/SLA/catalog/inventory-write/provisioning denials. Migrations 001–045 are applied; migration 045 passed a 110-assertion disposable live matrix across all 22 command-owned tables, historical bypasses, profile and admin-command continuity, exact audit/scope effects, and zero residue. Protected positive request/field-service/team/site-access/site/user/customer/catalog/inventory/attachment-administration/provisioning/transition/outbox/create probes and the six-account two-tenant matrix await staging credentials/fixtures |
 | Hosted CI | Workflow committed in `4ceacd0`; first hosted run pending | Read-only, SHA-pinned quality job is reproducible; repository branch protection and the protected staging environment still require activation |
 
 ## 4. PRD capability gap map
@@ -83,8 +83,8 @@ has a release-blocking security or integrity problem.
 | PRD capability | Current state | Main gap |
 |---|---|---|
 | Identity and account lifecycle | Partial | Same-family global role/status edits and deactivation are serialized and atomically audited; privileged signup metadata is contained and deployed admin/team provisioning finalizers are live-verified, but there is no complete invite/reactivation lifecycle, MFA, session/device management, or scoped internal access |
-| Membership and Site Assignment | Unsafe/Partial | Admin-managed customer site access is tenant-contained and transactionally audited, and unsafe global role-family transfers are blocked. Migration 045 closes a proven direct PostgREST membership-write bypass but awaits application; global `users.role` + `users.customer_id` still conflicts with the PRD per-membership/per-site authorization model |
-| Tenant isolation | Unsafe/Partial | Site ownership is immutable through ordinary administration and membership assignment is tenant-contained. Migration 045 establishes a whole-application direct-write boundary but awaits application; admin-client reads still depend on manual filters and the PRD authorization model is incomplete |
+| Membership and Site Assignment | Partial | Admin-managed customer site access is tenant-contained and transactionally audited, unsafe global role-family transfers are blocked, and deployed migration 045 closes the direct PostgREST membership-write bypass; global `users.role` + `users.customer_id` still conflicts with the PRD per-membership/per-site authorization model |
+| Tenant isolation | Unsafe/Partial | Site ownership is immutable through ordinary administration and membership assignment is tenant-contained. Deployed migration 045 establishes a whole-application direct-write boundary; admin-client reads still depend on manual filters and the PRD authorization model is incomplete |
 | Customer Portal | Partial | Basic dashboard/tickets/sites/profile only; no onsite requests, assets, history, preferences, or PRD wizard |
 | Ticket Core | Partial | Current creation plus eight-state transitions and resolution entry rules are database-guarded/atomic; PRD states, merge/relations, visibility scopes, versioning, and optimistic concurrency remain |
 | Workflow / Automation | Partial | Ticket creation/update/resolution delivery now shares an outbox with idempotency keys, leases, retry, and dead-letter handling; rule definitions/versioning and broader domain-event execution remain |
@@ -101,9 +101,9 @@ has a release-blocking security or integrity problem.
 | Notifications / Templates | Partial | Durable ticket creation/update/resolution delivery records/retry/dead-letter are committed; template versioning, locale fallback, preferences, and in-app inbox remain |
 | Reporting / Export | Partial | Ticket CSV and dashboard counts only; no metric contract, SLA/operations reports, scheduled generation, or permission-aware exports |
 | Internationalization | Absent | English strings are embedded in code; no locale resolution, translation catalog, formatting rules, or four-language QA |
-| Administration | Partial | Site/membership/user/customer/SLA/catalog/inventory authorization-root writes are deployed atomically. Migration 045 removes proven direct membership/SLA bypasses and other public API-role write grants but awaits application; configuration hierarchy, form/custom-field builder, workflow publishing, feature flags, retention, and integration console remain absent |
+| Administration | Partial | Site/membership/user/customer/SLA/catalog/inventory authorization-root writes are deployed atomically, and migration 045 removes proven direct membership/SLA bypasses plus other public API-role write grants; configuration hierarchy, form/custom-field builder, workflow publishing, feature flags, retention, and integration console remain absent |
 | External API / Webhooks | Absent | Unversioned internal REST only; no client credentials, scopes, idempotency, concurrency, stable errors, signed webhooks, or docs |
-| Security / Privacy | Unsafe/Partial | Slack request verification fails closed, direct ticket-column/Storage exposure is contained, and attachment intake validates content and attribution. Migration 045 closes proven table-write bypasses but awaits application; malware/quarantine, incomplete audit guarantees in other domains, and other authorization gaps remain |
+| Security / Privacy | Unsafe/Partial | Slack request verification fails closed, direct ticket-column/Storage exposure is contained, attachment intake validates content and attribution, and deployed migration 045 closes proven table-write bypasses; malware/quarantine, incomplete audit guarantees in other domains, and other authorization gaps remain |
 | SRE / Operations | Partial | Minimal liveness and configuration-readiness endpoints exist; structured observability, SLOs, alerting, runbooks, tested recovery, capacity/performance evidence, and release automation remain |
 | Testing / Quality Gates | Partial | Unit, SLA truth tables, RPC/migration guards, production HTTP smoke, and a credentialed tenant/browser matrix are committed; the credentialed matrix still needs its first staging run, and recovery, i18n, and performance suites remain |
 
@@ -124,7 +124,7 @@ has a release-blocking security or integrity problem.
 | SEC-009 | Permissive legacy RLS allows customer roles to query internal comments/attachments and raw ticket events directly | **Closed in `b71b3d7`:** migration 026 replaces the OR-composed policies with customer-visible artifact scope and internal-only raw events |
 | SEC-010 | Authenticated PostgREST can request ticket secrets/PII columns and any active account can directly access the attachment bucket | **Closed in `b9a7a12`; deployment confirmed 2026-07-29:** migration 027 replaces broad ticket SELECT with a customer-safe column grant and removes direct authenticated Storage access |
 | SEC-011 | Public Auth signup metadata can select `admin` because `handle_new_user()` trusts caller-controlled `raw_user_meta_data.role` | **Closed in `33b3a66`; deployment confirmed 2026-07-31:** migration 039 permits only the safe customer bootstrap role, keeps unconfirmed signups invited, and assigns privileged roles only through guarded service-role finalizers; a 25-assertion disposable matrix passed |
-| SEC-012 | Legacy authenticated table grants/RLS let engineers mutate `site_members` across tenants and admins mutate `sla_policies` without atomic validation or audit | **Code complete in `0085db6`; migration 045 pending:** a disposable live probe reproduced both bypasses and missing audit evidence. Migration 045 removes direct mutation/control privileges across application tables and sequences, preserves only safe self-profile columns, and adds credentialed PostgREST denials |
+| SEC-012 | Legacy authenticated table grants/RLS let engineers mutate `site_members` across tenants and admins mutate `sla_policies` without atomic validation or audit | **Closed in `0085db6`; deployment confirmed 2026-08-01:** migration 045 passed 110 live assertions across all 22 command-owned tables, exact historical exploits, profile and real admin-command continuity, exact audit/scope effects, five minting RPCs, and zero residue |
 
 ### High-priority integrity defects
 
@@ -514,14 +514,17 @@ Every implementation slice must:
     reconciliation. Twenty-five new tests, one HTTP rejection probe, protected
     attachment UI assertions, public desktop/mobile browser QA, and a
     130-assertion disposable live matrix are green.
-33. **P0-AG — code complete in `0085db6`; migration pending:** A disposable
+33. **P0-AG — deployed and live-verified:** A disposable
     live probe proved engineers could directly create cross-tenant
     `site_members` rows and admins could directly insert `sla_policies`, both
     without audit evidence. Migration 045 drops the legacy write policies,
     revokes public API-role mutation/control rights across application tables
     and number sequences, preserves only safe self-profile fields, and adds
     credentialed non-mutating denial probes. Five new contracts bring the suite
-    to 409 tests.
-34. **Next local integrity work:** apply and live-probe migration 045, then
-    continue the next highest-risk best-effort domain and run protected
-    positive/rollback delivery probes.
+    to 409 tests. Migration 045 passed 110 live assertions spanning all 22
+    command-owned tables, exact historical exploits, profile and real admin API
+    continuity, exact audit/scope effects, five minting RPCs, and zero residue.
+34. **Next local integrity work:** contain the public site-code validation
+    surface, including bounded/minimal responses, aligned tenant lifecycle, and
+    durable distributed throttling; then run protected positive/rollback
+    delivery probes.
