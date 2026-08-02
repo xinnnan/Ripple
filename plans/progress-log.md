@@ -7,16 +7,16 @@ meaningful change and before ending a work session. Newest entries go first.
 
 - **Branch:** `codex/prd-v1-1-gap-closure`
 - **Active phase:** Phase 0 — Containment and reproducible baseline
-- **Active work item:** apply/probe migration 046, then configure the production
-  outbox worker secret and continue the next integrity milestone
+- **Active work item:** extend deployed distributed throttling to the remaining
+  guest attachment and public secure-token ticket boundaries
 - **Last verified implementation commit:** `19574c9` (`fix: contain public support intake`)
 - **Uncommitted work:** none expected after the documentation checkpoint;
   verify with `git status` before resuming
-- **Deployment gate:** migrations 001–045 are confirmed applied. Migration 044
+- **Deployment gate:** migrations 001–046 are confirmed applied. Migration 044
   passed a 130-assertion disposable live matrix with zero residue. Migration
-  045 passed a 110-assertion live matrix with zero residue. Production
-  `CRON_SECRET` remains unset in this workspace. Migration 046 must be applied
-  before deploying `19574c9`.
+  045 passed a 110-assertion live matrix with zero residue. Migration 046
+  passed a 77-assertion live matrix with zero residue. Production
+  `CRON_SECRET` remains unset in this workspace.
   Protected positive business probes for migrations 028–037 still require
   staging fixtures
 - **External validation gate:** populate the gitignored credential fixture with six
@@ -54,12 +54,50 @@ meaningful change and before ending a work session. Newest entries go first.
   zero reproducible console warnings/errors. Password-based login passed;
   recovery-email delivery and one-time link consumption still require a
   dedicated staging mailbox.
-- **Exact next local step:** after the user applies migration 046, run a
-  disposable matrix for concurrent consumption, window reset, bounded cleanup,
-  public table/RPC denial, real validation/submission 429 + `Retry-After`,
-  lifecycle filtering, and zero residue. Configure `CRON_SECRET` separately
-  before production worker activation
+- **Exact next local step:** pair guest upload and the public secure-token page
+  with migration 046's distributed command, fail closed on limiter outages,
+  add route/page contracts and real HTTP probes, and run the full commit gate.
+  Configure `CRON_SECRET` separately before production worker activation
 - **Primary plan:** [`plans/prd-v1.1-gap-closure-plan.md`](./prd-v1.1-gap-closure-plan.md)
+
+## Session record — 2026-08-02 (P0-AJ / migration 046 live verification)
+
+### Objective
+
+Prove the deployed distributed public-intake limiter through real service,
+anonymous, authenticated, database-concurrency, retention, and HTTP paths
+without leaving probe state.
+
+### Live verification
+
+- Confirmed the service role can use the table/command while anonymous and a
+  disposable active authenticated user cannot read or mutate the table or
+  invoke the command directly.
+- Confirmed malformed/non-lowercase keys, zero/oversized limits and windows,
+  malformed stored keys, and negative counts are rejected.
+- Sequential consumption allowed exactly three requests, denied excess, and
+  capped durable state at `limit + 1`. Twenty-five concurrent calls against a
+  limit of ten produced exactly ten allows, fifteen denials, and a bounded
+  count of eleven.
+- A one-second window denied immediate excess, then reset with a later expiry.
+  One command removed exactly 100 ancient rows, retained a one-hour-expired
+  row, and a later command removed the remaining five ancient rows.
+- A disposable active site/customer returned only name/code with `no-store`;
+  inactive customer and decommissioned site states were hidden, while trial
+  customer access remained valid. Malformed codes created no distributed row.
+- Pre-seeded distributed buckets forced real validator and anonymous ticket
+  submission HTTP 429 responses with bounded `Retry-After`; a fresh ticket
+  bucket still reached normal validation.
+- All 77 assertions passed. Cleanup proved zero disposable bucket, site,
+  customer, public-profile, and Auth-identity residue.
+
+### Rollout and next
+
+1. Migration 046 and `19574c9` are deployment-ready for the tested boundary.
+2. Extend the same distributed fail-closed pattern to guest attachment upload
+   and the public secure-token ticket page, which still rely on the local map.
+3. Preserve the exact-code-oracle risk until CAPTCHA, intake tokens, or
+   authenticated-only validation is product-approved.
 
 ## Session record — 2026-08-01 (P0-AI / public support-intake containment)
 

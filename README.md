@@ -144,7 +144,7 @@ Apply the SQL files in `supabase/migrations/` **in order** (001 → 046) via the
 
 Later migrations replace policies/functions and should be applied once in
 order. Migration `017` also performs role data updates and must not be re-run
-blindly. Migrations 001–045 are confirmed applied as of 2026-08-01. Migration
+blindly. Migrations 001–046 are confirmed applied as of 2026-08-02. Migration
 043 passed a disposable 72-assertion live matrix covering create/existing
 upsert, positive/no-op PATCH, stock and location constraints, active-parent and
 privilege guards, direct-command grants, concurrent serialization, exact audit
@@ -158,9 +158,10 @@ membership/SLA exploit closure, safe-profile continuity, protected-profile
 denial, five minting-RPC denials, real admin-command continuity, exact audit
 evidence, scope changes, and zero residue. Malware scanning, quarantine,
 checksums, and retention policy remain future file-service work. Migration 046
-is pending and must be applied before deploying `19574c9`; it adds an opaque,
-service-role-only distributed limiter for public site validation and anonymous
-ticket submission. Exact site-code validation remains an existence oracle, so
+passed a 77-assertion live matrix covering service/public grants, input and
+table constraints, sequential and concurrent limits, bounded cleanup,
+window reset/retention, real validator/submission throttling and lifecycle
+behavior, and zero residue. Exact site-code validation remains an existence oracle, so
 full anti-enumeration still requires CAPTCHA, an invitation/intake token, or
 authenticated submission.
 
