@@ -178,7 +178,7 @@ applied as of 2026-08-02. Key tables:
 | `ai_suggestions` | Ripple Assist outputs | `model_name`, `confidence_level`, accept/dismiss feedback |
 | `slack_channels` / `slack_messages` | Site ↔ Slack channel map, message tracking | |
 | `integration_outbox` | Durable external delivery | Unique event keys, bounded leases, exponential backoff, delivery evidence, dead-letter retention |
-| `request_rate_limits` | Opaque distributed public-boundary counters | Migration 046 adds service-role-only atomic consumption, bounded inputs/counts, indexed expiry, and opportunistic retention; its 77-assertion live matrix is green |
+| `request_rate_limits` | Opaque distributed public-boundary counters | Migration 046 adds service-role-only atomic consumption, bounded inputs/counts, indexed expiry, and opportunistic retention; site validation, anonymous ticket creation, guest attachment upload, and public ticket view now use distinct buckets, and the migration's 77-assertion live matrix is green |
 | `sla_policies` | Default/customer SLA targets | Migration 041 derives scope shape, orders response/resolution targets, serializes create/update/delete, protects default/referenced rows, and commits exact audit evidence atomically; its 35-assertion live matrix is green. Migration 045 removes the legacy direct admin write path; its 110-assertion live matrix is green |
 | `spare_parts` / `spare_part_inventory` / `spare_part_requests` / `spare_part_request_items` | Phase 3 catalog + per-site stock + request workflow | `request_no` SPR-XXXX; migration 042 makes catalog create/update transactionally audited with normalized case-folded identity, bounded shape, nonnegative price, and no-op preservation. Migration 043 adds guarded atomic stock upsert/PATCH, ordered quantity bounds, active-parent checks, exact audit evidence, and increase-only restock timestamps; its 72-assertion live matrix is green |
 | `field_service_orders` / `field_service_engineers` | Phase 3 dispatch | `order_no` FSO-XXXX, M:N engineers |
@@ -293,8 +293,8 @@ npm run dev
 - `npm run build` — production build
 - `npm run start` — production server
 - `npm run lint` — direct ESLint CLI across the repository; warnings fail the gate
-- `npm test` — Vitest unit/contract suite (440 tests)
-- `npm run test:e2e` — 39-check production HTTP smoke plus optional credentialed Playwright/API/RLS matrix; requires a successful build
+- `npm test` — Vitest unit/contract suite (449 tests)
+- `npm run test:e2e` — 40-check production HTTP smoke plus optional credentialed Playwright/API/RLS matrix; requires a successful build
 - `npm run test:e2e:credentialed` — real six-account/two-tenant matrix; set `RIPPLE_E2E_FIXTURES_FILE`
 - `npm run test:e2e:install-browser` — install the pinned Chromium runtime
 
@@ -983,6 +983,31 @@ non-cacheable, parent lifecycle must be checked with the child, operational
 failures must not masquerade as invalid user input, and UI request races need
 explicit cancellation.
 
+### Share tokens authorize a narrow view, not a wildcard query
+Found 2026-08-02 after migration 046 was live-verified. Guest attachment upload
+and `/t/[ticketId]` still used only the process-local limiter. The public
+ticket page also queried `tickets.*` and all raw timeline event values through
+the service role, filtered timeline types only after retrieval, treated query
+failures as a missing ticket, and did not align site/customer lifecycle with
+the share view.
+
+Commit `09259ee` gives upload and view separate migration-046 buckets, keeps
+the local guard as fast load shedding, and fails closed when distributed state
+is unavailable. The share query now selects only rendered customer-safe ticket
+fields, uses active-site plus active/trial-customer inner filters, retrieves
+only customer-visible comments/attachments, and filters allow-listed timeline
+types in SQL without old values. Database errors produce a generic unavailable
+state instead of a false not-found result. A disposable 22-assertion live
+matrix proved customer-safe content, four internal-sentinel exclusions,
+lifecycle filtering, upload/view throttling, `Retry-After`, non-cacheable API
+responses, browser behavior, and zero ticket/tenant/bucket residue.
+
+**Lesson:** possession of a high-entropy share token authorizes only the
+minimum customer contract for that resource. Service-role reads still require
+explicit projections, lifecycle predicates, database-side visibility filters,
+and distinct operational-failure handling; token entropy does not justify a
+wildcard query or process-local-only abuse control.
+
 ### Supabase SSR auth cookies belong on the response you return
 Found 2026-07-29 while adding password recovery. The authorization-code
 callback created a redirect inside the Supabase `setAll` callback, attached
@@ -1113,7 +1138,8 @@ resume work; this section remains the broader historical summary.
   attachment intake and live-verified atomic metadata/timeline handling through
   migration 044, then deployed and live-verified the migration 045
   whole-application write boundary and migration 046 distributed
-  public-intake limiter, with 440 unit/contract tests plus a
+  public-intake limiter, then extended it across guest upload/share-token
+  boundaries with customer-safe projections, with 449 unit/contract tests plus a
   zero-vulnerability dependency baseline.
 
 ### Known issues / open work
@@ -1139,10 +1165,10 @@ resume work; this section remains the broader historical summary.
 | 🟡 Activate | Hosted quality workflow and protected staging job are not activated yet | `.github/workflows/ci.yml` | After pushing, require `Quality gates`; create a reviewer-protected `staging` environment and add only `RIPPLE_E2E_FIXTURES_JSON` there |
 
 ### Next priorities (Sprint 3, in proposed order)
-1. **Harden the remaining open public boundaries.** Guest attachment upload
-   and public secure-token ticket view still use only the process-local limiter;
-   pair them with migration 046's distributed command and fail closed without
-   weakening token or attachment authorization.
+1. **Audit malformed-request and remaining abuse behavior.** Public ticket
+   creation currently maps malformed JSON to a generic 500; inventory the
+   remaining public/authenticated mutation routes, return stable 400 errors for
+   caller syntax, and preserve fail-closed rate/auth ordering.
 2. **Run migrations 028–029 part-request probes.** Both migrations are
    applied; staging credentials are not present in this workspace.
 3. **Run migration 030 field-service transaction probes.** Both command RPCs
@@ -1235,6 +1261,14 @@ resume work; this section remains the broader historical summary.
     Migration 046 was applied on 2026-08-02 and passed a 77-assertion live
     matrix spanning grants, validation, concurrency, reset/retention, bounded
     cleanup, real HTTP limits/lifecycle, and zero residue.
+33. **Harden public token boundaries.** Commit `09259ee` gives guest upload and
+    public ticket view distinct distributed buckets and fail-closed outage
+    behavior. The share page now uses a customer-safe ticket projection,
+    active tenant lifecycle, customer-visible child filters, and SQL-filtered
+    timeline facts without old values. Nine new tests bring the suite to 449;
+    the HTTP smoke has 40 checks; a disposable 22-assertion live matrix plus
+    real-browser Inter/overflow/retry/zero-console QA is green with zero
+    ticket/tenant/bucket residue.
 
 ### Open architectural questions
 - The RLS recursion bug surfaces a bigger question: do we keep `createAdminClient() + code filter` (the current pattern in `lib/supabase/scope.ts`) or move back to proper RLS once migration 019 + similar fixes are in place? The current pattern scales fine but has a lower safety margin for new queries.

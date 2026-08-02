@@ -7,9 +7,9 @@ meaningful change and before ending a work session. Newest entries go first.
 
 - **Branch:** `codex/prd-v1-1-gap-closure`
 - **Active phase:** Phase 0 — Containment and reproducible baseline
-- **Active work item:** extend deployed distributed throttling to the remaining
-  guest attachment and public secure-token ticket boundaries
-- **Last verified implementation commit:** `19574c9` (`fix: contain public support intake`)
+- **Active work item:** audit malformed request handling and remaining
+  public/authenticated mutation abuse boundaries
+- **Last verified implementation commit:** `09259ee` (`fix: harden public token boundaries`)
 - **Uncommitted work:** none expected after the documentation checkpoint;
   verify with `git status` before resuming
 - **Deployment gate:** migrations 001–046 are confirmed applied. Migration 044
@@ -54,11 +54,57 @@ meaningful change and before ending a work session. Newest entries go first.
   zero reproducible console warnings/errors. Password-based login passed;
   recovery-email delivery and one-time link consumption still require a
   dedicated staging mailbox.
-- **Exact next local step:** pair guest upload and the public secure-token page
-  with migration 046's distributed command, fail closed on limiter outages,
-  add route/page contracts and real HTTP probes, and run the full commit gate.
-  Configure `CRON_SECRET` separately before production worker activation
+- **Exact next local step:** start with malformed JSON on public ticket
+  creation, inventory sibling routes for the same generic-500 behavior, add
+  stable caller-error contracts without weakening auth/rate-limit ordering,
+  and run the full gate. Configure `CRON_SECRET` separately before production
+  worker activation
 - **Primary plan:** [`plans/prd-v1.1-gap-closure-plan.md`](./prd-v1.1-gap-closure-plan.md)
+
+## Session record — 2026-08-02 (P0-AK / public token-boundary hardening)
+
+### Objective
+
+Extend the deployed distributed limiter to every existing unauthenticated
+token/upload surface and minimize service-role reads on the public ticket
+share page.
+
+### Finding and implementation
+
+- Guest `/api/upload` and `/t/[ticketId]` retained only process-local counters,
+  so serverless cold starts and parallel instances reopened their abuse
+  windows.
+- The public page fetched `tickets.*` plus all raw event values, filtered event
+  types after retrieval, treated database errors as invalid links, and did not
+  require active site plus active/trial customer lifecycle.
+- Commit `09259ee` gives upload and view distinct opaque migration-046 buckets,
+  preserves the local L1 guard, returns non-cacheable 429/`Retry-After` for
+  guest uploads, and fails both boundaries closed when the distributed command
+  is unavailable. Authenticated uploads do not share the anonymous bucket.
+- The public share query now selects only rendered customer-safe fields, uses
+  tenant lifecycle inner filters, retrieves customer-visible comments and
+  attachments, and selects only allow-listed event type/new-value/time facts in
+  SQL. Child/query failures produce a generic unavailable state.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| `npm ci` | Passed; locked install, 0 install-time vulnerabilities |
+| `npm test` | Passed; 65 files, 449 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build |
+| `npm run test:e2e` | Passed; all 40 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| Live matrix | Passed; 22 assertions covered safe public rendering, four internal-sentinel exclusions, active/trial/inactive/decommissioned lifecycle, view/upload throttling, durable pre-body consumption, `Retry-After`, non-cacheable responses, and zero ticket/site/customer/bucket residue |
+| Browser QA | Passed at 1280×720: real safe ticket content, transition after 30 reloads to the retry state, self-hosted Inter, no horizontal overflow, and zero console errors on both inspected tabs |
+
+### Next
+
+Audit malformed JSON handling across mutation routes. `POST /api/tickets`
+currently catches JSON syntax failure as a generic 500 even though malformed
+caller input should return a stable 400; preserve auth and rate-limit ordering
+while correcting this class.
 
 ## Session record — 2026-08-02 (P0-AJ / migration 046 live verification)
 

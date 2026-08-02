@@ -56,7 +56,7 @@ A Slack-native support portal for DropletAI Services. Centralises customer suppo
 | AI | **MiniMax AI** (OpenAI-compatible) — was OpenAI → Zhipu → MiniMax. **See "AI provider" section below.** |
 | Email | Resend (transactional: ticket confirmation, resolution notice) |
 | Validation | Zod (all API request bodies) |
-| Testing | Vitest (440 unit/contract tests) + 39-check production HTTP smoke + credentialed Playwright/API/RLS matrix |
+| Testing | Vitest (449 unit/contract tests) + 40-check production HTTP smoke + credentialed Playwright/API/RLS matrix |
 | Hosting | Vercel (serverless API routes) |
 
 ## Phases
@@ -165,6 +165,11 @@ behavior, and zero residue. Exact site-code validation remains an existence orac
 full anti-enumeration still requires CAPTCHA, an invitation/intake token, or
 authenticated submission.
 
+Guest attachment upload and the public share-token ticket page also use
+separate distributed buckets. The share view is lifecycle-scoped and reads an
+explicit customer-safe ticket projection plus customer-visible child records;
+raw event old values and non-public event types are not retrieved.
+
 ### Enable pgvector (for AI features)
 
 ```sql
@@ -226,8 +231,8 @@ protected CI should set `RIPPLE_E2E_REQUIRE_CREDENTIALS=1` so it fails closed.
 
 ### GitHub Actions
 
-`.github/workflows/ci.yml` runs the locked install, 440 unit/contract tests,
-lint, production build, 39-check HTTP E2E, and dependency audit for pull
+`.github/workflows/ci.yml` runs the locked install, 449 unit/contract tests,
+lint, production build, 40-check HTTP E2E, and dependency audit for pull
 requests and pushes to `main`. GitHub-owned actions are pinned to full commit
 SHAs and the workflow has read-only repository permissions.
 
