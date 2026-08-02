@@ -6,6 +6,10 @@ import {
 } from "@/lib/sites/mutations";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import {
+  SITE_CODE_MAX_LENGTH,
+  SITE_CODE_PATTERN,
+} from "@/lib/sites/site-code";
 
 const updateSiteSchema = z.object({
   site_name: z.string().trim().min(1).max(200).optional(),
@@ -13,8 +17,8 @@ const updateSiteSchema = z.object({
     .string()
     .trim()
     .min(1)
-    .max(50)
-    .regex(/^[A-Za-z0-9][A-Za-z0-9-]*$/)
+    .max(SITE_CODE_MAX_LENGTH)
+    .regex(SITE_CODE_PATTERN)
     .optional(),
   timezone: z.string().trim().min(1).max(100).optional(),
   address: z.string().trim().max(500).nullable().optional(),

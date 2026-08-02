@@ -39,6 +39,10 @@ describe("public and responsive UI contracts", () => {
     }
     expect(submitPage).toContain("await Promise.all");
     expect(submitPage).toContain("attachmentWarning");
+    expect(submitPage).toContain('cache: "no-store"');
+    expect(submitPage).toContain("controller.abort()");
+    expect(submitPage).toContain("aria-invalid={siteCodeValid === false}");
+    expect(submitPage).toContain("maxLength={SITE_CODE_MAX_LENGTH}");
   });
 
   it("provides an accessible mobile application drawer", () => {

@@ -743,6 +743,18 @@ async function runDirectRlsMatrix(fixture) {
       admin.from("sla_policies").delete().eq("id", randomUUID()),
       "admin direct SLA-policy mutation denied"
     );
+    await expectDirectMutationDenied(
+      admin.from("request_rate_limits").delete().eq("bucket_key", "a".repeat(64)),
+      "admin direct rate-limit bucket mutation denied"
+    );
+    await expectDirectMutationDenied(
+      admin.rpc("consume_request_rate_limit", {
+        p_bucket_key: "a".repeat(64),
+        p_limit: 1,
+        p_window_seconds: 60,
+      }),
+      "admin direct rate-limit command denied"
+    );
 
     await expectDirectTicket(
       customerA,

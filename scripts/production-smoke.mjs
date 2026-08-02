@@ -142,6 +142,25 @@ async function expectInvalidAttachmentRejected() {
   process.stdout.write("PASS invalid attachment form rejected before writes\n");
 }
 
+async function expectInvalidSiteCodeContained() {
+  const response = await fetch(
+    `${baseUrl}/api/sites/validate?site_code=${encodeURIComponent("invalid site")}`,
+    { signal: AbortSignal.timeout(5000) }
+  );
+  const body = await response.json();
+  if (
+    response.status !== 200 ||
+    response.headers.get("cache-control") !== "no-store" ||
+    JSON.stringify(body) !== JSON.stringify({ valid: false })
+  ) {
+    throw new Error(
+      `/api/sites/validate expected minimal invalid response, received ` +
+        `${response.status} ${JSON.stringify(body)}`
+    );
+  }
+  process.stdout.write("PASS malformed site code contained before lookup\n");
+}
+
 async function expectLoginRedirect(path) {
   const response = await fetch(`${baseUrl}${path}`, {
     redirect: "manual",
@@ -406,6 +425,7 @@ try {
     { quantity: 1 }
   );
   await expectInvalidAttachmentRejected();
+  await expectInvalidSiteCodeContained();
   await expectLoginRedirect("/admin/users");
   await expectLogoutRedirect();
   await expectHealth("/api/health/live", 200, "live");

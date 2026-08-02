@@ -14,6 +14,7 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import { PublicSiteFooter } from "@/components/public-site-footer";
 import { PublicSiteHeader } from "@/components/public-site-header";
+import { SITE_CODE_MAX_LENGTH } from "@/lib/sites/site-code";
 
 interface FormData {
   site_code: string;
@@ -33,6 +34,41 @@ interface UserSite {
   site_id: string;
   site_code: string;
   site_name: string;
+}
+
+type SiteValidationOutcome =
+  | { status: "valid"; siteName: string }
+  | { status: "invalid" }
+  | { status: "throttled" }
+  | { status: "unavailable" };
+
+async function validateSiteCode(
+  siteCode: string,
+  signal?: AbortSignal
+): Promise<SiteValidationOutcome> {
+  try {
+    const response = await fetch(
+      `/api/sites/validate?site_code=${encodeURIComponent(siteCode.trim())}`,
+      { cache: "no-store", signal }
+    );
+    if (response.status === 429) return { status: "throttled" };
+    if (!response.ok) return { status: "unavailable" };
+
+    const data = (await response.json()) as {
+      valid?: unknown;
+      site?: { site_name?: unknown };
+    };
+    if (data.valid === false) return { status: "invalid" };
+    if (data.valid === true && typeof data.site?.site_name === "string") {
+      return { status: "valid", siteName: data.site.site_name };
+    }
+    return { status: "unavailable" };
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw error;
+    }
+    return { status: "unavailable" };
+  }
 }
 
 export default function SubmitTicketPage() {
@@ -65,6 +101,7 @@ export default function SubmitTicketPage() {
   const [siteCodeValid, setSiteCodeValid] = useState<boolean | null>(null);
   const [siteCodeValidating, setSiteCodeValidating] = useState(false);
   const [validatedSiteName, setValidatedSiteName] = useState("");
+  const [siteCodeError, setSiteCodeError] = useState("");
 
   useEffect(() => {
     async function checkAuth() {
@@ -124,6 +161,7 @@ export default function SubmitTicketPage() {
     if (isLoggedIn || !formData.site_code) {
       setSiteCodeValid(null);
       setValidatedSiteName("");
+      setSiteCodeError("");
       return;
     }
 
@@ -131,25 +169,47 @@ export default function SubmitTicketPage() {
     if (code.length < 3) {
       setSiteCodeValid(null);
       setValidatedSiteName("");
+      setSiteCodeError("");
       return;
     }
 
+    setSiteCodeValid(null);
     setSiteCodeValidating(true);
+    setValidatedSiteName("");
+    setSiteCodeError("");
+    const controller = new AbortController();
     const timer = setTimeout(async () => {
       try {
-        const res = await fetch(`/api/sites/validate?site_code=${encodeURIComponent(code)}`);
-        const data = await res.json();
-        setSiteCodeValid(data.valid);
-        setValidatedSiteName(data.valid ? data.site?.site_name || "" : "");
-      } catch {
-        setSiteCodeValid(false);
-        setValidatedSiteName("");
+        const outcome = await validateSiteCode(code, controller.signal);
+        if (outcome.status === "valid") {
+          setSiteCodeValid(true);
+          setValidatedSiteName(outcome.siteName);
+        } else if (outcome.status === "invalid") {
+          setSiteCodeValid(false);
+        } else {
+          setSiteCodeValid(null);
+          setSiteCodeError(
+            outcome.status === "throttled"
+              ? "Too many checks. Please wait a minute and try again."
+              : "Site validation is temporarily unavailable. Please try again."
+          );
+        }
+      } catch (error) {
+        if (!(error instanceof DOMException && error.name === "AbortError")) {
+          setSiteCodeValid(null);
+          setSiteCodeError(
+            "Site validation is temporarily unavailable. Please try again."
+          );
+        }
       } finally {
-        setSiteCodeValidating(false);
+        if (!controller.signal.aborted) setSiteCodeValidating(false);
       }
     }, 500);
 
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
   }, [formData.site_code, isLoggedIn]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -162,22 +222,25 @@ export default function SubmitTicketPage() {
     e.preventDefault();
 
     // Validate site code for non-logged-in users
-    if (!isLoggedIn && siteCodeValid === false) {
-      return;
-    }
-    if (!isLoggedIn && siteCodeValid === null && formData.site_code.trim().length >= 3) {
-      // Try one more validation
-      try {
-        const valRes = await fetch(`/api/sites/validate?site_code=${encodeURIComponent(formData.site_code.trim())}`);
-        const valData = await valRes.json();
-        if (!valData.valid) {
-          setSiteCodeValid(false);
-          return;
-        }
-      } catch {
-        setSiteCodeValid(false);
+    if (!isLoggedIn && siteCodeValid !== true) {
+      setSiteCodeValidating(true);
+      setSiteCodeError("");
+      const outcome = await validateSiteCode(formData.site_code);
+      setSiteCodeValidating(false);
+      if (outcome.status !== "valid") {
+        setSiteCodeValid(outcome.status === "invalid" ? false : null);
+        setValidatedSiteName("");
+        setSiteCodeError(
+          outcome.status === "throttled"
+            ? "Too many checks. Please wait a minute and try again."
+            : outcome.status === "unavailable"
+              ? "Site validation is temporarily unavailable. Please try again."
+              : ""
+        );
         return;
       }
+      setSiteCodeValid(true);
+      setValidatedSiteName(outcome.siteName);
     }
 
     setIsSubmitting(true);
@@ -410,8 +473,17 @@ export default function SubmitTicketPage() {
                       autoComplete="off"
                       spellCheck={false}
                       aria-describedby="site-code-help"
+                      aria-invalid={siteCodeValid === false}
+                      maxLength={SITE_CODE_MAX_LENGTH}
+                      pattern="[A-Za-z0-9][A-Za-z0-9-]*"
+                      title="Use letters, numbers, and hyphens only."
                       value={formData.site_code}
-                      onChange={handleChange}
+                      onChange={(event) =>
+                        setFormData((previous) => ({
+                          ...previous,
+                          site_code: event.target.value.toUpperCase(),
+                        }))
+                      }
                       required
                       placeholder="e.g. ADI-INDY-001"
                       className={`w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 ${
@@ -435,11 +507,12 @@ export default function SubmitTicketPage() {
                         <span className="text-green-700">
                           ✓ {validatedSiteName}
                         </span>
-                      ) : siteCodeValid === false &&
-                        formData.site_code.length >= 3 ? (
+                      ) : siteCodeValid === false ? (
                         <span className="text-red-700">
                           Site code not found. Please check and try again.
                         </span>
+                      ) : siteCodeError ? (
+                        <span className="text-amber-700">{siteCodeError}</span>
                       ) : null}
                     </div>
                   </div>
@@ -713,10 +786,14 @@ export default function SubmitTicketPage() {
           <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center">
             <button
               type="submit"
-              disabled={isSubmitting}
+              disabled={isSubmitting || (!isLoggedIn && siteCodeValidating)}
               className="flex-1 rounded-lg bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground shadow-sm hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {isSubmitting ? "Submitting..." : "Submit Support Request"}
+              {isSubmitting
+                ? "Submitting..."
+                : !isLoggedIn && siteCodeValidating
+                  ? "Checking site..."
+                  : "Submit Support Request"}
             </button>
             <button
               type="button"

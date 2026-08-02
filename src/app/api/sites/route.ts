@@ -7,6 +7,10 @@ import {
   createAdminSiteAtomic,
 } from "@/lib/sites/mutations";
 import { z } from "zod";
+import {
+  SITE_CODE_MAX_LENGTH,
+  SITE_CODE_PATTERN,
+} from "@/lib/sites/site-code";
 
 const createSiteSchema = z.object({
   customer_id: z.string().uuid(),
@@ -15,8 +19,8 @@ const createSiteSchema = z.object({
     .string()
     .trim()
     .min(1)
-    .max(50)
-    .regex(/^[A-Za-z0-9][A-Za-z0-9-]*$/),
+    .max(SITE_CODE_MAX_LENGTH)
+    .regex(SITE_CODE_PATTERN),
   timezone: z.string().trim().min(1).max(100).default("America/New_York"),
   address: z.string().trim().max(500).nullable().optional(),
   slack_channel_id: z.string().trim().max(50).nullable().optional(),

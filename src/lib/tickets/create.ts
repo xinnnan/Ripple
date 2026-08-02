@@ -26,6 +26,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { generateSecureToken } from "@/lib/utils";
 import { dispatchTicketOutboxBestEffort } from "@/lib/tickets/outbox";
 import { computeSlaTargets, findPolicyForCustomer } from "@/lib/sla";
+import { normalizeSiteCode } from "@/lib/sites/site-code";
 import type {
   Ticket,
   TicketSource,
@@ -92,13 +93,24 @@ export async function resolveSiteByCode(
   supabase: SupabaseClient,
   siteCode: string
 ): Promise<{ id: string; customer_id: string; slack_channel_id: string | null } | null> {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("sites")
-    .select("id, customer_id, slack_channel_id")
-    .eq("site_code", siteCode.toUpperCase())
+    .select(
+      "id, customer_id, slack_channel_id, customer:customers!inner(status)"
+    )
+    .eq("site_code", normalizeSiteCode(siteCode))
     .eq("status", "active")
+    .in("customer.status", ["active", "trial"])
     .maybeSingle();
-  return data ?? null;
+  if (error) {
+    throw new Error("Site-code resolution failed");
+  }
+  if (!data) return null;
+  return {
+    id: data.id,
+    customer_id: data.customer_id,
+    slack_channel_id: data.slack_channel_id,
+  };
 }
 
 /**
