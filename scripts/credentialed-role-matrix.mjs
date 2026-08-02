@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -510,6 +511,16 @@ async function expectArtifactCount(client, table, id, expectedCount, label) {
   pass(`RLS ${label}`);
 }
 
+async function expectDirectMutationDenied(request, label) {
+  const { error } = await request;
+  assert(error, `${label} unexpectedly succeeded`);
+  assert(
+    error.code === "42501" || /permission denied/i.test(error.message),
+    `${label} failed for an unexpected reason: ${error.code ?? "unknown"}`
+  );
+  pass(`PostgREST ${label}`);
+}
+
 async function runBrowserAndApiMatrix(browser, fixture) {
   const sessions = {};
   try {
@@ -678,6 +689,7 @@ async function runDirectRlsMatrix(fixture) {
     const customerB = sessions.customerB.client;
     const managerA = sessions.customerManagerA.client;
     const engineer = sessions.engineer.client;
+    const admin = sessions.admin.client;
 
     await expectFixtureTicketOwnership(engineer, tenantA, "tenant A");
     await expectFixtureTicketOwnership(engineer, tenantB, "tenant B");
@@ -721,6 +733,15 @@ async function runDirectRlsMatrix(fixture) {
       tenantA.archivedSiteId,
       0,
       "manager A cannot read archived site"
+    );
+
+    await expectDirectMutationDenied(
+      engineer.from("site_members").delete().eq("id", randomUUID()),
+      "engineer direct site-membership mutation denied"
+    );
+    await expectDirectMutationDenied(
+      admin.from("sla_policies").delete().eq("id", randomUUID()),
+      "admin direct SLA-policy mutation denied"
     );
 
     await expectDirectTicket(
