@@ -1,5 +1,10 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { rateLimit, getClientIp } from "@/lib/rate-limit";
+import {
+  buildRateLimitBucketKey,
+  consumeDistributedRateLimit,
+  getRetryAfterSeconds,
+} from "@/lib/distributed-rate-limit";
 import { headers } from "next/headers";
 
 export const dynamic = "force-dynamic";
@@ -12,6 +17,45 @@ interface Props {
   searchParams: Promise<{ token?: string }>;
 }
 
+const PUBLIC_TICKET_LIMIT = 30;
+const PUBLIC_TICKET_WINDOW_MS = 60_000;
+const PUBLIC_EVENT_TYPES = [
+  "ticket_created",
+  "status_changed",
+  "owner_assigned",
+] as const;
+
+function PublicTicketMessage({
+  title,
+  message,
+  showHomeLink = false,
+}: {
+  title: string;
+  message: string;
+  showHomeLink?: boolean;
+}) {
+  return (
+    <div className="min-h-screen bg-background flex items-center justify-center p-6">
+      <div className="max-w-md w-full text-center">
+        <h1 className="text-xl font-bold text-foreground mb-2">{title}</h1>
+        <p className="text-muted-foreground">{message}</p>
+        {showHomeLink && (
+          <Link
+            href="/"
+            className="mt-4 inline-block text-sm font-medium text-primary hover:text-primary/80"
+          >
+            Go to Home
+          </Link>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function singleRelation<T>(value: T | T[] | null | undefined): T | undefined {
+  return Array.isArray(value) ? value[0] : value ?? undefined;
+}
+
 export default async function TicketViewPage({ params, searchParams }: Props) {
   const { ticketId } = await params;
   const { token } = await searchParams;
@@ -20,106 +64,162 @@ export default async function TicketViewPage({ params, searchParams }: Props) {
   // secure_token. The token is unguessable in practice, but a
   // determined attacker could still hammer the page with random
   // tokens to probe the system or to extract timing info. Cap
-  // unauthed lookups at 30/min/IP. (The token itself limits who
-  // actually sees a ticket; this just blocks the brute-force
-  // surface area.)
+  // unauthed lookups at 30/min/IP. The local guard sheds load quickly;
+  // migration 046's command keeps the boundary effective across serverless
+  // instances and cold starts. The token still remains the authorization
+  // proof for the ticket itself.
   const hdrs = await headers();
   const ip = getClientIp(hdrs);
-  const rl = rateLimit({ key: `t-page:${ip}`, limit: 30, windowMs: 60_000 });
+  const rl = rateLimit({
+    key: `t-page:${ip}`,
+    limit: PUBLIC_TICKET_LIMIT,
+    windowMs: PUBLIC_TICKET_WINDOW_MS,
+  });
   if (!rl.allowed) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center p-6">
-        <div className="max-w-md w-full text-center">
-          <h1 className="text-xl font-bold text-foreground mb-2">Too Many Requests</h1>
-          <p className="text-muted-foreground">
-            You have exceeded the rate limit for ticket lookups. Please try again later.
-          </p>
-        </div>
-      </div>
+      <PublicTicketMessage
+        title="Too Many Requests"
+        message={`You have exceeded the rate limit for ticket lookups. Please try again in ${Math.max(
+          1,
+          Math.ceil((rl.resetAt - Date.now()) / 1000)
+        )} seconds.`}
+      />
     );
   }
 
   if (!token) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center p-6">
-        <div className="max-w-md w-full text-center">
-          <h1 className="text-xl font-bold text-foreground mb-2">
-            Access Denied
-          </h1>
-          <p className="text-muted-foreground">
-            A valid access token is required to view this ticket.
-          </p>
-          <Link
-            href="/"
-            className="mt-4 inline-block text-sm font-medium text-primary hover:text-primary/80"
-          >
-            Go to Home
-          </Link>
-        </div>
-      </div>
+      <PublicTicketMessage
+        title="Access Denied"
+        message="A valid access token is required to view this ticket."
+        showHomeLink
+      />
     );
   }
 
   const supabase = createAdminClient();
+  try {
+    const distributedLimit = await consumeDistributedRateLimit({
+      supabase,
+      bucketKey: buildRateLimitBucketKey("ticket-view", ip),
+      limit: PUBLIC_TICKET_LIMIT,
+      windowSeconds: PUBLIC_TICKET_WINDOW_MS / 1000,
+    });
+    if (!distributedLimit.allowed) {
+      return (
+        <PublicTicketMessage
+          title="Too Many Requests"
+          message={`You have exceeded the rate limit for ticket lookups. Please try again in ${getRetryAfterSeconds(
+            distributedLimit.resetAt
+          )} seconds.`}
+        />
+      );
+    }
+  } catch (error) {
+    console.error("Public ticket rate limit unavailable:", {
+      name: error instanceof Error ? error.name : "UnknownError",
+    });
+    return (
+      <PublicTicketMessage
+        title="Ticket Lookup Unavailable"
+        message="Ticket lookup is temporarily unavailable. Please try again later."
+        showHomeLink
+      />
+    );
+  }
 
   // Fetch ticket by ID and secure token
   const { data: ticket, error } = await supabase
     .from("tickets")
     .select(
       `
-      *,
-      customer:customers(id, name),
-      site:sites(id, site_name, site_code),
-      owner:users!tickets_owner_id_fkey(id, full_name)
+      id,
+      ticket_no,
+      title,
+      description,
+      status,
+      severity,
+      impact,
+      asset_id,
+      area,
+      customer_visible_summary,
+      created_at,
+      resolved_at,
+      customer:customers!inner(name),
+      site:sites!inner(site_name),
+      owner:users!tickets_owner_id_fkey(full_name)
     `
     )
     .eq("ticket_no", ticketId)
     .eq("secure_token", token)
-    .single();
+    .eq("site.status", "active")
+    .in("customer.status", ["active", "trial"])
+    .maybeSingle();
 
-  if (error || !ticket) {
+  if (error) {
+    console.error("Public ticket lookup failed:", { code: error.code });
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center p-6">
-        <div className="max-w-md w-full text-center">
-          <h1 className="text-xl font-bold text-foreground mb-2">
-            Ticket Not Found
-          </h1>
-          <p className="text-muted-foreground">
-            This ticket may not exist or your access link may be invalid.
-          </p>
-          <Link
-            href="/"
-            className="mt-4 inline-block text-sm font-medium text-primary hover:text-primary/80"
-          >
-            Go to Home
-          </Link>
-        </div>
-      </div>
+      <PublicTicketMessage
+        title="Ticket Lookup Unavailable"
+        message="Ticket lookup is temporarily unavailable. Please try again later."
+        showHomeLink
+      />
     );
   }
+  if (!ticket) {
+    return (
+      <PublicTicketMessage
+        title="Ticket Not Found"
+        message="This ticket may not exist or your access link may be invalid."
+        showHomeLink
+      />
+    );
+  }
+  const customer = singleRelation(ticket.customer);
+  const site = singleRelation(ticket.site);
+  const owner = singleRelation(ticket.owner);
 
-  // Fetch customer-visible comments only
-  const { data: comments } = await supabase
-    .from("ticket_comments")
-    .select("id, body, visibility, source, created_at, author:users(full_name)")
-    .eq("ticket_id", ticket.id)
-    .eq("visibility", "customer")
-    .order("created_at", { ascending: true });
-
-  // Fetch customer-visible attachments
-  const { data: attachments } = await supabase
-    .from("ticket_attachments")
-    .select("id, file_name, file_type, file_size, created_at")
-    .eq("ticket_id", ticket.id)
-    .eq("visibility", "customer")
-    .order("created_at", { ascending: true });
-
-  // Fetch ticket events for timeline
-  const { data: events } = await supabase
-    .from("ticket_events")
-    .select("event_type, old_value, new_value, created_at")
-    .eq("ticket_id", ticket.id)
-    .order("created_at", { ascending: true });
+  const [commentsResult, attachmentsResult, eventsResult] = await Promise.all([
+    supabase
+      .from("ticket_comments")
+      .select("id, body, created_at, author:users(full_name)")
+      .eq("ticket_id", ticket.id)
+      .eq("visibility", "customer")
+      .order("created_at", { ascending: true }),
+    supabase
+      .from("ticket_attachments")
+      .select("id, file_name, file_type, file_size, created_at")
+      .eq("ticket_id", ticket.id)
+      .eq("visibility", "customer")
+      .order("created_at", { ascending: true }),
+    supabase
+      .from("ticket_events")
+      .select("event_type, new_value, created_at")
+      .eq("ticket_id", ticket.id)
+      .in("event_type", [...PUBLIC_EVENT_TYPES])
+      .order("created_at", { ascending: true }),
+  ]);
+  if (
+    commentsResult.error ||
+    attachmentsResult.error ||
+    eventsResult.error
+  ) {
+    console.error("Public ticket details failed:", {
+      comments: commentsResult.error?.code,
+      attachments: attachmentsResult.error?.code,
+      events: eventsResult.error?.code,
+    });
+    return (
+      <PublicTicketMessage
+        title="Ticket Lookup Unavailable"
+        message="Ticket lookup is temporarily unavailable. Please try again later."
+        showHomeLink
+      />
+    );
+  }
+  const comments = commentsResult.data;
+  const attachments = attachmentsResult.data;
+  const events = eventsResult.data;
 
   return (
     <div className="min-h-screen bg-background">
@@ -265,13 +365,13 @@ export default async function TicketViewPage({ params, searchParams }: Props) {
                 <div>
                   <dt className="text-xs text-muted-foreground">Customer</dt>
                   <dd className="text-sm font-medium text-foreground">
-                    {ticket.customer?.name}
+                    {customer?.name}
                   </dd>
                 </div>
                 <div>
                   <dt className="text-xs text-muted-foreground">Site</dt>
                   <dd className="text-sm font-medium text-foreground">
-                    {ticket.site?.site_name}
+                    {site?.site_name}
                   </dd>
                 </div>
                 <div>
@@ -317,7 +417,7 @@ export default async function TicketViewPage({ params, searchParams }: Props) {
                 <div>
                   <dt className="text-xs text-muted-foreground">Owner</dt>
                   <dd className="text-sm font-medium text-foreground">
-                    {ticket.owner?.full_name || "Pending assignment"}
+                    {owner?.full_name || "Pending assignment"}
                   </dd>
                 </div>
                 <div>
@@ -344,11 +444,7 @@ export default async function TicketViewPage({ params, searchParams }: Props) {
                   Activity Timeline
                 </h2>
                 <div className="space-y-3">
-                  {events
-                    .filter((e: { event_type: string }) =>
-                      ["ticket_created", "status_changed", "owner_assigned"].includes(e.event_type)
-                    )
-                    .map((event: { event_type: string; new_value: string | null; created_at: string }, i: number) => (
+                  {events.map((event: { event_type: string; new_value: string | null; created_at: string }, i: number) => (
                       <div key={i} className="flex items-start gap-3">
                         <div className="mt-1 h-2 w-2 rounded-full bg-primary flex-shrink-0" />
                         <div>

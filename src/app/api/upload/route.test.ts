@@ -9,6 +9,7 @@ const {
   storageUploadMock,
   storageRemoveMock,
   createAttachmentMock,
+  distributedRateLimitMock,
   MockMutationError,
 } = vi.hoisted(() => {
   class MutationError extends Error {
@@ -28,12 +29,18 @@ const {
     storageUploadMock: vi.fn(),
     storageRemoveMock: vi.fn(),
     createAttachmentMock: vi.fn(),
+    distributedRateLimitMock: vi.fn(),
     MockMutationError: MutationError,
   };
 });
 
 vi.mock("@/lib/supabase/auth-helpers", () => ({ getAuthUser: authMock }));
 vi.mock("@/lib/supabase/scope", () => ({ getUserScope: scopeMock }));
+vi.mock("@/lib/distributed-rate-limit", () => ({
+  buildRateLimitBucketKey: () => "c".repeat(64),
+  consumeDistributedRateLimit: distributedRateLimitMock,
+  getRetryAfterSeconds: () => 41,
+}));
 vi.mock("@/lib/supabase/admin", () => ({
   createAdminClient: () => {
     const ticketQuery = {
@@ -126,6 +133,11 @@ beforeEach(() => {
   storageUploadMock.mockResolvedValue({ error: null });
   storageRemoveMock.mockResolvedValue({ error: null });
   createAttachmentMock.mockResolvedValue(ATTACHMENT);
+  distributedRateLimitMock.mockResolvedValue({
+    allowed: true,
+    remaining: 29,
+    resetAt: new Date(Date.now() + 60_000).toISOString(),
+  });
 });
 
 describe("ticket attachment upload route", () => {
@@ -151,6 +163,13 @@ describe("ticket attachment upload route", () => {
     const response = await POST(uploadRequest({ token: TOKEN }));
 
     expect(response.status).toBe(201);
+    expect(distributedRateLimitMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        bucketKey: "c".repeat(64),
+        limit: 30,
+        windowSeconds: 60,
+      })
+    );
     expect(createAttachmentMock).toHaveBeenCalledWith(
       expect.objectContaining({
         ticketId: TICKET_ID,
@@ -166,6 +185,46 @@ describe("ticket attachment upload route", () => {
         }),
       })
     );
+  });
+
+  it("returns Retry-After without parsing or writing when the distributed guest limit is exhausted", async () => {
+    authMock.mockResolvedValueOnce({ error: "Unauthorized", status: 401 });
+    distributedRateLimitMock.mockResolvedValueOnce({
+      allowed: false,
+      remaining: 0,
+      resetAt: new Date(Date.now() + 41_000).toISOString(),
+    });
+
+    const response = await POST(uploadRequest({ token: TOKEN }));
+    const body = await response.json();
+
+    expect(response.status).toBe(429);
+    expect(response.headers.get("retry-after")).toBe("41");
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(body.error).toBe("Too many requests");
+    expect(ticketMaybeSingleMock).not.toHaveBeenCalled();
+    expect(storageUploadMock).not.toHaveBeenCalled();
+  });
+
+  it("fails closed without writes when the distributed guest limiter is unavailable", async () => {
+    authMock.mockResolvedValueOnce({ error: "Unauthorized", status: 401 });
+    distributedRateLimitMock.mockRejectedValueOnce(new Error("private detail"));
+
+    const response = await POST(uploadRequest({ token: TOKEN }));
+    const body = await response.json();
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(body.error).toBe("Attachment upload is temporarily unavailable");
+    expect(ticketMaybeSingleMock).not.toHaveBeenCalled();
+    expect(storageUploadMock).not.toHaveBeenCalled();
+  });
+
+  it("does not place authenticated uploads in the anonymous distributed bucket", async () => {
+    const response = await POST(uploadRequest());
+
+    expect(response.status).toBe(201);
+    expect(distributedRateLimitMock).not.toHaveBeenCalled();
   });
 
   it("rejects browser MIME/content spoofing before writing Storage", async () => {

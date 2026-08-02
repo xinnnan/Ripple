@@ -6,6 +6,11 @@ import { getUserScope } from "@/lib/supabase/scope";
 import { resolveTicketQuery } from "@/lib/tickets/lookup";
 import { rateLimit, getClientIp } from "@/lib/rate-limit";
 import {
+  buildRateLimitBucketKey,
+  consumeDistributedRateLimit,
+  getRetryAfterSeconds,
+} from "@/lib/distributed-rate-limit";
+import {
   AttachmentValidationError,
   buildAttachmentStoragePath,
   validateAttachmentFile,
@@ -16,6 +21,10 @@ import {
 } from "@/lib/files/attachment-mutations";
 
 export const runtime = "nodejs";
+
+const GUEST_UPLOAD_LIMIT = 30;
+const GUEST_UPLOAD_WINDOW_MS = 60_000;
+const NO_STORE_HEADERS = { "Cache-Control": "no-store" } as const;
 
 export async function POST(request: NextRequest) {
   try {
@@ -34,27 +43,66 @@ export async function POST(request: NextRequest) {
     const isLoggedIn = auth !== null;
     // Only internal users can post internal-only attachments.
     const isInternal = auth?.isInternal ?? false;
+    const supabase = createAdminClient();
 
     // Per-IP rate limit for unauthed uploads. 30/min covers the
     // public submit form's normal use (a guest might attach 3-5
     // files in a session) while blocking a DoS attacker who's
-    // spraying the endpoint. Logged-in users have the per-user
-    // rate limit on /api/ai/suggest and aren't gated here — they
-    // already have a real session to limit.
+    // spraying the endpoint. The process-local guard sheds load quickly;
+    // migration 046's command keeps the boundary effective across serverless
+    // instances and cold starts. Logged-in users are authorized and scoped
+    // below instead of sharing the anonymous IP bucket.
+    let guestIp: string | null = null;
     if (!isLoggedIn) {
-      const ip = getClientIp(request.headers);
-      const rl = rateLimit({ key: `upload:${ip}`, limit: 30, windowMs: 60_000 });
+      guestIp = getClientIp(request.headers);
+      const rl = rateLimit({
+        key: `upload:${guestIp}`,
+        limit: GUEST_UPLOAD_LIMIT,
+        windowMs: GUEST_UPLOAD_WINDOW_MS,
+      });
       if (!rl.allowed) {
         return NextResponse.json(
           { error: "Too many requests" },
           {
             status: 429,
             headers: {
+              ...NO_STORE_HEADERS,
               "Retry-After": String(
                 Math.ceil((rl.resetAt - Date.now()) / 1000)
               ),
             },
           }
+        );
+      }
+
+      try {
+        const distributedLimit = await consumeDistributedRateLimit({
+          supabase,
+          bucketKey: buildRateLimitBucketKey("attachment-upload", guestIp),
+          limit: GUEST_UPLOAD_LIMIT,
+          windowSeconds: GUEST_UPLOAD_WINDOW_MS / 1000,
+        });
+        if (!distributedLimit.allowed) {
+          return NextResponse.json(
+            { error: "Too many requests" },
+            {
+              status: 429,
+              headers: {
+                ...NO_STORE_HEADERS,
+                "Retry-After": String(
+                  getRetryAfterSeconds(distributedLimit.resetAt)
+                ),
+              },
+            }
+          );
+        }
+      } catch (error) {
+        console.error("POST /api/upload rate limit unavailable:", {
+          name: error instanceof Error ? error.name : "UnknownError",
+        });
+        return NextResponse.json(
+          { error: "Attachment upload is temporarily unavailable" },
+          { status: 503, headers: NO_STORE_HEADERS }
         );
       }
     }
@@ -101,8 +149,6 @@ export async function POST(request: NextRequest) {
     if (!file) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 });
     }
-
-    const supabase = createAdminClient();
 
     // Resolve the ticket once, regardless of which auth path we take.
     // The lookup helper accepts either the UUID `id` or the human-

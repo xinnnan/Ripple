@@ -120,7 +120,7 @@ async function expectUnauthorizedMutation(path, method, body) {
   );
 }
 
-async function expectInvalidAttachmentRejected() {
+async function expectGuestUploadLimiterFailClosed() {
   const form = new FormData();
   form.set(
     "file",
@@ -134,12 +134,18 @@ async function expectInvalidAttachmentRejected() {
     body: form,
     signal: AbortSignal.timeout(5000),
   });
-  if (response.status !== 400) {
+  const body = await response.json();
+  if (
+    response.status !== 503 ||
+    body.error !== "Attachment upload is temporarily unavailable" ||
+    response.headers.get("cache-control") !== "no-store"
+  ) {
     throw new Error(
-      `/api/upload expected invalid-form 400, received ${response.status}`
+      `/api/upload expected fail-closed limiter 503, received ` +
+        `${response.status} ${JSON.stringify(body)}`
     );
   }
-  process.stdout.write("PASS invalid attachment form rejected before writes\n");
+  process.stdout.write("PASS guest upload limiter configuration denial\n");
 }
 
 async function expectInvalidSiteCodeContained() {
@@ -261,6 +267,7 @@ try {
   await expectPage("/login", "Welcome back.");
   await expectPage("/forgot-password", "Reset your password.");
   await expectPage("/submit", "Submit a Support Request");
+  await expectPage("/t/RPL-000000", "Access Denied");
   await expectHardDeleteDisabled(
     "/api/admin/customers/bulk-delete",
     "/api/admin/customers/bulk-archive"
@@ -424,7 +431,7 @@ try {
     "PATCH",
     { quantity: 1 }
   );
-  await expectInvalidAttachmentRejected();
+  await expectGuestUploadLimiterFailClosed();
   await expectInvalidSiteCodeContained();
   await expectLoginRedirect("/admin/users");
   await expectLogoutRedirect();
