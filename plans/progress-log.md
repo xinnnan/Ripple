@@ -7,15 +7,17 @@ meaningful change and before ending a work session. Newest entries go first.
 
 - **Branch:** `codex/prd-v1-1-gap-closure`
 - **Active phase:** Phase 0 — Containment and reproducible baseline
-- **Active work item:** apply/probe migration 044, configure the production
+- **Active work item:** apply/probe migration 045, configure the production
   outbox worker secret, then continue the next integrity milestone
-- **Last verified implementation commit:** `03499f9` (`fix: harden ticket attachment uploads`)
+- **Last verified implementation commit:** `0085db6` (`fix: restrict direct application writes`)
 - **Uncommitted work:** none expected after the documentation checkpoint;
   verify with `git status` before resuming
-- **Deployment gate:** migrations 001–043 are confirmed applied; migration 044
-  must be applied before deploying hardened attachment metadata handling.
-  Production `CRON_SECRET` remains unset in this workspace. Protected positive
-  business probes for migrations 028–037 still require staging fixtures
+- **Deployment gate:** migrations 001–044 are confirmed applied. Migration 044
+  passed a 130-assertion disposable live matrix with zero residue. Migration
+  045 must be applied before deploying the direct-write boundary from
+  `0085db6`. Production `CRON_SECRET` remains unset in this workspace.
+  Protected positive business probes for migrations 028–037 still require
+  staging fixtures
 - **External validation gate:** populate the gitignored credential fixture with six
   dedicated staging accounts, two tenants, a decommissioned site/ticket, and
   real internal artifact IDs; then run
@@ -48,14 +50,83 @@ meaningful change and before ending a work session. Newest entries go first.
   with Inter and no horizontal overflow. Password-based login passed;
   recovery-email delivery and one-time link consumption still require a
   dedicated staging mailbox.
-- **Exact next local step:** after the user applies migration 044, verify the
-  service-role-only attachment command and the Storage/database handoff. Prove
-  supported internal/customer/guest metadata, null guest attribution, exact
-  timeline evidence, active tenant/uploader guards, internal-visibility denial,
-  metadata/path/duplicate constraints, direct grant denial, concurrent rollback,
-  confirmed object compensation, and zero residue. Configure `CRON_SECRET`
+- **Exact next local step:** after the user applies migration 045, verify direct
+  anonymous/authenticated mutation and sequence denial across the application,
+  reproduce the historical membership/SLA attempts as rejected, confirm safe
+  self-profile updates and protected-column denial, exercise representative
+  server/API commands, and leave zero residue. Configure `CRON_SECRET`
   separately before production worker activation
 - **Primary plan:** [`plans/prd-v1.1-gap-closure-plan.md`](./prd-v1.1-gap-closure-plan.md)
+
+## Session record — 2026-08-01 (P0-AG / direct application-write boundary)
+
+### Objective
+
+Live-verify migration 044 after application, then inspect the next
+authorization-root boundary for paths that bypass transactional validation and
+audit evidence.
+
+### Migration 044 live verification
+
+- The attachment command passed a disposable 130-assertion live matrix. It
+  covered deployed function shape and grants; admin, engineer,
+  customer-manager, customer, and secure-token guest success; null guest
+  attribution; exact one-event cardinality; cross-tenant, unassigned, inactive,
+  lifecycle, internal-visibility, metadata, path, MIME, size, input-shape, and
+  direct-command denial; duplicate/concurrent serialization; and parallel
+  unique writes.
+- A real guest HTTP PDF upload created the Storage object, null-attributed
+  metadata, and exactly one timeline event. A MIME-spoofed upload was rejected
+  before Storage/metadata, and a decommissioned-ticket failure rolled back the
+  database command and compensated the uploaded object.
+- Cleanup confirmed zero disposable Auth profiles, tickets, attachments,
+  events, sites, customers, or Storage objects.
+
+### Finding and implementation
+
+- Migration 035's atomic site-membership commands coexisted with a legacy
+  authenticated `FOR ALL` policy. A disposable live probe proved an active
+  engineer could directly add a tenant-A customer to a tenant-B site through
+  PostgREST. Migration 041 had the same seam for direct admin SLA-policy
+  writes. Neither bypass created audit evidence.
+- Commit `0085db6` adds migration
+  `045_restrict_direct_application_writes.sql`. It drops the three remaining
+  legacy business-write policies and revokes insert/update/delete/truncate,
+  references, and trigger privileges from public API roles on every
+  application-owned table. It also revokes direct access to all five current
+  and legacy number sequences.
+- Self-service profile editing remains explicitly limited to `full_name`,
+  `phone`, and `avatar_url`; Auth/provisioning and all business writes remain
+  behind server routes and service-role commands.
+- The protected credentialed matrix now performs random-ID, non-mutating direct
+  DELETE probes against `site_members` and `sla_policies`; both must fail with
+  permission denial. Five new contracts bring the suite to 409 tests.
+
+### Quality verification
+
+| Gate | Result |
+|---|---|
+| `npm ci` | Passed; locked install, 0 install-time vulnerabilities |
+| `npm test` | Passed; 57 files, 409 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build |
+| `npm run test:e2e` | Passed; all 38 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+| Live migration 044 matrix | Passed; 130 assertions and zero residue |
+| Historical direct-write reproduction | Passed; both bypasses reproduced without audit, then all disposable data was removed |
+
+### Rollout and next
+
+1. Apply migration 045 before deploying `0085db6`.
+2. Run a disposable live matrix across direct DML/control denial, the exact
+   engineer membership/admin SLA regressions, safe self-profile continuity,
+   protected profile fields, service-role command continuity, sequence grants,
+   and zero residue.
+3. Configure `CRON_SECRET`, activate hosted quality/staging protections, and
+   run the credentialed tenant matrix when its secret fixture is provisioned.
+4. Continue the next highest-risk best-effort write domain after migration 045
+   is live-verified.
 
 ## Session record — 2026-08-01 (P0-AF / hardened ticket attachment intake)
 

@@ -56,7 +56,7 @@ A Slack-native support portal for DropletAI Services. Centralises customer suppo
 | AI | **MiniMax AI** (OpenAI-compatible) — was OpenAI → Zhipu → MiniMax. **See "AI provider" section below.** |
 | Email | Resend (transactional: ticket confirmation, resolution notice) |
 | Validation | Zod (all API request bodies) |
-| Testing | Vitest (404 unit/contract tests) + 38-check production HTTP smoke + credentialed Playwright/API/RLS matrix |
+| Testing | Vitest (409 unit/contract tests) + 38-check production HTTP smoke + credentialed Playwright/API/RLS matrix |
 | Hosting | Vercel (serverless API routes) |
 
 ## Phases
@@ -91,7 +91,7 @@ cp .env.local.example .env.local
 
 ### Run database migrations
 
-Apply the SQL files in `supabase/migrations/` **in order** (001 → 044) via the Supabase SQL editor or `supabase db push`:
+Apply the SQL files in `supabase/migrations/` **in order** (001 → 045) via the Supabase SQL editor or `supabase db push`:
 
 ```
 001_create_customers.sql
@@ -138,19 +138,24 @@ Apply the SQL files in `supabase/migrations/` **in order** (001 → 044) via the
 042_atomic_admin_spare_part_commands.sql
 043_atomic_admin_spare_part_inventory_commands.sql
 044_atomic_ticket_attachment_metadata.sql
+045_restrict_direct_application_writes.sql
 ```
 
 Later migrations replace policies/functions and should be applied once in
 order. Migration `017` also performs role data updates and must not be re-run
-blindly. Migrations 001–043 are confirmed applied as of 2026-08-01. Migration
+blindly. Migrations 001–044 are confirmed applied as of 2026-08-01. Migration
 043 passed a disposable 72-assertion live matrix covering create/existing
 upsert, positive/no-op PATCH, stock and location constraints, active-parent and
 privilege guards, direct-command grants, concurrent serialization, exact audit
-attribution, increase-only restock facts, rollback, and zero residue. Apply
-migration 044 before deploying attachment hardening from `03499f9`; it adds
-database file-shape constraints and a service-role command that commits
-attachment metadata plus ticket timeline evidence atomically. Malware scanning,
-quarantine, checksums, and retention policy remain future file-service work.
+attribution, increase-only restock facts, rollback, and zero residue. Migration
+044 passed a 130-assertion live matrix spanning roles, lifecycle,
+shape, attribution, event atomicity, concurrency, Storage compensation, real
+guest HTTP upload, spoof rejection, and zero residue. Apply migration 045
+before deploying `0085db6`; it removes direct anonymous/authenticated mutation
+privileges from application-owned tables and number sequences while preserving
+only `users.full_name`, `phone`, and `avatar_url` self-service updates. Malware
+scanning, quarantine, checksums, and retention policy remain future file-service
+work.
 
 ### Enable pgvector (for AI features)
 
@@ -304,7 +309,7 @@ src/
 │   ├── ticket.ts                # ⭐ all ticket domain enums + labels
 │   └── spare-parts.ts
 └── middleware.ts                # ⭐ route guard + session refresh
-supabase/migrations/             # 001-044
+supabase/migrations/             # 001-045
 plans/                           # Architecture + phase planning docs
 AGENTS.md                        # ⭐ project context, lessons learned, roadmap
 ```
@@ -315,7 +320,7 @@ AGENTS.md                        # ⭐ project context, lessons learned, roadmap
 - Ticket detail → `app/(auth)/tickets/[ticketId]/page.tsx` + `ticket-actions-panel.tsx`
 - Slack actions → `lib/slack/handlers/actions.ts` + `app/api/slack/interactive/route.ts`
 - AI assist → `app/api/ai/suggest/route.ts` + `lib/ai/suggest.ts`
-- DB schema → `supabase/migrations/001_*.sql` … `044_atomic_ticket_attachment_metadata.sql`
+- DB schema → `supabase/migrations/001_*.sql` … `045_restrict_direct_application_writes.sql`
 
 ## Ticket Lifecycle
 
