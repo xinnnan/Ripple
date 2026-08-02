@@ -105,7 +105,7 @@ Vercel.
 │   │   ├── ticket.ts                    # ⭐ All domain enums + labels
 │   │   └── spare-parts.ts               # ⭐ Spare parts + field service enums
 │   └── middleware.ts                    # ⭐ Route guard + session refresh
-├── supabase/migrations/                 # 001–045, apply in order
+├── supabase/migrations/                 # 001–046, apply in order
 ├── plans/                               # Architecture + phase planning docs
 │   ├── architecture.md
 │   ├── phase2-customer-auth-and-user-management.md
@@ -124,7 +124,7 @@ Vercel.
 - Ticket detail UI → `src/app/(auth)/tickets/[ticketId]/page.tsx` (server) + `ticket-actions-panel.tsx` (client)
 - Slack ticket creation → `src/app/api/slack/command/ticket/route.ts` + `src/lib/slack/blocks/ticket-form.ts`
 - AI assist → `src/app/api/ai/suggest/route.ts` + `src/lib/ai/suggest.ts`
-- DB schema → `supabase/migrations/001_*.sql` … `045_restrict_direct_application_writes.sql`
+- DB schema → `supabase/migrations/001_*.sql` … `046_durable_public_rate_limits.sql`
 
 ---
 
@@ -162,8 +162,8 @@ const isInternal = role ? INTERNAL_ROLES.includes(role) : email ? isInternalEmai
 
 ## 5. Database Schema (Supabase)
 
-45 migrations, to be applied in order. Migrations 001–045 are confirmed
-applied as of 2026-08-01. Key tables:
+46 migrations, to be applied in order. Migrations 001–045 are confirmed
+applied as of 2026-08-01; migration 046 awaits application. Key tables:
 
 | Table | Purpose | Notes |
 |---|---|---|
@@ -178,6 +178,7 @@ applied as of 2026-08-01. Key tables:
 | `ai_suggestions` | Ripple Assist outputs | `model_name`, `confidence_level`, accept/dismiss feedback |
 | `slack_channels` / `slack_messages` | Site ↔ Slack channel map, message tracking | |
 | `integration_outbox` | Durable external delivery | Unique event keys, bounded leases, exponential backoff, delivery evidence, dead-letter retention |
+| `request_rate_limits` | Opaque distributed public-boundary counters | Migration 046 adds service-role-only atomic consumption, bounded inputs/counts, indexed expiry, and opportunistic retention; it awaits application |
 | `sla_policies` | Default/customer SLA targets | Migration 041 derives scope shape, orders response/resolution targets, serializes create/update/delete, protects default/referenced rows, and commits exact audit evidence atomically; its 35-assertion live matrix is green. Migration 045 removes the legacy direct admin write path; its 110-assertion live matrix is green |
 | `spare_parts` / `spare_part_inventory` / `spare_part_requests` / `spare_part_request_items` | Phase 3 catalog + per-site stock + request workflow | `request_no` SPR-XXXX; migration 042 makes catalog create/update transactionally audited with normalized case-folded identity, bounded shape, nonnegative price, and no-op preservation. Migration 043 adds guarded atomic stock upsert/PATCH, ordered quantity bounds, active-parent checks, exact audit evidence, and increase-only restock timestamps; its 72-assertion live matrix is green |
 | `field_service_orders` / `field_service_engineers` | Phase 3 dispatch | `order_no` FSO-XXXX, M:N engineers |
@@ -282,7 +283,7 @@ if ("error" in auth) return NextResponse.json({ error: auth.error }, { status: a
 npm install
 cp .env.local.example .env.local   # fill in real values
 # Run migrations in Supabase SQL editor (or `supabase db push` if using CLI):
-#   001 → 045 in order
+#   001 → 046 in order
 # Enable pgvector: CREATE EXTENSION IF NOT EXISTS vector;
 npm run dev
 ```
@@ -292,8 +293,8 @@ npm run dev
 - `npm run build` — production build
 - `npm run start` — production server
 - `npm run lint` — direct ESLint CLI across the repository; warnings fail the gate
-- `npm test` — Vitest unit/contract suite (409 tests)
-- `npm run test:e2e` — 38-check production HTTP smoke plus optional credentialed Playwright/API/RLS matrix; requires a successful build
+- `npm test` — Vitest unit/contract suite (440 tests)
+- `npm run test:e2e` — 39-check production HTTP smoke plus optional credentialed Playwright/API/RLS matrix; requires a successful build
 - `npm run test:e2e:credentialed` — real six-account/two-tenant matrix; set `RIPPLE_E2E_FIXTURES_FILE`
 - `npm run test:e2e:install-browser` — install the pinned Chromium runtime
 
@@ -947,6 +948,37 @@ the caller can still write its tables directly. Review table privileges, every
 permissive RLS policy, function execution grants, sequences, and Storage as
 separate authorization boundaries.
 
+### Public intake limits must survive serverless cold starts
+Found 2026-08-01 after the direct-write boundary was live-verified. Public
+site-code validation accepted unbounded input, exposed site/customer UUIDs and
+customer metadata, treated database failures as unknown codes, checked the
+site but not its parent-customer lifecycle, and had no rate limit. Anonymous
+ticket submission used only a process-local counter, which resets across
+serverless instances and cold starts.
+
+Commit `19574c9` and pending migration 046 add a service-role-only atomic
+bucket command with opaque SHA-256 keys, bounded limits/windows/counts, indexed
+expiry, and bounded opportunistic cleanup. Site validation and anonymous
+ticket submission retain the fast local guard but also fail closed through the
+distributed command. Validation now uses the shared 50-character code
+contract, returns only display name/code, requires active site plus active or
+trial customer, distinguishes invalid/throttled/unavailable states, aborts
+stale browser checks, and never caches responses. Ticket resolution uses the
+same lifecycle rules. The credentialed matrix denies authenticated table/RPC
+bypass. Migration 046 awaits application and live concurrency/expiry/grant/
+cleanup verification.
+
+An exact valid/invalid response remains an existence oracle by product design.
+The durable 20/minute/IP limit materially contains bulk probing but does not
+prove site membership; CAPTCHA, an invitation/intake token, or authenticated
+submission is still required for full anti-enumeration.
+
+**Lesson:** a process-local map is useful load shedding, not a distributed
+security boundary. Public lookup responses should be minimal and
+non-cacheable, parent lifecycle must be checked with the child, operational
+failures must not masquerade as invalid user input, and UI request races need
+explicit cancellation.
+
 ### Supabase SSR auth cookies belong on the response you return
 Found 2026-07-29 while adding password recovery. The authorization-code
 callback created a redirect inside the Supabase `setAll` callback, attached
@@ -1076,7 +1108,8 @@ resume work; this section remains the broader historical summary.
   per-site inventory administration and live-verified migration 043, hardened
   attachment intake and live-verified atomic metadata/timeline handling through
   migration 044, then deployed and live-verified the migration 045
-  whole-application write boundary, with 409 unit/contract tests plus a
+  whole-application write boundary, and added the pending migration 046
+  distributed public-intake limiter, with 440 unit/contract tests plus a
   zero-vulnerability dependency baseline.
 
 ### Known issues / open work
@@ -1086,7 +1119,8 @@ resume work; this section remains the broader historical summary.
 | 🟡 Med | Resend sender domain `dropletai.services` not verified | `src/lib/email/send.ts` | Email send returns `send_failed` until domain is verified at resend.com/domains. Ticket creation still works. |
 | 🟡 Med | Dashboard timezone hardcoded to `America/New_York` for some widgets | `src/app/(auth)/dashboard/page.tsx` | Should derive from user or first site; ticket detail already uses `site.timezone` |
 | 🟡 Med | `/settings` is read-only integration status | `src/app/(auth)/settings/page.tsx` | Add notification preferences, user timezone, and theme controls |
-| 🟡 Med | In-memory rate limit not production-grade | `src/lib/rate-limit.ts` | Fine for now (Vercel cold starts reset the counter, but worst case is a fresh window per cold start). Swap for Upstash/Redis when traffic warrants. |
+| 🔴 Apply | Migration 046 durable public rate limits | `supabase/migrations/046_durable_public_rate_limits.sql` | Apply before deploying `19574c9`; then verify service-role concurrency/window reset, public table/RPC denial, validation/submission 429 + `Retry-After`, expiry cleanup, lifecycle filtering, and zero residue |
+| 🟡 Med | Exact site-code validation remains an existence oracle | `/api/sites/validate` | Responses are minimal and pending migration 046 enforces 20 checks/minute/IP across instances, but full anti-enumeration still requires CAPTCHA, an invitation/intake token, or authenticated submission |
 | 🟡 Verify | Migration 031 protected business probes remain | `supabase/migrations/031_atomic_team_site_assignment.sql` | RPC presence and validation behavior are confirmed; run same-tenant, cross-tenant, role-preservation, explicit-clear, and rollback probes with staging fixtures |
 | 🟡 Verify | Migration 032 positive business probe remains | `supabase/migrations/032_guard_ticket_status_transitions.sql` | Truth-table and three rollback guards are live/green; run one allowed transition and restore it on a disposable staging ticket |
 | 🟡 Configure | Production `CRON_SECRET` is not configured | deployment environment | Migration 033 is live and its non-writing RPC/column probes passed; set a long server-only secret, then verify readiness and worker authorization |
@@ -1101,9 +1135,10 @@ resume work; this section remains the broader historical summary.
 | 🟡 Activate | Hosted quality workflow and protected staging job are not activated yet | `.github/workflows/ci.yml` | After pushing, require `Quality gates`; create a reviewer-protected `staging` environment and add only `RIPPLE_E2E_FIXTURES_JSON` there |
 
 ### Next priorities (Sprint 3, in proposed order)
-1. **Contain public site-code validation.** Remove unnecessary tenant
-   identifiers, align site and customer lifecycle checks, bound inputs, and
-   replace process-local-only enumeration protection with a durable limit.
+1. **Apply and verify migration 046.** Prove atomic concurrent consumption,
+   reset and retention behavior, service-role-only grants, public table/RPC
+   denial, real validator/submission 429 behavior, lifecycle filtering, and
+   zero residue before deploying `19574c9`.
 2. **Run migrations 028–029 part-request probes.** Both migrations are
    applied; staging credentials are not present in this workspace.
 3. **Run migration 030 field-service transaction probes.** Both command RPCs
@@ -1112,8 +1147,8 @@ resume work; this section remains the broader historical summary.
    protected same/cross-tenant, role-preservation, explicit-clear, and rollback
    fixtures remain unavailable.
 5. **Run the required credentialed staging matrix.** Migrations 027–045 are
-   applied; the secret six-account/two-tenant fixture is the remaining
-   database/external gate.
+   applied; migration 046 and the secret six-account/two-tenant fixture are the
+   remaining database/external gates.
 6. **Apply migration 019** ✅ done (2026-07-14).
 7. **Migrate `next lint` and add protected CI quality gates.** ✅ code done
    (`4ceacd0`); hosted activation remains.
@@ -1187,6 +1222,13 @@ resume work; this section remains the broader historical summary.
     membership/SLA exploit closure, safe-profile continuity, protected-profile
     denial, five minting-RPC denials, real admin-command continuity, exact audit
     evidence, scope changes, and zero residue.
+32. **Contain public support intake.** Code is committed in `19574c9`.
+    Migration 046 adds an opaque, bounded, service-only distributed limiter;
+    validator and anonymous submission paths fail closed through it. Public
+    responses are minimal/non-cacheable, site/customer lifecycle is aligned,
+    stale UI checks are aborted, desktop/mobile browser QA is green, 31 new
+    tests bring the suite to 440, and the HTTP smoke now has 39 checks.
+    Apply and live-probe migration 046 before deployment.
 
 ### Open architectural questions
 - The RLS recursion bug surfaces a bigger question: do we keep `createAdminClient() + code filter` (the current pattern in `lib/supabase/scope.ts`) or move back to proper RLS once migration 019 + similar fixes are in place? The current pattern scales fine but has a lower safety margin for new queries.
@@ -1208,7 +1250,7 @@ npm audit
 ```
 
 **Apply a new migration:**
-1. Create `supabase/migrations/046_xxx.sql` (next number)
+1. Create `supabase/migrations/047_xxx.sql` (next number)
 2. Test locally: `supabase db reset` (drops + re-applies all)
 3. Apply to prod via Supabase SQL editor
 4. Document in this file's §5 + §10

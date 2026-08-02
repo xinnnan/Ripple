@@ -49,14 +49,14 @@ A Slack-native support portal for DropletAI Services. Centralises customer suppo
 | Layer | Tool |
 |-------|------|
 | Frontend | Next.js 15.5.22 (App Router) + React 19 + TypeScript + Tailwind CSS v4 + self-hosted Inter |
-| Database | Supabase Postgres (44 migrations, see `supabase/migrations/`) |
+| Database | Supabase Postgres (46 migrations, see `supabase/migrations/`) |
 | Auth | Supabase Auth (email + password + recovery) + new `sb_publishable_` / `sb_secret_` key format |
 | Storage | Supabase Storage — bucket `ripple-attachments`, **50 MB cap per file** |
 | Slack | `@slack/bolt` + `@slack/web-api` (runs inside Next.js API routes, no separate process) |
 | AI | **MiniMax AI** (OpenAI-compatible) — was OpenAI → Zhipu → MiniMax. **See "AI provider" section below.** |
 | Email | Resend (transactional: ticket confirmation, resolution notice) |
 | Validation | Zod (all API request bodies) |
-| Testing | Vitest (409 unit/contract tests) + 38-check production HTTP smoke + credentialed Playwright/API/RLS matrix |
+| Testing | Vitest (440 unit/contract tests) + 39-check production HTTP smoke + credentialed Playwright/API/RLS matrix |
 | Hosting | Vercel (serverless API routes) |
 
 ## Phases
@@ -91,7 +91,7 @@ cp .env.local.example .env.local
 
 ### Run database migrations
 
-Apply the SQL files in `supabase/migrations/` **in order** (001 → 045) via the Supabase SQL editor or `supabase db push`:
+Apply the SQL files in `supabase/migrations/` **in order** (001 → 046) via the Supabase SQL editor or `supabase db push`:
 
 ```
 001_create_customers.sql
@@ -139,6 +139,7 @@ Apply the SQL files in `supabase/migrations/` **in order** (001 → 045) via the
 043_atomic_admin_spare_part_inventory_commands.sql
 044_atomic_ticket_attachment_metadata.sql
 045_restrict_direct_application_writes.sql
+046_durable_public_rate_limits.sql
 ```
 
 Later migrations replace policies/functions and should be applied once in
@@ -156,7 +157,12 @@ all 22 command-owned tables, representative anonymous denial, exact historical
 membership/SLA exploit closure, safe-profile continuity, protected-profile
 denial, five minting-RPC denials, real admin-command continuity, exact audit
 evidence, scope changes, and zero residue. Malware scanning, quarantine,
-checksums, and retention policy remain future file-service work.
+checksums, and retention policy remain future file-service work. Migration 046
+is pending and must be applied before deploying `19574c9`; it adds an opaque,
+service-role-only distributed limiter for public site validation and anonymous
+ticket submission. Exact site-code validation remains an existence oracle, so
+full anti-enumeration still requires CAPTCHA, an invitation/intake token, or
+authenticated submission.
 
 ### Enable pgvector (for AI features)
 
@@ -219,8 +225,8 @@ protected CI should set `RIPPLE_E2E_REQUIRE_CREDENTIALS=1` so it fails closed.
 
 ### GitHub Actions
 
-`.github/workflows/ci.yml` runs the locked install, 404 unit/contract tests,
-lint, production build, 38-check HTTP E2E, and dependency audit for pull
+`.github/workflows/ci.yml` runs the locked install, 440 unit/contract tests,
+lint, production build, 39-check HTTP E2E, and dependency audit for pull
 requests and pushes to `main`. GitHub-owned actions are pinned to full commit
 SHAs and the workflow has read-only repository permissions.
 
@@ -310,7 +316,7 @@ src/
 │   ├── ticket.ts                # ⭐ all ticket domain enums + labels
 │   └── spare-parts.ts
 └── middleware.ts                # ⭐ route guard + session refresh
-supabase/migrations/             # 001-045
+supabase/migrations/             # 001-046
 plans/                           # Architecture + phase planning docs
 AGENTS.md                        # ⭐ project context, lessons learned, roadmap
 ```
@@ -321,7 +327,7 @@ AGENTS.md                        # ⭐ project context, lessons learned, roadmap
 - Ticket detail → `app/(auth)/tickets/[ticketId]/page.tsx` + `ticket-actions-panel.tsx`
 - Slack actions → `lib/slack/handlers/actions.ts` + `app/api/slack/interactive/route.ts`
 - AI assist → `app/api/ai/suggest/route.ts` + `lib/ai/suggest.ts`
-- DB schema → `supabase/migrations/001_*.sql` … `045_restrict_direct_application_writes.sql`
+- DB schema → `supabase/migrations/001_*.sql` … `046_durable_public_rate_limits.sql`
 
 ## Ticket Lifecycle
 

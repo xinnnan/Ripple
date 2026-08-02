@@ -7,15 +7,16 @@ meaningful change and before ending a work session. Newest entries go first.
 
 - **Branch:** `codex/prd-v1-1-gap-closure`
 - **Active phase:** Phase 0 — Containment and reproducible baseline
-- **Active work item:** contain public site-code validation and add durable
-  distributed throttling, then configure the production outbox worker secret
-- **Last verified implementation commit:** `0085db6` (`fix: restrict direct application writes`)
+- **Active work item:** apply/probe migration 046, then configure the production
+  outbox worker secret and continue the next integrity milestone
+- **Last verified implementation commit:** `19574c9` (`fix: contain public support intake`)
 - **Uncommitted work:** none expected after the documentation checkpoint;
   verify with `git status` before resuming
 - **Deployment gate:** migrations 001–045 are confirmed applied. Migration 044
   passed a 130-assertion disposable live matrix with zero residue. Migration
   045 passed a 110-assertion live matrix with zero residue. Production
-  `CRON_SECRET` remains unset in this workspace.
+  `CRON_SECRET` remains unset in this workspace. Migration 046 must be applied
+  before deploying `19574c9`.
   Protected positive business probes for migrations 028–037 still require
   staging fixtures
 - **External validation gate:** populate the gitignored credential fixture with six
@@ -47,14 +48,71 @@ meaningful change and before ending a work session. Newest entries go first.
   immutable edit identity, threshold/duplicate validation, local table
   scrolling, Inter, and zero console errors. The public ticket form and its
   exact attachment accept/help contract were reviewed at 1280×720 and 390×844
-  with Inter and no horizontal overflow. Password-based login passed;
+  with Inter and no horizontal overflow. Public site-code invalid/unavailable
+  states, bounded input, stale-request cancellation, checking-button state,
+  Inter, and no-overflow behavior were reverified at 1280 and 390×844 with
+  zero reproducible console warnings/errors. Password-based login passed;
   recovery-email delivery and one-time link consumption still require a
   dedicated staging mailbox.
-- **Exact next local step:** minimize and lifecycle-align the public site-code
-  validator, add a durable service-only rate-limit command, cover route/query/
-  browser behavior, and run the full commit gate. Configure `CRON_SECRET`
-  separately before production worker activation
+- **Exact next local step:** after the user applies migration 046, run a
+  disposable matrix for concurrent consumption, window reset, bounded cleanup,
+  public table/RPC denial, real validation/submission 429 + `Retry-After`,
+  lifecycle filtering, and zero residue. Configure `CRON_SECRET` separately
+  before production worker activation
 - **Primary plan:** [`plans/prd-v1.1-gap-closure-plan.md`](./prd-v1.1-gap-closure-plan.md)
+
+## Session record — 2026-08-01 (P0-AI / public support-intake containment)
+
+### Objective
+
+Contain the public site-code lookup surface and replace process-local-only
+throttling at open intake boundaries without claiming an IP limit proves site
+membership.
+
+### Finding and implementation
+
+- `GET /api/sites/validate` accepted unbounded input, exposed site/customer
+  UUIDs and customer metadata, treated database errors as unknown codes,
+  checked only site lifecycle, and had no rate limit.
+- Anonymous ticket submission used a process-local counter that resets across
+  serverless instances/cold starts. Ticket code/site-ID resolution could also
+  accept an active site under an inactive customer until the atomic command
+  rejected it later.
+- Commit `19574c9` adds pending migration 046: an opaque SHA-256 bucket table
+  and service-role-only atomic consume command with bounded keys/limits/windows/
+  counts, indexed expiry, bounded cleanup, and public table/RPC denial.
+- Both site validation and anonymous ticket submission keep the fast local
+  guard and fail closed through the distributed command. Valid site responses
+  now expose only display name/code, never cache, and require an active site
+  under an active or trial customer. Ticket resolution shares that contract.
+- The public form uses the shared 50-character code contract, uppercases input,
+  distinguishes invalid/throttled/unavailable states, aborts stale debounced
+  requests, and prevents submission while a check is in flight.
+- Exact valid/invalid feedback remains an existence oracle. The durable
+  20/minute/IP limit contains bulk probing; CAPTCHA, invitation/intake proof,
+  or authentication remains required for full anti-enumeration.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| `npm ci` | Passed; locked install, 0 install-time vulnerabilities |
+| `npm test` | Passed; 63 files, 440 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build |
+| `npm run test:e2e` | Passed; all 39 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+| Browser QA | Passed at 1280 and 390×844: Inter, no horizontal overflow, uppercase/bounded input, accessible invalid feedback, recovery after checking, and zero reproducible console warnings/errors |
+
+### Rollout and next
+
+1. Apply migration 046 before deploying `19574c9`.
+2. Live-probe concurrent consumption, reset/retention, input bounds, public
+   table/RPC denial, real HTTP 429 + `Retry-After`, lifecycle filtering, and
+   zero residue.
+3. Preserve the exact-code-oracle risk until CAPTCHA, intake tokens, or
+   authenticated-only validation is product-approved.
 
 ## Session record — 2026-08-01 (P0-AH / migration 045 live verification)
 
