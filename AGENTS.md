@@ -295,7 +295,7 @@ npm run dev
 - `npm run build` — production build
 - `npm run start` — production server
 - `npm run lint` — direct ESLint CLI across the repository; warnings fail the gate
-- `npm test` — Vitest unit/contract suite (637 tests)
+- `npm test` — Vitest unit/contract suite (675 tests)
 - `npm run test:e2e` — 40-check production HTTP smoke plus optional credentialed Playwright/API/RLS matrix; requires a successful build
 - `npm run test:e2e:credentialed` — real six-account/two-tenant matrix; set `RIPPLE_E2E_FIXTURES_FILE`
 - `npm run test:e2e:install-browser` — install the pinned Chromium runtime
@@ -1305,7 +1305,10 @@ resume work; this section remains the broader historical summary.
   authenticated ticket page/API filters and removed customer `tickets.*`
   hydration, bringing the suite to 611 tests; then made customer-capable
   spare-part, field-service, and site list filters strict and scope-aware with
-  private/no-store delivery, bringing the suite to 637 tests.
+  private/no-store delivery, bringing the suite to 637 tests; then replaced
+  permissive admin audit/inventory/membership/catalog list parsing and raw
+  membership database errors with strict private contracts, bringing the
+  suite to 675 tests.
 
 ### Known issues / open work
 | Priority | Item | Where | Notes |
@@ -1322,6 +1325,7 @@ resume work; this section remains the broader historical summary.
 | ✅ Closed | Ticket CSV active-content and filter-contract exposure | `src/lib/tickets/csv-export.ts`, `src/lib/tickets/export-filters.ts`, `/api/tickets/export` | Commit `bef2323` neutralizes spreadsheet formulas, normalizes relationship shapes, validates/applies canonical role-aware filters, contains PostgREST grammar, hides database detail, and sends private/no-store UTF-8 CSV |
 | ✅ Closed | Ticket-list filter and wildcard-read exposure | `src/lib/tickets/search-filter.ts`, `src/lib/tickets/api-list-filters.ts`, `/tickets`, `/api/tickets` | Commit `38f8b5e` validates page/API filter grammar and scope before service-role access, disables broadened invalid-filter export, uses an external query-time allow-list, and returns private/no-store list data |
 | ✅ Closed | Customer-capable service/site list filter ambiguity | `src/lib/resource-list-filters.ts`, `/api/spare-part-requests`, `/api/field-service-orders`, `/api/sites` | Commit `5840b17` rejects unknown/repeated/malformed filters, checks foreign site/customer scope before route query construction, limits database logs to codes, and marks successful authenticated responses private/no-store |
+| ✅ Closed | Admin list filter ambiguity and membership error leakage | `src/lib/admin-list-filters.ts`, `/api/admin/audit`, `/api/admin/inventory`, `/api/admin/site-members`, `/api/admin/spare-parts` | Commit `f53c1fc` enforces exact filter contracts, explicit false states and guarded catalog search, uses an explicit membership projection, hides database details, and marks authenticated responses private/no-store |
 | 🟡 Med | `/settings` is read-only integration status | `src/app/(auth)/settings/page.tsx` | Add notification preferences, user timezone, and theme controls |
 | ✅ Verified | Migration 046 durable public rate limits | `supabase/migrations/046_durable_public_rate_limits.sql` | Applied 2026-08-02; 77 live assertions covered grants, constraints, concurrency, reset/retention, bounded cleanup, real HTTP limits/lifecycle, and zero residue |
 | 🟡 Med | Exact site-code validation remains an existence oracle | `/api/sites/validate` | Responses are minimal and migration 046 enforces 20 checks/minute/IP across instances, but full anti-enumeration still requires CAPTCHA, an invitation/intake token, or authenticated submission |
@@ -1504,6 +1508,11 @@ resume work; this section remains the broader historical summary.
     parsing, pre-query foreign-scope rejection, code-only database logging,
     and private/no-store delivery. Twenty-six tests bring the suite to 637;
     all deterministic quality gates are green.
+45. **Harden admin list filters.** Commit `f53c1fc` gives audit, inventory,
+    site-membership, and catalog GETs exact parsing, explicit false-filter
+    semantics, guarded search, private delivery, code-only error logging, and
+    an explicit membership projection. Thirty-eight tests bring the suite to
+    675; all deterministic quality gates are green.
 
 ### Open architectural questions
 - The RLS recursion bug surfaces a bigger question: do we keep `createAdminClient() + code filter` (the current pattern in `lib/supabase/scope.ts`) or move back to proper RLS once migration 019 + similar fixes are in place? The current pattern scales fine but has a lower safety margin for new queries.
