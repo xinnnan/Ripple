@@ -21,14 +21,13 @@ export const dynamic = "force-dynamic";
 
 interface Props {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ tab?: string }>;
+  searchParams: Promise<{ tab?: string | string[] }>;
 }
 
 export default async function AdminCustomerDetailPage({ params, searchParams }: Props) {
   const id = parseUuidRouteId((await params).id);
   if (!id) notFound();
   const { tab } = await searchParams;
-  const activeTab = getCurrentTab({ tab }, "overview");
 
   const admin = createAdminClient();
 
@@ -128,6 +127,11 @@ export default async function AdminCustomerDetailPage({ params, searchParams }: 
     { key: "team", label: "Team", count: team.length },
     { key: "history", label: "History", count: audit.length },
   ];
+  const activeTab = getCurrentTab(
+    { tab },
+    "overview",
+    tabs.map(({ key }) => key)
+  );
 
   return (
     <div className="p-8">

@@ -11,14 +11,18 @@
 
 /**
  * Read the current tab key from a Next.js searchParams object.
- * Defaults to `fallback` if not set or if it's an array
- * (which can happen with `?tab=a&tab=b`).
+ * Defaults to `fallback` if the value is missing, repeated, or not in the
+ * page's declared tab set. This prevents arbitrary query values from leaving
+ * every server-rendered content branch inactive.
  */
-export function getCurrentTab(
+export function getCurrentTab<TTab extends string>(
   searchParams: { tab?: string | string[] } | undefined,
-  fallback: string
-): string {
+  fallback: TTab,
+  allowedTabs: readonly TTab[]
+): TTab {
   const t = searchParams?.tab;
-  if (typeof t === "string") return t;
+  if (typeof t === "string" && allowedTabs.includes(t as TTab)) {
+    return t as TTab;
+  }
   return fallback;
 }

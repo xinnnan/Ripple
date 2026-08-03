@@ -20,14 +20,13 @@ export const dynamic = "force-dynamic";
 
 interface Props {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ tab?: string }>;
+  searchParams: Promise<{ tab?: string | string[] }>;
 }
 
 export default async function AdminSiteDetailPage({ params, searchParams }: Props) {
   const id = parseUuidRouteId((await params).id);
   if (!id) notFound();
   const { tab } = await searchParams;
-  const activeTab = getCurrentTab({ tab }, "overview");
 
   const supabase = createAdminClient();
 
@@ -175,6 +174,11 @@ export default async function AdminSiteDetailPage({ params, searchParams }: Prop
     { key: "slack", label: "Slack" },
     { key: "history", label: "History", count: audit.length },
   ];
+  const activeTab = getCurrentTab(
+    { tab },
+    "overview",
+    tabs.map(({ key }) => key)
+  );
 
   const customerData = Array.isArray(site.customer) ? site.customer[0] : site.customer;
   const canAddMembers =
