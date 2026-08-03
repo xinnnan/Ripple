@@ -12,6 +12,7 @@ import {
   SITE_CODE_PATTERN,
 } from "@/lib/sites/site-code";
 import { EXTERNAL_SITE_SELECT } from "@/lib/resource-projections";
+import { parseSiteListFilters } from "@/lib/resource-list-filters";
 
 const createSiteSchema = z.object({
   customer_id: z.string().uuid(),
@@ -48,6 +49,25 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url);
+    const parsedFilters = parseSiteListFilters(searchParams);
+    if (!parsedFilters.success) {
+      return NextResponse.json(
+        { error: "Invalid site list filters" },
+        { status: 400 }
+      );
+    }
+    const filters = parsedFilters.data;
+    if (
+      filters.customerId &&
+      !scope.isInternal &&
+      scope.customerId !== filters.customerId
+    ) {
+      return NextResponse.json(
+        { error: "Forbidden: customer is outside your scope" },
+        { status: 403 }
+      );
+    }
+
     const supabase = createAdminClient();
 
     let query = supabase
@@ -61,21 +81,23 @@ export async function GET(request: NextRequest) {
     query = scopeSites(query, scope);
 
     // Optional customer_id filter (must be allowed by scope)
-    const customerId = searchParams.get("customer_id");
-    if (customerId) {
-      if (!scope.isInternal && scope.customerId !== customerId) {
-        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-      }
-      query = query.eq("customer_id", customerId);
+    if (filters.customerId) {
+      query = query.eq("customer_id", filters.customerId);
     }
 
     const { data: sites, error } = await query;
 
     if (error) {
+      console.error("GET /api/sites failed:", {
+        code: (error as { code?: string }).code,
+      });
       return NextResponse.json({ error: "Failed to fetch sites" }, { status: 500 });
     }
 
-    return NextResponse.json({ sites });
+    return NextResponse.json(
+      { sites },
+      { headers: { "Cache-Control": "private, no-store" } }
+    );
   } catch (error) {
     console.error("Get sites error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
