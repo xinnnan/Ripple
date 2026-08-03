@@ -49,6 +49,17 @@ function request(body: unknown = {}) {
   });
 }
 
+function malformedRequest() {
+  return new NextRequest("http://localhost/api/tickets", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-forwarded-for": "203.0.113.8",
+    },
+    body: "{",
+  });
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   authMock.mockResolvedValue({ error: "Unauthorized", status: 401 });
@@ -105,6 +116,15 @@ describe("public ticket submission rate limit", () => {
     consoleError.mockRestore();
   });
 
+  it("consumes both anonymous guards before rejecting malformed JSON", async () => {
+    const response = await POST(malformedRequest());
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "Invalid JSON body" });
+    expect(localRateLimitMock).toHaveBeenCalledOnce();
+    expect(distributedRateLimitMock).toHaveBeenCalledOnce();
+  });
+
   it("does not apply anonymous IP quotas to active authenticated users", async () => {
     authMock.mockResolvedValueOnce({
       userId: "11111111-1111-4111-8111-111111111111",
@@ -119,6 +139,25 @@ describe("public ticket submission rate limit", () => {
     const response = await POST(request());
 
     expect(response.status).toBe(400);
+    expect(localRateLimitMock).not.toHaveBeenCalled();
+    expect(distributedRateLimitMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects authenticated malformed JSON without consuming anonymous quotas", async () => {
+    authMock.mockResolvedValueOnce({
+      userId: "11111111-1111-4111-8111-111111111111",
+      role: "customer",
+      email: "customer@example.com",
+      customerId: "22222222-2222-4222-8222-222222222222",
+      fullName: "Customer",
+      isInternal: false,
+      isManager: false,
+    });
+
+    const response = await POST(malformedRequest());
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "Invalid JSON body" });
     expect(localRateLimitMock).not.toHaveBeenCalled();
     expect(distributedRateLimitMock).not.toHaveBeenCalled();
   });
