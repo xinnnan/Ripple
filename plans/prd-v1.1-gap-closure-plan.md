@@ -710,6 +710,14 @@ Every implementation slice must:
     failed selections for retry, and surface guarded JSON/network outcomes.
     Spare-part request status errors no longer disappear. Six real-source
     contracts bring the suite to 866 and all gates are green.
-63. **Next local integrity work:** run protected positive/rollback probes when
-    fixtures are available; otherwise continue the authenticated fetch-form
-    audit and review field-service/Slack action UX.
+63. **P0-BM — closed in `ec9cd65`:** Admin-user and customer-team create/edit
+    forms now share bounded failed-response parsing, contain unexpected
+    network/runtime detail, align browser limits with server schemas, lock all
+    mutable controls through request settlement, guard duplicate/programmatic
+    submits, and preserve inactive records as read-only. Accessible status,
+    fieldset, legend, label, and pressed-state semantics cover the identity and
+    site-assignment surfaces. Twenty contracts bring the suite to 886 and all
+    gates are green.
+64. **Next local integrity work:** run protected positive/rollback probes when
+    fixtures are available; otherwise harden field-service action and Slack
+    channel-link mutation UX, then continue the authenticated fetch-form audit.

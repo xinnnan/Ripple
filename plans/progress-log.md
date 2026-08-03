@@ -8,10 +8,9 @@ meaningful change and before ending a work session. Newest entries go first.
 - **Branch:** `codex/prd-v1-1-gap-closure`
 - **Active phase:** Phase 0 — Containment and reproducible baseline
 - **Active work item:** run protected migrations 028–031 business probes when
-  the staging fixture becomes available; otherwise continue the authenticated
-  fetch-form audit, replacing unguarded JSON parsing/raw exception display and
-  reviewing field-service/Slack action UX
-- **Last verified implementation commit:** `76091a3` (`fix: settle lifecycle action failures`)
+  the staging fixture becomes available; otherwise continue the remaining
+  authenticated fetch-form audit and review field-service/Slack action UX
+- **Last verified implementation commit:** `ec9cd65` (`fix: contain identity form failures`)
 - **Uncommitted work:** none expected after the documentation checkpoint;
   verify with `git status` before resuming
 - **Deployment gate:** migrations 001–046 are confirmed applied. Migration 044
@@ -68,10 +67,10 @@ meaningful change and before ending a work session. Newest entries go first.
   visual coverage still depends on the credentialed fixture.
 - **Exact next local step:** check whether the protected credential fixture is
   available and, if so, run the migration 028–031 business probes plus the new
-  malformed-body HTTP checks. If it remains unavailable, audit fetch-based
-  authenticated forms for unguarded JSON parsing or raw exception display,
-  then review field-service/Slack actions. Configure `CRON_SECRET` separately
-  before production worker activation
+  malformed-body HTTP checks. If it remains unavailable, harden field-service
+  action settlement and the Slack channel-link UI, then continue the remaining
+  authenticated fetch-form audit. Configure `CRON_SECRET` separately before
+  production worker activation
 - **Primary plan:** [`plans/prd-v1.1-gap-closure-plan.md`](./prd-v1.1-gap-closure-plan.md)
 
 ## Overall project status — 2026-08-03
@@ -81,7 +80,7 @@ meaningful change and before ending a work session. Newest entries go first.
 - Against the full PRD v1.1 capability map, 17 domains remain
   **Partial** or **Unsafe/Partial** and seven remain **Absent**. No full PRD
   capability domain is yet honestly complete end to end.
-- The local deterministic baseline is green at 866 unit/contract tests, 40
+- The local deterministic baseline is green at 886 unit/contract tests, 40
   production HTTP smoke checks, a production build, zero-warning lint, and
   zero known dependency vulnerabilities.
 - Phase 0 cannot be declared exited until the protected six-account/two-tenant
@@ -93,6 +92,61 @@ meaningful change and before ending a work session. Newest entries go first.
   queues/routing, business-calendar SLA clocks, remote support, appointments,
   assets/entitlements, search/knowledge, i18n, versioned external APIs, and
   production SRE/recovery evidence.
+
+## Session record — 2026-08-03 (P0-BM / identity form mutation integrity)
+
+### Objective
+
+Prevent malformed responses, unexpected runtime failures, duplicate submits,
+and inactive-record edits from producing ambiguous admin-user or customer-team
+identity mutations.
+
+### Finding and implementation
+
+- Four identity create/edit forms assumed every failed response was JSON and
+  displayed arbitrary `Error.message` text. A gateway error could therefore
+  cause a second parse failure, while network/provider detail could reach the
+  UI.
+- A shared client mutation boundary now parses only non-2xx responses, accepts
+  only a non-empty string `error` of at most 300 characters, and uses a stable
+  fallback for malformed, unexpected, or oversized responses. Successful 204
+  responses remain valid and are not parsed.
+- Admin-user and customer-team forms now normalize submitted email/name/phone,
+  enforce the same browser limits as their server schemas, and retain password
+  minimum/maximum parity.
+- All mutable controls, cancel actions, site choices, and submit buttons lock
+  during the request. Submit handlers independently reject duplicate requests;
+  edit handlers also reject inactive records even when invoked outside the
+  normal button path.
+- Outcomes use accessible alert/status roles and busy state. Team site choices
+  are grouped with fieldset/legend semantics and expose pressed state; edit
+  labels are explicitly bound to controls.
+- Twenty new helper and real-source contracts bring the suite to 886 tests
+  across 110 files.
+- No live identity mutation was executed. Positive tenant/role and rollback
+  behavior remains behind the protected credential fixture gate.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| `npm test` | Passed; 110 files, 886 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build and type check |
+| `npm run test:e2e` | Passed; all 40 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+
+### Commit
+
+- Hash: `ec9cd65`
+- Message: `fix: contain identity form failures`
+
+### Next
+
+Run protected probes when their fixture is available. Otherwise harden the
+field-service action and Slack channel-link mutation surfaces, then continue
+the remaining authenticated fetch-form audit.
 
 ## Session record — 2026-08-03 (P0-BL / lifecycle action settlement)
 

@@ -295,7 +295,7 @@ npm run dev
 - `npm run build` — production build
 - `npm run start` — production server
 - `npm run lint` — direct ESLint CLI across the repository; warnings fail the gate
-- `npm test` — Vitest unit/contract suite (866 tests)
+- `npm test` — Vitest unit/contract suite (886 tests)
 - `npm run test:e2e` — 40-check production HTTP smoke plus optional credentialed Playwright/API/RLS matrix; requires a successful build
 - `npm run test:e2e:credentialed` — real six-account/two-tenant matrix; set `RIPPLE_E2E_FIXTURES_FILE`
 - `npm run test:e2e:install-browser` — install the pinned Chromium runtime
@@ -1240,6 +1240,26 @@ Treat request, response parsing, local reconciliation, and refresh as one busy
 window. Preserve the exact operator selection on total failure, type-check error
 bodies, and never let a rejected domain transition look like a successful no-op.
 
+### Browser mutation errors need an explicit trust boundary
+Found 2026-08-03 in admin-user and customer-team create/edit forms. Each form
+parsed every failed response as JSON, then displayed `Error.message` for both
+expected API validation and unexpected network/runtime failures. Non-JSON
+gateway responses could break parsing, while provider detail could reach the
+operator UI. Inputs also remained editable during requests, and inactive team
+records could still be submitted programmatically.
+
+Commit `ec9cd65` adds one client mutation response helper that accepts only a
+bounded string `error` from a non-2xx JSON response and maps every other failure
+to a stable contextual fallback. Identity forms now trim bounded fields, lock
+the complete mutation surface, guard duplicate submits, expose accessible
+status/alert state, group site choices semantically, and keep inactive records
+read-only.
+
+**Lesson:** treat returned domain errors and thrown runtime errors as different
+classes. Only expose a bounded, deliberately shaped API message; contain all
+other exception detail. A disabled submit button is not a complete concurrency
+or authorization guard—also guard the handler and every mutable control.
+
 ---
 
 ## 10. Current State & Roadmap
@@ -1396,7 +1416,9 @@ resume work; this section remains the broader historical summary.
   and sign-out settlement with explicit partial session-cleanup outcomes,
   bringing the suite to 860 tests; then closed duplicate-submit and silent-
   failure windows in bulk lifecycle and spare-part status actions, bringing the
-  suite to 866 tests.
+  suite to 866 tests; then centralized bounded client mutation errors and
+  hardened admin/team identity create/edit form settlement, bringing the suite
+  to 886 tests.
 
 ### Known issues / open work
 | Priority | Item | Where | Notes |
@@ -1429,6 +1451,7 @@ resume work; this section remains the broader historical summary.
 | ✅ Closed | Browser account/site loading ambiguity | `src/lib/supabase/scope.client.ts`, `/profile`, authenticated ticket modal, `/submit` | Commit `10a1547` distinguishes guest/rejected-session, inactive, unavailable, and legitimate-empty site states; adds settled recovery, bounded profile writes, and prerequisite submission guards |
 | ✅ Closed | Authentication/recovery false completion | `/login`, `/forgot-password`, `/reset-password`, auth callback/logout, `src/lib/auth/session-cleanup.ts` | Commit `e887eec` settles provider failures, separates rejected from unavailable recovery links, and reports global/local/failed session cleanup truthfully after password mutation |
 | ✅ Closed | Lifecycle action duplicate/silent failure | customer/site bulk archive, user bulk deactivation, spare-part request actions | Commit `76091a3` covers the complete request/refresh busy window, keeps failed selections retryable, guards JSON/network errors, and surfaces rejected status transitions |
+| ✅ Closed | Identity-form raw error and duplicate-submit exposure | admin user and customer team create/edit forms, `src/lib/http/client-mutation.ts` | Commit `ec9cd65` admits only bounded expected API errors, contains runtime/network detail, locks the complete mutation surface, guards handlers, and keeps inactive identities read-only |
 | 🟡 Med | `/settings` is read-only integration status | `src/app/(auth)/settings/page.tsx` | Add notification preferences, user timezone, and theme controls |
 | ✅ Verified | Migration 046 durable public rate limits | `supabase/migrations/046_durable_public_rate_limits.sql` | Applied 2026-08-02; 77 live assertions covered grants, constraints, concurrency, reset/retention, bounded cleanup, real HTTP limits/lifecycle, and zero residue |
 | 🟡 Med | Exact site-code validation remains an existence oracle | `/api/sites/validate` | Responses are minimal and migration 046 enforces 20 checks/minute/IP across instances, but full anti-enumeration still requires CAPTCHA, an invitation/intake token, or authenticated submission |
@@ -1704,6 +1727,13 @@ resume work; this section remains the broader historical summary.
     selections stable on failure, guards response parsing/network rejection,
     and makes spare-part status errors visible. Six contracts bring the suite
     to 866; all deterministic quality gates are green.
+61. **Contain identity-form failures.** Commit `ec9cd65` centralizes guarded
+    non-2xx response parsing and separates bounded expected API errors from
+    contained network/runtime failures. Admin-user and customer-team create/edit
+    forms now trim and bound identity fields, guard duplicate submits, lock
+    controls through settlement, expose accessible outcomes, and keep inactive
+    records read-only. Twenty contracts bring the suite to 886; all
+    deterministic quality gates are green.
 
 ### Open architectural questions
 - The RLS recursion bug surfaces a bigger question: do we keep `createAdminClient() + code filter` (the current pattern in `lib/supabase/scope.ts`) or move back to proper RLS once migration 019 + similar fixes are in place? The current pattern scales fine but has a lower safety margin for new queries.
