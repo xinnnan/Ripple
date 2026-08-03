@@ -1,6 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import {
+  assertClientMutationResponse,
+  clientMutationErrorMessage,
+} from "@/lib/http/client-mutation";
 
 const INTERNAL_ROLE_OPTIONS = [
   { value: "engineer", label: "Engineer" },
@@ -22,28 +26,30 @@ export function CreateUserForm() {
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
+    if (saving) return;
     setSaving(true);
     setMessage(null);
+    const submittedEmail = email.trim();
 
     try {
       const res = await fetch("/api/admin/users", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          email,
+          email: submittedEmail,
           password,
-          full_name: fullName,
+          full_name: fullName.trim(),
           role,
-          phone: phone || undefined,
+          phone: phone.trim() || undefined,
         }),
       });
 
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || "Failed to create user");
-      }
+      await assertClientMutationResponse(res, "Failed to create user");
 
-      setMessage({ type: "success", text: `User ${email} created successfully` });
+      setMessage({
+        type: "success",
+        text: `User ${submittedEmail} created successfully`,
+      });
       setEmail("");
       setPassword("");
       setFullName("");
@@ -53,7 +59,10 @@ export function CreateUserForm() {
     } catch (err) {
       setMessage({
         type: "error",
-        text: err instanceof Error ? err.message : "Failed to create user",
+        text: clientMutationErrorMessage(
+          err,
+          "User creation is temporarily unavailable. Please retry."
+        ),
       });
     } finally {
       setSaving(false);
@@ -83,6 +92,7 @@ export function CreateUserForm() {
         <button
           type="button"
           onClick={() => setExpanded(false)}
+          disabled={saving}
           className="text-sm text-muted-foreground hover:text-foreground transition-colors"
         >
           Cancel
@@ -91,6 +101,7 @@ export function CreateUserForm() {
 
       {message && (
         <div
+          role={message.type === "error" ? "alert" : "status"}
           className={`mb-4 rounded-lg px-4 py-3 text-sm ${
             message.type === "success"
               ? "bg-green-50 text-green-800 border border-green-200"
@@ -106,7 +117,7 @@ export function CreateUserForm() {
         use a tenant-bound provisioning workflow.
       </p>
 
-      <form onSubmit={handleCreate} className="space-y-4">
+      <form aria-busy={saving} onSubmit={handleCreate} className="space-y-4">
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div>
             <label
@@ -122,6 +133,8 @@ export function CreateUserForm() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
+              disabled={saving}
+              maxLength={320}
               placeholder="user@company.com"
               className="w-full rounded-lg border border-border px-3 py-2 text-sm text-foreground bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
             />
@@ -140,6 +153,7 @@ export function CreateUserForm() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
+              disabled={saving}
               minLength={12}
               maxLength={128}
               placeholder="At least 12 characters"
@@ -158,9 +172,12 @@ export function CreateUserForm() {
             <input
               id="admin-create-user-name"
               type="text"
+              autoComplete="name"
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
               required
+              disabled={saving}
+              maxLength={200}
               placeholder="John Doe"
               className="w-full rounded-lg border border-border px-3 py-2 text-sm text-foreground bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
             />
@@ -178,6 +195,7 @@ export function CreateUserForm() {
               onChange={(e) =>
                 setRole(e.target.value as "admin" | "engineer")
               }
+              disabled={saving}
               className="w-full rounded-lg border border-border px-3 py-2 text-sm text-foreground bg-background"
             >
               {INTERNAL_ROLE_OPTIONS.map((opt) => (
@@ -200,6 +218,7 @@ export function CreateUserForm() {
               autoComplete="tel"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
+              disabled={saving}
               maxLength={50}
               placeholder="+1 (555) 000-0000"
               className="w-full rounded-lg border border-border px-3 py-2 text-sm text-foreground bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"

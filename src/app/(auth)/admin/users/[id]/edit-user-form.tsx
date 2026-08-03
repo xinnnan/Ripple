@@ -3,6 +3,10 @@
 import { useState } from "react";
 import type { UserRole } from "@/types/ticket";
 import { INTERNAL_ROLES, ROLE_OPTIONS } from "@/lib/roles";
+import {
+  assertClientMutationResponse,
+  clientMutationErrorMessage,
+} from "@/lib/http/client-mutation";
 
 interface UserData {
   id: string;
@@ -34,6 +38,7 @@ export function EditUserForm({ user }: { user: UserData }) {
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
+    if (saving || isInactive) return;
     setSaving(true);
     setMessage(null);
 
@@ -42,22 +47,22 @@ export function EditUserForm({ user }: { user: UserData }) {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          full_name: fullName,
+          full_name: fullName.trim(),
           role,
           ...(status !== user.status ? { status } : {}),
         }),
       });
 
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || "Failed to update user");
-      }
+      await assertClientMutationResponse(res, "Failed to update user");
 
       setMessage({ type: "success", text: "User updated successfully" });
     } catch (err) {
       setMessage({
         type: "error",
-        text: err instanceof Error ? err.message : "Failed to update user",
+        text: clientMutationErrorMessage(
+          err,
+          "User update is temporarily unavailable. Please retry."
+        ),
       });
     } finally {
       setSaving(false);
@@ -79,6 +84,7 @@ export function EditUserForm({ user }: { user: UserData }) {
 
       {message && (
         <div
+          role={message.type === "error" ? "alert" : "status"}
           className={`mb-4 rounded-lg px-4 py-3 text-sm ${
             message.type === "success"
               ? "bg-green-50 text-green-800 border border-green-200"
@@ -89,11 +95,11 @@ export function EditUserForm({ user }: { user: UserData }) {
         </div>
       )}
 
-      <form onSubmit={handleSave} className="space-y-4">
+      <form aria-busy={saving} onSubmit={handleSave} className="space-y-4">
         <div>
-          <label className="block text-sm font-medium text-foreground mb-1">
+          <p className="block text-sm font-medium text-foreground mb-1">
             Email
-          </label>
+          </p>
           <div className="rounded-lg border border-border px-3 py-2 text-sm text-muted-foreground bg-muted">
             {user.email}
           </div>
@@ -109,9 +115,12 @@ export function EditUserForm({ user }: { user: UserData }) {
           <input
             id="admin-user-full-name"
             type="text"
+            autoComplete="name"
             value={fullName}
             onChange={(e) => setFullName(e.target.value)}
-            disabled={isInactive}
+            required
+            maxLength={200}
+            disabled={saving || isInactive}
             className="w-full rounded-lg border border-border px-3 py-2 text-sm text-foreground bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
           />
         </div>
@@ -128,7 +137,7 @@ export function EditUserForm({ user }: { user: UserData }) {
             aria-describedby="admin-user-role-help"
             value={role}
             onChange={(e) => setRole(e.target.value)}
-            disabled={isInactive}
+            disabled={saving || isInactive}
             className="w-full rounded-lg border border-border px-3 py-2 text-sm text-foreground bg-background"
           >
             {allowedRoles.map((opt) => (
@@ -164,7 +173,7 @@ export function EditUserForm({ user }: { user: UserData }) {
             aria-describedby="admin-user-status-help"
             value={status}
             onChange={(e) => setStatus(e.target.value)}
-            disabled={isInactive}
+            disabled={saving || isInactive}
             className="w-full rounded-lg border border-border px-3 py-2 text-sm text-foreground bg-background"
           >
             <option value="active">Active</option>

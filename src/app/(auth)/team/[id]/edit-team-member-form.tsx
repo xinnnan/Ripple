@@ -1,6 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import {
+  assertClientMutationResponse,
+  clientMutationErrorMessage,
+} from "@/lib/http/client-mutation";
 
 interface SiteOption {
   id: string;
@@ -31,6 +35,7 @@ export function EditTeamMemberForm({
     type: "success" | "error";
     text: string;
   } | null>(null);
+  const isInactive = user.status === "inactive";
 
   function toggleSite(siteId: string) {
     setSelectedSites((prev) =>
@@ -42,6 +47,7 @@ export function EditTeamMemberForm({
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
+    if (saving || isInactive) return;
     setSaving(true);
     setMessage(null);
 
@@ -50,22 +56,22 @@ export function EditTeamMemberForm({
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          full_name: fullName,
+          full_name: fullName.trim(),
           status,
           site_ids: selectedSites,
         }),
       });
 
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || "Failed to update team member");
-      }
+      await assertClientMutationResponse(res, "Failed to update team member");
 
       setMessage({ type: "success", text: "Team member updated successfully" });
     } catch (err) {
       setMessage({
         type: "error",
-        text: err instanceof Error ? err.message : "Failed to update team member",
+        text: clientMutationErrorMessage(
+          err,
+          "Team-member update is temporarily unavailable. Please retry."
+        ),
       });
     } finally {
       setSaving(false);
@@ -80,6 +86,7 @@ export function EditTeamMemberForm({
 
       {message && (
         <div
+          role={message.type === "error" ? "alert" : "status"}
           className={`mb-4 rounded-lg px-4 py-3 text-sm ${
             message.type === "success"
               ? "bg-green-50 text-green-800 border border-green-200"
@@ -90,26 +97,46 @@ export function EditTeamMemberForm({
         </div>
       )}
 
-      <form onSubmit={handleSave} className="space-y-4">
+      {isInactive && (
+        <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          This account is inactive and read-only. Reactivation requires a
+          reviewed administrator workflow.
+        </div>
+      )}
+
+      <form aria-busy={saving} onSubmit={handleSave} className="space-y-4">
         <div>
-          <label className="block text-sm font-medium text-foreground mb-1">
+          <label
+            htmlFor="team-member-full-name"
+            className="block text-sm font-medium text-foreground mb-1"
+          >
             Full Name
           </label>
           <input
+            id="team-member-full-name"
             type="text"
+            autoComplete="name"
             value={fullName}
             onChange={(e) => setFullName(e.target.value)}
+            required
+            maxLength={200}
+            disabled={saving || isInactive}
             className="w-full rounded-lg border border-border px-3 py-2 text-sm text-foreground bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
           />
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-foreground mb-1">
+          <label
+            htmlFor="team-member-status"
+            className="block text-sm font-medium text-foreground mb-1"
+          >
             Status
           </label>
           <select
+            id="team-member-status"
             value={status}
             onChange={(e) => setStatus(e.target.value)}
+            disabled={saving || isInactive}
             className="w-full rounded-lg border border-border px-3 py-2 text-sm text-foreground bg-background"
           >
             <option value="active">Active</option>
@@ -118,10 +145,10 @@ export function EditTeamMemberForm({
         </div>
 
         {/* Site Assignment */}
-        <div>
-          <label className="block text-sm font-medium text-foreground mb-2">
+        <fieldset disabled={saving || isInactive}>
+          <legend className="block text-sm font-medium text-foreground mb-2">
             Site Access
-          </label>
+          </legend>
           {sites.length === 0 ? (
             <p className="text-sm text-muted-foreground">No sites available.</p>
           ) : (
@@ -131,6 +158,8 @@ export function EditTeamMemberForm({
                   key={site.id}
                   type="button"
                   onClick={() => toggleSite(site.id)}
+                  aria-pressed={selectedSites.includes(site.id)}
+                  disabled={saving || isInactive}
                   className={`inline-flex items-center rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
                     selectedSites.includes(site.id)
                       ? "bg-primary text-primary-foreground"
@@ -142,11 +171,11 @@ export function EditTeamMemberForm({
               ))}
             </div>
           )}
-        </div>
+        </fieldset>
 
         <button
           type="submit"
-          disabled={saving}
+          disabled={saving || isInactive}
           className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
         >
           {saving ? "Saving..." : "Save Changes"}
