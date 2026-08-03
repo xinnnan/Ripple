@@ -8,6 +8,7 @@ import { formatDate } from "@/lib/utils";
 import { CreateTeamMemberForm } from "./create-team-member-form";
 import { TableEmpty } from "@/components/empty-state";
 import { buildTeamSiteAccess } from "@/lib/team/read-model";
+import { assertPageQueriesSucceeded } from "@/lib/server-page-query";
 
 export const dynamic = "force-dynamic";
 
@@ -20,11 +21,13 @@ export default async function TeamPage() {
 
   if (!authUser) redirect("/login");
 
-  const { data: userProfile } = await supabase
+  const profileResult = await supabase
     .from("users")
     .select("role, email, customer_id")
     .eq("id", authUser.id)
-    .single();
+    .maybeSingle();
+  assertPageQueriesSucceeded("team/profile", profileResult);
+  const userProfile = profileResult.data;
 
   const role = userProfile?.role as UserRole | undefined;
   const customerId = userProfile?.customer_id as string | null;
@@ -42,23 +45,34 @@ export default async function TeamPage() {
       .order("created_at", { ascending: true }),
     admin
       .from("sites")
-      .select("id, site_name, site_code")
+      .select("id, site_name, site_code, customer:customers!inner(id)")
       .eq("customer_id", customerId)
       .eq("status", "active")
+      .in("customer.status", ["active", "trial"])
       .order("site_name"),
   ]);
+  assertPageQueriesSucceeded("team/read-model", usersResult, sitesResult);
   const users = usersResult.data || [];
-  const sites = sitesResult.data || [];
+  const sites = (sitesResult.data || []).map((site) => ({
+    id: site.id,
+    site_name: site.site_name,
+    site_code: site.site_code,
+  }));
 
   const userIds = users.map((u: { id: string }) => u.id);
-  const { data: memberships } =
+  const membershipsResult =
     userIds.length > 0
       ? await admin
           .from("site_members")
           .select("user_id, site_id")
           .in("user_id", userIds)
-      : { data: [] };
-  const siteAccess = buildTeamSiteAccess(users, sites, memberships || []);
+      : { data: [], error: null };
+  assertPageQueriesSucceeded("team/membership-list", membershipsResult);
+  const siteAccess = buildTeamSiteAccess(
+    users,
+    sites,
+    membershipsResult.data || []
+  );
 
   const total = users?.length || 0;
   const active = users?.filter((u: { status: string }) => u.status === "active").length || 0;
