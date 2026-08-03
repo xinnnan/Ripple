@@ -12,6 +12,7 @@ import {
   EXTERNAL_SPARE_PART_REQUEST_SELECT,
   INTERNAL_SPARE_PART_REQUEST_SELECT,
 } from "@/lib/resource-projections";
+import { parseUuidRouteId } from "@/lib/request-identifiers";
 
 export const dynamic = "force-dynamic";
 
@@ -57,7 +58,13 @@ export async function GET(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { id } = await params;
+    const id = parseUuidRouteId((await params).id);
+    if (!id) {
+      return NextResponse.json(
+        { error: "Invalid spare part request id" },
+        { status: 400 }
+      );
+    }
     const admin = createAdminClient();
 
     const requestSelect: string = scope.isInternal
@@ -70,14 +77,26 @@ export async function GET(
     query = scopeSiteRows(query, scope);
     const { data, error } = await query.maybeSingle();
 
-    if (error || !data) {
+    if (error) {
+      console.error("GET /api/spare-part-requests/[id] failed:", {
+        code: (error as { code?: string }).code,
+      });
+      return NextResponse.json(
+        { error: "Failed to fetch spare part request" },
+        { status: 500 }
+      );
+    }
+    if (!data) {
       return NextResponse.json({ error: "Spare part request not found" }, { status: 404 });
     }
 
     const responseData = scope.isInternal
       ? data
       : sparePartRequestForExternal(data as unknown as Record<string, unknown>);
-    return NextResponse.json({ data: responseData });
+    return NextResponse.json(
+      { data: responseData },
+      { headers: { "Cache-Control": "private, no-store" } }
+    );
   } catch (e) {
     console.error("GET /api/spare-part-requests/[id] error:", e);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
@@ -95,7 +114,13 @@ export async function PATCH(
       return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
 
-    const { id } = await params;
+    const id = parseUuidRouteId((await params).id);
+    if (!id) {
+      return NextResponse.json(
+        { error: "Invalid spare part request id" },
+        { status: 400 }
+      );
+    }
 
     let body: unknown;
     try {
@@ -168,7 +193,7 @@ export async function PATCH(
       // failed afterward.
       console.error(
         "PATCH /api/spare-part-requests/[id] hydration failed:",
-        error
+        { code: (error as { code?: string }).code }
       );
       return NextResponse.json({
         data: { id: updatedRequestId },

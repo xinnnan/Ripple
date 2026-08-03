@@ -13,6 +13,7 @@ import {
   EXTERNAL_FIELD_SERVICE_ORDER_SELECT,
   INTERNAL_FIELD_SERVICE_ORDER_SELECT,
 } from "@/lib/resource-projections";
+import { parseUuidRouteId } from "@/lib/request-identifiers";
 
 export const dynamic = "force-dynamic";
 
@@ -27,7 +28,13 @@ export async function GET(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { id } = await params;
+    const id = parseUuidRouteId((await params).id);
+    if (!id) {
+      return NextResponse.json(
+        { error: "Invalid field service order id" },
+        { status: 400 }
+      );
+    }
     const admin = createAdminClient();
 
     const orderSelect: string = scope.isInternal
@@ -40,14 +47,26 @@ export async function GET(
     query = scopeSiteRows(query, scope);
     const { data, error } = await query.maybeSingle();
 
-    if (error || !data) {
+    if (error) {
+      console.error("GET /api/field-service-orders/[id] failed:", {
+        code: (error as { code?: string }).code,
+      });
+      return NextResponse.json(
+        { error: "Failed to fetch field service order" },
+        { status: 500 }
+      );
+    }
+    if (!data) {
       return NextResponse.json({ error: "Field service order not found" }, { status: 404 });
     }
 
     const responseData = scope.isInternal
       ? data
       : fieldServiceOrderForExternal(data as unknown as Record<string, unknown>);
-    return NextResponse.json({ data: responseData });
+    return NextResponse.json(
+      { data: responseData },
+      { headers: { "Cache-Control": "private, no-store" } }
+    );
   } catch (e) {
     console.error("GET /api/field-service-orders/[id] error:", e);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
@@ -65,7 +84,13 @@ export async function PATCH(
       return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
 
-    const { id } = await params;
+    const id = parseUuidRouteId((await params).id);
+    if (!id) {
+      return NextResponse.json(
+        { error: "Invalid field service order id" },
+        { status: 400 }
+      );
+    }
 
     let body: unknown;
     try {
@@ -149,7 +174,7 @@ export async function PATCH(
     if (error) {
       console.error(
         "PATCH /api/field-service-orders/[id] hydration failed:",
-        error
+        { code: (error as { code?: string }).code }
       );
       return NextResponse.json({
         data: { id: updatedOrderId },

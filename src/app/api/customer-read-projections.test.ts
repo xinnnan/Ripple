@@ -204,8 +204,14 @@ describe("authenticated customer query projections", () => {
     createAdminClientMock.mockReturnValueOnce(detailMock.client);
 
     const detailResponse = await getSparePartRequest(
-      new NextRequest("http://localhost/api/spare-part-requests/request-a"),
-      { params: Promise.resolve({ id: "request-a" }) }
+      new NextRequest(
+        "http://localhost/api/spare-part-requests/11111111-1111-4111-8111-111111111111"
+      ),
+      {
+        params: Promise.resolve({
+          id: "11111111-1111-4111-8111-111111111111",
+        }),
+      }
     );
 
     expect(detailResponse.status).toBe(200);
@@ -235,8 +241,14 @@ describe("authenticated customer query projections", () => {
     createAdminClientMock.mockReturnValueOnce(detailMock.client);
 
     const detailResponse = await getFieldServiceOrder(
-      new NextRequest("http://localhost/api/field-service-orders/order-a"),
-      { params: Promise.resolve({ id: "order-a" }) }
+      new NextRequest(
+        "http://localhost/api/field-service-orders/22222222-2222-4222-8222-222222222222"
+      ),
+      {
+        params: Promise.resolve({
+          id: "22222222-2222-4222-8222-222222222222",
+        }),
+      }
     );
 
     expect(detailResponse.status).toBe(200);

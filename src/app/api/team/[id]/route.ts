@@ -7,13 +7,13 @@ import {
   TeamMemberMutationError,
 } from "@/lib/team/mutations";
 import { z } from "zod";
+import { parseUuidRouteId } from "@/lib/request-identifiers";
 
 // PATCH /api/team/[id] — Update a team member (site assignments, status)
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { id } = await params;
   try {
     const auth = await getAuthUser();
     if ("error" in auth) {
@@ -22,6 +22,14 @@ export async function PATCH(
 
     if (!auth.isManager || !auth.customerId) {
       return NextResponse.json({ error: "Forbidden: Customer Manager access required" }, { status: 403 });
+    }
+
+    const id = parseUuidRouteId((await params).id);
+    if (!id) {
+      return NextResponse.json(
+        { error: "Invalid team member id" },
+        { status: 400 }
+      );
     }
 
     let body: unknown;

@@ -10,6 +10,7 @@ import {
   SITE_CODE_MAX_LENGTH,
   SITE_CODE_PATTERN,
 } from "@/lib/sites/site-code";
+import { parseUuidRouteId } from "@/lib/request-identifiers";
 
 const updateSiteSchema = z.object({
   site_name: z.string().trim().min(1).max(200).optional(),
@@ -37,11 +38,15 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { id } = await params;
   try {
     const auth = await requireAdmin();
     if ("error" in auth) {
       return NextResponse.json({ error: auth.error }, { status: auth.status });
+    }
+
+    const id = parseUuidRouteId((await params).id);
+    if (!id) {
+      return NextResponse.json({ error: "Invalid site id" }, { status: 400 });
     }
 
     let body: unknown;
