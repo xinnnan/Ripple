@@ -8,9 +8,9 @@ meaningful change and before ending a work session. Newest entries go first.
 - **Branch:** `codex/prd-v1-1-gap-closure`
 - **Active phase:** Phase 0 — Containment and reproducible baseline
 - **Active work item:** run protected migrations 028–031 business probes when
-  the staging fixture becomes available; otherwise contain the remaining admin
-  inventory page site-prefilter ambiguity
-- **Last verified implementation commit:** `bbd185d` (`fix: constrain detail tab parameters`)
+  the staging fixture becomes available; otherwise audit remaining admin list
+  pages for database-failure/empty-state ambiguity
+- **Last verified implementation commit:** `31ef0ab` (`fix: contain inventory page prefilter`)
 - **Uncommitted work:** none expected after the documentation checkpoint;
   verify with `git status` before resuming
 - **Deployment gate:** migrations 001–046 are confirmed applied. Migration 044
@@ -63,10 +63,10 @@ meaningful change and before ending a work session. Newest entries go first.
   dedicated staging mailbox.
 - **Exact next local step:** check whether the protected credential fixture is
   available and, if so, run the migration 028–031 business probes plus the new
-  malformed-body HTTP checks. If it remains unavailable, strictly parse the
-  admin inventory page's `site` parameter and prevent malformed, repeated, or
-  unavailable site values from silently showing all-site inventory. Configure
-  `CRON_SECRET` separately before production worker activation
+  malformed-body HTTP checks. If it remains unavailable, audit remaining admin
+  server list pages for ignored database errors, wildcard hydration, and false
+  empty states. Configure `CRON_SECRET` separately before production worker
+  activation
 - **Primary plan:** [`plans/prd-v1.1-gap-closure-plan.md`](./prd-v1.1-gap-closure-plan.md)
 
 ## Overall project status — 2026-08-03
@@ -76,7 +76,7 @@ meaningful change and before ending a work session. Newest entries go first.
 - Against the full PRD v1.1 capability map, 17 domains remain
   **Partial** or **Unsafe/Partial** and seven remain **Absent**. No full PRD
   capability domain is yet honestly complete end to end.
-- The local deterministic baseline is green at 727 unit/contract tests, 40
+- The local deterministic baseline is green at 738 unit/contract tests, 40
   production HTTP smoke checks, a production build, zero-warning lint, and
   zero known dependency vulnerabilities.
 - Phase 0 cannot be declared exited until the protected six-account/two-tenant
@@ -88,6 +88,45 @@ meaningful change and before ending a work session. Newest entries go first.
   queues/routing, business-calendar SLA clocks, remote support, appointments,
   assets/entitlements, search/knowledge, i18n, versioned external APIs, and
   production SRE/recovery evidence.
+
+## Session record — 2026-08-03 (P0-BC / inventory page prefilter containment)
+
+### Objective
+
+Complete the authenticated server-page query-parameter inventory by preventing
+the inventory page's site prefilter from silently broadening invalid input.
+
+### Finding and implementation
+
+- `/admin/inventory?site=…` accepted malformed or repeated values and ignored
+  unknown keys. A valid UUID for an archived, inactive-customer, or missing site
+  silently selected `All sites`, exposing a materially different view than the
+  URL claimed.
+- A canonical page parser now accepts only one optional UUID `site` key. Invalid
+  input stops before service-role construction and renders an empty, clearable
+  error state.
+- A valid but operationally unavailable site also renders no inventory, parts,
+  or sites with a clear-filter action rather than broadening to all inventory.
+- The page now applies the shared code-only failure guard to its three database
+  reads. Five parser checks and six real-page contracts bring the suite to 738.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| `npm ci` | Passed from the lockfile earlier in this continuous session; 0 install-time vulnerabilities |
+| `npm test` | Passed; 94 files, 738 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build and type check |
+| `npm run test:e2e` | Passed; all 40 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+
+### Next
+
+Run protected probes when their fixture is available. Otherwise audit remaining
+admin list pages for ignored query errors, wildcard reads, and false empty-state
+presentation.
 
 ## Session record — 2026-08-03 (P0-BB / detail-tab parameter containment)
 

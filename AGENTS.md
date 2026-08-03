@@ -295,7 +295,7 @@ npm run dev
 - `npm run build` — production build
 - `npm run start` — production server
 - `npm run lint` — direct ESLint CLI across the repository; warnings fail the gate
-- `npm test` — Vitest unit/contract suite (727 tests)
+- `npm test` — Vitest unit/contract suite (738 tests)
 - `npm run test:e2e` — 40-check production HTTP smoke plus optional credentialed Playwright/API/RLS matrix; requires a successful build
 - `npm run test:e2e:credentialed` — real six-account/two-tenant matrix; set `RIPPLE_E2E_FIXTURES_FILE`
 - `npm run test:e2e:install-browser` — install the pinned Chromium runtime
@@ -1318,7 +1318,8 @@ resume work; this section remains the broader historical summary.
   distinguished missing detail records from failed primary/related reads with
   code-only recovery errors, bringing the suite to 720 tests; then constrained
   three admin detail-page tab parameters to their declared render branches,
-  bringing the suite to 727 tests.
+  bringing the suite to 727 tests; then made the admin inventory page's site
+  prefilter exact and non-broadening, bringing the suite to 738 tests.
 
 ### Known issues / open work
 | Priority | Item | Where | Notes |
@@ -1341,6 +1342,7 @@ resume work; this section remains the broader historical summary.
 | ✅ Closed | Authenticated server detail-page UUID ambiguity | `src/app/server-detail-page-identifiers.test.ts`, admin/customer-manager detail pages | Commit `d049640` applies the shared UUID boundary before service-role construction across eight pages while preserving the team page's session/role/tenant checks first |
 | ✅ Closed | Detail-page database failure ambiguity | `src/lib/server-page-query.ts`, admin/customer-manager detail pages | Commit `7790bae` uses missing-safe primary reads and fails every primary/related query into generic recovery with code-only logging instead of false not-found or empty panels |
 | ✅ Closed | Admin detail-tab blank-page ambiguity | `src/components/detail-tabs-helpers.ts`, customer/site/user admin detail pages | Commit `bbd185d` requires each page's exact rendered tab keys and falls back safely for missing, unknown, or repeated values |
+| ✅ Closed | Admin inventory site-prefilter broadening | `src/lib/admin-list-filters.ts`, `/admin/inventory` | Commit `31ef0ab` validates the one optional UUID before service-role access and renders empty clearable states for malformed or unavailable sites instead of all-site inventory |
 | 🟡 Med | `/settings` is read-only integration status | `src/app/(auth)/settings/page.tsx` | Add notification preferences, user timezone, and theme controls |
 | ✅ Verified | Migration 046 durable public rate limits | `supabase/migrations/046_durable_public_rate_limits.sql` | Applied 2026-08-02; 77 live assertions covered grants, constraints, concurrency, reset/retention, bounded cleanup, real HTTP limits/lifecycle, and zero residue |
 | 🟡 Med | Exact site-code validation remains an existence oracle | `/api/sites/validate` | Responses are minimal and migration 046 enforces 20 checks/minute/IP across instances, but full anti-enumeration still requires CAPTCHA, an invitation/intake token, or authenticated submission |
@@ -1555,6 +1557,11 @@ resume work; this section remains the broader historical summary.
     parser validate against each customer/site/user page's actual rendered tabs.
     Missing, unknown, and repeated values fall back to overview rather than a
     blank detail shell. Seven tests bring the suite to 727; all deterministic
+    quality gates are green.
+51. **Contain inventory-page prefilter.** Commit `31ef0ab` strictly parses the
+    optional site UUID before service-role access, refuses unavailable-site
+    broadening, adds a clear-filter recovery action, and applies code-only query
+    failure handling. Eleven tests bring the suite to 738; all deterministic
     quality gates are green.
 
 ### Open architectural questions
