@@ -2,7 +2,7 @@
 
 > DropletAI's Slack-native support portal. Lightweight ticket system, web portal, and AI-assisted troubleshooting for industrial automation deployments (AMR / AGV / conveyor / sortation / RCS / WCS).
 
-This file is the **single source of truth for project context** — read it before touching anything. It also serves as the lessons-learned notebook and progress tracker. Last updated 2026-08-02.
+This file is the **single source of truth for project context** — read it before touching anything. It also serves as the lessons-learned notebook and progress tracker. Last updated 2026-08-03.
 
 ---
 
@@ -293,7 +293,7 @@ npm run dev
 - `npm run build` — production build
 - `npm run start` — production server
 - `npm run lint` — direct ESLint CLI across the repository; warnings fail the gate
-- `npm test` — Vitest unit/contract suite (449 tests)
+- `npm test` — Vitest unit/contract suite (457 tests)
 - `npm run test:e2e` — 40-check production HTTP smoke plus optional credentialed Playwright/API/RLS matrix; requires a successful build
 - `npm run test:e2e:credentialed` — real six-account/two-tenant matrix; set `RIPPLE_E2E_FIXTURES_FILE`
 - `npm run test:e2e:install-browser` — install the pinned Chromium runtime
@@ -1008,6 +1008,27 @@ explicit projections, lifecycle predicates, database-side visibility filters,
 and distinct operational-failure handling; token entropy does not justify a
 wildcard query or process-local-only abuse control.
 
+### Malformed JSON is a caller error, but ordering is still a security decision
+Found 2026-08-03 while auditing all 27 API `request.json()` call sites. Public
+ticket creation, internal ticket PATCH, ticket comments, and AI suggestions
+parsed directly inside broad route `try` blocks. `request.json()` raises a
+syntax error before Zod runs, so each broad catch converted malformed caller
+input into a generic 500.
+
+Commit `96e3897` catches syntax failure immediately at those four parse
+boundaries and returns the existing stable `400 Invalid JSON body` contract.
+Protected routes still authenticate/authorize before parsing. Anonymous ticket
+submission still consumes both the process-local and distributed limit before
+parsing, so invalid JSON cannot become an unmetered abuse path. Eight new unit
+tests prove ordering and zero business-service calls; four equivalent real HTTP
+checks were added to the protected credentialed matrix.
+
+**Lesson:** distinguish transport syntax from schema validation and provider/
+database failures at the narrowest boundary. Authenticate before parsing on
+protected routes, meter public callers before parsing, return a generic stable
+400 without echoing parser details, and never let malformed bodies bypass the
+same abuse controls as valid requests.
+
 ### Supabase SSR auth cookies belong on the response you return
 Found 2026-07-29 while adding password recovery. The authorization-code
 callback created a redirect inside the Supabase `setAll` callback, attached
@@ -1139,7 +1160,9 @@ resume work; this section remains the broader historical summary.
   migration 044, then deployed and live-verified the migration 045
   whole-application write boundary and migration 046 distributed
   public-intake limiter, then extended it across guest upload/share-token
-  boundaries with customer-safe projections, with 449 unit/contract tests plus a
+  boundaries with customer-safe projections, then normalized malformed-JSON
+  handling across the remaining four direct parsers while preserving auth and
+  public-rate-limit ordering, with 457 unit/contract tests plus a
   zero-vulnerability dependency baseline.
 
 ### Known issues / open work
@@ -1165,10 +1188,11 @@ resume work; this section remains the broader historical summary.
 | 🟡 Activate | Hosted quality workflow and protected staging job are not activated yet | `.github/workflows/ci.yml` | After pushing, require `Quality gates`; create a reviewer-protected `staging` environment and add only `RIPPLE_E2E_FIXTURES_JSON` there |
 
 ### Next priorities (Sprint 3, in proposed order)
-1. **Audit malformed-request and remaining abuse behavior.** Public ticket
-   creation currently maps malformed JSON to a generic 500; inventory the
-   remaining public/authenticated mutation routes, return stable 400 errors for
-   caller syntax, and preserve fail-closed rate/auth ordering.
+1. **Audit malformed-request and remaining abuse behavior.** ✅ completed in
+   `96e3897`. All 27 JSON parse sites were inventoried; the four direct parsers
+   now return a stable 400. Protected routes authenticate first, public ticket
+   intake consumes both limits first, eight new unit tests are green, and four
+   real HTTP probes are queued in the protected credentialed matrix.
 2. **Run migrations 028–029 part-request probes.** Both migrations are
    applied; staging credentials are not present in this workspace.
 3. **Run migration 030 field-service transaction probes.** Both command RPCs
@@ -1269,6 +1293,11 @@ resume work; this section remains the broader historical summary.
     the HTTP smoke has 40 checks; a disposable 22-assertion live matrix plus
     real-browser Inter/overflow/retry/zero-console QA is green with zero
     ticket/tenant/bucket residue.
+34. **Normalize malformed JSON responses.** Commit `96e3897` makes ticket
+    create/PATCH/comment and AI suggestion syntax failures stable 400s without
+    weakening authorization or public throttling order. Eight tests bring the
+    suite to 457; the 40-check production smoke remains green, and four
+    credentialed HTTP probes are ready for the protected staging fixture.
 
 ### Open architectural questions
 - The RLS recursion bug surfaces a bigger question: do we keep `createAdminClient() + code filter` (the current pattern in `lib/supabase/scope.ts`) or move back to proper RLS once migration 019 + similar fixes are in place? The current pattern scales fine but has a lower safety margin for new queries.

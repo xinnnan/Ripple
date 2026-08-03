@@ -7,9 +7,10 @@ meaningful change and before ending a work session. Newest entries go first.
 
 - **Branch:** `codex/prd-v1-1-gap-closure`
 - **Active phase:** Phase 0 — Containment and reproducible baseline
-- **Active work item:** audit malformed request handling and remaining
-  public/authenticated mutation abuse boundaries
-- **Last verified implementation commit:** `09259ee` (`fix: harden public token boundaries`)
+- **Active work item:** run protected migrations 028–031 business probes when
+  the staging fixture becomes available; otherwise close the dashboard
+  timezone gap as the next locally executable checkpoint
+- **Last verified implementation commit:** `96e3897` (`fix: normalize malformed JSON responses`)
 - **Uncommitted work:** none expected after the documentation checkpoint;
   verify with `git status` before resuming
 - **Deployment gate:** migrations 001–046 are confirmed applied. Migration 044
@@ -32,7 +33,9 @@ meaningful change and before ending a work session. Newest entries go first.
   access positive/negative cases, including cross-site tickets, inactive
   parts, foreign items, over-fulfillment, invalid/reversed dates, invalid
   assignees, assignment-replacement rollback, cross-tenant team targets,
-  retained membership roles, and explicit access clearing
+  retained membership roles, and explicit access clearing. The credentialed
+  matrix now also carries real malformed-JSON 400 probes for ticket create,
+  ticket PATCH, ticket comments, and AI suggestions
 - **Support UX verification:** public pages and the real admin shell were
   reviewed at 1440×1000 and 390×844. A short-lived admin test identity was
   created for read-only protected-page visits and fully deleted afterward.
@@ -54,12 +57,58 @@ meaningful change and before ending a work session. Newest entries go first.
   zero reproducible console warnings/errors. Password-based login passed;
   recovery-email delivery and one-time link consumption still require a
   dedicated staging mailbox.
-- **Exact next local step:** start with malformed JSON on public ticket
-  creation, inventory sibling routes for the same generic-500 behavior, add
-  stable caller-error contracts without weakening auth/rate-limit ordering,
-  and run the full gate. Configure `CRON_SECRET` separately before production
-  worker activation
+- **Exact next local step:** check whether the protected credential fixture is
+  available and, if so, run the migration 028–031 business probes plus the new
+  malformed-body HTTP checks. If it remains unavailable, audit and fix the
+  dashboard's hardcoded `America/New_York` rendering with unit, production,
+  and responsive browser verification. Configure `CRON_SECRET` separately
+  before production worker activation
 - **Primary plan:** [`plans/prd-v1.1-gap-closure-plan.md`](./prd-v1.1-gap-closure-plan.md)
+
+## Session record — 2026-08-03 (P0-AL / malformed-request normalization)
+
+### Objective
+
+Inventory every JSON mutation boundary, correct caller syntax failures that
+were still becoming generic 500s, and preserve fail-closed authorization and
+public abuse-control ordering.
+
+### Finding and implementation
+
+- The audit found 27 `request.json()` calls. Twenty-three already handled
+  syntax failure locally or intentionally supported the legacy empty-body/form
+  contract. Four direct parsers remained: public ticket creation, internal
+  ticket PATCH, ticket comments, and AI suggestions.
+- Because JSON syntax errors occur before Zod validation, those four broad
+  route catches returned 500. Commit `96e3897` now catches parsing at the
+  narrow boundary and returns `{ "error": "Invalid JSON body" }` with 400.
+- Protected routes continue to authenticate and authorize before parsing.
+  Anonymous ticket creation continues to consume the local and migration-046
+  distributed buckets before parsing, preventing malformed requests from
+  becoming an unmetered intake path. Authenticated callers do not consume guest
+  quotas.
+- Eight runtime tests prove the four stable responses, ordering, and zero
+  ticket/comment/AI business calls. The credentialed six-account matrix now
+  includes four equivalent real HTTP checks for its next protected staging run.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| `npm ci` | Passed; locked install, 0 install-time vulnerabilities |
+| `npm test` | Passed; 66 files, 457 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build |
+| `npm run test:e2e` | Passed; all 40 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+
+### Next
+
+Run the protected migration 028–031 and new malformed-body HTTP probes when the
+credential fixture is available. If it remains unavailable, proceed with the
+dashboard timezone gap, deriving display timezone instead of hardcoding
+`America/New_York` and covering the change with responsive browser QA.
 
 ## Session record — 2026-08-02 (P0-AK / public token-boundary hardening)
 
