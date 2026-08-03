@@ -295,7 +295,7 @@ npm run dev
 - `npm run build` — production build
 - `npm run start` — production server
 - `npm run lint` — direct ESLint CLI across the repository; warnings fail the gate
-- `npm test` — Vitest unit/contract suite (899 tests)
+- `npm test` — Vitest unit/contract suite (906 tests)
 - `npm run test:e2e` — 40-check production HTTP smoke plus optional credentialed Playwright/API/RLS matrix; requires a successful build
 - `npm run test:e2e:credentialed` — real six-account/two-tenant matrix; set `RIPPLE_E2E_FIXTURES_FILE`
 - `npm run test:e2e:install-browser` — install the pinned Chromium runtime
@@ -1279,6 +1279,27 @@ and retryable after failure. Native prompts cannot provide field guidance,
 length limits, preserved context, or accessible grouped errors. Keep controls
 locked until both the mutation and its resulting navigation/refresh settle.
 
+### Dynamic request rows must never disappear during normalization
+Found 2026-08-03 in spare-part request creation. The form filtered submitted
+rows to those with a selected part and positive quantity, so an incomplete row
+could be silently omitted while the remaining request committed. Numeric inputs
+also coerced blank/invalid edits immediately, a catalog price of zero became
+`null`, duplicate parts were deferred to a generic server rejection, and row
+indexes were React keys.
+
+Commit `a3ed0dd` gives every row a stable client identity, validates every row
+in place, rejects duplicates before I/O, preserves editable numeric strings,
+and distinguishes zero from an unknown price. Browser quantity, price, item,
+and note limits now match the server contract. The paired field-service form
+also normalizes/bounds text and hours, validates date order, caps assignment at
+20 engineers, and locks through navigation.
+
+**Lesson:** collection-form normalization must be total: every visible row
+either becomes exactly one submitted row or blocks submission with a precise
+error. Never `filter()` invalid user work out of a business command, never use
+array indexes as keys for removable rows, and do not use truthiness where zero
+is a valid domain value.
+
 ---
 
 ## 10. Current State & Roadmap
@@ -1439,7 +1460,9 @@ resume work; this section remains the broader historical summary.
   hardened admin/team identity create/edit form settlement, bringing the suite
   to 886 tests; then replaced prompt/immediate service transitions with
   structured confirmation and hardened Slack channel discovery/linking,
-  bringing the suite to 899 tests.
+  bringing the suite to 899 tests; then aligned field-service and spare-part
+  request creation with their server contracts and total row normalization,
+  bringing the suite to 906 tests.
 
 ### Known issues / open work
 | Priority | Item | Where | Notes |
@@ -1474,6 +1497,7 @@ resume work; this section remains the broader historical summary.
 | ✅ Closed | Lifecycle action duplicate/silent failure | customer/site bulk archive, user bulk deactivation, spare-part request actions | Commit `76091a3` covers the complete request/refresh busy window, keeps failed selections retryable, guards JSON/network errors, and surfaces rejected status transitions |
 | ✅ Closed | Identity-form raw error and duplicate-submit exposure | admin user and customer team create/edit forms, `src/lib/http/client-mutation.ts` | Commit `ec9cd65` admits only bounded expected API errors, contains runtime/network detail, locks the complete mutation surface, guards handlers, and keeps inactive identities read-only |
 | ✅ Closed | Field-service/Slack action ambiguity | field-service detail actions, Slack channel-link page/API | Commit `7ff594d` replaces prompts/immediate destructive actions with bounded confirmation, extends busy state through refresh/navigation, and makes channel discovery paginated, private, bounded, and failure-contained |
+| ✅ Closed | Service creation form coercion/silent-row loss | field-service and spare-part request creation forms | Commit `a3ed0dd` applies total row validation, stable keys, zero-safe prices, exact bounds/date checks, accessible labels/errors, responsive layout, and request-plus-navigation locking |
 | 🟡 Med | `/settings` is read-only integration status | `src/app/(auth)/settings/page.tsx` | Add notification preferences, user timezone, and theme controls |
 | ✅ Verified | Migration 046 durable public rate limits | `supabase/migrations/046_durable_public_rate_limits.sql` | Applied 2026-08-02; 77 live assertions covered grants, constraints, concurrency, reset/retention, bounded cleanup, real HTTP limits/lifecycle, and zero residue |
 | 🟡 Med | Exact site-code validation remains an existence oracle | `/api/sites/validate` | Responses are minimal and migration 046 enforces 20 checks/minute/IP across instances, but full anti-enumeration still requires CAPTCHA, an invitation/intake token, or authenticated submission |
@@ -1764,6 +1788,14 @@ resume work; this section remains the broader historical summary.
     deduplicates/sorts, declares truncation, sends private/no-store responses,
     and logs only provider codes. Thirteen contracts bring the suite to 899;
     all deterministic quality gates are green.
+63. **Harden service creation forms.** Commit `a3ed0dd` contains returned and
+    runtime failures, normalizes bounded field-service inputs, checks date/hour
+    rules, caps assignees, and locks controls through navigation. Spare-part
+    rows now have stable identities, remain editable as strings, validate every
+    visible row without silent filtering, reject duplicates, preserve zero
+    prices, expose item notes, and mirror the 100-item/quantity/price/text server
+    bounds. Seven contracts bring the suite to 906; all deterministic quality
+    gates are green.
 
 ### Open architectural questions
 - The RLS recursion bug surfaces a bigger question: do we keep `createAdminClient() + code filter` (the current pattern in `lib/supabase/scope.ts`) or move back to proper RLS once migration 019 + similar fixes are in place? The current pattern scales fine but has a lower safety margin for new queries.

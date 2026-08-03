@@ -727,6 +727,15 @@ Every implementation slice must:
     configuration, retrieves/deduplicates/sorts up to 2,000 channels, declares
     truncation, disables caching, and contains provider logs. Thirteen contracts
     bring the suite to 899 and all gates are green.
-65. **Next local integrity work:** run protected positive/rollback probes when
-    fixtures are available; otherwise harden field-service and part-request
-    creation, then continue customer/site/ticket mutation surfaces.
+65. **P0-BO — closed in `a3ed0dd`:** Field-service and spare-part request
+    creation now contain raw failures, guard the complete HTTP/navigation busy
+    window, bind and bound controls, and use responsive one-column mobile
+    layouts. Field-service inputs enforce server text/hour/date/20-assignee
+    rules. Every visible spare-part row now has a stable identity and either
+    submits exactly once or blocks with a precise error; duplicate parts,
+    quantity/price precision, 100-row limits, item notes, zero prices, and null
+    prices match the atomic command contract. Seven contracts bring the suite
+    to 906 and all gates are green.
+66. **Next local integrity work:** run protected positive/rollback probes when
+    fixtures are available; otherwise harden customer/site create and edit
+    forms, then ticket creation/detail mutation surfaces.

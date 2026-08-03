@@ -9,8 +9,8 @@ meaningful change and before ending a work session. Newest entries go first.
 - **Active phase:** Phase 0 — Containment and reproducible baseline
 - **Active work item:** run protected migrations 028–031 business probes when
   the staging fixture becomes available; otherwise continue the remaining
-  authenticated create/edit fetch-form audit
-- **Last verified implementation commit:** `7ff594d` (`fix: harden service action workflows`)
+  customer/site/ticket authenticated mutation-form audit
+- **Last verified implementation commit:** `a3ed0dd` (`fix: harden service creation forms`)
 - **Uncommitted work:** none expected after the documentation checkpoint;
   verify with `git status` before resuming
 - **Deployment gate:** migrations 001–046 are confirmed applied. Migration 044
@@ -67,10 +67,9 @@ meaningful change and before ending a work session. Newest entries go first.
   visual coverage still depends on the credentialed fixture.
 - **Exact next local step:** check whether the protected credential fixture is
   available and, if so, run the migration 028–031 business probes plus the new
-  malformed-body HTTP checks. If it remains unavailable, harden field-service
-  and part-request creation forms, then continue customer/site/ticket mutation
-  surfaces. Configure `CRON_SECRET` separately before production worker
-  activation
+  malformed-body HTTP checks. If it remains unavailable, harden customer/site
+  create/edit forms, then ticket creation/detail mutation surfaces. Configure
+  `CRON_SECRET` separately before production worker activation
 - **Primary plan:** [`plans/prd-v1.1-gap-closure-plan.md`](./prd-v1.1-gap-closure-plan.md)
 
 ## Overall project status — 2026-08-03
@@ -80,7 +79,7 @@ meaningful change and before ending a work session. Newest entries go first.
 - Against the full PRD v1.1 capability map, 17 domains remain
   **Partial** or **Unsafe/Partial** and seven remain **Absent**. No full PRD
   capability domain is yet honestly complete end to end.
-- The local deterministic baseline is green at 899 unit/contract tests, 40
+- The local deterministic baseline is green at 906 unit/contract tests, 40
   production HTTP smoke checks, a production build, zero-warning lint, and
   zero known dependency vulnerabilities.
 - Phase 0 cannot be declared exited until the protected six-account/two-tenant
@@ -92,6 +91,65 @@ meaningful change and before ending a work session. Newest entries go first.
   queues/routing, business-calendar SLA clocks, remote support, appointments,
   assets/entitlements, search/knowledge, i18n, versioned external APIs, and
   production SRE/recovery evidence.
+
+## Session record — 2026-08-03 (P0-BO / service creation form integrity)
+
+### Objective
+
+Align field-service and spare-part request creation UX with atomic command
+contracts while preventing raw failures, duplicate submissions, numeric
+coercion, and silent loss of visible line items.
+
+### Finding and implementation
+
+- Both forms assumed failed responses were JSON and exposed arbitrary thrown
+  messages. They disabled only submit, not the rest of the mutable request
+  surface, and released busy state before navigation settled.
+- Field-service creation now trims/bounds title and description, validates
+  0–9,999.9 one-decimal hours plus scheduled date order before I/O, limits
+  assignment to the server's 20-engineer maximum, and clearly identifies the
+  first selected engineer as lead.
+- Every field-service control has a bound label or grouped legend, mobile grids
+  collapse to one column, errors are alerts, and request/navigation share one
+  duplicate-submit guard.
+- Spare-part creation previously filtered incomplete/invalid rows before POST,
+  silently discarding user work. It also coerced numeric edits early, used row
+  indexes as keys, allowed duplicate parts until server rejection, and mapped a
+  valid zero price to null.
+- Request rows now use stable IDs and editable strings. Every visible row must
+  validate and submit exactly once; duplicates, whole-number quantity bounds,
+  two-decimal price bounds, and the 100-line maximum fail precisely before I/O.
+  Zero price remains zero, unknown price remains null, and optional 500-character
+  line notes are available.
+- Request-level notes, controls, feedback, and responsive layout match server
+  limits and remain locked through navigation.
+- Seven new real-source contracts bring the suite to 906 tests across 113
+  files. Existing creation-page contracts were upgraded from request-only to
+  request-plus-navigation busy-state assertions.
+- No live order or request was created. Positive/rollback behavior remains
+  behind the protected staging fixture gate.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| `npm test` | Passed; 113 files, 906 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build and type check |
+| `npm run test:e2e` | Passed; all 40 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+
+### Commit
+
+- Hash: `a3ed0dd`
+- Message: `fix: harden service creation forms`
+
+### Next
+
+Run protected probes when their fixture is available. Otherwise harden
+customer/site create and edit forms, then ticket creation/detail mutation
+surfaces.
 
 ## Session record — 2026-08-03 (P0-BN / service action workflow integrity)
 
