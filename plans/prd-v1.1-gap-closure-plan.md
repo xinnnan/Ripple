@@ -33,7 +33,7 @@ Ripple is a useful support-ticket prototype with meaningful Phase 1–4 work:
 - spare-parts and field-service skeletons
 - simple wall-clock SLA targets
 - email and AI integrations with graceful failure
-- 404 committed unit/contract tests, production HTTP smoke, and an opt-in
+- 465 committed unit/contract tests, production HTTP smoke, and an opt-in
   credentialed browser/API/RLS matrix
 
 It is not yet the operations platform described by PRD v1.1. The old
@@ -64,9 +64,9 @@ The correct approach is therefore:
 
 ## 3. Current baseline
 
-| Gate | Result through 2026-08-02 | Meaning |
+| Gate | Result through 2026-08-03 | Meaning |
 |---|---|---|
-| Unit tests | 449/449 passed | Scope, lifecycle and exhaustive ticket-transition guards, atomic ticket/customer/catalog/inventory/attachment creation and updates, attachment content and storage-key validation, direct-write privilege containment, durable public-rate-limit/share-view contracts, notification outbox leases/idempotency/retry contracts, tenant-safe site/user/customer/SLA/catalog/inventory administration, secure user provisioning and membership containment, qualified-SQL-expression repair, visibility, auth recovery/redirects, public/responsive/admin UI contracts, Slack authentication/configuration/action filtering and direct AI-service invocation, readiness, CI policy, filters, SLA, fixture validation, migration/RPC contracts, spare-part, field-service, and team-access transaction containment, DATE handling, and audit coverage is green |
+| Unit tests | 465/465 passed | Scope, lifecycle and exhaustive ticket-transition guards, atomic ticket/customer/catalog/inventory/attachment creation and updates, attachment content and storage-key validation, direct-write privilege containment, durable public-rate-limit/share-view contracts, notification outbox leases/idempotency/retry contracts, tenant-safe site/user/customer/SLA/catalog/inventory administration, secure user provisioning and membership containment, qualified-SQL-expression repair, visibility, auth recovery/redirects, public/responsive/admin UI contracts, deterministic site-timezone dashboard rendering and exact totals, Slack authentication/configuration/action filtering and direct AI-service invocation, readiness, CI policy, filters, SLA, fixture validation, migration/RPC contracts, spare-part, field-service, and team-access transaction containment, DATE handling, and audit coverage is green |
 | Lint | Passed, no warnings | Direct ESLint CLI with zero-warning enforcement and generated-artifact ignores |
 | Production build | Passed on Next.js 15.5.22 | Environment-free build is reproducible |
 | Dependency audit | 0 vulnerabilities | Patched direct/transitive versions are lockfile-pinned and compatibility-tested |
@@ -99,7 +99,7 @@ has a release-blocking security or integrity problem.
 | File Service | Partial | `03499f9` plus deployed migration 044 add magic-byte/text/container checks, canonical MIME, environment/tenant/ticket-bound keys, null guest attribution, and atomic metadata/timeline handling; its 130-assertion live matrix is green. Malware scanning, quarantine, checksums, retention, and durable ambiguous-outcome reconciliation remain |
 | Search / Knowledge | Absent | No permission-aware index, degradation mode, related history, KB lifecycle, or feedback |
 | Notifications / Templates | Partial | Durable ticket creation/update/resolution delivery records/retry/dead-letter are committed; template versioning, locale fallback, preferences, and in-app inbox remain |
-| Reporting / Export | Partial | Ticket CSV and dashboard counts only; no metric contract, SLA/operations reports, scheduled generation, or permission-aware exports |
+| Reporting / Export | Partial | Ticket CSV and role-scoped dashboard counts exist; customer totals are exact and recent-ticket timestamps use the ticket site's validated timezone, but there is no broader metric contract, SLA/operations report suite, scheduled generation, or permission-aware export model |
 | Internationalization | Absent | English strings are embedded in code; no locale resolution, translation catalog, formatting rules, or four-language QA |
 | Administration | Partial | Site/membership/user/customer/SLA/catalog/inventory authorization-root writes are deployed atomically, and migration 045 removes proven direct membership/SLA bypasses plus other public API-role write grants; configuration hierarchy, form/custom-field builder, workflow publishing, feature flags, retention, and integration console remain absent |
 | External API / Webhooks | Absent | Unversioned internal REST only; no client credentials, scopes, idempotency, concurrency, stable errors, signed webhooks, or docs |
@@ -168,7 +168,6 @@ has a release-blocking security or integrity problem.
   the JSON API is sanitized.
 - Email templates do not escape every organization/site field.
 - Slack timestamps are hard-coded to Eastern Time.
-- Dashboard totals and timezone behavior are inconsistent.
 - README, architecture notes, migration counts, test counts, role names, and
   AI-provider notes are stale in several documents.
 
@@ -544,6 +543,19 @@ Every implementation slice must:
     lifecycle-scoped projection and SQL-filtered public timeline. Nine new
     tests bring the suite to 449; the HTTP smoke has 40 checks; a 22-assertion
     live/browser matrix passed with zero residue.
-36. **Next local integrity work:** audit malformed JSON and stable caller-error
-    handling across public/authenticated mutation routes, then run protected
-    positive/rollback delivery probes when fixtures are available.
+36. **P0-AL — closed in `96e3897`:** All 27 JSON parse sites were inventoried.
+    Ticket create/PATCH/comment and AI suggestion syntax failures now return
+    stable 400 responses without weakening protected authorization or public
+    rate-limit ordering. Eight tests bring the suite to 457; four equivalent
+    real HTTP probes are queued in the protected credentialed matrix.
+37. **P0-AM — closed in `0cf4aac`:** Dashboard recent-ticket rendering now
+    uses each ticket site's validated timezone with a deterministic UTC
+    fallback, accepts live Supabase object/array relationship shapes, and uses
+    an exact total count independent of the ten-row recent list. Eight utility
+    tests plus two dashboard contracts bring the suite to 465. Signed-in
+    desktop/mobile browser QA and the 40-check smoke are green. The same
+    checkpoint moves `brace-expansion` to patched 5.0.9 after
+    GHSA-rgw5-rvv9-x895, restoring the zero-vulnerability audit.
+38. **Next local integrity work:** run protected positive/rollback probes when
+    fixtures are available; otherwise remove the remaining hard-coded Slack
+    timestamp timezone and cover the explicit site/resource timezone contract.

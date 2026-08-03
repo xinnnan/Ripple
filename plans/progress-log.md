@@ -8,9 +8,10 @@ meaningful change and before ending a work session. Newest entries go first.
 - **Branch:** `codex/prd-v1-1-gap-closure`
 - **Active phase:** Phase 0 — Containment and reproducible baseline
 - **Active work item:** run protected migrations 028–031 business probes when
-  the staging fixture becomes available; otherwise close the dashboard
-  timezone gap as the next locally executable checkpoint
-- **Last verified implementation commit:** `96e3897` (`fix: normalize malformed JSON responses`)
+  the staging fixture becomes available; otherwise audit and remove the
+  remaining hard-coded Slack timestamp timezone as the next locally executable
+  checkpoint
+- **Last verified implementation commit:** `0cf4aac` (`fix: harden dashboard metrics and dependency baseline`)
 - **Uncommitted work:** none expected after the documentation checkpoint;
   verify with `git status` before resuming
 - **Deployment gate:** migrations 001–046 are confirmed applied. Migration 044
@@ -54,16 +55,89 @@ meaningful change and before ending a work session. Newest entries go first.
   with Inter and no horizontal overflow. Public site-code invalid/unavailable
   states, bounded input, stale-request cancellation, checking-button state,
   Inter, and no-overflow behavior were reverified at 1280 and 390×844 with
-  zero reproducible console warnings/errors. Password-based login passed;
+  zero reproducible console warnings/errors. The authenticated internal
+  dashboard was reverified against real rows at 1280×720 and 390×844: site and
+  customer relations render, timestamps use each ticket site's timezone,
+  Inter is applied, all recent rows remain available, horizontal overflow is
+  absent, and the browser logged zero warnings/errors. Password-based login passed;
   recovery-email delivery and one-time link consumption still require a
   dedicated staging mailbox.
 - **Exact next local step:** check whether the protected credential fixture is
   available and, if so, run the migration 028–031 business probes plus the new
-  malformed-body HTTP checks. If it remains unavailable, audit and fix the
-  dashboard's hardcoded `America/New_York` rendering with unit, production,
-  and responsive browser verification. Configure `CRON_SECRET` separately
-  before production worker activation
+  malformed-body HTTP checks. If it remains unavailable, audit the remaining
+  hard-coded Slack timestamp timezone and move Slack rendering onto an explicit
+  resource/site timezone contract. Configure `CRON_SECRET` separately before
+  production worker activation
 - **Primary plan:** [`plans/prd-v1.1-gap-closure-plan.md`](./prd-v1.1-gap-closure-plan.md)
+
+## Overall project status — 2026-08-03
+
+- Ripple has a meaningful Phase 1–4 support-platform foundation, and Phase 0
+  containment is substantially implemented through migrations 001–046.
+- Against the full PRD v1.1 capability map, 17 domains remain
+  **Partial** or **Unsafe/Partial** and seven remain **Absent**. No full PRD
+  capability domain is yet honestly complete end to end.
+- The local deterministic baseline is green at 465 unit/contract tests, 40
+  production HTTP smoke checks, a production build, zero-warning lint, and
+  zero known dependency vulnerabilities.
+- Phase 0 cannot be declared exited until the protected six-account/two-tenant
+  matrix and remaining migration 028–037 positive/rollback probes run in
+  staging, hosted branch protection and the reviewer-protected staging
+  environment are activated, and production worker/provider configuration is
+  completed.
+- The largest remaining product gaps are the PRD authorization kernel,
+  queues/routing, business-calendar SLA clocks, remote support, appointments,
+  assets/entitlements, search/knowledge, i18n, versioned external APIs, and
+  production SRE/recovery evidence.
+
+## Session record — 2026-08-03 (P0-AM / deterministic dashboard metrics)
+
+### Objective
+
+Close the dashboard timezone/count defects using resource-local time, verify
+the protected UI with real data at desktop and mobile breakpoints, and preserve
+a zero-vulnerability dependency baseline.
+
+### Finding and implementation
+
+- Dashboard recent-ticket queries did not retrieve site timezones and relied
+  on the server host for date rendering. The renderer now uses each ticket
+  site's validated IANA timezone and falls back deterministically to UTC for
+  missing or invalid legacy values.
+- Supabase many-to-one relationships arrived as objects in the live query even
+  though the dashboard assumed arrays, producing `Unknown` customer/site
+  labels. A shared normalizer now accepts both supported shapes.
+- The regular-customer `Total Tickets` metric used a ten-row recent-ticket
+  list length. It now uses an independent exact count query.
+- Four focused utility/contract groups cover host-independent rendering,
+  explicit site timezone behavior, invalid fallback, relationship shapes, all
+  three dashboard variants, and exact totals.
+- The final audit detected newly disclosed `brace-expansion` advisory
+  GHSA-rgw5-rvv9-x895 against 5.0.8. The lockfile override is now 5.0.9 and the
+  clean dependency audit is back to zero known vulnerabilities.
+- Commit `0cf4aac` contains the application, regression-test, and dependency
+  changes.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| `npm ci` | Passed from the lockfile; 0 install-time vulnerabilities |
+| `npm test` | Passed; 67 files, 465 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build |
+| `npm run test:e2e` | Passed; all 40 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities with `brace-expansion` 5.0.9 |
+| Browser QA | Passed signed-in at 1280×720 and 390×844 with real relationships, site-local `EDT` timestamps, Inter, ten recent rows on mobile, no overflow, and zero console warnings/errors |
+| Disposable identity cleanup | Passed; Auth, profile, memberships, and target audit rows all verified absent |
+| `git diff --check` | Passed |
+
+### Next
+
+Run the protected migration 028–031 and malformed-body HTTP probes when the
+credential fixture becomes available. If it remains unavailable, remove the
+remaining hard-coded timezone from Slack message rendering and cover it with
+unit plus production smoke verification.
 
 ## Session record — 2026-08-03 (P0-AL / malformed-request normalization)
 

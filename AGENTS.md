@@ -293,7 +293,7 @@ npm run dev
 - `npm run build` — production build
 - `npm run start` — production server
 - `npm run lint` — direct ESLint CLI across the repository; warnings fail the gate
-- `npm test` — Vitest unit/contract suite (457 tests)
+- `npm test` — Vitest unit/contract suite (465 tests)
 - `npm run test:e2e` — 40-check production HTTP smoke plus optional credentialed Playwright/API/RLS matrix; requires a successful build
 - `npm run test:e2e:credentialed` — real six-account/two-tenant matrix; set `RIPPLE_E2E_FIXTURES_FILE`
 - `npm run test:e2e:install-browser` — install the pinned Chromium runtime
@@ -1029,6 +1029,26 @@ protected routes, meter public callers before parsing, return a generic stable
 400 without echoing parser details, and never let malformed bodies bypass the
 same abuse controls as valid requests.
 
+### Operational timestamps belong to their resource, not the server host
+Found 2026-08-03 while closing the dashboard timezone gap. Dashboard recent
+tickets did not select `sites.timezone`, so `formatDate()` inherited the
+deployment host timezone. The regular-customer total also reused a ten-row
+recent list, and live Supabase many-to-one relations arrived as objects while
+the page assumed arrays, producing `Unknown` labels.
+
+Commit `0cf4aac` makes unspecified timestamp rendering deterministically UTC,
+selects and validates each ticket site's IANA timezone for dashboard display,
+normalizes object/array relation shapes, and computes total tickets with an
+independent exact count. Signed-in browser QA at 1280×720 and 390×844 verified
+real relationship labels, site-local timestamps, Inter, responsive fit, and
+zero browser warnings/errors.
+
+**Lesson:** an operational instant needs an explicit display-timezone owner.
+Use the resource/site timezone when the event belongs to a site, validate
+legacy timezone strings with a stable UTC fallback, never infer business time
+from a server host, and never derive totals from a presentation-limited list.
+Normalize Supabase relationship shapes at one boundary before rendering.
+
 ### Supabase SSR auth cookies belong on the response you return
 Found 2026-07-29 while adding password recovery. The authorization-code
 callback created a redirect inside the Supabase `setAll` callback, attached
@@ -1163,14 +1183,16 @@ resume work; this section remains the broader historical summary.
   boundaries with customer-safe projections, then normalized malformed-JSON
   handling across the remaining four direct parsers while preserving auth and
   public-rate-limit ordering, with 457 unit/contract tests plus a
-  zero-vulnerability dependency baseline.
+  zero-vulnerability dependency baseline; then made dashboard time/count
+  rendering deterministic and updated the `brace-expansion` override to
+  patched 5.0.9, bringing the suite to 465 tests.
 
 ### Known issues / open work
 | Priority | Item | Where | Notes |
 |---|---|---|---|
 | 🟡 Med | MiniMax AI key invalid (`401 invalid api key (2049)`). | `.env` `MINIMAX_API_KEY` | Mock fallback is in place; real AI works once key is fixed. Provider URL `https://api.minimax.chat/v1/` resolves and returns proper error responses, so the gateway is real — just the key is wrong. |
 | 🟡 Med | Resend sender domain `dropletai.services` not verified | `src/lib/email/send.ts` | Email send returns `send_failed` until domain is verified at resend.com/domains. Ticket creation still works. |
-| 🟡 Med | Dashboard timezone hardcoded to `America/New_York` for some widgets | `src/app/(auth)/dashboard/page.tsx` | Should derive from user or first site; ticket detail already uses `site.timezone` |
+| ✅ Closed | Dashboard timezone, relation shape, and capped total | `src/app/(auth)/dashboard/page.tsx`, `src/lib/utils.ts` | Commit `0cf4aac` uses each ticket site's validated timezone with UTC fallback, normalizes relation objects/arrays, and counts all customer tickets independently of the recent list |
 | 🟡 Med | `/settings` is read-only integration status | `src/app/(auth)/settings/page.tsx` | Add notification preferences, user timezone, and theme controls |
 | ✅ Verified | Migration 046 durable public rate limits | `supabase/migrations/046_durable_public_rate_limits.sql` | Applied 2026-08-02; 77 live assertions covered grants, constraints, concurrency, reset/retention, bounded cleanup, real HTTP limits/lifecycle, and zero residue |
 | 🟡 Med | Exact site-code validation remains an existence oracle | `/api/sites/validate` | Responses are minimal and migration 046 enforces 20 checks/minute/IP across instances, but full anti-enumeration still requires CAPTCHA, an invitation/intake token, or authenticated submission |
@@ -1216,7 +1238,9 @@ resume work; this section remains the broader historical summary.
 12. **Verify Resend sender domain** so confirmation / resolution emails actually send.
 13. **Ticket number sequence migration** (020) ✅ done (2026-07-14) — `next_ticket_no()` RPC + 021 volatility fix.
 14. **Collapse Slack handlers to `updateMasterMessage()`** — 4 inline `chat.update` calls become 4 one-liners. (Done in 3af10c6 actually — handlers now use `updateMasterMessage` everywhere; further collapse of the 4 audit calls per action is a follow-up.)
-15. **Dashboard timezone** — derive from user or first site.
+15. **Dashboard timezone/count contract.** ✅ closed in `0cf4aac`; recent
+    tickets use their own site timezone with UTC fallback, live relationship
+    shapes normalize correctly, and customer totals are exact.
 16. **Sprint 3 feature work** — Kanban view (INT-5), SLA monitoring (INT-6), notifications center (INT-7).
 17. **Start real Slack Connect work** — see PRD §8.5 / SLK-015.
 18. **Guard ticket state transitions (INT-001).** ✅ deployed in `b344d18` +
@@ -1298,6 +1322,14 @@ resume work; this section remains the broader historical summary.
     weakening authorization or public throttling order. Eight tests bring the
     suite to 457; the 40-check production smoke remains green, and four
     credentialed HTTP probes are ready for the protected staging fixture.
+35. **Make dashboard metrics deterministic.** Commit `0cf4aac` retrieves each
+    recent ticket's site timezone, validates it with a UTC fallback, normalizes
+    live Supabase object/array relationship shapes, and counts all customer
+    tickets independently of the ten-row recent list. Eight utility tests plus
+    two dashboard source contracts bring the suite to 465; signed-in desktop/
+    mobile browser QA and the 40-check production smoke are green. The same
+    checkpoint updates `brace-expansion` to patched 5.0.9 after
+    GHSA-rgw5-rvv9-x895 was disclosed, restoring a zero-vulnerability audit.
 
 ### Open architectural questions
 - The RLS recursion bug surfaces a bigger question: do we keep `createAdminClient() + code filter` (the current pattern in `lib/supabase/scope.ts`) or move back to proper RLS once migration 019 + similar fixes are in place? The current pattern scales fine but has a lower safety margin for new queries.
