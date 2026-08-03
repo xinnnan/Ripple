@@ -4,7 +4,9 @@ export const TICKET_SEARCH_MAX_LENGTH = 200;
 // structurally. Reject those characters (and controls) before interpolating a
 // user search term into a filter expression. Percent and underscore remain
 // useful search characters, but are escaped by buildTicketSearchFilter().
-export const TICKET_SEARCH_PATTERN = /^[^,()"\\\u0000-\u001f\u007f]*$/;
+export const POSTGREST_FILTER_VALUE_PATTERN =
+  /^[^,()"\\\u0000-\u001f\u007f]*$/;
+export const TICKET_SEARCH_PATTERN = POSTGREST_FILTER_VALUE_PATTERN;
 
 export type ParsedTicketSearch =
   | { success: true; value?: string }
