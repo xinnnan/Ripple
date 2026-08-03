@@ -2,27 +2,43 @@ import { createClient } from "@/lib/supabase/server";
 import type { UserRole } from "@/types/ticket";
 import {
   ADMIN_ROLES,
-  INTERNAL_ROLES,
   isCustomerManager,
   isInternalUser,
 } from "@/lib/roles";
+import {
+  identityServiceUnavailable,
+  isUnauthenticatedAuthError,
+} from "@/lib/supabase/auth-read";
 
 export async function requireAdmin() {
   const supabase = await createClient();
 
+  const authResult = await supabase.auth.getUser();
   const {
     data: { user: authUser },
-  } = await supabase.auth.getUser();
+    error: authError,
+  } = authResult;
+
+  if (authError && !isUnauthenticatedAuthError(authError)) {
+    return identityServiceUnavailable("requireAdmin/auth", authError);
+  }
 
   if (!authUser) {
     return { error: "Unauthorized", status: 401 } as const;
   }
 
-  const { data: userProfile } = await supabase
+  const profileResult = await supabase
     .from("users")
     .select("role, email, customer_id, status")
     .eq("id", authUser.id)
-    .single();
+    .maybeSingle();
+  if (profileResult.error) {
+    return identityServiceUnavailable(
+      "requireAdmin/profile",
+      profileResult.error
+    );
+  }
+  const userProfile = profileResult.data;
 
   if (!userProfile || userProfile.status !== "active") {
     return { error: "Forbidden: Account is not active", status: 403 } as const;
@@ -43,19 +59,32 @@ export async function requireAdmin() {
 export async function requireInternal() {
   const supabase = await createClient();
 
+  const authResult = await supabase.auth.getUser();
   const {
     data: { user: authUser },
-  } = await supabase.auth.getUser();
+    error: authError,
+  } = authResult;
+
+  if (authError && !isUnauthenticatedAuthError(authError)) {
+    return identityServiceUnavailable("requireInternal/auth", authError);
+  }
 
   if (!authUser) {
     return { error: "Unauthorized", status: 401 } as const;
   }
 
-  const { data: userProfile } = await supabase
+  const profileResult = await supabase
     .from("users")
     .select("role, email, customer_id, status")
     .eq("id", authUser.id)
-    .single();
+    .maybeSingle();
+  if (profileResult.error) {
+    return identityServiceUnavailable(
+      "requireInternal/profile",
+      profileResult.error
+    );
+  }
+  const userProfile = profileResult.data;
 
   if (!userProfile || userProfile.status !== "active") {
     return { error: "Forbidden: Account is not active", status: 403 } as const;
@@ -79,19 +108,32 @@ export async function requireInternal() {
 export async function getAuthUser() {
   const supabase = await createClient();
 
+  const authResult = await supabase.auth.getUser();
   const {
     data: { user: authUser },
-  } = await supabase.auth.getUser();
+    error: authError,
+  } = authResult;
+
+  if (authError && !isUnauthenticatedAuthError(authError)) {
+    return identityServiceUnavailable("getAuthUser/auth", authError);
+  }
 
   if (!authUser) {
     return { error: "Unauthorized", status: 401 } as const;
   }
 
-  const { data: userProfile } = await supabase
+  const profileResult = await supabase
     .from("users")
     .select("role, email, customer_id, full_name, status")
     .eq("id", authUser.id)
-    .single();
+    .maybeSingle();
+  if (profileResult.error) {
+    return identityServiceUnavailable(
+      "getAuthUser/profile",
+      profileResult.error
+    );
+  }
+  const userProfile = profileResult.data;
 
   if (!userProfile || userProfile.status !== "active") {
     return { error: "Forbidden: Account is not active", status: 403 } as const;
