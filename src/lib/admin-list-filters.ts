@@ -67,6 +67,10 @@ const inventoryListSchema = z.object({
   lowStock: z.enum(["true", "false"]).transform((value) => value === "true").optional(),
 });
 
+const inventoryPageSchema = z.object({
+  siteId: z.string().uuid().optional(),
+});
+
 const siteMemberListSchema = z.object({
   siteId: z.string().uuid().optional(),
   limit: z
@@ -142,6 +146,14 @@ export function parseAdminInventoryListFilters(params: URLSearchParams) {
     params,
     fields: { site_id: "siteId", low_stock: "lowStock" },
     schema: inventoryListSchema,
+  });
+}
+
+export function parseAdminInventoryPageFilters(params: URLSearchParams) {
+  return parseSingletonParams({
+    params,
+    fields: { site: "siteId" },
+    schema: inventoryPageSchema,
   });
 }
 

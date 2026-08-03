@@ -3,6 +3,7 @@ import {
   buildAdminSparePartSearchFilter,
   parseAdminAuditListFilters,
   parseAdminAuditPageFilters,
+  parseAdminInventoryPageFilters,
   parseAdminInventoryListFilters,
   parseAdminSiteMemberListFilters,
   parseAdminSparePartListFilters,
@@ -40,6 +41,27 @@ describe("admin list filters", () => {
     expect(parseAdminAuditListFilters(new URLSearchParams(query)).success).toBe(
       false
     );
+  });
+
+  it("parses the inventory page's canonical site prefilter", () => {
+    expect(
+      parseAdminInventoryPageFilters(new URLSearchParams(`site=${ID}`))
+    ).toEqual({ success: true, data: { siteId: ID } });
+    expect(parseAdminInventoryPageFilters(new URLSearchParams())).toEqual({
+      success: true,
+      data: { siteId: undefined },
+    });
+  });
+
+  it.each([
+    "site=not-a-uuid",
+    `site=${ID}&site=22222222-2222-4222-8222-222222222222`,
+    `site_id=${ID}`,
+    "unexpected=value",
+  ])("rejects malformed inventory-page filters: %s", (query) => {
+    expect(
+      parseAdminInventoryPageFilters(new URLSearchParams(query)).success
+    ).toBe(false);
   });
 
   it("parses bounded audit-page filters independently of the API limit", () => {
