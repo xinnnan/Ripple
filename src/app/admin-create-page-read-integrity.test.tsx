@@ -169,7 +169,8 @@ describe("admin creation-page read integrity", () => {
     );
 
     expect(formSource).toContain("const canCreate = hasSites && hasParts");
-    expect(formSource).toContain("disabled={loading || !canCreate}");
+    expect(formSource).toContain("const busy = loading || navigating");
+    expect(formSource).toContain("disabled={busy || !canCreate}");
     expect(formSource).toContain("No active service sites or spare parts");
   });
 
@@ -182,7 +183,8 @@ describe("admin creation-page read integrity", () => {
       "utf8"
     );
 
-    expect(formSource).toContain("disabled={loading || !hasSites}");
+    expect(formSource).toContain("const busy = loading || navigating");
+    expect(formSource).toContain("disabled={busy || !hasSites}");
     expect(formSource).toContain("No active service sites are available");
   });
 });

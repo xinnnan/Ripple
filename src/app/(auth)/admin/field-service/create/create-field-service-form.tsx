@@ -1,10 +1,15 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { useSearchParams } from "next/navigation";
+import { useState, useTransition } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { SERVICE_TYPE_LABELS, FSO_PRIORITY_LABELS } from "@/types/spare-parts";
 import type { ServiceType, FSOPriority } from "@/types/spare-parts";
+import {
+  assertClientMutationResponse,
+  clientMutationErrorMessage,
+} from "@/lib/http/client-mutation";
+
+const MAX_ASSIGNED_ENGINEERS = 20;
 
 interface Site {
   id: string;
@@ -31,8 +36,12 @@ function getCustomerName(customer: Site["customer"]): string {
   return c?.name || "";
 }
 
-export function CreateFieldServiceForm({ sites, engineers }: CreateFieldServiceFormProps) {
+export function CreateFieldServiceForm({
+  sites,
+  engineers,
+}: CreateFieldServiceFormProps) {
   const router = useRouter();
+  const [navigating, startNavigation] = useTransition();
   const searchParams = useSearchParams();
   const ticketId = searchParams.get("ticket_id");
 
@@ -49,8 +58,12 @@ export function CreateFieldServiceForm({ sites, engineers }: CreateFieldServiceF
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const hasSites = sites.length > 0;
+  const busy = loading || navigating;
+  const engineerLimitReached =
+    selectedEngineers.length >= MAX_ASSIGNED_ENGINEERS;
 
   function toggleEngineer(engineerId: string) {
+    if (busy) return;
     setSelectedEngineers((prev) =>
       prev.includes(engineerId)
         ? prev.filter((id) => id !== engineerId)
@@ -60,35 +73,66 @@ export function CreateFieldServiceForm({ sites, engineers }: CreateFieldServiceF
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setLoading(true);
+    if (busy) return;
     setError(null);
 
     if (!hasSites) {
       setError("An active service site is required before creating an order");
-      setLoading(false);
       return;
     }
 
     if (!siteId) {
       setError("Please select a site");
-      setLoading(false);
       return;
     }
 
+    const normalizedTitle = title.trim();
+    if (!normalizedTitle) {
+      setError("Please enter a service-order title");
+      return;
+    }
+
+    let normalizedEstimatedHours: number | null = null;
+    if (estimatedHours.trim()) {
+      normalizedEstimatedHours = Number(estimatedHours);
+      if (
+        !Number.isFinite(normalizedEstimatedHours) ||
+        normalizedEstimatedHours < 0 ||
+        normalizedEstimatedHours > 9_999.9 ||
+        !Number.isInteger(normalizedEstimatedHours * 10)
+      ) {
+        setError(
+          "Estimated hours must be between 0 and 9,999.9 with at most one decimal place."
+        );
+        return;
+      }
+    }
+
+    if (
+      scheduledDate &&
+      scheduledEndDate &&
+      scheduledEndDate < scheduledDate
+    ) {
+      setError("Scheduled end date cannot be before the start date");
+      return;
+    }
+
+    setLoading(true);
+
     try {
-      const res = await fetch("/api/field-service-orders", {
+      const response = await fetch("/api/field-service-orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           site_id: siteId,
           ticket_id: ticketId || null,
-          title,
+          title: normalizedTitle,
           service_type: serviceType,
           priority,
-          description: description || null,
+          description: description.trim() || null,
           scheduled_date: scheduledDate || null,
           scheduled_end_date: scheduledEndDate || null,
-          estimated_hours: estimatedHours ? parseFloat(estimatedHours) : null,
+          estimated_hours: normalizedEstimatedHours,
           travel_required: travelRequired,
           engineers: selectedEngineers.map((id) => ({
             engineer_id: id,
@@ -97,24 +141,34 @@ export function CreateFieldServiceForm({ sites, engineers }: CreateFieldServiceF
         }),
       });
 
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || "Failed to create order");
-      }
+      await assertClientMutationResponse(
+        response,
+        "Failed to create service order"
+      );
 
-      router.push("/admin/field-service");
-      router.refresh();
+      startNavigation(() => {
+        router.push("/admin/field-service");
+        router.refresh();
+      });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "An error occurred");
+      setError(
+        clientMutationErrorMessage(
+          err,
+          "Service-order creation is temporarily unavailable. Please retry."
+        )
+      );
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-5">
+    <form aria-busy={busy} onSubmit={handleSubmit} className="space-y-5">
       {error && (
-        <div className="rounded-lg border border-red-200 bg-red-50 p-3">
+        <div
+          role="alert"
+          className="rounded-lg border border-red-200 bg-red-50 p-3"
+        >
           <p className="text-sm text-red-800">{error}</p>
         </div>
       )}
@@ -130,25 +184,39 @@ export function CreateFieldServiceForm({ sites, engineers }: CreateFieldServiceF
       )}
 
       <div>
-        <label className="block text-sm font-medium text-foreground mb-1.5">Title *</label>
+        <label
+          htmlFor="field-service-title"
+          className="block text-sm font-medium text-foreground mb-1.5"
+        >
+          Title *
+        </label>
         <input
+          id="field-service-title"
           type="text"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           required
+          disabled={busy || !hasSites}
+          maxLength={200}
           placeholder="e.g., Replace conveyor belt motor at Site A"
           className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <div>
-          <label className="block text-sm font-medium text-foreground mb-1.5">Site *</label>
+          <label
+            htmlFor="field-service-site"
+            className="block text-sm font-medium text-foreground mb-1.5"
+          >
+            Site *
+          </label>
           <select
+            id="field-service-site"
             value={siteId}
             onChange={(e) => setSiteId(e.target.value)}
             required
-            disabled={!hasSites}
+            disabled={busy || !hasSites}
             className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
           >
             <option value="">Select site...</option>
@@ -161,103 +229,170 @@ export function CreateFieldServiceForm({ sites, engineers }: CreateFieldServiceF
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-foreground mb-1.5">Service Type *</label>
+          <label
+            htmlFor="field-service-type"
+            className="block text-sm font-medium text-foreground mb-1.5"
+          >
+            Service Type *
+          </label>
           <select
+            id="field-service-type"
             value={serviceType}
             onChange={(e) => setServiceType(e.target.value as ServiceType)}
+            disabled={busy || !hasSites}
             className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
           >
             {Object.entries(SERVICE_TYPE_LABELS).map(([value, label]) => (
-              <option key={value} value={value}>{label}</option>
+              <option key={value} value={value}>
+                {label}
+              </option>
             ))}
           </select>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <div>
-          <label className="block text-sm font-medium text-foreground mb-1.5">Priority</label>
+          <label
+            htmlFor="field-service-priority"
+            className="block text-sm font-medium text-foreground mb-1.5"
+          >
+            Priority
+          </label>
           <select
+            id="field-service-priority"
             value={priority}
             onChange={(e) => setPriority(e.target.value as FSOPriority)}
+            disabled={busy || !hasSites}
             className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
           >
             {Object.entries(FSO_PRIORITY_LABELS).map(([value, label]) => (
-              <option key={value} value={value}>{label}</option>
+              <option key={value} value={value}>
+                {label}
+              </option>
             ))}
           </select>
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-foreground mb-1.5">Estimated Hours</label>
+          <label
+            htmlFor="field-service-estimated-hours"
+            className="block text-sm font-medium text-foreground mb-1.5"
+          >
+            Estimated Hours
+          </label>
           <input
+            id="field-service-estimated-hours"
             type="number"
-            step="0.5"
+            inputMode="decimal"
+            step="0.1"
             min="0"
             max="9999.9"
             value={estimatedHours}
             onChange={(e) => setEstimatedHours(e.target.value)}
+            disabled={busy || !hasSites}
             placeholder="e.g., 8"
             className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
           />
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <div>
-          <label className="block text-sm font-medium text-foreground mb-1.5">Scheduled Start</label>
+          <label
+            htmlFor="field-service-start-date"
+            className="block text-sm font-medium text-foreground mb-1.5"
+          >
+            Scheduled Start
+          </label>
           <input
+            id="field-service-start-date"
             type="date"
             value={scheduledDate}
             onChange={(e) => setScheduledDate(e.target.value)}
+            disabled={busy || !hasSites}
             className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-foreground mb-1.5">Scheduled End</label>
+          <label
+            htmlFor="field-service-end-date"
+            className="block text-sm font-medium text-foreground mb-1.5"
+          >
+            Scheduled End
+          </label>
           <input
+            id="field-service-end-date"
             type="date"
             value={scheduledEndDate}
             onChange={(e) => setScheduledEndDate(e.target.value)}
             min={scheduledDate || undefined}
+            disabled={busy || !hasSites}
             className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
           />
         </div>
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-foreground mb-1.5">Description</label>
+        <label
+          htmlFor="field-service-description"
+          className="block text-sm font-medium text-foreground mb-1.5"
+        >
+          Description
+        </label>
         <textarea
+          id="field-service-description"
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           rows={3}
+          disabled={busy || !hasSites}
+          maxLength={5000}
           placeholder="Describe the service work to be performed"
           className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
         />
       </div>
 
       {/* Engineer Assignment */}
-      <div>
-        <label className="block text-sm font-medium text-foreground mb-1.5">Assign Engineers</label>
+      <fieldset disabled={busy || !hasSites}>
+        <legend className="block text-sm font-medium text-foreground mb-1.5">
+          Assign Engineers
+        </legend>
         <div className="space-y-2 max-h-48 overflow-y-auto border border-border rounded-lg p-3">
           {engineers.length === 0 ? (
-            <p className="text-xs text-muted-foreground">No engineers available.</p>
+            <p className="text-xs text-muted-foreground">
+              No engineers available.
+            </p>
           ) : (
             engineers.map((eng) => (
-              <label key={eng.id} className="flex items-center gap-2 cursor-pointer">
+              <label
+                key={eng.id}
+                className="flex items-center gap-2 cursor-pointer"
+              >
                 <input
                   type="checkbox"
                   checked={selectedEngineers.includes(eng.id)}
                   onChange={() => toggleEngineer(eng.id)}
+                  disabled={
+                    busy ||
+                    !hasSites ||
+                    (engineerLimitReached &&
+                      !selectedEngineers.includes(eng.id))
+                  }
                   className="rounded border-border"
                 />
                 <span className="text-sm text-foreground">{eng.full_name}</span>
-                <span className="text-xs text-muted-foreground">({eng.role.replace("internal_", "")})</span>
+                <span className="text-xs text-muted-foreground">
+                  ({eng.role.replace("internal_", "")})
+                </span>
               </label>
             ))
           )}
         </div>
-      </div>
+        <p className="mt-1 text-xs text-muted-foreground">
+          {selectedEngineers.length} / {MAX_ASSIGNED_ENGINEERS} assigned. The
+          first selected engineer is the lead.
+        </p>
+      </fieldset>
 
       <div className="flex items-center gap-2">
         <input
@@ -265,23 +400,27 @@ export function CreateFieldServiceForm({ sites, engineers }: CreateFieldServiceF
           id="travel_required"
           checked={travelRequired}
           onChange={(e) => setTravelRequired(e.target.checked)}
+          disabled={busy || !hasSites}
           className="rounded border-border"
         />
-        <label htmlFor="travel_required" className="text-sm text-foreground">Travel Required</label>
+        <label htmlFor="travel_required" className="text-sm text-foreground">
+          Travel Required
+        </label>
       </div>
 
-      <div className="flex gap-3 pt-4">
+      <div className="flex flex-col gap-3 pt-4 sm:flex-row">
         <button
           type="submit"
-          disabled={loading || !hasSites}
+          disabled={busy || !hasSites}
           className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
         >
-          {loading ? "Creating..." : "Create Service Order"}
+          {busy ? "Creating..." : "Create Service Order"}
         </button>
         <button
           type="button"
           onClick={() => router.back()}
-          className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-accent transition-colors"
+          disabled={busy}
+          className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-accent transition-colors disabled:opacity-50"
         >
           Cancel
         </button>
