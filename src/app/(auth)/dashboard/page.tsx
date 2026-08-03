@@ -3,7 +3,11 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { redirect } from "next/navigation";
 import { STATUS_LABELS } from "@/types/ticket";
 import { PROJECT_STATUS_LABELS, PROJECT_STATUS_COLORS } from "@/types/ticket";
-import { formatDate } from "@/lib/utils";
+import {
+  formatDate,
+  resolveSiteTimezone,
+  singleRelation,
+} from "@/lib/utils";
 import { isCustomerManager, isInternalUser } from "@/lib/roles";
 import Link from "next/link";
 import type { UserRole } from "@/types/ticket";
@@ -82,7 +86,7 @@ async function InternalDashboard() {
           `
           ticket_no, title, severity, status, created_at,
           customer:customers(name),
-          site:sites(site_name)
+          site:sites(site_name, timezone)
         `
         )
         .order("created_at", { ascending: false })
@@ -154,8 +158,11 @@ async function InternalDashboard() {
                 severity: string;
                 status: string;
                 created_at: string;
-                customer: { name: string }[] | null;
-                site: { site_name: string }[] | null;
+                customer: { name: string }[] | { name: string } | null;
+                site:
+                  | { site_name: string; timezone: string }[]
+                  | { site_name: string; timezone: string }
+                  | null;
               }) => (
                 <Link
                   key={ticket.ticket_no}
@@ -171,8 +178,8 @@ async function InternalDashboard() {
                         {ticket.title}
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        {ticket.customer?.[0]?.name || "Unknown"},{" "}
-                        {ticket.site?.[0]?.site_name || "Unknown Site"}
+                        {singleRelation(ticket.customer)?.name || "Unknown"},{" "}
+                        {singleRelation(ticket.site)?.site_name || "Unknown Site"}
                       </p>
                     </div>
                   </div>
@@ -181,7 +188,10 @@ async function InternalDashboard() {
                       {STATUS_LABELS[ticket.status as keyof typeof STATUS_LABELS] || ticket.status}
                     </span>
                     <span className="text-right text-xs text-muted-foreground sm:w-28">
-                      {formatDate(ticket.created_at)}
+                      {formatDate(
+                        ticket.created_at,
+                        resolveSiteTimezone(ticket.site)
+                      )}
                     </span>
                   </div>
                 </Link>
@@ -215,7 +225,7 @@ async function CustomerManagerDashboard({ customerId }: { userId: string; custom
       .select(
         `
         ticket_no, title, severity, status, created_at,
-        site:sites(site_name)
+        site:sites(site_name, timezone)
       `
       )
       .in("site_id", siteIds)
@@ -432,7 +442,10 @@ async function CustomerManagerDashboard({ customerId }: { userId: string; custom
               severity: string;
               status: string;
               created_at: string;
-              site: { site_name: string }[] | null;
+              site:
+                | { site_name: string; timezone: string }[]
+                | { site_name: string; timezone: string }
+                | null;
             }) => (
               <Link
                 key={ticket.ticket_no}
@@ -446,7 +459,7 @@ async function CustomerManagerDashboard({ customerId }: { userId: string; custom
                   <div className="min-w-0">
                     <p className="break-words text-sm font-medium text-foreground">{ticket.title}</p>
                     <p className="text-xs text-muted-foreground">
-                      {ticket.site?.[0]?.site_name || "Unknown Site"}
+                      {singleRelation(ticket.site)?.site_name || "Unknown Site"}
                     </p>
                   </div>
                 </div>
@@ -455,7 +468,10 @@ async function CustomerManagerDashboard({ customerId }: { userId: string; custom
                     {STATUS_LABELS[ticket.status as keyof typeof STATUS_LABELS] || ticket.status}
                   </span>
                   <span className="text-right text-xs text-muted-foreground sm:w-28">
-                    {formatDate(ticket.created_at)}
+                    {formatDate(
+                      ticket.created_at,
+                      resolveSiteTimezone(ticket.site)
+                    )}
                   </span>
                 </div>
               </Link>
@@ -510,19 +526,23 @@ async function CustomerDashboard({ userId }: { userId: string }) {
     severity: string;
     status: string;
     created_at: string;
-    site: { site_name: string }[] | null;
+    site:
+      | { site_name: string; timezone: string }[]
+      | { site_name: string; timezone: string }
+      | null;
   }[] = [];
 
   let openCount = 0;
+  let totalCount = 0;
 
   if (siteIds.length > 0) {
-    const [ticketsRes, countRes] = await Promise.all([
+    const [ticketsRes, openCountRes, totalCountRes] = await Promise.all([
       supabase
         .from("tickets")
         .select(
           `
           ticket_no, title, severity, status, created_at,
-          site:sites(site_name)
+          site:sites(site_name, timezone)
         `
         )
         .in("site_id", siteIds)
@@ -540,10 +560,15 @@ async function CustomerDashboard({ userId }: { userId: string }) {
           "waiting_droplet",
           "reopened",
         ]),
+      supabase
+        .from("tickets")
+        .select("id", { count: "exact", head: true })
+        .in("site_id", siteIds),
     ]);
 
     recentTickets = (ticketsRes.data || []) as unknown as typeof recentTickets;
-    openCount = countRes.count ?? 0;
+    openCount = openCountRes.count ?? 0;
+    totalCount = totalCountRes.count ?? 0;
   }
 
   return (
@@ -572,7 +597,7 @@ async function CustomerDashboard({ userId }: { userId: string }) {
         <div className="rounded-xl border border-border p-6">
           <p className="text-sm text-muted-foreground">Total Tickets</p>
           <p className="text-3xl font-bold mt-1 text-green-600">
-            {recentTickets.length > 0 ? recentTickets.length : 0}
+            {totalCount}
           </p>
         </div>
       </div>
@@ -694,7 +719,7 @@ async function CustomerDashboard({ userId }: { userId: string }) {
                       {ticket.title}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      {ticket.site?.[0]?.site_name || "Unknown Site"}
+                      {singleRelation(ticket.site)?.site_name || "Unknown Site"}
                     </p>
                   </div>
                 </div>
@@ -705,7 +730,10 @@ async function CustomerDashboard({ userId }: { userId: string }) {
                     ] || ticket.status}
                   </span>
                   <span className="text-right text-xs text-muted-foreground sm:w-28">
-                    {formatDate(ticket.created_at)}
+                    {formatDate(
+                      ticket.created_at,
+                      resolveSiteTimezone(ticket.site)
+                    )}
                   </span>
                 </div>
               </Link>

@@ -22,7 +22,7 @@ export function formatDate(
   timezone?: string
 ): string {
   const d = typeof date === "string" ? new Date(date) : date;
-  const tz = timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const tz = timezone || "UTC";
   return d.toLocaleDateString("en-US", {
     year: "numeric",
     month: "short",
@@ -32,6 +32,36 @@ export function formatDate(
     timeZone: tz,
     timeZoneName: "short",
   });
+}
+
+type SiteTimezoneRelation =
+  | { timezone?: string | null }
+  | { timezone?: string | null }[]
+  | null
+  | undefined;
+
+export function singleRelation<T>(
+  relation: T | T[] | null | undefined
+): T | undefined {
+  return Array.isArray(relation) ? relation[0] : relation ?? undefined;
+}
+
+/**
+ * Resolve a ticket's site timezone without depending on the server host.
+ * Invalid or missing legacy values fall back to UTC so rendering remains
+ * deterministic instead of throwing a RangeError.
+ */
+export function resolveSiteTimezone(site: SiteTimezoneRelation): string {
+  const row = singleRelation(site);
+  const candidate = row?.timezone?.trim();
+  if (!candidate) return "UTC";
+
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: candidate }).format();
+    return candidate;
+  } catch {
+    return "UTC";
+  }
 }
 
 /**
