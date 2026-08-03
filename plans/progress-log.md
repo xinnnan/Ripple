@@ -8,9 +8,9 @@ meaningful change and before ending a work session. Newest entries go first.
 - **Branch:** `codex/prd-v1-1-gap-closure`
 - **Active phase:** Phase 0 — Containment and reproducible baseline
 - **Active work item:** run protected migrations 028–031 business probes when
-  the staging fixture becomes available; otherwise continue the remaining
-  ticket creation/detail authenticated mutation-form audit
-- **Last verified implementation commit:** `e15dea6` (`fix: harden customer site forms`)
+  the staging fixture becomes available; otherwise design replay-safe ticket
+  creation idempotency and continue the remaining mutation-surface audit
+- **Last verified implementation commit:** `6075296` (`fix: harden ticket mutation workflows`)
 - **Uncommitted work:** none expected after the documentation checkpoint;
   verify with `git status` before resuming
 - **Deployment gate:** migrations 001–046 are confirmed applied. Migration 044
@@ -67,9 +67,10 @@ meaningful change and before ending a work session. Newest entries go first.
   visual coverage still depends on the credentialed fixture.
 - **Exact next local step:** check whether the protected credential fixture is
   available and, if so, run the migration 028–031 business probes plus the new
-  malformed-body HTTP checks. If it remains unavailable, harden ticket
-  creation/detail mutation surfaces. Configure `CRON_SECRET` separately before
-  production worker activation
+  malformed-body HTTP checks. If it remains unavailable, trace every web and
+  Slack ticket-create caller and add a replay-safe idempotency contract so an
+  ambiguous client/network outcome cannot create duplicate tickets. Configure
+  `CRON_SECRET` separately before production worker activation
 - **Primary plan:** [`plans/prd-v1.1-gap-closure-plan.md`](./prd-v1.1-gap-closure-plan.md)
 
 ## Overall project status — 2026-08-03
@@ -79,7 +80,7 @@ meaningful change and before ending a work session. Newest entries go first.
 - Against the full PRD v1.1 capability map, 17 domains remain
   **Partial** or **Unsafe/Partial** and seven remain **Absent**. No full PRD
   capability domain is yet honestly complete end to end.
-- The local deterministic baseline is green at 915 unit/contract tests, 40
+- The local deterministic baseline is green at 930 unit/contract tests, 40
   production HTTP smoke checks, a production build, zero-warning lint, and
   zero known dependency vulnerabilities.
 - Phase 0 cannot be declared exited until the protected six-account/two-tenant
@@ -91,6 +92,66 @@ meaningful change and before ending a work session. Newest entries go first.
   queues/routing, business-calendar SLA clocks, remote support, appointments,
   assets/entitlements, search/knowledge, i18n, versioned external APIs, and
   production SRE/recovery evidence.
+
+## Session record — 2026-08-03 (P0-BQ / ticket mutation integrity)
+
+### Objective
+
+Align public and authenticated ticket creation, ticket detail actions,
+comments, attachments, and AI-assist controls with their server contracts while
+preventing raw failures, duplicate actions, stale form state, and false failure
+after a committed database command.
+
+### Finding and implementation
+
+- Ticket forms and detail actions assumed failed responses were JSON, exposed
+  arbitrary runtime/provider messages, and released controls before refresh or
+  navigation settled. Several controls were unbound or remained mutable during
+  an in-flight write.
+- Shared ticket and attachment contracts now centralize title, description,
+  context, submitter, comment, summary, root-cause, file-size, filename, and
+  ten-file submission limits. Both public and authenticated creation paths
+  normalize and validate against them before I/O.
+- The authenticated modal now sends the scoped site UUID, invalidates stale
+  site loads, preserves committed success with an explicit ticket link, and
+  uses route refresh rather than a timed full reload. The public form locks its
+  complete upload/create window, validates every attachment, retains ticket
+  success when a later upload fails, and provides a real state-reset action.
+- Ticket status/severity/owner, resolution, comment, attachment, and AI-assist
+  actions now guard duplicate execution, use bounded expected errors, contain
+  runtime detail, keep controls locked through refresh, and expose accessible
+  progress/outcome state. Resolution now correctly accepts a nullable internal
+  summary.
+- Ticket-create, ticket-patch, and comment request schemas are strict and
+  bounded. Successful authenticated responses are private/no-store. Ticket
+  PATCH dispatches the durable outbox immediately after commit, and PATCH or
+  comment hydration failure now returns committed success with the durable ID
+  and bounded warning instead of encouraging a duplicate retry.
+- Fifteen new route and real-source contracts bring the suite to 930 tests
+  across 118 files. No live ticket, comment, attachment, or AI suggestion was
+  created.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| `npm test` | Passed; 118 files, 930 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build and type check |
+| `npm run test:e2e` | Passed; all 40 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+
+### Commit
+
+- Hash: `6075296`
+- Message: `fix: harden ticket mutation workflows`
+
+### Next
+
+Run protected probes when their fixture is available. Otherwise make ticket
+creation replay-safe across ambiguous client/network outcomes, including both
+web and Slack creation callers.
 
 ## Session record — 2026-08-03 (P0-BP / customer and site form integrity)
 

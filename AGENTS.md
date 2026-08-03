@@ -295,7 +295,7 @@ npm run dev
 - `npm run build` — production build
 - `npm run start` — production server
 - `npm run lint` — direct ESLint CLI across the repository; warnings fail the gate
-- `npm test` — Vitest unit/contract suite (915 tests)
+- `npm test` — Vitest unit/contract suite (930 tests)
 - `npm run test:e2e` — 40-check production HTTP smoke plus optional credentialed Playwright/API/RLS matrix; requires a successful build
 - `npm run test:e2e:credentialed` — real six-account/two-tenant matrix; set `RIPPLE_E2E_FIXTURES_FILE`
 - `npm run test:e2e:install-browser` — install the pinned Chromium runtime
@@ -1306,10 +1306,11 @@ new site and audit evidence, then a separate detail lookup could fail. Returning
 500 for that lookup told clients the mutation failed and made a retry capable
 of creating a duplicate or producing a misleading uniqueness conflict.
 
-Commit `e15dea6` preserves committed success with a private/no-store 201,
-returns the durable ID plus a bounded refresh warning, and limits hydration
-diagnostics to an error code. The customer/site forms also replace timed full
-reloads with route refresh transitions and remain locked through settlement.
+Commit `e15dea6` preserves committed site-create success with a private/no-store
+201, returns the durable ID plus a bounded refresh warning, and limits hydration
+diagnostics to an error code. Commit `6075296` applies the same rule to ticket
+PATCH and comment creation, triggers the ticket outbox fast drain immediately
+after commit, and keeps ticket forms/actions locked through refresh settlement.
 
 **Lesson:** once an atomic business command commits, later presentation
 hydration is not allowed to reverse its HTTP success semantics. Return the
@@ -1481,7 +1482,10 @@ resume work; this section remains the broader historical summary.
   bringing the suite to 906 tests; then aligned customer/site create/edit forms
   with canonical identifiers, lifecycle/ownership rules, bounded error
   handling, and complete refresh locking while preserving committed site-create
-  success through hydration failure, bringing the suite to 915 tests.
+  success through hydration failure, bringing the suite to 915 tests; then
+  aligned public/authenticated ticket creation and detail actions with strict
+  bounded contracts, complete mutation locking, safe response handling, and
+  committed-success hydration semantics, bringing the suite to 930 tests.
 
 ### Known issues / open work
 | Priority | Item | Where | Notes |
@@ -1518,6 +1522,7 @@ resume work; this section remains the broader historical summary.
 | ✅ Closed | Field-service/Slack action ambiguity | field-service detail actions, Slack channel-link page/API | Commit `7ff594d` replaces prompts/immediate destructive actions with bounded confirmation, extends busy state through refresh/navigation, and makes channel discovery paginated, private, bounded, and failure-contained |
 | ✅ Closed | Service creation form coercion/silent-row loss | field-service and spare-part request creation forms | Commit `a3ed0dd` applies total row validation, stable keys, zero-safe prices, exact bounds/date checks, accessible labels/errors, responsive layout, and request-plus-navigation locking |
 | ✅ Closed | Customer/site form and post-commit hydration ambiguity | customer/site create/edit forms, `POST /api/sites` | Commit `e15dea6` applies canonical normalization/bounds, accessible responsive locking, archived/ownership guards, prerequisite messaging, and committed-success 201 semantics when site detail hydration is degraded |
+| ✅ Closed | Ticket mutation raw failure, duplicate-action, and hydration ambiguity | public/authenticated ticket creation, ticket detail actions, ticket PATCH/comments | Commit `6075296` centralizes bounded input/file contracts, locks request plus refresh settlement, validates safe response shapes, preserves committed success through hydration failure, and immediately drains the durable ticket outbox |
 | 🟡 Med | `/settings` is read-only integration status | `src/app/(auth)/settings/page.tsx` | Add notification preferences, user timezone, and theme controls |
 | ✅ Verified | Migration 046 durable public rate limits | `supabase/migrations/046_durable_public_rate_limits.sql` | Applied 2026-08-02; 77 live assertions covered grants, constraints, concurrency, reset/retention, bounded cleanup, real HTTP limits/lifecycle, and zero residue |
 | 🟡 Med | Exact site-code validation remains an existence oracle | `/api/sites/validate` | Responses are minimal and migration 046 enforces 20 checks/minute/IP across instances, but full anti-enumeration still requires CAPTCHA, an invitation/intake token, or authenticated submission |
@@ -1823,6 +1828,13 @@ resume work; this section remains the broader historical summary.
     customer and returns committed 201 semantics if only response hydration
     fails. Nine contracts bring the suite to 915; all deterministic quality
     gates are green.
+65. **Harden ticket mutation workflows.** Commit `6075296` centralizes strict
+    bounded ticket/comment/attachment inputs, contains returned and runtime
+    failures, locks public/authenticated creation and detail controls through
+    refresh settlement, and exposes accessible outcomes. Ticket PATCH and
+    comment creation preserve committed success if only response hydration
+    fails; PATCH also triggers the durable outbox fast drain. Fifteen contracts
+    bring the suite to 930; all deterministic quality gates are green.
 
 ### Open architectural questions
 - The RLS recursion bug surfaces a bigger question: do we keep `createAdminClient() + code filter` (the current pattern in `lib/supabase/scope.ts`) or move back to proper RLS once migration 019 + similar fixes are in place? The current pattern scales fine but has a lower safety margin for new queries.

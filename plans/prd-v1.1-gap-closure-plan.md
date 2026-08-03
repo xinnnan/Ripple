@@ -745,6 +745,14 @@ Every implementation slice must:
     creation whose detail hydration fails now returns a private/no-store 201
     with its durable ID instead of inviting a duplicate retry. Nine contracts
     bring the suite to 915 and all gates are green.
-67. **Next local integrity work:** run protected positive/rollback probes when
-    fixtures are available; otherwise harden ticket creation/detail mutation
-    surfaces.
+67. **P0-BQ — closed in `6075296`:** Public/authenticated ticket creation and
+    ticket detail actions now share bounded input/file contracts, contain
+    returned and runtime failures, lock the complete request/refresh window,
+    validate response shapes, and expose accessible outcomes. Ticket PATCH and
+    comment routes use strict schemas and preserve committed success through
+    degraded response hydration; ticket PATCH also triggers the durable outbox
+    fast drain. Fifteen contracts bring the suite to 930 and all gates are
+    green.
+68. **Next local integrity work:** run protected positive/rollback probes when
+    fixtures are available; otherwise add replay-safe idempotency across web
+    and Slack ticket creation before continuing the remaining mutation audit.
