@@ -2,16 +2,21 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { PART_CATEGORY_LABELS } from "@/types/spare-parts";
 import Link from "next/link";
 import type { SparePart } from "@/types/spare-parts";
+import { assertPageQueriesSucceeded } from "@/lib/server-page-query";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminSparePartsPage() {
   const supabase = createAdminClient();
 
-  const { data: parts } = await supabase
+  const partsResult = await supabase
     .from("spare_parts")
-    .select("*")
+    .select(
+      "id, part_number, part_name, description, category, unit, unit_price, is_active"
+    )
     .order("part_name");
+  assertPageQueriesSucceeded("admin/spare-part-list", partsResult);
+  const parts = partsResult.data;
 
   const typedParts = (parts || []) as unknown as SparePart[];
 

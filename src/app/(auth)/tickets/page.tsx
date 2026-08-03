@@ -9,10 +9,13 @@ import { TableEmpty } from "@/components/empty-state";
 import {
   PAGE_SIZE,
   parseFilters,
+  parseTicketListFilters,
   buildParams,
   type TicketFilterOptions,
 } from "./ticket-filters.shared";
 import { TicketListControls } from "./ticket-list-controls";
+import { buildTicketSearchFilter } from "@/lib/tickets/search-filter";
+import { assertPageQueriesSucceeded } from "@/lib/server-page-query";
 
 export const dynamic = "force-dynamic";
 
@@ -27,22 +30,42 @@ interface Props {
     range?: string;
     sla?: string;
     page?: string;
+    [key: string]: string | string[] | undefined;
   }>;
 }
 
 export default async function TicketsPage({ searchParams }: Props) {
   const raw = await searchParams;
-  const filters = parseFilters(
-    new URLSearchParams(
-      Object.entries(raw).reduce<Record<string, string>>((acc, [k, v]) => {
-        if (typeof v === "string") acc[k] = v;
-        return acc;
-      }, {})
-    )
-  );
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(raw)) {
+    if (Array.isArray(value)) {
+      for (const entry of value) params.append(key, entry);
+    } else if (typeof value === "string") {
+      params.append(key, value);
+    }
+  }
+  const parsedFilters = parseTicketListFilters(params);
+  const filters = parsedFilters.filters;
 
   const scope = await getUserScope();
   if (!scope) redirect("/login");
+
+  if (!parsedFilters.isValid) {
+    return renderTicketsPage(
+      filters,
+      [],
+      0,
+      scope.isInternal,
+      {
+        customers: [],
+        sites: [],
+        owners: [],
+        canFilterByCustomer: false,
+        canFilterByOwner: false,
+      },
+      "One or more ticket filters are invalid. Clear the filters and try again."
+    );
+  }
 
   const admin = createAdminClient();
 
@@ -135,11 +158,7 @@ export default async function TicketsPage({ searchParams }: Props) {
     query = query.eq("owner_id", filters.owner_id);
   }
   if (filters.q) {
-    // Escape any wildcards the user might have typed
-    const safe = filters.q.replace(/[%_]/g, (m) => "\\" + m);
-    // ticket_no is exact match (RPL-XXXXXX), title is fuzzy
-    const orFilter = `ticket_no.ilike.%${safe}%,title.ilike.%${safe}%`;
-    query = query.or(orFilter);
+    query = query.or(buildTicketSearchFilter(filters.q));
   }
   if (filters.range && filters.range !== "all") {
     const days = filters.range === "7d" ? 7 : filters.range === "30d" ? 30 : 90;
@@ -154,7 +173,10 @@ export default async function TicketsPage({ searchParams }: Props) {
   const toIdx = fromIdx + PAGE_SIZE - 1;
   query = query.range(fromIdx, toIdx);
 
-  const { data: tickets, count } = await query;
+  const ticketsResult = await query;
+  assertPageQueriesSucceeded("tickets/list", ticketsResult);
+  const tickets = ticketsResult.data;
+  const count = ticketsResult.count;
   const totalCount = count ?? tickets?.length ?? 0;
 
   // ---- Build filter options (customers / sites / owners) for the UI --------
@@ -206,6 +228,12 @@ async function loadFilterOptions(
         .eq("status", "active")
         .order("full_name"),
     ]);
+    assertPageQueriesSucceeded(
+      "tickets/filter-options-internal",
+      customersRes,
+      sitesRes,
+      ownersRes
+    );
 
     return {
       customers: customersRes.data || [],
@@ -224,7 +252,10 @@ async function loadFilterOptions(
           .select("id, name")
           .eq("id", scope.customerId)
           .eq("status", "active")
-      : Promise.resolve({ data: [] as { id: string; name: string }[] }),
+      : Promise.resolve({
+          data: [] as { id: string; name: string }[],
+          error: null,
+        }),
     (async () => {
       let q = admin
         .from("sites")
@@ -235,6 +266,11 @@ async function loadFilterOptions(
       return q;
     })(),
   ]);
+  assertPageQueriesSucceeded(
+    "tickets/filter-options-external",
+    customersRes,
+    sitesRes
+  );
 
   return {
     customers: customersRes.data || [],
@@ -260,7 +296,8 @@ function renderTicketsPage(
   }[],
   totalCount: number,
   isInternal: boolean,
-  options: TicketFilterOptions
+  options: TicketFilterOptions,
+  filterError?: string
 ) {
   const hasFilters = Boolean(
     filters.q ||
@@ -269,7 +306,8 @@ function renderTicketsPage(
       filters.customer_id ||
       filters.site_id ||
       filters.owner_id ||
-      (filters.range && filters.range !== "all")
+      (filters.range && filters.range !== "all") ||
+      (filters.sla && filters.sla !== "all")
   );
 
   return (
@@ -277,7 +315,23 @@ function renderTicketsPage(
       <TicketsPageHeader
         filterQuery={buildParams(filters)}
         isInternal={isInternal}
+        canExport={!filterError}
       />
+
+      {filterError && (
+        <div
+          role="alert"
+          className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive"
+        >
+          <span>{filterError}</span>
+          <Link
+            href="/tickets"
+            className="font-medium underline underline-offset-4"
+          >
+            Clear filters
+          </Link>
+        </div>
+      )}
 
       <TicketListControls totalCount={totalCount} options={options} />
 

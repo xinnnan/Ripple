@@ -2,13 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAdmin } from "@/lib/supabase/auth-helpers";
 import {
-  PART_CATEGORIES,
   sparePartCreateRequestSchema,
 } from "@/lib/spare-parts/admin-contracts";
 import {
   AdminSparePartMutationError,
   createAdminSparePartAtomic,
 } from "@/lib/spare-parts/admin-mutations";
+import {
+  buildAdminSparePartSearchFilter,
+  parseAdminSparePartListFilters,
+} from "@/lib/admin-list-filters";
 
 export const dynamic = "force-dynamic";
 
@@ -34,40 +37,31 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: auth.error }, { status: auth.status });
   }
 
-  const supabase = createAdminClient();
   const { searchParams } = new URL(request.url);
+  const parsedFilters = parseAdminSparePartListFilters(searchParams);
+  if (!parsedFilters.success) {
+    return NextResponse.json(
+      { error: "Invalid spare part filters" },
+      { status: 400 }
+    );
+  }
+  const filters = parsedFilters.data;
+  const supabase = createAdminClient();
   let query = supabase
     .from("spare_parts")
     .select(PART_PROJECTION)
     .order("part_name");
 
-  const category = searchParams.get("category");
-  if (
-    category &&
-    PART_CATEGORIES.includes(
-      category as (typeof PART_CATEGORIES)[number]
-    )
-  ) {
-    query = query.eq("category", category);
+  if (filters.category) {
+    query = query.eq("category", filters.category);
   }
 
-  if (searchParams.get("active") === "true") {
-    query = query.eq("is_active", true);
+  if (filters.active !== undefined) {
+    query = query.eq("is_active", filters.active);
   }
 
-  const search = searchParams.get("search");
-  if (search) {
-    const sanitized = search
-      .replace(/[%,().]/g, " ")
-      .replace(/\s+/g, " ")
-      .trim()
-      .slice(0, 100);
-    if (sanitized) {
-      const pattern = `%${sanitized}%`;
-      query = query.or(
-        `part_number.ilike.${pattern},part_name.ilike.${pattern}`
-      );
-    }
+  if (filters.search) {
+    query = query.or(buildAdminSparePartSearchFilter(filters.search));
   }
 
   try {
@@ -81,7 +75,10 @@ export async function GET(request: NextRequest) {
         { status: 500 }
       );
     }
-    return NextResponse.json({ data: data ?? [] });
+    return NextResponse.json(
+      { data: data ?? [] },
+      { headers: { "Cache-Control": "private, no-store" } }
+    );
   } catch (error) {
     console.error("GET /api/admin/spare-parts error:", error);
     return NextResponse.json(

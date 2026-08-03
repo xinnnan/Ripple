@@ -29,6 +29,10 @@ import {
   isInternalUser,
 } from "@/lib/roles";
 import type { UserRole } from "@/types/ticket";
+import {
+  isUnauthenticatedAuthError,
+  throwIdentityServiceUnavailable,
+} from "./auth-read";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -72,17 +76,30 @@ const EMPTY_GUID = "00000000-0000-0000-0000-000000000000";
  */
 export async function getUserScope(): Promise<UserScope | null> {
   const supabase = await createClient();
+  const authResult = await supabase.auth.getUser();
   const {
     data: { user: authUser },
-  } = await supabase.auth.getUser();
+    error: authError,
+  } = authResult;
+
+  if (authError && !isUnauthenticatedAuthError(authError)) {
+    throwIdentityServiceUnavailable("getUserScope/auth", authError);
+  }
 
   if (!authUser) return null;
 
-  const { data: profile } = await supabase
+  const profileResult = await supabase
     .from("users")
     .select("role, email, customer_id, full_name, status")
     .eq("id", authUser.id)
-    .single();
+    .maybeSingle();
+  if (profileResult.error) {
+    throwIdentityServiceUnavailable(
+      "getUserScope/profile",
+      profileResult.error
+    );
+  }
+  const profile = profileResult.data;
 
   if (!profile || profile.status !== "active") return null;
 
@@ -100,28 +117,52 @@ export async function getUserScope(): Promise<UserScope | null> {
   if (isManager && customerId) {
     // Customer managers see ALL sites under their customer
     const admin = createAdminClient();
-    const { data: sites } = await admin
+    const sitesResult = await admin
       .from("sites")
       .select("id")
       .eq("customer_id", customerId)
       .eq("status", "active");
+    if (sitesResult.error) {
+      throwIdentityServiceUnavailable(
+        "getUserScope/manager-sites",
+        sitesResult.error
+      );
+    }
+    const sites = sitesResult.data;
     siteIds = (sites || []).map((s) => s.id as string);
   } else if (isCustomer) {
     // Regular customers see only their assigned sites
-    const { data: memberships } = await supabase
+    const membershipsResult = await supabase
       .from("site_members")
       .select("site_id")
       .eq("user_id", authUser.id);
-    const memberSiteIds = (memberships || []).map((m) => m.site_id as string);
+    if (membershipsResult.error) {
+      throwIdentityServiceUnavailable(
+        "getUserScope/memberships",
+        membershipsResult.error
+      );
+    }
+    const memberSiteIds = Array.from(
+      new Set(
+        (membershipsResult.data || []).map((m) => m.site_id as string)
+      )
+    );
     if (memberSiteIds.length > 0) {
       // Membership history is retained when a site is decommissioned. Filter
       // the set through active sites before it becomes an authorization scope.
       const admin = createAdminClient();
-      const { data: activeSites } = await admin
+      const activeSitesResult = await admin
         .from("sites")
         .select("id")
         .in("id", memberSiteIds)
         .eq("status", "active");
+      if (activeSitesResult.error) {
+        throwIdentityServiceUnavailable(
+          "getUserScope/active-sites",
+          activeSitesResult.error
+        );
+      }
+      const activeSites = activeSitesResult.data;
       siteIds = (activeSites || []).map((site) => site.id as string);
     }
   }

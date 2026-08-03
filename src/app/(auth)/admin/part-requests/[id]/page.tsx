@@ -2,6 +2,9 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { SPR_STATUS_LABELS, SPR_STATUS_COLORS, SPR_PRIORITY_LABELS } from "@/types/spare-parts";
 import Link from "next/link";
 import { PartRequestActions } from "./part-request-actions";
+import { parseUuidRouteId } from "@/lib/request-identifiers";
+import { notFound } from "next/navigation";
+import { assertPageQueriesSucceeded } from "@/lib/server-page-query";
 
 export const dynamic = "force-dynamic";
 
@@ -39,10 +42,11 @@ function getField<T>(val: T | T[] | null): T | null {
 }
 
 export default async function PartRequestDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;
+  const id = parseUuidRouteId((await params).id);
+  if (!id) notFound();
   const supabase = createAdminClient();
 
-  const { data: request } = await supabase
+  const requestResult = await supabase
     .from("spare_part_requests")
     .select(`
       *,
@@ -53,7 +57,9 @@ export default async function PartRequestDetailPage({ params }: { params: Promis
       items:spare_part_request_items(*, spare_part:spare_parts(part_name, part_number))
     `)
     .eq("id", id)
-    .single();
+    .maybeSingle();
+  assertPageQueriesSucceeded("admin/part-request-detail", requestResult);
+  const request = requestResult.data;
 
   if (!request) {
     return (

@@ -8,6 +8,11 @@ import {
 } from "@/lib/spare-parts/mutations";
 import { sparePartRequestForExternal } from "@/lib/resource-visibility";
 import { z } from "zod";
+import {
+  EXTERNAL_SPARE_PART_REQUEST_SELECT,
+  INTERNAL_SPARE_PART_REQUEST_SELECT,
+} from "@/lib/resource-projections";
+import { parseSparePartRequestListFilters } from "@/lib/resource-list-filters";
 
 export const dynamic = "force-dynamic";
 
@@ -56,37 +61,51 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const admin = createAdminClient();
     const { searchParams } = new URL(request.url);
+    const parsedFilters = parseSparePartRequestListFilters(searchParams);
+    if (!parsedFilters.success) {
+      return NextResponse.json(
+        { error: "Invalid spare part request filters" },
+        { status: 400 }
+      );
+    }
+    const filters = parsedFilters.data;
+    if (
+      filters.siteId &&
+      !scope.isInternal &&
+      !scope.siteIds.includes(filters.siteId)
+    ) {
+      return NextResponse.json(
+        { error: "Forbidden: site is outside your scope" },
+        { status: 403 }
+      );
+    }
 
+    const admin = createAdminClient();
+
+    const requestSelect: string = scope.isInternal
+      ? INTERNAL_SPARE_PART_REQUEST_SELECT
+      : EXTERNAL_SPARE_PART_REQUEST_SELECT;
     let query = admin
       .from("spare_part_requests")
-      .select(`
-        *,
-        site:sites(id, site_name, site_code),
-        ticket:tickets(id, ticket_no, title),
-        requester:users!spare_part_requests_requested_by_fkey(id, full_name),
-        approver:users!spare_part_requests_approved_by_fkey(id, full_name),
-        items:spare_part_request_items(*, spare_part:spare_parts(*))
-      `)
+      .select(requestSelect)
       .order("created_at", { ascending: false });
 
     query = scopeSiteRows(query, scope);
 
     // Filters
-    const status = searchParams.get("status");
-    if (status) query = query.eq("status", status);
+    if (filters.status) query = query.eq("status", filters.status);
 
-    const siteId = searchParams.get("site_id");
-    if (siteId) query = query.eq("site_id", siteId);
+    if (filters.siteId) query = query.eq("site_id", filters.siteId);
 
-    const ticketId = searchParams.get("ticket_id");
-    if (ticketId) query = query.eq("ticket_id", ticketId);
+    if (filters.ticketId) query = query.eq("ticket_id", filters.ticketId);
 
     const { data, error } = await query;
 
     if (error) {
-      console.error("GET /api/spare-part-requests failed:", error);
+      console.error("GET /api/spare-part-requests failed:", {
+        code: (error as { code?: string }).code,
+      });
       return NextResponse.json({ error: "Failed to fetch spare part requests" }, { status: 500 });
     }
 
@@ -97,7 +116,10 @@ export async function GET(request: NextRequest) {
             row as unknown as Record<string, unknown>
           )
         );
-    return NextResponse.json({ data: responseData });
+    return NextResponse.json(
+      { data: responseData },
+      { headers: { "Cache-Control": "private, no-store" } }
+    );
   } catch (e) {
     console.error("GET /api/spare-part-requests error:", e);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });

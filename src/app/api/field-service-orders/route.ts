@@ -9,6 +9,11 @@ import {
 } from "@/lib/field-service/mutations";
 import { fieldServiceOrderForExternal } from "@/lib/resource-visibility";
 import { z } from "zod";
+import {
+  EXTERNAL_FIELD_SERVICE_ORDER_SELECT,
+  INTERNAL_FIELD_SERVICE_ORDER_SELECT,
+} from "@/lib/resource-projections";
+import { parseFieldServiceOrderListFilters } from "@/lib/resource-list-filters";
 
 export const dynamic = "force-dynamic";
 
@@ -20,40 +25,55 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const admin = createAdminClient();
     const { searchParams } = new URL(request.url);
+    const parsedFilters = parseFieldServiceOrderListFilters(searchParams);
+    if (!parsedFilters.success) {
+      return NextResponse.json(
+        { error: "Invalid field service order filters" },
+        { status: 400 }
+      );
+    }
+    const filters = parsedFilters.data;
+    if (
+      filters.siteId &&
+      !scope.isInternal &&
+      !scope.siteIds.includes(filters.siteId)
+    ) {
+      return NextResponse.json(
+        { error: "Forbidden: site is outside your scope" },
+        { status: 403 }
+      );
+    }
 
+    const admin = createAdminClient();
+
+    const orderSelect: string = scope.isInternal
+      ? INTERNAL_FIELD_SERVICE_ORDER_SELECT
+      : EXTERNAL_FIELD_SERVICE_ORDER_SELECT;
     let query = admin
       .from("field_service_orders")
-      .select(`
-        *,
-        site:sites(id, site_name, site_code),
-        ticket:tickets(id, ticket_no, title),
-        requester:users!field_service_orders_requested_by_fkey(id, full_name),
-        completer:users!field_service_orders_completed_by_fkey(id, full_name),
-        engineers:field_service_engineers(*, engineer:users(id, full_name, email))
-      `)
+      .select(orderSelect)
       .order("created_at", { ascending: false });
 
     query = scopeSiteRows(query, scope);
 
     // Filters
-    const status = searchParams.get("status");
-    if (status) query = query.eq("status", status);
+    if (filters.status) query = query.eq("status", filters.status);
 
-    const siteId = searchParams.get("site_id");
-    if (siteId) query = query.eq("site_id", siteId);
+    if (filters.siteId) query = query.eq("site_id", filters.siteId);
 
-    const ticketId = searchParams.get("ticket_id");
-    if (ticketId) query = query.eq("ticket_id", ticketId);
+    if (filters.ticketId) query = query.eq("ticket_id", filters.ticketId);
 
-    const serviceType = searchParams.get("service_type");
-    if (serviceType) query = query.eq("service_type", serviceType);
+    if (filters.serviceType) {
+      query = query.eq("service_type", filters.serviceType);
+    }
 
     const { data, error } = await query;
 
     if (error) {
-      console.error("GET /api/field-service-orders failed:", error);
+      console.error("GET /api/field-service-orders failed:", {
+        code: (error as { code?: string }).code,
+      });
       return NextResponse.json({ error: "Failed to fetch field service orders" }, { status: 500 });
     }
 
@@ -64,7 +84,10 @@ export async function GET(request: NextRequest) {
             row as unknown as Record<string, unknown>
           )
         );
-    return NextResponse.json({ data: responseData });
+    return NextResponse.json(
+      { data: responseData },
+      { headers: { "Cache-Control": "private, no-store" } }
+    );
   } catch (e) {
     console.error("GET /api/field-service-orders error:", e);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });

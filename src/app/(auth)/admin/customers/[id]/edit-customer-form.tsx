@@ -1,6 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import {
+  assertClientMutationResponse,
+  clientMutationErrorMessage,
+} from "@/lib/http/client-mutation";
+
+const DOMAIN_PATTERN =
+  /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$/i;
 
 interface CustomerData {
   id: string;
@@ -11,6 +19,8 @@ interface CustomerData {
 }
 
 export function EditCustomerForm({ customer }: { customer: CustomerData }) {
+  const router = useRouter();
+  const [refreshing, startRefresh] = useTransition();
   const isArchived = customer.status === "inactive";
   const [name, setName] = useState(customer.name);
   const [domain, setDomain] = useState(customer.domain || "");
@@ -20,9 +30,26 @@ export function EditCustomerForm({ customer }: { customer: CustomerData }) {
     type: "success" | "error";
     text: string;
   } | null>(null);
+  const busy = saving || refreshing;
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
+    if (busy || isArchived) return;
+
+    const normalizedName = name.trim();
+    const normalizedDomain = domain.trim().toLowerCase();
+    if (!normalizedName) {
+      setMessage({ type: "error", text: "Customer name is required" });
+      return;
+    }
+    if (normalizedDomain && !DOMAIN_PATTERN.test(normalizedDomain)) {
+      setMessage({
+        type: "error",
+        text: "Domain must be a hostname without a protocol or path",
+      });
+      return;
+    }
+
     setSaving(true);
     setMessage(null);
 
@@ -31,22 +58,25 @@ export function EditCustomerForm({ customer }: { customer: CustomerData }) {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name,
-          domain: domain || null,
+          name: normalizedName,
+          domain: normalizedDomain || null,
           ...(status !== customer.status ? { status } : {}),
         }),
       });
 
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || "Failed to update customer");
-      }
+      await assertClientMutationResponse(res, "Failed to update customer");
 
+      setName(normalizedName);
+      setDomain(normalizedDomain);
       setMessage({ type: "success", text: "Customer updated successfully" });
+      startRefresh(() => router.refresh());
     } catch (err) {
       setMessage({
         type: "error",
-        text: err instanceof Error ? err.message : "Failed to update customer",
+        text: clientMutationErrorMessage(
+          err,
+          "Customer update is temporarily unavailable. Please retry."
+        ),
       });
     } finally {
       setSaving(false);
@@ -76,6 +106,7 @@ export function EditCustomerForm({ customer }: { customer: CustomerData }) {
       <form
         onSubmit={handleSave}
         className="space-y-4"
+        aria-busy={busy}
         aria-describedby="customer-edit-lifecycle-guidance"
       >
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -94,7 +125,7 @@ export function EditCustomerForm({ customer }: { customer: CustomerData }) {
               onChange={(e) => setName(e.target.value)}
               required
               maxLength={200}
-              disabled={isArchived}
+              disabled={busy || isArchived}
               className="w-full rounded-lg border border-border px-3 py-2 text-sm text-foreground bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
             />
           </div>
@@ -114,7 +145,9 @@ export function EditCustomerForm({ customer }: { customer: CustomerData }) {
               value={domain}
               onChange={(e) => setDomain(e.target.value)}
               maxLength={253}
-              disabled={isArchived}
+              pattern="[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*"
+              title="Enter a hostname without a protocol or path"
+              disabled={busy || isArchived}
               placeholder="e.g. acme.com"
               className="w-full rounded-lg border border-border px-3 py-2 text-sm text-foreground bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
             />
@@ -134,7 +167,7 @@ export function EditCustomerForm({ customer }: { customer: CustomerData }) {
             id="customer-edit-status"
             value={status}
             onChange={(e) => setStatus(e.target.value)}
-            disabled={isArchived}
+            disabled={busy || isArchived}
             className="w-full rounded-lg border border-border px-3 py-2 text-sm text-foreground bg-background max-w-xs"
           >
             <option value="active">Active</option>
@@ -156,10 +189,10 @@ export function EditCustomerForm({ customer }: { customer: CustomerData }) {
         </div>
         <button
           type="submit"
-          disabled={saving || isArchived}
+          disabled={busy || isArchived}
           className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
         >
-          {saving ? "Saving..." : "Save Changes"}
+          {busy ? "Saving..." : "Save Changes"}
         </button>
       </form>
     </div>

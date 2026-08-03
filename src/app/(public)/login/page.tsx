@@ -7,6 +7,12 @@ import { useRouter } from "next/navigation";
 import { AlertCircle, ArrowLeft, Eye, EyeOff, ShieldCheck } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { getSafeRedirectPath } from "@/lib/auth/redirect";
+import {
+  getLoginErrorMessage,
+  isAuthRateLimitError,
+  isInvalidCredentialsError,
+} from "@/lib/auth/browser-flow";
+import { logIdentityReadFailure } from "@/lib/supabase/auth-read";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -30,10 +36,22 @@ export default function LoginPage() {
       setError(
         "That sign-in or recovery link is invalid or has expired. Request a new link and try again."
       );
+    } else if (search.get("error") === "signout_failed") {
+      setError(
+        "We could not confirm sign-out. Close this browser on a shared device and try again."
+      );
     }
 
     if (search.get("password") === "updated") {
-      setNotice("Your password was updated. Sign in with your new password.");
+      setNotice(
+        search.get("sessions") === "partial"
+          ? "Your password was updated and this device was signed out. Other sessions could not be confirmed; contact support if you need them revoked."
+          : "Your password was updated. Sign in with your new password."
+      );
+    } else if (search.get("logout") === "partial") {
+      setNotice(
+        "This device was signed out, but other sessions could not be confirmed. Contact support if you need them revoked."
+      );
     }
   }, []);
 
@@ -43,24 +61,32 @@ export default function LoginPage() {
     setError(null);
     setNotice(null);
 
-    const supabase = createClient();
-    const { error: signInError } = await supabase.auth.signInWithPassword({
-      email: email.trim(),
-      password,
-    });
+    try {
+      const supabase = createClient();
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      });
 
-    if (signInError) {
-      setError(
-        signInError.code === "invalid_credentials"
-          ? "The email or password is incorrect."
-          : "We could not sign you in. Please try again."
-      );
+      if (signInError) {
+        if (
+          !isInvalidCredentialsError(signInError) &&
+          !isAuthRateLimitError(signInError)
+        ) {
+          logIdentityReadFailure("login/sign-in", signInError);
+        }
+        setError(getLoginErrorMessage(signInError));
+        return;
+      }
+
+      router.push(redirectPath);
+      router.refresh();
+    } catch (signInError) {
+      logIdentityReadFailure("login/sign-in-unexpected", signInError);
+      setError(getLoginErrorMessage(signInError));
+    } finally {
       setLoading(false);
-      return;
     }
-
-    router.push(redirectPath);
-    router.refresh();
   };
 
   return (
@@ -146,6 +172,7 @@ export default function LoginPage() {
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
                 required
+                maxLength={320}
                 placeholder="you@company.com"
                 className="h-12 w-full rounded-xl border border-slate-300 bg-white px-4 text-sm text-slate-950 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-primary focus:ring-4 focus:ring-lime-100"
               />
@@ -174,6 +201,7 @@ export default function LoginPage() {
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
                   required
+                  maxLength={1024}
                   placeholder="Enter your password"
                   className="h-12 w-full rounded-xl border border-slate-300 bg-white px-4 pr-12 text-sm text-slate-950 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-primary focus:ring-4 focus:ring-lime-100"
                 />

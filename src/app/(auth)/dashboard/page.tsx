@@ -3,12 +3,37 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { redirect } from "next/navigation";
 import { STATUS_LABELS } from "@/types/ticket";
 import { PROJECT_STATUS_LABELS, PROJECT_STATUS_COLORS } from "@/types/ticket";
-import { formatDate } from "@/lib/utils";
+import {
+  formatDate,
+  resolveSiteTimezone,
+  singleRelation,
+} from "@/lib/utils";
 import { isCustomerManager, isInternalUser } from "@/lib/roles";
 import Link from "next/link";
 import type { UserRole } from "@/types/ticket";
+import { assertPageQueriesSucceeded } from "@/lib/server-page-query";
 
 export const dynamic = "force-dynamic";
+
+interface DashboardRecentTicket {
+  ticket_no: string;
+  title: string;
+  severity: string;
+  status: string;
+  created_at: string;
+  site:
+    | { site_name: string; timezone: string }[]
+    | { site_name: string; timezone: string }
+    | null;
+}
+
+interface OpenTicketBySiteRow {
+  site_id: string;
+  sites:
+    | { id: string; site_name: string; site_code: string }[]
+    | { id: string; site_name: string; site_code: string }
+    | null;
+}
 
 export default async function DashboardPage() {
   const supabase = await createClient();
@@ -20,11 +45,13 @@ export default async function DashboardPage() {
   if (!authUser) redirect("/login");
 
   // Get user role
-  const { data: userProfile } = await supabase
+  const profileResult = await supabase
     .from("users")
     .select("role, full_name, email, customer_id")
     .eq("id", authUser.id)
-    .single();
+    .maybeSingle();
+  assertPageQueriesSucceeded("dashboard/profile", profileResult);
+  const userProfile = profileResult.data;
 
   const role = userProfile?.role as UserRole | undefined;
   const email = userProfile?.email as string | undefined;
@@ -82,12 +109,19 @@ async function InternalDashboard() {
           `
           ticket_no, title, severity, status, created_at,
           customer:customers(name),
-          site:sites(site_name)
+          site:sites(site_name, timezone)
         `
         )
         .order("created_at", { ascending: false })
         .limit(10),
     ]);
+  assertPageQueriesSucceeded(
+    "dashboard/internal",
+    openTickets,
+    p1p2Tickets,
+    unassignedTickets,
+    recentTickets
+  );
 
   const stats = [
     {
@@ -154,8 +188,11 @@ async function InternalDashboard() {
                 severity: string;
                 status: string;
                 created_at: string;
-                customer: { name: string }[] | null;
-                site: { site_name: string }[] | null;
+                customer: { name: string }[] | { name: string } | null;
+                site:
+                  | { site_name: string; timezone: string }[]
+                  | { site_name: string; timezone: string }
+                  | null;
               }) => (
                 <Link
                   key={ticket.ticket_no}
@@ -171,8 +208,8 @@ async function InternalDashboard() {
                         {ticket.title}
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        {ticket.customer?.[0]?.name || "Unknown"},{" "}
-                        {ticket.site?.[0]?.site_name || "Unknown Site"}
+                        {singleRelation(ticket.customer)?.name || "Unknown"},{" "}
+                        {singleRelation(ticket.site)?.site_name || "Unknown Site"}
                       </p>
                     </div>
                   </div>
@@ -181,7 +218,10 @@ async function InternalDashboard() {
                       {STATUS_LABELS[ticket.status as keyof typeof STATUS_LABELS] || ticket.status}
                     </span>
                     <span className="text-right text-xs text-muted-foreground sm:w-28">
-                      {formatDate(ticket.created_at)}
+                      {formatDate(
+                        ticket.created_at,
+                        resolveSiteTimezone(ticket.site)
+                      )}
                     </span>
                   </div>
                 </Link>
@@ -201,75 +241,100 @@ async function CustomerManagerDashboard({ customerId }: { userId: string; custom
   const supabase = createAdminClient();
 
   // Get all sites under this customer
-  const { data: sites } = await supabase
+  const sitesResult = await supabase
     .from("sites")
-    .select("id, site_name, site_code, project_status")
-    .eq("customer_id", customerId);
+    .select(
+      "id, site_name, site_code, project_status, customer:customers!inner(id)"
+    )
+    .eq("customer_id", customerId)
+    .eq("status", "active")
+    .in("customer.status", ["active", "trial"]);
+  assertPageQueriesSucceeded("dashboard/customer-manager-sites", sitesResult);
+  const sites = (sitesResult.data || []).map((site) => ({
+    id: site.id,
+    site_name: site.site_name,
+    site_code: site.site_code,
+    project_status: site.project_status,
+  }));
 
-  const siteIds = (sites || []).map((s) => s.id);
+  const siteIds = sites.map((site) => site.id);
 
-  // Get tickets for all customer sites
-  const [ticketsRes, openRes, openBySiteRes, p1p2Res] = await Promise.all([
-    supabase
-      .from("tickets")
-      .select(
-        `
-        ticket_no, title, severity, status, created_at,
-        site:sites(site_name)
-      `
-      )
-      .in("site_id", siteIds)
-      .order("created_at", { ascending: false })
-      .limit(10),
-    supabase
-      .from("tickets")
-      .select("id", { count: "exact", head: true })
-      .in("site_id", siteIds)
-      .in("status", [
-        "new",
-        "assigned",
-        "in_progress",
-        "waiting_customer",
-        "waiting_droplet",
-        "reopened",
-      ]),
-    // Open tickets grouped by site (org-centric view)
-    supabase
-      .from("tickets")
-      .select("site_id, sites(id, site_name, site_code)")
-      .in("site_id", siteIds)
-      .in("status", [
-        "new",
-        "assigned",
-        "in_progress",
-        "waiting_customer",
-        "waiting_droplet",
-        "reopened",
-      ]),
-    // P1/P2 active for SLA-at-a-glance
-    supabase
-      .from("tickets")
-      .select("id", { count: "exact", head: true })
-      .in("site_id", siteIds)
-      .in("severity", ["P1", "P2"])
-      .in("status", [
-        "new",
-        "assigned",
-        "in_progress",
-        "waiting_customer",
-        "waiting_droplet",
-        "reopened",
-      ]),
-  ]);
+  let recentTickets: DashboardRecentTicket[] = [];
+  let openCount = 0;
+  let p1p2Count = 0;
+  let openBySiteRows: OpenTicketBySiteRow[] = [];
 
-  const recentTickets = ticketsRes.data || [];
-  const openCount = openRes.count ?? 0;
-  const p1p2Count = p1p2Res.count ?? 0;
+  if (siteIds.length > 0) {
+    const [ticketsResult, openResult, openBySiteResult, p1p2Result] =
+      await Promise.all([
+        supabase
+          .from("tickets")
+          .select(
+            `
+            ticket_no, title, severity, status, created_at,
+            site:sites(site_name, timezone)
+          `
+          )
+          .in("site_id", siteIds)
+          .order("created_at", { ascending: false })
+          .limit(10),
+        supabase
+          .from("tickets")
+          .select("id", { count: "exact", head: true })
+          .in("site_id", siteIds)
+          .in("status", [
+            "new",
+            "assigned",
+            "in_progress",
+            "waiting_customer",
+            "waiting_droplet",
+            "reopened",
+          ]),
+        // Open tickets grouped by site (org-centric view)
+        supabase
+          .from("tickets")
+          .select("site_id, sites(id, site_name, site_code)")
+          .in("site_id", siteIds)
+          .in("status", [
+            "new",
+            "assigned",
+            "in_progress",
+            "waiting_customer",
+            "waiting_droplet",
+            "reopened",
+          ]),
+        // P1/P2 active for SLA-at-a-glance
+        supabase
+          .from("tickets")
+          .select("id", { count: "exact", head: true })
+          .in("site_id", siteIds)
+          .in("severity", ["P1", "P2"])
+          .in("status", [
+            "new",
+            "assigned",
+            "in_progress",
+            "waiting_customer",
+            "waiting_droplet",
+            "reopened",
+          ]),
+      ]);
+    assertPageQueriesSucceeded(
+      "dashboard/customer-manager-tickets",
+      ticketsResult,
+      openResult,
+      openBySiteResult,
+      p1p2Result
+    );
+    recentTickets = (ticketsResult.data || []) as unknown as DashboardRecentTicket[];
+    openCount = openResult.count ?? 0;
+    p1p2Count = p1p2Result.count ?? 0;
+    openBySiteRows = (openBySiteResult.data || []) as unknown as OpenTicketBySiteRow[];
+  }
 
   // Aggregate open tickets per site
   const openBySite = new Map<string, { name: string; code: string; count: number }>();
-  (openBySiteRes.data || []).forEach((row: { site_id: string; sites: { id: string; site_name: string; site_code: string }[] | { id: string; site_name: string; site_code: string } | null }) => {
-    const s = Array.isArray(row.sites) ? row.sites[0] : row.sites;
+  openBySiteRows.forEach((row) => {
+    const s = singleRelation(row.sites);
     if (!s) return;
     const existing = openBySite.get(s.id);
     if (existing) {
@@ -284,11 +349,16 @@ async function CustomerManagerDashboard({ customerId }: { userId: string; custom
     .slice(0, 5);
 
   // Get team members count
-  const { count: teamCount } = await supabase
+  const teamCountResult = await supabase
     .from("users")
     .select("id", { count: "exact", head: true })
     .eq("customer_id", customerId)
     .eq("status", "active");
+  assertPageQueriesSucceeded(
+    "dashboard/customer-manager-team-count",
+    teamCountResult
+  );
+  const teamCount = teamCountResult.count;
 
   return (
     <div className="p-5 sm:p-8">
@@ -426,14 +496,7 @@ async function CustomerManagerDashboard({ customerId }: { userId: string; custom
           </div>
         ) : (
           <div className="divide-y divide-border">
-            {recentTickets.map((ticket: {
-              ticket_no: string;
-              title: string;
-              severity: string;
-              status: string;
-              created_at: string;
-              site: { site_name: string }[] | null;
-            }) => (
+            {recentTickets.map((ticket) => (
               <Link
                 key={ticket.ticket_no}
                 href={`/tickets/${ticket.ticket_no}`}
@@ -446,7 +509,7 @@ async function CustomerManagerDashboard({ customerId }: { userId: string; custom
                   <div className="min-w-0">
                     <p className="break-words text-sm font-medium text-foreground">{ticket.title}</p>
                     <p className="text-xs text-muted-foreground">
-                      {ticket.site?.[0]?.site_name || "Unknown Site"}
+                      {singleRelation(ticket.site)?.site_name || "Unknown Site"}
                     </p>
                   </div>
                 </div>
@@ -455,7 +518,10 @@ async function CustomerManagerDashboard({ customerId }: { userId: string; custom
                     {STATUS_LABELS[ticket.status as keyof typeof STATUS_LABELS] || ticket.status}
                   </span>
                   <span className="text-right text-xs text-muted-foreground sm:w-28">
-                    {formatDate(ticket.created_at)}
+                    {formatDate(
+                      ticket.created_at,
+                      resolveSiteTimezone(ticket.site)
+                    )}
                   </span>
                 </div>
               </Link>
@@ -468,38 +534,48 @@ async function CustomerManagerDashboard({ customerId }: { userId: string; custom
 }
 
 async function CustomerDashboard({ userId }: { userId: string }) {
-  const supabase = await createClient();
+  const supabase = createAdminClient();
 
-  // Get user's sites
-  const { data: memberships } = await supabase
+  // Membership rows are retained for history. Resolve them through current
+  // active tenant/site rows before they become dashboard scope.
+  const membershipsResult = await supabase
     .from("site_members")
-    .select(
-      `
-      role,
-      sites(
-        id,
-        site_name,
-        site_code,
-        project_status,
-        customer:customers(name)
-      )
-    `
-    )
+    .select("site_id")
     .eq("user_id", userId);
+  assertPageQueriesSucceeded("dashboard/customer-memberships", membershipsResult);
 
   interface CustomerSiteRow {
     id: string;
     site_name: string;
     site_code: string;
     project_status: string;
-    customer: { name: string }[] | null;
   }
 
-  const sites =
-    memberships?.map((m) => {
-      const s = (Array.isArray(m.sites) ? m.sites[0] : m.sites) as unknown as CustomerSiteRow;
-      return { ...s, member_role: m.role };
-    }) || [];
+  const memberSiteIds = [
+    ...new Set(
+      (membershipsResult.data || []).map((membership) => membership.site_id)
+    ),
+  ];
+  let sites: CustomerSiteRow[] = [];
+
+  if (memberSiteIds.length > 0) {
+    const sitesResult = await supabase
+      .from("sites")
+      .select(
+        "id, site_name, site_code, project_status, customer:customers!inner(id)"
+      )
+      .in("id", memberSiteIds)
+      .eq("status", "active")
+      .in("customer.status", ["active", "trial"])
+      .order("site_name");
+    assertPageQueriesSucceeded("dashboard/customer-sites", sitesResult);
+    sites = (sitesResult.data || []).map((site) => ({
+      id: site.id,
+      site_name: site.site_name,
+      site_code: site.site_code,
+      project_status: site.project_status,
+    }));
+  }
 
   const siteIds = sites.map((s) => s.id);
 
@@ -510,19 +586,23 @@ async function CustomerDashboard({ userId }: { userId: string }) {
     severity: string;
     status: string;
     created_at: string;
-    site: { site_name: string }[] | null;
+    site:
+      | { site_name: string; timezone: string }[]
+      | { site_name: string; timezone: string }
+      | null;
   }[] = [];
 
   let openCount = 0;
+  let totalCount = 0;
 
   if (siteIds.length > 0) {
-    const [ticketsRes, countRes] = await Promise.all([
+    const [ticketsRes, openCountRes, totalCountRes] = await Promise.all([
       supabase
         .from("tickets")
         .select(
           `
           ticket_no, title, severity, status, created_at,
-          site:sites(site_name)
+          site:sites(site_name, timezone)
         `
         )
         .in("site_id", siteIds)
@@ -540,10 +620,21 @@ async function CustomerDashboard({ userId }: { userId: string }) {
           "waiting_droplet",
           "reopened",
         ]),
+      supabase
+        .from("tickets")
+        .select("id", { count: "exact", head: true })
+        .in("site_id", siteIds),
     ]);
+    assertPageQueriesSucceeded(
+      "dashboard/customer-tickets",
+      ticketsRes,
+      openCountRes,
+      totalCountRes
+    );
 
     recentTickets = (ticketsRes.data || []) as unknown as typeof recentTickets;
-    openCount = countRes.count ?? 0;
+    openCount = openCountRes.count ?? 0;
+    totalCount = totalCountRes.count ?? 0;
   }
 
   return (
@@ -572,7 +663,7 @@ async function CustomerDashboard({ userId }: { userId: string }) {
         <div className="rounded-xl border border-border p-6">
           <p className="text-sm text-muted-foreground">Total Tickets</p>
           <p className="text-3xl font-bold mt-1 text-green-600">
-            {recentTickets.length > 0 ? recentTickets.length : 0}
+            {totalCount}
           </p>
         </div>
       </div>
@@ -694,7 +785,7 @@ async function CustomerDashboard({ userId }: { userId: string }) {
                       {ticket.title}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      {ticket.site?.[0]?.site_name || "Unknown Site"}
+                      {singleRelation(ticket.site)?.site_name || "Unknown Site"}
                     </p>
                   </div>
                 </div>
@@ -705,7 +796,10 @@ async function CustomerDashboard({ userId }: { userId: string }) {
                     ] || ticket.status}
                   </span>
                   <span className="text-right text-xs text-muted-foreground sm:w-28">
-                    {formatDate(ticket.created_at)}
+                    {formatDate(
+                      ticket.created_at,
+                      resolveSiteTimezone(ticket.site)
+                    )}
                   </span>
                 </div>
               </Link>

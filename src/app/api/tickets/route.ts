@@ -21,6 +21,24 @@ import {
   consumeDistributedRateLimit,
   getRetryAfterSeconds,
 } from "@/lib/distributed-rate-limit";
+import { parseTicketApiListFilters } from "@/lib/tickets/api-list-filters";
+import {
+  EXTERNAL_TICKET_LIST_SELECT,
+  INTERNAL_TICKET_LIST_SELECT,
+} from "@/lib/resource-projections";
+import {
+  TICKET_CONTEXT_MAX_LENGTH,
+  TICKET_DESCRIPTION_MAX_LENGTH,
+  TICKET_SUBMITTER_EMAIL_MAX_LENGTH,
+  TICKET_SUBMITTER_NAME_MAX_LENGTH,
+  TICKET_SUBMITTER_PHONE_MAX_LENGTH,
+  TICKET_TITLE_MAX_LENGTH,
+} from "@/lib/tickets/input-contract";
+import {
+  generateTicketIdempotencyKey,
+  normalizeTicketIdempotencyKey,
+  TICKET_IDEMPOTENCY_KEY_HEADER,
+} from "@/lib/tickets/idempotency";
 
 const createTicketSchema = z.object({
   customer_id: z.string().uuid().optional(),
@@ -32,8 +50,8 @@ const createTicketSchema = z.object({
     .max(SITE_CODE_MAX_LENGTH)
     .regex(SITE_CODE_PATTERN)
     .optional(),
-  title: z.string().trim().min(1).max(200),
-  description: z.string().trim().min(1).max(20_000),
+  title: z.string().trim().min(1).max(TICKET_TITLE_MAX_LENGTH),
+  description: z.string().trim().min(1).max(TICKET_DESCRIPTION_MAX_LENGTH),
   request_type: z.enum([
     "incident",
     "service_request",
@@ -53,12 +71,25 @@ const createTicketSchema = z.object({
       "no_impact",
     ])
     .optional(),
-  asset_id: z.string().trim().max(500).optional(),
-  area: z.string().trim().max(500).optional(),
-  submitter_name: z.string().trim().max(200).optional(),
-  submitter_email: z.string().trim().email().max(320).optional(),
-  submitter_phone: z.string().trim().max(50).optional(),
-});
+  asset_id: z.string().trim().max(TICKET_CONTEXT_MAX_LENGTH).optional(),
+  area: z.string().trim().max(TICKET_CONTEXT_MAX_LENGTH).optional(),
+  submitter_name: z
+    .string()
+    .trim()
+    .max(TICKET_SUBMITTER_NAME_MAX_LENGTH)
+    .optional(),
+  submitter_email: z
+    .string()
+    .trim()
+    .email()
+    .max(TICKET_SUBMITTER_EMAIL_MAX_LENGTH)
+    .optional(),
+  submitter_phone: z
+    .string()
+    .trim()
+    .max(TICKET_SUBMITTER_PHONE_MAX_LENGTH)
+    .optional(),
+}).strict();
 
 export async function POST(request: NextRequest) {
   try {
@@ -143,6 +174,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
     }
     const data = createTicketSchema.parse(body);
+    const suppliedIdempotencyKey = request.headers.get(
+      TICKET_IDEMPOTENCY_KEY_HEADER
+    );
+    const idempotencyKey =
+      suppliedIdempotencyKey === null
+        ? generateTicketIdempotencyKey()
+        : normalizeTicketIdempotencyKey(suppliedIdempotencyKey);
+    if (!idempotencyKey) {
+      return NextResponse.json(
+        { error: "Invalid Idempotency-Key header" },
+        { status: 400 }
+      );
+    }
 
     const createdBy = auth?.userId ?? null;
 
@@ -175,7 +219,9 @@ export async function POST(request: NextRequest) {
       .in("customer.status", ["active", "trial"])
       .maybeSingle();
     if (siteErr) {
-      console.error("POST /api/tickets site lookup failed:", siteErr);
+      console.error("POST /api/tickets site lookup failed:", {
+        code: siteErr.code,
+      });
       return NextResponse.json(
         { error: "Internal server error" },
         { status: 500 }
@@ -212,6 +258,7 @@ export async function POST(request: NextRequest) {
       // Slack and future email intake call createTicketCore from their own
       // verified server-side handlers.
       source: "web",
+      idempotency_key: idempotencyKey,
       title: data.title,
       description: data.description,
       request_type: data.request_type,
@@ -230,12 +277,18 @@ export async function POST(request: NextRequest) {
         // `id` is the UUID — the form needs it to attach files via
         // /api/upload. `secure_token` is the unauthed proof-of-ownership
         // token for the attachment upload (and for the /t/[token] page).
-        id: result.ticket.id,
+        id: result.ticket_id,
         ticket_no: result.ticket_no,
         secure_token: result.secure_token,
         message: "Ticket created successfully",
       },
-      { status: 201 }
+      {
+        status: 201,
+        headers: {
+          "Cache-Control": "private, no-store",
+          [TICKET_IDEMPOTENCY_KEY_HEADER]: idempotencyKey,
+        },
+      }
     );
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -244,7 +297,9 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
-    console.error("Create ticket error:", error);
+    console.error("POST /api/tickets failed:", {
+      name: error instanceof Error ? error.name : "UnknownError",
+    });
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }
@@ -267,17 +322,44 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url);
+    const parsedFilters = parseTicketApiListFilters(searchParams);
+    if (!parsedFilters.success) {
+      return NextResponse.json(
+        { error: "Invalid ticket list filters" },
+        { status: 400 }
+      );
+    }
+    const filters = parsedFilters.data;
+
+    if (
+      filters.customerId &&
+      !scope.isInternal &&
+      scope.customerId !== filters.customerId
+    ) {
+      return NextResponse.json(
+        { error: "Forbidden: customer is outside your scope" },
+        { status: 403 }
+      );
+    }
+    if (
+      filters.siteId &&
+      !scope.isInternal &&
+      !scope.siteIds.includes(filters.siteId)
+    ) {
+      return NextResponse.json(
+        { error: "Forbidden: site is outside your scope" },
+        { status: 403 }
+      );
+    }
+
     const supabase = createAdminClient();
 
     let query = supabase
       .from("tickets")
       .select(
-        `
-        *,
-        customer:customers(id, name),
-        site:sites(id, site_name, site_code),
-        owner:users!tickets_owner_id_fkey(id, full_name)
-      `
+        scope.isInternal
+          ? INTERNAL_TICKET_LIST_SELECT
+          : EXTERNAL_TICKET_LIST_SELECT
       )
       .order("created_at", { ascending: false });
 
@@ -285,57 +367,29 @@ export async function GET(request: NextRequest) {
     // is limited to the site_ids in their scope (see lib/supabase/scope.ts).
     query = scopeTickets(query, scope);
 
-    const status = searchParams.get("status");
-    if (status) query = query.eq("status", status);
+    if (filters.status) query = query.eq("status", filters.status);
 
-    const severity = searchParams.get("severity");
-    if (severity) query = query.eq("severity", severity);
+    if (filters.severity) query = query.eq("severity", filters.severity);
 
-    // Customer/site filters are only honored when the caller is
-    // internal — external users already have their scope applied, and
-    // trusting a customer_id/site_id from the querystring would let a
-    // customer_manager from org A read org B by guessing ids.
-    if (scope.isInternal) {
-      const customer_id = searchParams.get("customer_id");
-      if (customer_id) query = query.eq("customer_id", customer_id);
+    if (filters.customerId) query = query.eq("customer_id", filters.customerId);
+    if (filters.siteId) query = query.eq("site_id", filters.siteId);
 
-      const site_id = searchParams.get("site_id");
-      if (site_id) query = query.eq("site_id", site_id);
-    }
-
-    // Clamp limit to a sane range to prevent someone hammering the
-    // endpoint with limit=1000000.
-    const limit = Math.min(
-      Math.max(parseInt(searchParams.get("limit") || "50", 10) || 50, 1),
-      200
-    );
-    query = query.limit(limit);
+    query = query.limit(filters.limit);
 
     const { data: tickets, error } = await query;
 
     if (error) {
-      console.error("Failed to fetch tickets:", error);
+      console.error("Failed to fetch tickets:", {
+        code: (error as { code?: string }).code,
+      });
       return NextResponse.json(
         { error: "Failed to fetch tickets" },
         { status: 500 }
       );
     }
 
-    // Strip internal-only / PII fields from non-internal callers.
-    // The list endpoint uses select(*) which includes
-    //   secure_token (public ticket URL token — would let a
-    //     customer bookmark another customer's ticket if leaked),
-    //   submitter_email / submitter_phone (PII),
-    //   internal_summary, root_cause_category, follow_up_needed
-    //     (engineer-only).
-    // The single-ticket endpoint at /api/tickets/[id] already
-    // strips these; the list endpoint was missed in the original
-    // fix (commit f59ea68) and the gap was caught by
-    // /tmp/ripple-e2e/22_list_pii.mjs.
-    //
-    // (We strip in code rather than the SELECT so the same code
-    // path works for both internal and non-internal callers — the
-    // internal branch is a no-op.)
+    // The external query already uses an explicit allow-list. Keep this
+    // response shaper as defense in depth against a future projection change.
     const STRIPPED_FIELDS = [
       "secure_token",
       "submitter_email",
@@ -344,15 +398,19 @@ export async function GET(request: NextRequest) {
       "root_cause_category",
       "follow_up_needed",
     ];
+    const ticketRows = (tickets ?? []) as unknown as Record<string, unknown>[];
     const safeTickets = scope.isInternal
       ? tickets
-      : (tickets ?? []).map((t) => {
+      : ticketRows.map((t) => {
           const copy: Record<string, unknown> = { ...t };
           for (const f of STRIPPED_FIELDS) delete copy[f];
           return copy;
         });
 
-    return NextResponse.json({ tickets: safeTickets });
+    return NextResponse.json(
+      { tickets: safeTickets },
+      { headers: { "Cache-Control": "private, no-store" } }
+    );
   } catch (error) {
     console.error("Get tickets error:", error);
     return NextResponse.json(

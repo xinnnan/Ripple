@@ -3,6 +3,9 @@ import { FSO_STATUS_LABELS, FSO_STATUS_COLORS, SERVICE_TYPE_LABELS, FSO_PRIORITY
 import { formatDateOnly } from "@/lib/utils";
 import Link from "next/link";
 import { FieldServiceActions } from "./field-service-actions";
+import { parseUuidRouteId } from "@/lib/request-identifiers";
+import { notFound } from "next/navigation";
+import { assertPageQueriesSucceeded } from "@/lib/server-page-query";
 
 export const dynamic = "force-dynamic";
 
@@ -36,10 +39,11 @@ function getField<T>(val: T | T[] | null): T | null {
 }
 
 export default async function FieldServiceDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;
+  const id = parseUuidRouteId((await params).id);
+  if (!id) notFound();
   const supabase = createAdminClient();
 
-  const { data: order } = await supabase
+  const orderResult = await supabase
     .from("field_service_orders")
     .select(`
       *,
@@ -50,7 +54,9 @@ export default async function FieldServiceDetailPage({ params }: { params: Promi
       engineers:field_service_engineers(role, engineer:users(full_name))
     `)
     .eq("id", id)
-    .single();
+    .maybeSingle();
+  assertPageQueriesSucceeded("admin/field-service-detail", orderResult);
+  const order = orderResult.data;
 
   if (!order) {
     return (

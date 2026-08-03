@@ -63,7 +63,7 @@ describe("migration 034 atomic ticket creation", () => {
 
   it("removes post-insert direct event and provider writes", () => {
     expect(createCore).toContain("await dispatchTicketOutboxBestEffort({");
-    expect(createCore).toContain('"create_ticket_atomic"');
+    expect(createCore).toContain('"create_ticket_idempotent_atomic"');
     expect(createCore).not.toContain('.from("tickets")\n    .insert');
     expect(createCore).not.toContain('.from("ticket_events").insert');
     expect(createCore).not.toContain("client.chat.postMessage");

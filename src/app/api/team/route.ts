@@ -6,6 +6,7 @@ import {
   UserProvisioningError,
   provisionTeamUser,
 } from "@/lib/users/provisioning";
+import { buildTeamSiteAccess } from "@/lib/team/read-model";
 
 export const dynamic = "force-dynamic";
 
@@ -23,38 +24,55 @@ export async function GET() {
 
     const supabase = createAdminClient();
 
-    // Get all users under the same customer
-    const { data: users, error } = await supabase
-      .from("users")
-      .select("id, email, full_name, role, status, phone, created_at")
-      .eq("customer_id", auth.customerId)
-      .order("created_at", { ascending: true });
+    const [usersResult, sitesResult] = await Promise.all([
+      supabase
+        .from("users")
+        .select("id, email, full_name, role, status, phone, created_at")
+        .eq("customer_id", auth.customerId)
+        .order("created_at", { ascending: true }),
+      supabase
+        .from("sites")
+        .select("id, site_name, site_code")
+        .eq("customer_id", auth.customerId)
+        .eq("status", "active")
+        .order("site_name"),
+    ]);
 
-    if (error) {
-      console.error("GET /api/team users query failed:", error);
+    if (usersResult.error || sitesResult.error) {
+      console.error("GET /api/team read model query failed");
       return NextResponse.json({ error: "Failed to fetch team members" }, { status: 500 });
     }
+    const users = usersResult.data || [];
+    const activeSites = sitesResult.data || [];
 
-    // Also get site memberships for each user
-    const userIds = (users || []).map((u: { id: string }) => u.id);
-    const { data: memberships } = await supabase
-      .from("site_members")
-      .select("user_id, site_id, sites(id, site_name, site_code)")
-      .in("user_id", userIds);
-
-    // Attach memberships to users
-    const membershipMap = new Map<string, { site_id: string; site_name: string; site_code: string }[]>();
-    (memberships || []).forEach((m: { user_id: string; sites: unknown }) => {
-      const site = (Array.isArray(m.sites) ? m.sites[0] : m.sites) as { id: string; site_name: string; site_code: string } | null;
-      if (!site) return;
-      const existing = membershipMap.get(m.user_id) || [];
-      existing.push({ site_id: site.id, site_name: site.site_name, site_code: site.site_code });
-      membershipMap.set(m.user_id, existing);
-    });
+    const userIds = users.map((u: { id: string }) => u.id);
+    const membershipsResult =
+      userIds.length > 0
+        ? await supabase
+            .from("site_members")
+            .select("user_id, site_id")
+            .in("user_id", userIds)
+        : { data: [], error: null };
+    if (membershipsResult.error) {
+      console.error("GET /api/team membership query failed");
+      return NextResponse.json(
+        { error: "Failed to fetch team members" },
+        { status: 500 }
+      );
+    }
+    const siteAccess = buildTeamSiteAccess(
+      users,
+      activeSites,
+      membershipsResult.data || []
+    );
 
     const enrichedUsers = (users || []).map((u: { id: string; email: string; full_name: string; role: string; status: string; phone: string; created_at: string }) => ({
       ...u,
-      sites: membershipMap.get(u.id) || [],
+      sites: (siteAccess.get(u.id) || []).map((site) => ({
+        site_id: site.id,
+        site_name: site.site_name,
+        site_code: site.site_code,
+      })),
     }));
 
     return NextResponse.json({ data: enrichedUsers });

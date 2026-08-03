@@ -13,6 +13,10 @@ import {
 } from "@/lib/tickets/outbox";
 import { TICKET_STATUSES } from "@/types/ticket";
 import { z } from "zod";
+import {
+  TICKET_ROOT_CAUSE_MAX_LENGTH,
+  TICKET_SUMMARY_MAX_LENGTH,
+} from "@/lib/tickets/input-contract";
 
 interface RouteContext {
   params: Promise<{ ticketId: string }>;
@@ -22,9 +26,24 @@ const patchTicketSchema = z.object({
   status: z.enum(TICKET_STATUSES).optional(),
   severity: z.enum(["P1", "P2", "P3", "P4"]).optional(),
   owner_id: z.string().uuid().nullable().optional(),
-  customer_visible_summary: z.string().optional(),
-  internal_summary: z.string().optional(),
-  root_cause_category: z.string().optional(),
+  customer_visible_summary: z
+    .string()
+    .trim()
+    .max(TICKET_SUMMARY_MAX_LENGTH)
+    .nullable()
+    .optional(),
+  internal_summary: z
+    .string()
+    .trim()
+    .max(TICKET_SUMMARY_MAX_LENGTH)
+    .nullable()
+    .optional(),
+  root_cause_category: z
+    .string()
+    .trim()
+    .max(TICKET_ROOT_CAUSE_MAX_LENGTH)
+    .nullable()
+    .optional(),
   follow_up_needed: z.boolean().optional(),
   // NOTE: actor_id is intentionally NOT accepted from the body.
   // The route always uses auth.userId for the ticket_events
@@ -33,7 +52,7 @@ const patchTicketSchema = z.object({
   // by passing actor_id=<other_user_id>. The UI used to send
   // currentUserId; that's still the value, it just comes from the
   // JWT now instead of the body.
-}).refine((data) => Object.keys(data).length > 0, {
+}).strict().refine((data) => Object.keys(data).length > 0, {
   message: "At least one ticket field is required",
 });
 
@@ -141,13 +160,22 @@ export async function PATCH(
 
     // Resolve the ticket once so the database command receives the UUID even
     // when the URL uses a human-readable RPL- ticket number.
-    const { data: currentTicket } = await resolveTicketQuery(
+    const { data: currentTicket, error: lookupError } = await resolveTicketQuery(
       supabase.from("tickets").select(
         "id, status, severity, owner_id"
       ),
       ticketId
     ).maybeSingle();
 
+    if (lookupError) {
+      console.error("PATCH /api/tickets/[ticketId] lookup failed:", {
+        code: lookupError.code,
+      });
+      return NextResponse.json(
+        { error: "Failed to load ticket" },
+        { status: 500 }
+      );
+    }
     if (!currentTicket) {
       return NextResponse.json({ error: "Ticket not found" }, { status: 404 });
     }
@@ -177,6 +205,12 @@ export async function PATCH(
       source: "web",
     });
 
+    // The command also persisted its outbox work. Attempt responsive delivery
+    // before presentation hydration so a degraded read cannot skip fast drain.
+    await dispatchTicketOutboxBestEffort({
+      aggregateId: currentTicket.id,
+    });
+
     const { data: ticket, error } = await supabase
       .from("tickets")
       .select(
@@ -191,18 +225,27 @@ export async function PATCH(
       .single();
 
     if (error) {
-      console.error("Failed to update ticket:", error);
-      return NextResponse.json({ error: "Failed to update ticket" }, { status: 500 });
+      // The atomic mutation has committed. A follow-up read failure must not
+      // invite the caller to replay a completed status/commentary change.
+      console.error("PATCH /api/tickets/[ticketId] hydration failed:", {
+        code: error.code,
+      });
+      return NextResponse.json(
+        {
+          ticket: { id: currentTicket.id },
+          warning: "Ticket updated; detail refresh is temporarily unavailable",
+        },
+        {
+          status: 200,
+          headers: { "Cache-Control": "private, no-store" },
+        }
+      );
     }
 
-    // Migration 033 enqueued delivery work in the same transaction as the
-    // ticket mutation. Try it immediately for responsive UI, while leaving
-    // any failure durable for the scheduled lease-based worker.
-    await dispatchTicketOutboxBestEffort({
-      aggregateId: currentTicket.id,
-    });
-
-    return NextResponse.json({ ticket });
+    return NextResponse.json(
+      { ticket },
+      { headers: { "Cache-Control": "private, no-store" } }
+    );
   } catch (error) {
     if (error instanceof InvalidTicketTransitionError) {
       return NextResponse.json({ error: error.message }, { status: 409 });
@@ -213,7 +256,9 @@ export async function PATCH(
         { status: 400 }
       );
     }
-    console.error("Update ticket error:", error);
+    console.error("PATCH /api/tickets/[ticketId] failed:", {
+      name: error instanceof Error ? error.name : "UnknownError",
+    });
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

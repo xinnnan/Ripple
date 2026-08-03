@@ -1,10 +1,20 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import Image from "next/image";
+import Link from "next/link";
 import type { UserRole } from "@/types/ticket";
 import { ROLE_LABELS } from "@/lib/roles";
+import {
+  isUnauthenticatedAuthError,
+  logIdentityReadFailure,
+} from "@/lib/supabase/auth-read";
+import {
+  normalizeSelfServiceProfile,
+  PASSWORD_UPDATE_ERROR_MESSAGE,
+  PROFILE_UPDATE_ERROR_MESSAGE,
+} from "@/lib/profile/self-service";
 
 interface UserProfile {
   id: string;
@@ -17,9 +27,10 @@ interface UserProfile {
 }
 
 export default function ProfilePage() {
-  const supabase = createClient();
+  const [supabase] = useState(() => createClient());
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState(false);
   const [fullName, setFullName] = useState("");
@@ -38,49 +49,92 @@ export default function ProfilePage() {
     text: string;
   } | null>(null);
 
-  useEffect(() => {
-    loadProfile();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const loadProfile = useCallback(async () => {
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const authResult = await supabase.auth.getUser();
+      const user = authResult.data.user;
+      if (authResult.error && !isUnauthenticatedAuthError(authResult.error)) {
+        logIdentityReadFailure("profile-page/auth", authResult.error);
+        setLoadError("Account data is temporarily unavailable. Please retry.");
+        return;
+      }
+      if (!user) {
+        setLoadError("Your session has ended. Please sign in again.");
+        return;
+      }
 
-  async function loadProfile() {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) return;
+      const profileResult = await supabase
+        .from("users")
+        .select("id, email, full_name, role, phone, avatar_url, status")
+        .eq("id", user.id)
+        .maybeSingle();
+      if (profileResult.error) {
+        logIdentityReadFailure("profile-page/profile", profileResult.error);
+        setLoadError("Account data is temporarily unavailable. Please retry.");
+        return;
+      }
+      if (!profileResult.data || profileResult.data.status !== "active") {
+        setLoadError("This account is not available.");
+        return;
+      }
 
-    const { data } = await supabase
-      .from("users")
-      .select("id, email, full_name, role, phone, avatar_url, status")
-      .eq("id", user.id)
-      .single();
-
-    if (data) {
-      setProfile(data as UserProfile);
+      const data = profileResult.data as UserProfile;
+      setProfile(data);
       setFullName(data.full_name || "");
       setPhone(data.phone || "");
+    } catch (error) {
+      logIdentityReadFailure("profile-page/unexpected", error);
+      setLoadError("Account data is temporarily unavailable. Please retry.");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
-  }
+  }, [supabase]);
+
+  useEffect(() => {
+    void loadProfile();
+  }, [loadProfile]);
 
   async function handleSave() {
     if (!profile) return;
+    const normalized = normalizeSelfServiceProfile({ fullName, phone });
+    if (!normalized.success) {
+      setMessage({ type: "error", text: normalized.error });
+      return;
+    }
     setSaving(true);
     setMessage(null);
 
-    const { error } = await supabase
-      .from("users")
-      .update({ full_name: fullName, phone })
-      .eq("id", profile.id);
+    try {
+      const { error } = await supabase
+        .from("users")
+        .update({
+          full_name: normalized.data.fullName,
+          phone: normalized.data.phone,
+        })
+        .eq("id", profile.id);
 
-    if (error) {
-      setMessage({ type: "error", text: error.message });
-    } else {
-      setProfile({ ...profile, full_name: fullName, phone });
+      if (error) {
+        logIdentityReadFailure("profile-page/update", error);
+        setMessage({ type: "error", text: PROFILE_UPDATE_ERROR_MESSAGE });
+        return;
+      }
+      setProfile({
+        ...profile,
+        full_name: normalized.data.fullName,
+        phone: normalized.data.phone,
+      });
+      setFullName(normalized.data.fullName);
+      setPhone(normalized.data.phone || "");
       setEditing(false);
       setMessage({ type: "success", text: "Profile updated successfully" });
+    } catch (error) {
+      logIdentityReadFailure("profile-page/update-unexpected", error);
+      setMessage({ type: "error", text: PROFILE_UPDATE_ERROR_MESSAGE });
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
   }
 
   async function handleChangePassword() {
@@ -104,21 +158,34 @@ export default function ProfilePage() {
 
     setChangingPassword(true);
 
-    const { error } = await supabase.auth.updateUser({
-      password: newPassword,
-    });
+    try {
+      const { error } = await supabase.auth.updateUser({
+        password: newPassword,
+      });
 
-    if (error) {
-      setPasswordMessage({ type: "error", text: error.message });
-    } else {
+      if (error) {
+        logIdentityReadFailure("profile-page/password", error);
+        setPasswordMessage({
+          type: "error",
+          text: PASSWORD_UPDATE_ERROR_MESSAGE,
+        });
+        return;
+      }
       setPasswordMessage({
         type: "success",
         text: "Password updated successfully",
       });
       setNewPassword("");
       setConfirmPassword("");
+    } catch (error) {
+      logIdentityReadFailure("profile-page/password-unexpected", error);
+      setPasswordMessage({
+        type: "error",
+        text: PASSWORD_UPDATE_ERROR_MESSAGE,
+      });
+    } finally {
+      setChangingPassword(false);
     }
-    setChangingPassword(false);
   }
 
   if (loading) {
@@ -132,18 +199,38 @@ export default function ProfilePage() {
     );
   }
 
-  if (!profile) {
+  if (!profile || loadError) {
     return (
-      <div className="p-8">
-        <p className="text-muted-foreground">
-          Unable to load profile. Please try again.
-        </p>
+      <div className="p-5 sm:p-8">
+        <div className="max-w-xl rounded-xl border border-red-200 bg-red-50 p-5">
+          <h1 className="text-lg font-semibold text-red-900">
+            Unable to load profile
+          </h1>
+          <p className="mt-2 text-sm text-red-800">
+            {loadError || "Account data is temporarily unavailable."}
+          </p>
+          <div className="mt-4 flex flex-wrap gap-3">
+            <button
+              type="button"
+              onClick={() => void loadProfile()}
+              className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+            >
+              Try again
+            </button>
+            <Link
+              href="/login"
+              className="rounded-lg border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-900 hover:bg-red-100"
+            >
+              Sign in
+            </Link>
+          </div>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="p-8">
+    <div className="p-5 sm:p-8">
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-foreground">Profile</h1>
         <p className="text-sm text-muted-foreground mt-1">
@@ -222,22 +309,28 @@ export default function ProfilePage() {
             {editing ? (
               <>
                 <div>
-                  <label className="block text-sm font-medium text-foreground mb-1">
+                  <label htmlFor="profile-full-name" className="block text-sm font-medium text-foreground mb-1">
                     Full Name
                   </label>
                   <input
+                    id="profile-full-name"
                     type="text"
+                    autoComplete="name"
+                    maxLength={200}
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
                     className="w-full rounded-lg border border-border px-3 py-2 text-sm text-foreground bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-foreground mb-1">
+                  <label htmlFor="profile-phone" className="block text-sm font-medium text-foreground mb-1">
                     Phone
                   </label>
                   <input
+                    id="profile-phone"
                     type="tel"
+                    autoComplete="tel"
+                    maxLength={50}
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
                     placeholder="+1 (555) 000-0000"
@@ -315,28 +408,32 @@ export default function ProfilePage() {
 
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1">
+              <label htmlFor="profile-new-password" className="block text-sm font-medium text-foreground mb-1">
                 New Password
               </label>
               <input
-                    type="password"
-                    autoComplete="new-password"
-                    minLength={12}
-                    value={newPassword}
+                id="profile-new-password"
+                type="password"
+                autoComplete="new-password"
+                minLength={12}
+                maxLength={1024}
+                value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
-                placeholder="At least 6 characters"
+                placeholder="At least 12 characters"
                 className="w-full rounded-lg border border-border px-3 py-2 text-sm text-foreground bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1">
+              <label htmlFor="profile-confirm-password" className="block text-sm font-medium text-foreground mb-1">
                 Confirm New Password
               </label>
               <input
-                    type="password"
-                    autoComplete="new-password"
-                    minLength={12}
-                    value={confirmPassword}
+                id="profile-confirm-password"
+                type="password"
+                autoComplete="new-password"
+                minLength={12}
+                maxLength={1024}
+                value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 placeholder="Repeat new password"
                 className="w-full rounded-lg border border-border px-3 py-2 text-sm text-foreground bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"

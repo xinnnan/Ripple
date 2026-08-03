@@ -105,7 +105,7 @@ Vercel.
 │   │   ├── ticket.ts                    # ⭐ All domain enums + labels
 │   │   └── spare-parts.ts               # ⭐ Spare parts + field service enums
 │   └── middleware.ts                    # ⭐ Route guard + session refresh
-├── supabase/migrations/                 # 001–046, apply in order
+├── supabase/migrations/                 # 001–047, apply in order
 ├── plans/                               # Architecture + phase planning docs
 │   ├── architecture.md
 │   ├── phase2-customer-auth-and-user-management.md
@@ -124,7 +124,7 @@ Vercel.
 - Ticket detail UI → `src/app/(auth)/tickets/[ticketId]/page.tsx` (server) + `ticket-actions-panel.tsx` (client)
 - Slack ticket creation → `src/app/api/slack/command/ticket/route.ts` + `src/lib/slack/blocks/ticket-form.ts`
 - AI assist → `src/app/api/ai/suggest/route.ts` + `src/lib/ai/suggest.ts`
-- DB schema → `supabase/migrations/001_*.sql` … `046_durable_public_rate_limits.sql`
+- DB schema → `supabase/migrations/001_*.sql` … `047_idempotent_ticket_creation.sql`
 
 ---
 
@@ -162,8 +162,8 @@ const isInternal = role ? INTERNAL_ROLES.includes(role) : email ? isInternalEmai
 
 ## 5. Database Schema (Supabase)
 
-46 migrations, to be applied in order. Migrations 001–046 are confirmed
-applied as of 2026-08-02. Key tables:
+47 migrations, to be applied in order. Migrations 001–046 are confirmed
+applied as of 2026-08-02; migration 047 awaits application. Key tables:
 
 | Table | Purpose | Notes |
 |---|---|---|
@@ -172,6 +172,7 @@ applied as of 2026-08-02. Key tables:
 | `users` | All users (internal + external) | `role` (4 values, see §4), `customer_id`, `slack_user_id`; migration 038 makes same-family admin PATCH/deactivation serialized and transactionally audited. Migration 039 stops trusting signup role metadata and adds atomic admin/team provisioning finalizers |
 | `site_members` | User ↔ Site (M:N) | Customers join via this; customer_manager bypasses. Migration 035 adds tenant-contained, transactionally audited admin add/remove commands. Migration 045 removes the legacy direct authenticated write path; its 110-assertion live matrix is green |
 | `tickets` | Core ticket entity | `ticket_no` (RPL-XXXXXX), `secure_token` (32-byte hex), `severity` (P1–P4), 8-state `status`, response/resolution due/achieved/breached timestamps; migration 027 column-limits direct authenticated SELECT |
+| `ticket_creation_requests` | Service-only ticket-create replay ledger | Migration 047 serializes source/request keys, returns the first durable receipt for exact retries, and rejects altered reuse; awaits application |
 | `ticket_comments` | Discussion, `visibility: customer\|internal` | `is_automated`; only human internal-authored customer-visible messages satisfy First Response |
 | `ticket_attachments` | File refs (storage_path) | Bucket `ripple-attachments`, 50MB cap; direct authenticated bucket access is removed by migration 027 and app routes mediate objects. Migration 044 adds bounded metadata/path constraints and atomic metadata plus timeline creation; its 130-assertion live matrix is green |
 | `ticket_events` | Audit log | `actor_id`, `event_type`, `old_value`/`new_value` |
@@ -260,8 +261,10 @@ if ("error" in auth) return NextResponse.json({ error: auth.error }, { status: a
 - All `TIMESTAMPTZ` in DB; never store local time
 - Each `sites` row has its own `timezone` field (select via `COMMON_TIMEZONES` in `src/lib/utils.ts:37`)
 - `formatDate()` in `src/lib/utils.ts:20` accepts an optional timezone arg
-- **Ticket detail page uses `site.timezone`** for display (`src/app/(auth)/tickets/[ticketId]/page.tsx:58`)
-- **TODO:** the dashboard uses the server's local timezone, not the user's — needs fixing
+- Ticket detail, dashboard recent rows, and Slack master cards use the ticket's
+  validated `site.timezone`; missing/invalid legacy values fall back to UTC
+- Never append a fixed `ET`/zone label or derive operational display time from
+  the deployment host
 
 ### Error handling
 - API: return `{ error: "..." }` with appropriate status; Zod errors include `details: error.errors`
@@ -283,7 +286,7 @@ if ("error" in auth) return NextResponse.json({ error: auth.error }, { status: a
 npm install
 cp .env.local.example .env.local   # fill in real values
 # Run migrations in Supabase SQL editor (or `supabase db push` if using CLI):
-#   001 → 046 in order
+#   001 → 047 in order
 # Enable pgvector: CREATE EXTENSION IF NOT EXISTS vector;
 npm run dev
 ```
@@ -293,7 +296,7 @@ npm run dev
 - `npm run build` — production build
 - `npm run start` — production server
 - `npm run lint` — direct ESLint CLI across the repository; warnings fail the gate
-- `npm test` — Vitest unit/contract suite (457 tests)
+- `npm test` — Vitest unit/contract suite (944 tests)
 - `npm run test:e2e` — 40-check production HTTP smoke plus optional credentialed Playwright/API/RLS matrix; requires a successful build
 - `npm run test:e2e:credentialed` — real six-account/two-tenant matrix; set `RIPPLE_E2E_FIXTURES_FILE`
 - `npm run test:e2e:install-browser` — install the pinned Chromium runtime
@@ -401,6 +404,29 @@ Tailwind v4 uses `@theme` in CSS instead of `tailwind.config.ts`. Color tokens (
 - `customer_manager` sees **all** sites/tickets under their `customer_id` (org-wide)
 - `customer` only sees their own `site_members` rows
 - The Create Ticket modal (`src/app/(auth)/tickets/create-ticket-modal.tsx:48`) branches on this — 3 different site-loading paths. Keep that branching centralized if adding a new role.
+
+Retained memberships are historical evidence, not current manager scope.
+Customer-facing list/read models must first constrain sites to the active
+tenant lifecycle, then apply role semantics: managers inherit every active
+organization site; customers receive only active assigned sites. This matters
+especially for `createAdminClient()` queries because the service role bypasses
+both RLS and lifecycle policies. The canonical audited implementation is
+`src/lib/team/read-model.ts` (commit `67ce908`).
+
+### Conditional rendering is not a server-component data boundary
+
+Found 2026-08-03 in authenticated ticket detail. The page hid
+`internal_summary` for customer roles but passed the real value, along with an
+assigned engineer UUID, into a client component whose own JSX later decided
+not to display internal controls. Client-component props are serialized in the
+React server payload, so the hidden values still crossed the browser boundary.
+
+**Lesson:** service-role reads for customer-capable pages need role-specific
+query-time projections, and client props must independently contain sensitive
+values. Commit `d276ede` centralizes audited customer projections for ticket,
+comment, attachment, and site reads; future service-role customer paths should
+extend `src/lib/resource-projections.ts` instead of fetching `*` and hiding
+fields after retrieval.
 
 ### Audit-driven fixes work
 The `plans/e2e-audit-and-test-plan.md` from 2026-05-23 was the most productive doc — surfaced 12 issues (2 critical, 5 medium, 4 low) and we shipped 7 fixes in commit `a62c043`. **Run a similar audit before any major phase** (Phase 4, etc.).
@@ -1029,6 +1055,68 @@ protected routes, meter public callers before parsing, return a generic stable
 400 without echoing parser details, and never let malformed bodies bypass the
 same abuse controls as valid requests.
 
+### Operational timestamps belong to their resource, not the server host
+Found 2026-08-03 while closing the dashboard timezone gap. Dashboard recent
+tickets did not select `sites.timezone`, so `formatDate()` inherited the
+deployment host timezone. The regular-customer total also reused a ten-row
+recent list, and live Supabase many-to-one relations arrived as objects while
+the page assumed arrays, producing `Unknown` labels.
+
+Commit `0cf4aac` makes unspecified timestamp rendering deterministically UTC,
+selects and validates each ticket site's IANA timezone for dashboard display,
+normalizes object/array relation shapes, and computes total tickets with an
+independent exact count. Signed-in browser QA at 1280×720 and 390×844 verified
+real relationship labels, site-local timestamps, Inter, responsive fit, and
+zero browser warnings/errors.
+
+Commit `b253558` extends that same contract to Slack. Initial card delivery,
+outbox retries, and action refresh hydration now select `sites.timezone`; the
+Block Kit builder normalizes customer/site/owner relation shapes before using
+the shared resolver and no longer appends a fixed `ET`. Protected ticket detail
+also uses the validated resolver instead of a New York fallback.
+
+**Lesson:** an operational instant needs an explicit display-timezone owner.
+Use the resource/site timezone when the event belongs to a site, validate
+legacy timezone strings with a stable UTC fallback, never infer business time
+from a server host, and never derive totals from a presentation-limited list.
+Normalize Supabase relationship shapes at one boundary before rendering.
+
+### Email safety is context-specific
+Found 2026-08-03 while auditing the Resend confirmation and resolution
+templates. Several prose fields were HTML-escaped, but `ticketNo` remained a
+raw HTML interpolation, the tracking URL was assembled by string
+concatenation, and subject values retained CR/LF and other control characters.
+
+Commit `92a3d87` separates pure rendering from provider delivery. Dynamic body
+values use HTML-text escaping, ticket identifiers and secure tokens are encoded
+as URL path/query components before the complete HTTP(S) URL is escaped for an
+HTML attribute, and subject fragments strip ASCII controls and normalize
+whitespace. Adversarial contracts verify markup, style, quote, URL-reserved,
+and full control-range payloads without sending external email.
+
+**Lesson:** escaping is not one universal transformation. Classify every
+interpolation as HTML text, URL component, HTML attribute, or provider header;
+encode from the inside out, test hostile values at each boundary, and keep the
+renderer pure so safety can be verified without external side effects.
+
+### Optional integrations need disabled, ready, and invalid states
+Found 2026-08-03 after email-rendering hardening. Readiness ignored Resend, and
+delivery defaulted an absent production `NEXT_PUBLIC_APP_URL` to localhost.
+Treating “not configured” and “configured incorrectly” as the same optional
+state would let a broken deployment accept work and accumulate retries with
+unusable customer links.
+
+Commit `a991bbd` introduces three email readiness states. Missing Resend
+credentials intentionally disable email without failing the service; once a
+key is present, its shape, the plain sender address, and a public HTTPS
+production origin must pass. The same guards run at delivery time, where bad
+configuration becomes a contained `send_failed` result before provider I/O.
+
+**Lesson:** optional means absence may be healthy, not that malformed enabled
+configuration is healthy. Model explicit disabled/ready/not-ready states, keep
+readiness output secret-free, validate both at the health boundary and the
+execution boundary, and allow localhost fallbacks only in non-production.
+
 ### Supabase SSR auth cookies belong on the response you return
 Found 2026-07-29 while adding password recovery. The authorization-code
 callback created a redirect inside the Supabase `setAll` callback, attached
@@ -1062,6 +1150,193 @@ attachment outcomes are awaited and shown.
 Measure document `scrollWidth`, inspect both desktop and mobile, and keep wide
 data tables in a deliberate local scroller. Temporary test identities must be
 scoped, read-only in use, and verified deleted.
+
+### CSV exports are an active-content boundary
+Found 2026-08-03 while checking reporting behavior against the ticket-list UI.
+Customer-controlled title/description values could become spreadsheet formulas,
+carriage returns were not quoted, Supabase relationship shape was assumed, and
+the export handler silently ignored several filters emitted by its own UI.
+
+Commit `bef2323` adds a pure spreadsheet-safe encoder, object/array relation
+normalization, and one strict canonical export-filter parser with guarded
+legacy aliases. The handler now applies the UI's complete role-aware contract,
+rejects grammar-sensitive search input before PostgREST construction, hides
+database detail, and returns a private/no-store UTF-8 BOM/CRLF response.
+
+**Lesson:** CSV is not inert text once opened in a spreadsheet. Neutralize
+formula-like cells even after leading whitespace/control characters, quote CR
+as well as LF, and test hostile cell values. Treat the UI and handler filter
+contract as one API: validate it centrally, reject ambiguous aliases, and do
+not silently turn malformed filters into broader exports.
+
+### Read filters are part of the authorization boundary
+Found 2026-08-03 while following CSV filter parity back into authenticated
+ticket lists. The page cast arbitrary enums/identifiers and interpolated search
+content into a PostgREST `or` expression; the ticket API accepted permissive
+numeric input and still fetched `tickets.*` for customers before redaction.
+
+Commit `38f8b5e` adds strict page/API parsers, a shared guarded search builder,
+and an explicit external ticket-list projection. Invalid page filters stop
+before service-role client construction, show zero rows with a clear action,
+and disable export; out-of-scope API filters return 403 before query creation.
+
+**Lesson:** a malformed read filter must not become a broader read. Validate
+known keys, duplicate singleton parameters, enum/UUID shape, pagination bounds,
+and query-language grammar before a privileged client is created. Authorize
+resource filters independently of base scope, select customer-safe columns at
+query time, and mark authenticated list responses private/no-store.
+
+### Browser identity enrichment must not silently become guest behavior
+Found 2026-08-03 while auditing the shared browser scope and two ticket-entry
+surfaces. Authentication, profile, and site-query errors were converted into
+empty site lists; public intake caught every signed-in enrichment failure and
+continued with the guest contract. The profile page could also remain on its
+spinner or expose raw provider messages.
+
+Commit `10a1547` applies the shared rejected-session versus availability
+classifier to browser reads, adds settled retry states, bounds self-service
+profile data, and prevents both ticket forms from submitting without current
+site prerequisites. The public route retains a stable server-rendered heading
+during account detection.
+
+**Lesson:** optional identity enrichment is still an authorization boundary.
+Only a proven missing/rejected session may use guest behavior; provider or
+profile-query failure must remain visible and fail closed. Keep loading,
+unavailable, inactive, legitimate-empty, and guest states distinct, and retain
+a stable SSR route contract while hydration resolves the final state.
+
+### Password change and session cleanup are separate outcomes
+Found 2026-08-03 while following browser identity handling through sign-in and
+recovery. Client auth promises could reject outside any catch/finally, recovery
+verification treated provider outages as expired links, and password recovery
+redirected to normal success even when global sign-out failed.
+
+Commit `e887eec` adds stable browser auth error contracts and a tested cleanup
+helper that attempts global revocation, then local-device cleanup. Recovery
+verification has distinct rejected and unavailable states. A changed password
+with failed cleanup no longer returns to the update form or claims ordinary
+success; the UI provides explicit sign-out/support recovery instead.
+
+**Lesson:** credential mutation and session invalidation are distinct security
+facts. Record whether the password changed before handling cleanup, never ask a
+user to repeat a successful credential mutation, and distinguish global
+revocation, local-only cleanup, and total cleanup failure. Every auth promise
+must settle loading in `finally`, while UI errors remain independent of raw
+provider messages.
+
+### React transition pending does not cover the preceding HTTP mutation
+Found 2026-08-03 in bulk archive/deactivation actions. The components disabled
+their controls with `useTransition().pending`, but called `startTransition`
+only after `fetch` succeeded. The entire mutation window therefore remained
+interactive and could issue duplicate lifecycle commands. A separate status
+action silently ignored non-2xx responses.
+
+Commit `76091a3` tracks request settlement separately, combines it with refresh
+transition state, disables selection and confirmation for the complete window,
+and guards JSON/network failures. Failed batch selections remain intact for an
+exact retry; successful and partial outcomes stay distinct.
+
+**Lesson:** UI concurrency state must begin before the side effect it protects.
+Treat request, response parsing, local reconciliation, and refresh as one busy
+window. Preserve the exact operator selection on total failure, type-check error
+bodies, and never let a rejected domain transition look like a successful no-op.
+
+### Browser mutation errors need an explicit trust boundary
+Found 2026-08-03 in admin-user and customer-team create/edit forms. Each form
+parsed every failed response as JSON, then displayed `Error.message` for both
+expected API validation and unexpected network/runtime failures. Non-JSON
+gateway responses could break parsing, while provider detail could reach the
+operator UI. Inputs also remained editable during requests, and inactive team
+records could still be submitted programmatically.
+
+Commit `ec9cd65` adds one client mutation response helper that accepts only a
+bounded string `error` from a non-2xx JSON response and maps every other failure
+to a stable contextual fallback. Identity forms now trim bounded fields, lock
+the complete mutation surface, guard duplicate submits, expose accessible
+status/alert state, group site choices semantically, and keep inactive records
+read-only.
+
+**Lesson:** treat returned domain errors and thrown runtime errors as different
+classes. Only expose a bounded, deliberately shaped API message; contain all
+other exception detail. A disabled submit button is not a complete concurrency
+or authorization guard—also guard the handler and every mutable control.
+
+### Operational transitions need structured, recoverable UI
+Found 2026-08-03 in field-service completion/cancellation and Slack channel
+linking. Completion used sequential browser prompts, cancellation and unlinking
+were immediate, and the pages cleared request state before route
+refresh/navigation settled. Slack channel discovery also returned only one page
+and logged raw provider failures.
+
+Commit `7ff594d` replaces prompts with a labeled, bounded completion form and
+adds explicit cancellation/unlink confirmation. Request and navigation/refresh
+transitions share one busy window, failures use the client mutation boundary,
+and success/error states are accessible. Slack discovery now validates
+configuration, paginates with a hard cap, deduplicates/sorts results, declares
+truncation, disables caching, and logs only provider codes.
+
+**Lesson:** operational state changes should be reviewable before submission
+and retryable after failure. Native prompts cannot provide field guidance,
+length limits, preserved context, or accessible grouped errors. Keep controls
+locked until both the mutation and its resulting navigation/refresh settle.
+
+### Dynamic request rows must never disappear during normalization
+Found 2026-08-03 in spare-part request creation. The form filtered submitted
+rows to those with a selected part and positive quantity, so an incomplete row
+could be silently omitted while the remaining request committed. Numeric inputs
+also coerced blank/invalid edits immediately, a catalog price of zero became
+`null`, duplicate parts were deferred to a generic server rejection, and row
+indexes were React keys.
+
+Commit `a3ed0dd` gives every row a stable client identity, validates every row
+in place, rejects duplicates before I/O, preserves editable numeric strings,
+and distinguishes zero from an unknown price. Browser quantity, price, item,
+and note limits now match the server contract. The paired field-service form
+also normalizes/bounds text and hours, validates date order, caps assignment at
+20 engineers, and locks through navigation.
+
+**Lesson:** collection-form normalization must be total: every visible row
+either becomes exactly one submitted row or blocks submission with a precise
+error. Never `filter()` invalid user work out of a business command, never use
+array indexes as keys for removable rows, and do not use truthiness where zero
+is a valid domain value.
+
+### A committed command must not look failed because response hydration failed
+Found 2026-08-03 in site creation. The atomic database command could commit a
+new site and audit evidence, then a separate detail lookup could fail. Returning
+500 for that lookup told clients the mutation failed and made a retry capable
+of creating a duplicate or producing a misleading uniqueness conflict.
+
+Commit `e15dea6` preserves committed site-create success with a private/no-store
+201, returns the durable ID plus a bounded refresh warning, and limits hydration
+diagnostics to an error code. Commit `6075296` applies the same rule to ticket
+PATCH and comment creation, triggers the ticket outbox fast drain immediately
+after commit, and keeps ticket forms/actions locked through refresh settlement.
+
+**Lesson:** once an atomic business command commits, later presentation
+hydration is not allowed to reverse its HTTP success semantics. Return the
+durable identity, disclose that detail refresh is degraded, and let clients
+reconcile without replaying the write.
+
+### Atomic creation still needs a caller-stable replay key
+Found 2026-08-03 in web and Slack ticket creation. Migration 034 committed the
+ticket, timeline, audit, and outbox atomically, but an HTTP disconnect or Slack
+retry after commit could invoke that correct command twice. The browser also
+generated no stable attempt identity, while Slack already supplied a stable
+signed modal view ID.
+
+Commit `dc5f588` adds migration 047's service-only request ledger and
+transaction-scoped source/key serialization. Exact retries return the original
+ticket ID, number, and secure token; reuse with changed business input fails.
+Web forms retain a key only while normalized input is unchanged, Slack derives
+one from the submitted view ID, legacy API callers receive a generated/echoed
+key, and `createTicketCore()` no longer needs a post-commit ticket hydration
+query.
+
+**Lesson:** transaction atomicity prevents partial state, not duplicate
+commands. Every externally retryable create path needs a stable caller attempt
+key, exact-input collision detection, concurrent serialization, and a durable
+receipt returned by the committing transaction.
 
 ---
 
@@ -1163,14 +1438,116 @@ resume work; this section remains the broader historical summary.
   boundaries with customer-safe projections, then normalized malformed-JSON
   handling across the remaining four direct parsers while preserving auth and
   public-rate-limit ordering, with 457 unit/contract tests plus a
-  zero-vulnerability dependency baseline.
+  zero-vulnerability dependency baseline; then made dashboard time/count
+  rendering deterministic and updated the `brace-expansion` override to
+  patched 5.0.9, bringing the suite to 465 tests; then removed the remaining
+  Slack/ticket-detail Eastern-Time assumption, bringing the suite to 469
+  tests; then made transactional email HTML, links, and provider subjects
+  context-safe, bringing the suite to 472 tests; then added conditional email
+  readiness and execution-time configuration guards, bringing the suite to
+  509 tests; then aligned customer-manager presentation with organization-wide
+  active-site inheritance while filtering retained archived memberships,
+  bringing the suite to 517 tests; then contained authenticated customer
+  ticket/comment/site queries and React client payloads with explicit
+  allow-lists, bringing the suite to 529 tests; then moved customer
+  spare-part and field-service list/detail reads to query-time allow-lists
+  while retaining response shaping, bringing the suite to 533 tests; then
+  hardened ticket CSV export against spreadsheet formulas, relation-shape
+  drift, filter-contract mismatch, PostgREST grammar hazards, and database
+  detail leakage, bringing the suite to 561 tests; then strictly contained
+  authenticated ticket page/API filters and removed customer `tickets.*`
+  hydration, bringing the suite to 611 tests; then made customer-capable
+  spare-part, field-service, and site list filters strict and scope-aware with
+  private/no-store delivery, bringing the suite to 637 tests; then replaced
+  permissive admin audit/inventory/membership/catalog list parsing and raw
+  membership database errors with strict private contracts, bringing the
+  suite to 675 tests; then rejected malformed resource route UUIDs before
+  customer-capable detail queries and privileged mutation commands, with
+  private detail delivery and code-only database logging, bringing the suite
+  to 690 tests; then contained the server-rendered audit page's exact filters,
+  projection, pagination, and failure state, bringing the suite to 702 tests;
+  then rejected malformed UUIDs across eight authenticated admin/team detail
+  pages before service-role construction, bringing the suite to 710 tests; then
+  distinguished missing detail records from failed primary/related reads with
+  code-only recovery errors, bringing the suite to 720 tests; then constrained
+  three admin detail-page tab parameters to their declared render branches,
+  bringing the suite to 727 tests; then made the admin inventory page's site
+  prefilter exact and non-broadening, bringing the suite to 738 tests; then
+  surfaced database/profile failures across the remaining eight admin list
+  pages, removed a redundant site read, and constrained catalog hydration,
+  bringing the suite to 752 tests; then aligned part-request and field-service
+  creation options with transactional lifecycle/assignee rules and disabled
+  forms with missing prerequisites, bringing the suite to 758 tests; then made
+  customer sites/team reads failure-aware and derived current customer access
+  from retained memberships plus active tenant/site hydration, bringing the
+  suite to 769 tests; then made all dashboard reads failure-aware, lifecycle-
+  scoped external sites, and short-circuited empty scopes, bringing the suite
+  to 780 tests; then contained ticket list/detail read failures, removed
+  remaining ticket-child wildcard hydration, and reduced external linked-
+  resource projections to UI-minimum fields, bringing the suite to 793 tests;
+  then distinguished normal rejected sessions, inactive identities, and true
+  provider/database failures across API auth helpers, tenant scope, and the
+  authenticated shell, bringing the suite to 823 tests; then made browser
+  identity/site reads failure-aware, bounded profile self-service, and disabled
+  ticket entry when signed-in site prerequisites are unavailable, bringing the
+  suite to 845 tests; then hardened sign-in, recovery, callback, password-change,
+  and sign-out settlement with explicit partial session-cleanup outcomes,
+  bringing the suite to 860 tests; then closed duplicate-submit and silent-
+  failure windows in bulk lifecycle and spare-part status actions, bringing the
+  suite to 866 tests; then centralized bounded client mutation errors and
+  hardened admin/team identity create/edit form settlement, bringing the suite
+  to 886 tests; then replaced prompt/immediate service transitions with
+  structured confirmation and hardened Slack channel discovery/linking,
+  bringing the suite to 899 tests; then aligned field-service and spare-part
+  request creation with their server contracts and total row normalization,
+  bringing the suite to 906 tests; then aligned customer/site create/edit forms
+  with canonical identifiers, lifecycle/ownership rules, bounded error
+  handling, and complete refresh locking while preserving committed site-create
+  success through hydration failure, bringing the suite to 915 tests; then
+  aligned public/authenticated ticket creation and detail actions with strict
+  bounded contracts, complete mutation locking, safe response handling, and
+  committed-success hydration semantics, bringing the suite to 930 tests; then
+  made web and Slack ticket creation replay-safe with source/key serialization,
+  exact-input collision rejection, and transaction-returned durable receipts,
+  bringing the suite to 944 tests.
 
 ### Known issues / open work
 | Priority | Item | Where | Notes |
 |---|---|---|---|
 | 🟡 Med | MiniMax AI key invalid (`401 invalid api key (2049)`). | `.env` `MINIMAX_API_KEY` | Mock fallback is in place; real AI works once key is fixed. Provider URL `https://api.minimax.chat/v1/` resolves and returns proper error responses, so the gateway is real — just the key is wrong. |
 | 🟡 Med | Resend sender domain `dropletai.services` not verified | `src/lib/email/send.ts` | Email send returns `send_failed` until domain is verified at resend.com/domains. Ticket creation still works. |
-| 🟡 Med | Dashboard timezone hardcoded to `America/New_York` for some widgets | `src/app/(auth)/dashboard/page.tsx` | Should derive from user or first site; ticket detail already uses `site.timezone` |
+| ✅ Closed | Unsafe enabled email configuration | `src/lib/config/readiness.ts`, `src/lib/config/public-app-url.ts`, `src/lib/email/config.ts` | Commit `a991bbd` distinguishes disabled/ready/not-ready email, requires safe provider/sender/public-origin configuration, and enforces it before provider I/O |
+| ✅ Closed | Transactional email interpolation safety | `src/lib/email/send.ts` | Commit `92a3d87` escapes all dynamic HTML fields, encodes link components, rejects non-HTTP(S) origins, and strips subject control characters with adversarial contracts |
+| ✅ Closed | Dashboard timezone, relation shape, and capped total | `src/app/(auth)/dashboard/page.tsx`, `src/lib/utils.ts` | Commit `0cf4aac` uses each ticket site's validated timezone with UTC fallback, normalizes relation objects/arrays, and counts all customer tickets independently of the recent list |
+| ✅ Closed | Slack/ticket-detail Eastern-Time assumption | `src/lib/slack/blocks/ticket-master.ts`, `src/lib/tickets/outbox.ts`, `src/app/(auth)/tickets/[ticketId]/page.tsx` | Commit `b253558` hydrates and validates the ticket site's timezone for initial/retried/refreshed Slack cards and ticket detail, with deterministic UTC fallback |
+| ✅ Closed | Customer-manager direct-membership under-scoping | `src/lib/team/read-model.ts`, `/api/team`, `/team`, `/submit`, `/dashboard` | Commit `67ce908` makes manager access organization-wide over active sites, keeps customers assignment-scoped, and excludes retained archived memberships from current presentation |
+| ✅ Closed | Authenticated ticket/comment/site hidden-field reads | `src/lib/resource-projections.ts`, `/tickets/[ticketId]`, `/api/tickets/[ticketId]/comments`, `/api/sites` | Commit `d276ede` applies role-specific query allow-lists and prevents internal summaries, staff identifiers/metadata, Slack routing, and attachment storage metadata from entering customer responses or React client props |
+| ✅ Closed | External service-resource wildcard hydration | `src/lib/resource-projections.ts`, `/api/spare-part-requests`, `/api/field-service-orders` | Commit `2c4faad` applies external list/detail allow-lists before retrieval, excluding price/staff attribution and internal completion/travel/assignment fields while retaining response shaping as defense in depth |
+| ✅ Closed | Ticket CSV active-content and filter-contract exposure | `src/lib/tickets/csv-export.ts`, `src/lib/tickets/export-filters.ts`, `/api/tickets/export` | Commit `bef2323` neutralizes spreadsheet formulas, normalizes relationship shapes, validates/applies canonical role-aware filters, contains PostgREST grammar, hides database detail, and sends private/no-store UTF-8 CSV |
+| ✅ Closed | Ticket-list filter and wildcard-read exposure | `src/lib/tickets/search-filter.ts`, `src/lib/tickets/api-list-filters.ts`, `/tickets`, `/api/tickets` | Commit `38f8b5e` validates page/API filter grammar and scope before service-role access, disables broadened invalid-filter export, uses an external query-time allow-list, and returns private/no-store list data |
+| ✅ Closed | Customer-capable service/site list filter ambiguity | `src/lib/resource-list-filters.ts`, `/api/spare-part-requests`, `/api/field-service-orders`, `/api/sites` | Commit `5840b17` rejects unknown/repeated/malformed filters, checks foreign site/customer scope before route query construction, limits database logs to codes, and marks successful authenticated responses private/no-store |
+| ✅ Closed | Admin list filter ambiguity and membership error leakage | `src/lib/admin-list-filters.ts`, `/api/admin/audit`, `/api/admin/inventory`, `/api/admin/site-members`, `/api/admin/spare-parts` | Commit `f53c1fc` enforces exact filter contracts, explicit false states and guarded catalog search, uses an explicit membership projection, hides database details, and marks authenticated responses private/no-store |
+| ✅ Closed | Malformed resource route identifiers | `src/lib/request-identifiers.ts`, `/api/spare-part-requests/[id]`, `/api/field-service-orders/[id]`, `/api/team/[id]`, `/api/admin/sites/[id]` | Commit `03bc82d` rejects invalid UUIDs before service-role queries, body parsing, or mutation commands; customer-capable detail reads are private/no-store and database logs retain only codes |
+| ✅ Closed | Admin audit-page query ambiguity | `src/lib/admin-list-filters.ts`, `/admin/audit` | Commit `77c06f3` validates exact page filters before service-role creation, uses a fixed projection and exact count, and renders generic database failures instead of a false empty history |
+| ✅ Closed | Authenticated server detail-page UUID ambiguity | `src/app/server-detail-page-identifiers.test.ts`, admin/customer-manager detail pages | Commit `d049640` applies the shared UUID boundary before service-role construction across eight pages while preserving the team page's session/role/tenant checks first |
+| ✅ Closed | Detail-page database failure ambiguity | `src/lib/server-page-query.ts`, admin/customer-manager detail pages | Commit `7790bae` uses missing-safe primary reads and fails every primary/related query into generic recovery with code-only logging instead of false not-found or empty panels |
+| ✅ Closed | Admin detail-tab blank-page ambiguity | `src/components/detail-tabs-helpers.ts`, customer/site/user admin detail pages | Commit `bbd185d` requires each page's exact rendered tab keys and falls back safely for missing, unknown, or repeated values |
+| ✅ Closed | Admin inventory site-prefilter broadening | `src/lib/admin-list-filters.ts`, `/admin/inventory` | Commit `31ef0ab` validates the one optional UUID before service-role access and renders empty clearable states for malformed or unavailable sites instead of all-site inventory |
+| ✅ Closed | Admin list-page database failure ambiguity | `src/app/admin-list-page-read-integrity.test.tsx`, admin customer/site/user/catalog/SLA/service list pages | Commit `0516fb5` gives all eight list pages and four profile reads code-only generic recovery, removes the redundant customer-site query, and replaces catalog wildcard hydration with an explicit projection |
+| ✅ Closed | Admin creation-option failure and lifecycle mismatch | `src/app/admin-create-page-read-integrity.test.tsx`, part-request and field-service create pages | Commit `0b15ef9` applies code-only read recovery, active tenant/site/catalog/engineer filters matching atomic commands, concurrent option loading, and unavailable-prerequisite form guards |
+| ✅ Closed | Customer sites/team read failure and retained-membership ambiguity | `src/app/customer-page-read-integrity.test.tsx`, `/sites`, `/team` | Commit `c336fb1` guards every profile/scoped/membership read, derives current site access through active tenant/site hydration, preserves manager organization scope, and normalizes customer relation shapes |
+| ✅ Closed | Dashboard false-zero and empty-state ambiguity | `src/app/dashboard-read-integrity.test.tsx`, `/dashboard` | Commit `1b59d66` guards all profile/list/count reads, lifecycle-scopes external sites, rehydrates retained memberships through current scope, and skips empty-scope ticket queries |
+| ✅ Closed | Ticket page false-empty/missing and child over-fetch ambiguity | `src/app/ticket-page-read-integrity.test.tsx`, `/tickets`, `/tickets/[ticketId]` | Commit `ce068a0` guards list/options/primary/related reads with code-only recovery, preserves real missing-ticket handling, and uses explicit role-aware UI-minimum child projections |
+| ✅ Closed | Server identity read-state ambiguity | `src/lib/supabase/auth-read.ts`, API auth helpers, `getUserScope()`, authenticated layout | Commit `2495cbd` preserves normal rejected-session and inactive-account behavior while mapping provider/database failures to generic 503/recovery with code/name/status-only diagnostics |
+| ✅ Closed | Browser account/site loading ambiguity | `src/lib/supabase/scope.client.ts`, `/profile`, authenticated ticket modal, `/submit` | Commit `10a1547` distinguishes guest/rejected-session, inactive, unavailable, and legitimate-empty site states; adds settled recovery, bounded profile writes, and prerequisite submission guards |
+| ✅ Closed | Authentication/recovery false completion | `/login`, `/forgot-password`, `/reset-password`, auth callback/logout, `src/lib/auth/session-cleanup.ts` | Commit `e887eec` settles provider failures, separates rejected from unavailable recovery links, and reports global/local/failed session cleanup truthfully after password mutation |
+| ✅ Closed | Lifecycle action duplicate/silent failure | customer/site bulk archive, user bulk deactivation, spare-part request actions | Commit `76091a3` covers the complete request/refresh busy window, keeps failed selections retryable, guards JSON/network errors, and surfaces rejected status transitions |
+| ✅ Closed | Identity-form raw error and duplicate-submit exposure | admin user and customer team create/edit forms, `src/lib/http/client-mutation.ts` | Commit `ec9cd65` admits only bounded expected API errors, contains runtime/network detail, locks the complete mutation surface, guards handlers, and keeps inactive identities read-only |
+| ✅ Closed | Field-service/Slack action ambiguity | field-service detail actions, Slack channel-link page/API | Commit `7ff594d` replaces prompts/immediate destructive actions with bounded confirmation, extends busy state through refresh/navigation, and makes channel discovery paginated, private, bounded, and failure-contained |
+| ✅ Closed | Service creation form coercion/silent-row loss | field-service and spare-part request creation forms | Commit `a3ed0dd` applies total row validation, stable keys, zero-safe prices, exact bounds/date checks, accessible labels/errors, responsive layout, and request-plus-navigation locking |
+| ✅ Closed | Customer/site form and post-commit hydration ambiguity | customer/site create/edit forms, `POST /api/sites` | Commit `e15dea6` applies canonical normalization/bounds, accessible responsive locking, archived/ownership guards, prerequisite messaging, and committed-success 201 semantics when site detail hydration is degraded |
+| ✅ Closed | Ticket mutation raw failure, duplicate-action, and hydration ambiguity | public/authenticated ticket creation, ticket detail actions, ticket PATCH/comments | Commit `6075296` centralizes bounded input/file contracts, locks request plus refresh settlement, validates safe response shapes, preserves committed success through hydration failure, and immediately drains the durable ticket outbox |
+| 🟡 Apply | Replay-safe ticket creation | migration 047, web ticket forms, Slack modal submission | Commit `dc5f588` adds stable attempt keys, serialized exact replay, changed-input rejection, and durable transaction receipts; migration 047 must be applied and live-verified before application deployment |
 | 🟡 Med | `/settings` is read-only integration status | `src/app/(auth)/settings/page.tsx` | Add notification preferences, user timezone, and theme controls |
 | ✅ Verified | Migration 046 durable public rate limits | `supabase/migrations/046_durable_public_rate_limits.sql` | Applied 2026-08-02; 77 live assertions covered grants, constraints, concurrency, reset/retention, bounded cleanup, real HTTP limits/lifecycle, and zero residue |
 | 🟡 Med | Exact site-code validation remains an existence oracle | `/api/sites/validate` | Responses are minimal and migration 046 enforces 20 checks/minute/IP across instances, but full anti-enumeration still requires CAPTCHA, an invitation/intake token, or authenticated submission |
@@ -1216,7 +1593,9 @@ resume work; this section remains the broader historical summary.
 12. **Verify Resend sender domain** so confirmation / resolution emails actually send.
 13. **Ticket number sequence migration** (020) ✅ done (2026-07-14) — `next_ticket_no()` RPC + 021 volatility fix.
 14. **Collapse Slack handlers to `updateMasterMessage()`** — 4 inline `chat.update` calls become 4 one-liners. (Done in 3af10c6 actually — handlers now use `updateMasterMessage` everywhere; further collapse of the 4 audit calls per action is a follow-up.)
-15. **Dashboard timezone** — derive from user or first site.
+15. **Dashboard timezone/count contract.** ✅ closed in `0cf4aac`; recent
+    tickets use their own site timezone with UTC fallback, live relationship
+    shapes normalize correctly, and customer totals are exact.
 16. **Sprint 3 feature work** — Kanban view (INT-5), SLA monitoring (INT-6), notifications center (INT-7).
 17. **Start real Slack Connect work** — see PRD §8.5 / SLK-015.
 18. **Guard ticket state transitions (INT-001).** ✅ deployed in `b344d18` +
@@ -1298,6 +1677,196 @@ resume work; this section remains the broader historical summary.
     weakening authorization or public throttling order. Eight tests bring the
     suite to 457; the 40-check production smoke remains green, and four
     credentialed HTTP probes are ready for the protected staging fixture.
+35. **Make dashboard metrics deterministic.** Commit `0cf4aac` retrieves each
+    recent ticket's site timezone, validates it with a UTC fallback, normalizes
+    live Supabase object/array relationship shapes, and counts all customer
+    tickets independently of the ten-row recent list. Eight utility tests plus
+    two dashboard source contracts bring the suite to 465; signed-in desktop/
+    mobile browser QA and the 40-check production smoke are green. The same
+    checkpoint updates `brace-expansion` to patched 5.0.9 after
+    GHSA-rgw5-rvv9-x895 was disclosed, restoring a zero-vulnerability audit.
+36. **Make Slack timestamps site-aware.** Commit `b253558` removes the fixed
+    Eastern-Time renderer from Slack master cards. Creation, action refresh,
+    and durable outbox paths hydrate `sites.timezone`; the builder normalizes
+    relation shapes and shares the validated UTC-fallback resolver with ticket
+    detail. Four tests bring the suite to 469; all quality gates are green.
+37. **Harden transactional email rendering.** Commit `92a3d87` extracts pure
+    confirmation/resolution builders, escapes every dynamic HTML field,
+    constructs HTTP(S) tracking links with encoded path/query components, and
+    strips provider-subject controls. Three adversarial tests bring the suite
+    to 472; all quality gates are green.
+38. **Enforce conditional email readiness.** Commit `a991bbd` adds shared
+    Resend-key, sender-address, and public-origin contracts to readiness and
+    delivery. Disabled email remains optional; malformed enabled email fails
+    readiness and is contained before provider I/O. Thirty-seven tests bring
+    the suite to 509; all quality gates are green.
+39. **Align customer-manager site scope.** Commit `67ce908` makes
+    organization-wide active-site inheritance consistent in authenticated
+    public submit, dashboard, team page, and the team API. A shared read model
+    keeps customer assignments site-scoped, filters retained archived
+    memberships, and represents manager access accurately. Eight tests bring
+    the suite to 517; all quality gates and responsive public-form QA are
+    green.
+40. **Contain authenticated customer reads.** Commit `d276ede` replaces
+    customer-capable ticket/comment/site wildcard or common internal reads
+    with role-specific query allow-lists and contains client-component props.
+    Twelve tests bring the suite to 529; all quality gates are green.
+41. **Constrain external service reads.** Commit `2c4faad` gives spare-part and
+    field-service external list/detail GETs query-time allow-lists while
+    retaining response shapers as defense in depth. Four tests bring the suite
+    to 533; all quality gates are green.
+42. **Harden ticket CSV export.** Commit `bef2323` adds spreadsheet-safe cell
+    encoding, relation normalization, strict UI-filter parity and alias
+    conflict handling, PostgREST search containment, generic database errors,
+    and private/no-store UTF-8 delivery. Twenty-eight tests bring the suite to
+    561; all deterministic quality gates are green.
+43. **Contain ticket-list reads.** Commit `38f8b5e` adds strict page/API filter
+    parsing, shared guarded PostgREST search construction, invalid-filter
+    zero-result/export suppression, scope-aware API filters, and a customer
+    query-time ticket allow-list. Fifty tests bring the suite to 611; all
+    deterministic quality gates are green.
+44. **Validate customer list filters.** Commit `5840b17` gives spare-part,
+    field-service, and site list GETs strict known-key/singleton/enum/UUID
+    parsing, pre-query foreign-scope rejection, code-only database logging,
+    and private/no-store delivery. Twenty-six tests bring the suite to 637;
+    all deterministic quality gates are green.
+45. **Harden admin list filters.** Commit `f53c1fc` gives audit, inventory,
+    site-membership, and catalog GETs exact parsing, explicit false-filter
+    semantics, guarded search, private delivery, code-only error logging, and
+    an explicit membership projection. Thirty-eight tests bring the suite to
+    675; all deterministic quality gates are green.
+46. **Validate resource route identifiers.** Commit `03bc82d` adds a shared
+    UUID route parser to spare-part, field-service, team, and admin-site detail
+    handlers before database/RPC access. Customer-capable detail reads also
+    distinguish database failure from absence, use private/no-store delivery,
+    and log only database codes. Fifteen tests bring the suite to 690; all
+    deterministic quality gates are green.
+47. **Contain audit-page filters.** Commit `77c06f3` reuses canonical audit
+    enums, validates singleton UUID/page filters before service-role access,
+    replaces wildcard view reads with an explicit projection, reports exact
+    pagination totals, and shows generic unavailable states for database
+    failures. Twelve tests bring the suite to 702; all deterministic quality
+    gates are green.
+48. **Validate server detail identifiers.** Commit `d049640` applies the shared
+    UUID parser to eight authenticated admin/team detail pages before any
+    service-role client exists. The customer-manager team page retains its own
+    authentication and tenant-role ordering before target validation. Eight
+    real-page contracts bring the suite to 710; all deterministic quality gates
+    are green.
+49. **Surface detail-page read failures.** Commit `7790bae` converts primary
+    lookups to missing-safe reads and applies one code-only failure guard across
+    all primary and related admin/team detail queries. Database outages now hit
+    generic recovery rather than false absence or zero-panel states. Ten tests
+    bring the suite to 720; all deterministic quality gates are green.
+50. **Constrain detail tab parameters.** Commit `bbd185d` makes the shared tab
+    parser validate against each customer/site/user page's actual rendered tabs.
+    Missing, unknown, and repeated values fall back to overview rather than a
+    blank detail shell. Seven tests bring the suite to 727; all deterministic
+    quality gates are green.
+51. **Contain inventory-page prefilter.** Commit `31ef0ab` strictly parses the
+    optional site UUID before service-role access, refuses unavailable-site
+    broadening, adds a clear-filter recovery action, and applies code-only query
+    failure handling. Eleven tests bring the suite to 738; all deterministic
+    quality gates are green.
+52. **Surface admin list-page read failures.** Commit `0516fb5` applies shared
+    code-only recovery to customer, site, user, combined customer/site,
+    spare-part, SLA-policy, part-request, and field-service list reads plus the
+    four explicit profile reads. It also removes the combined page's unused
+    flat-site query and replaces spare-part wildcard hydration with a fixed
+    projection. Fourteen tests bring the suite to 752; all deterministic
+    quality gates are green.
+53. **Harden admin creation options.** Commit `0b15ef9` makes part-request and
+    field-service option reads concurrent and failure-aware, filters sites by
+    active customer lifecycle, aligns assignees with the active-engineer SQL
+    rule, and disables creation with clear guidance when required references do
+    not exist. Six tests bring the suite to 758; all deterministic quality
+    gates are green.
+54. **Contain customer page read failures.** Commit `c336fb1` applies code-only
+    recovery across authenticated site/team profile and scoped data reads,
+    filters retained customer memberships through current active tenant/site
+    rows, preserves manager/team organization scope, and normalizes customer
+    relation shapes. Eleven tests bring the suite to 769; all deterministic
+    quality gates are green.
+55. **Contain dashboard read failures.** Commit `1b59d66` applies generic code-
+    only recovery to every dashboard profile/list/count query, lifecycle-scopes
+    manager/customer sites, rehydrates deduplicated retained memberships through
+    current sites, and skips ticket queries for legitimate empty scopes. Eleven
+    tests bring the suite to 780; all deterministic quality gates are green.
+56. **Contain ticket page read failures.** Commit `ce068a0` applies generic
+    code-only recovery to the authenticated ticket list, filter options,
+    primary detail lookup, and every related panel read. It replaces remaining
+    event/AI wildcard hydration with explicit allow-lists, removes cost from
+    customer part-request reads, minimizes linked field-service data, and
+    parallelizes related reads. Thirteen behavioral contracts bring the suite
+    to 793; all deterministic quality gates are green.
+57. **Distinguish server identity read failures.** Commit `2495cbd` centralizes
+    signed-out/rejected-session versus availability classification, applies it
+    to all three API authorization helpers, the shared tenant scope, and the
+    authenticated layout, and makes every profile/membership/site read error-
+    aware with safe diagnostics. Thirty behavioral contracts bring the suite
+    to 823; all deterministic quality gates are green.
+58. **Harden browser account loading.** Commit `10a1547` makes shared browser
+    auth/profile/site reads failure-aware, prevents public signed-in enrichment
+    failures from degrading into guest intake, settles profile loading with
+    generic recovery, bounds self-service fields, and disables both ticket
+    forms when assigned-site prerequisites are unavailable. Twenty-two new
+    behavioral contracts bring the suite to 845; all deterministic quality
+    gates are green.
+59. **Harden authentication recovery states.** Commit `e887eec` wraps browser
+    auth operations in deterministic settlement, bounds email/password inputs,
+    preserves recovery anti-enumeration behavior, distinguishes rejected links
+    from provider unavailability, and centralizes global-to-local session
+    cleanup for password reset and logout. Fifteen new contracts bring the
+    suite to 860; all deterministic quality gates are green.
+60. **Settle lifecycle action failures.** Commit `76091a3` adds request-level
+    busy state to customer/site bulk archive and user bulk deactivation, keeps
+    selections stable on failure, guards response parsing/network rejection,
+    and makes spare-part status errors visible. Six contracts bring the suite
+    to 866; all deterministic quality gates are green.
+61. **Contain identity-form failures.** Commit `ec9cd65` centralizes guarded
+    non-2xx response parsing and separates bounded expected API errors from
+    contained network/runtime failures. Admin-user and customer-team create/edit
+    forms now trim and bound identity fields, guard duplicate submits, lock
+    controls through settlement, expose accessible outcomes, and keep inactive
+    records read-only. Twenty contracts bring the suite to 886; all
+    deterministic quality gates are green.
+62. **Harden service action workflows.** Commit `7ff594d` replaces blocking
+    completion prompts with a bounded labeled form, confirms cancellation and
+    Slack unlinking, extends duplicate-action protection through route
+    transitions, and contains returned/runtime failures. Slack channel
+    discovery now validates bot configuration, paginates with a ten-page cap,
+    deduplicates/sorts, declares truncation, sends private/no-store responses,
+    and logs only provider codes. Thirteen contracts bring the suite to 899;
+    all deterministic quality gates are green.
+63. **Harden service creation forms.** Commit `a3ed0dd` contains returned and
+    runtime failures, normalizes bounded field-service inputs, checks date/hour
+    rules, caps assignees, and locks controls through navigation. Spare-part
+    rows now have stable identities, remain editable as strings, validate every
+    visible row without silent filtering, reject duplicates, preserve zero
+    prices, expose item notes, and mirror the 100-item/quantity/price/text server
+    bounds. Seven contracts bring the suite to 906; all deterministic quality
+    gates are green.
+64. **Harden customer and site forms.** Commit `e15dea6` contains returned and
+    runtime failures, normalizes customer/domain/site inputs against server
+    bounds, keeps all controls locked through route refresh, and preserves
+    archived/immutable ownership rules. Site creation now requires an active
+    customer and returns committed 201 semantics if only response hydration
+    fails. Nine contracts bring the suite to 915; all deterministic quality
+    gates are green.
+65. **Harden ticket mutation workflows.** Commit `6075296` centralizes strict
+    bounded ticket/comment/attachment inputs, contains returned and runtime
+    failures, locks public/authenticated creation and detail controls through
+    refresh settlement, and exposes accessible outcomes. Ticket PATCH and
+    comment creation preserve committed success if only response hydration
+    fails; PATCH also triggers the durable outbox fast drain. Fifteen contracts
+    bring the suite to 930; all deterministic quality gates are green.
+66. **Make ticket creation replay-safe.** Commit `dc5f588` adds migration 047's
+    service-only source/key ledger and transaction-scoped serialization. Exact
+    web/Slack retries return the first ticket receipt, changed input is rejected,
+    browser keys rotate only after edits, Slack keys bind to signed view IDs,
+    legacy HTTP callers receive an echoed generated key, and post-commit ticket
+    hydration is removed. Fourteen contracts bring the suite to 944; all local
+    deterministic gates are green and migration application/live probes remain.
 
 ### Open architectural questions
 - The RLS recursion bug surfaces a bigger question: do we keep `createAdminClient() + code filter` (the current pattern in `lib/supabase/scope.ts`) or move back to proper RLS once migration 019 + similar fixes are in place? The current pattern scales fine but has a lower safety margin for new queries.
@@ -1319,7 +1888,7 @@ npm audit
 ```
 
 **Apply a new migration:**
-1. Create `supabase/migrations/047_xxx.sql` (next number)
+1. Create `supabase/migrations/048_xxx.sql` (next number)
 2. Test locally: `supabase db reset` (drops + re-applies all)
 3. Apply to prod via Supabase SQL editor
 4. Document in this file's §5 + §10

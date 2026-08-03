@@ -9,6 +9,7 @@ import {
 } from "@/types/ticket";
 import { CreateSiteForm } from "./create-site-form";
 import { ADMIN_ROLES } from "@/lib/roles";
+import { assertPageQueriesSucceeded } from "@/lib/server-page-query";
 
 export const dynamic = "force-dynamic";
 
@@ -21,11 +22,13 @@ export default async function AdminSitesPage() {
 
   if (!authUser) redirect("/login");
 
-  const { data: userProfile } = await supabase
+  const profileResult = await supabase
     .from("users")
     .select("role")
     .eq("id", authUser.id)
-    .single();
+    .maybeSingle();
+  assertPageQueriesSucceeded("admin/site-list-profile", profileResult);
+  const userProfile = profileResult.data;
 
   const role = userProfile?.role as UserRole | undefined;
   if (!role || !ADMIN_ROLES.includes(role)) {
@@ -34,30 +37,37 @@ export default async function AdminSitesPage() {
 
   const admin = createAdminClient();
 
-  const { data: sites } = await admin
-    .from("sites")
-    .select(
+  const [sitesResult, customersResult] = await Promise.all([
+    admin
+      .from("sites")
+      .select(
+        `
+        id,
+        site_name,
+        site_code,
+        project_status,
+        timezone,
+        slack_channel_id,
+        status,
+        customer:customers(id, name),
+        site_members(user_id)
       `
-      id,
-      site_name,
-      site_code,
-      project_status,
-      timezone,
-      slack_channel_id,
-      status,
-      customer:customers(id, name),
-      site_members(user_id)
-    `
-    )
-    .order("site_name")
-    .limit(200);
-
-  // Get all customers for create form
-  const { data: customers } = await admin
-    .from("customers")
-    .select("id, name")
-    .in("status", ["active", "trial"])
-    .order("name");
+      )
+      .order("site_name")
+      .limit(200),
+    admin
+      .from("customers")
+      .select("id, name")
+      .in("status", ["active", "trial"])
+      .order("name"),
+  ]);
+  assertPageQueriesSucceeded(
+    "admin/site-list",
+    sitesResult,
+    customersResult
+  );
+  const sites = sitesResult.data;
+  const customers = customersResult.data;
 
   interface SiteRow {
     id: string;

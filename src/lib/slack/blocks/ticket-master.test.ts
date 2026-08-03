@@ -33,6 +33,19 @@ function ticketWithStatus(status: TicketStatus): Ticket {
     first_response_breached_at: null,
     resolution_breached_at: null,
     sla_breached: false,
+    site: {
+      id: "33333333-3333-4333-8333-333333333333",
+      customer_id: "22222222-2222-4222-8222-222222222222",
+      site_name: "Los Angeles Plant",
+      site_code: "LA-01",
+      timezone: "America/Los_Angeles",
+      address: null,
+      slack_channel_id: "C123",
+      default_owner_id: null,
+      status: "active",
+      project_status: "full_coverage",
+      created_at: "2026-01-01T00:00:00.000Z",
+    },
   };
 }
 
@@ -46,6 +59,14 @@ function actionIds(status: TicketStatus): string[] {
       ?.map((element) => element.action_id)
       .filter((value): value is string => Boolean(value)) ?? []
   );
+}
+
+function contextText(ticket: Ticket): string {
+  const contextBlock = buildMasterTicketMessage(ticket).find(
+    (block) => block.type === "context"
+  ) as { elements?: Array<{ text?: string }> } | undefined;
+
+  return contextBlock?.elements?.map((element) => element.text).join(" ") ?? "";
 }
 
 describe("Slack ticket master guarded actions", () => {
@@ -68,5 +89,28 @@ describe("Slack ticket master guarded actions", () => {
 
   it("removes mutating lifecycle shortcuts from a closed ticket", () => {
     expect(actionIds("closed")).toEqual(["customer_update"]);
+  });
+
+  it("renders operational timestamps in the ticket site's timezone", () => {
+    const ticket = ticketWithStatus("new");
+    ticket.created_at = "2026-01-01T04:30:00.000Z";
+    ticket.updated_at = "2026-01-01T05:30:00.000Z";
+    ticket.site = [ticket.site] as unknown as Ticket["site"];
+
+    const text = contextText(ticket);
+    const blocks = JSON.stringify(buildMasterTicketMessage(ticket));
+
+    expect(text).toContain("Created: Dec 31, 2025");
+    expect(text).toContain("Updated: Dec 31, 2025");
+    expect(text).toMatch(/PST|GMT-8/);
+    expect(text).not.toContain(" ET");
+    expect(blocks).toContain("Los Angeles Plant");
+  });
+
+  it("falls back to UTC when a legacy site timezone is invalid", () => {
+    const ticket = ticketWithStatus("new");
+    if (ticket.site) ticket.site.timezone = "Invalid/Timezone";
+
+    expect(contextText(ticket)).toContain("UTC");
   });
 });

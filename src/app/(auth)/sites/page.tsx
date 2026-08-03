@@ -3,6 +3,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { PROJECT_STATUS_LABELS, PROJECT_STATUS_COLORS } from "@/types/ticket";
 import type { UserRole } from "@/types/ticket";
 import { isCustomerManager } from "@/lib/roles";
+import { assertPageQueriesSucceeded } from "@/lib/server-page-query";
+import { singleRelation } from "@/lib/utils";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
@@ -18,11 +20,13 @@ export default async function SitesPage() {
   if (!user) redirect("/login");
 
   // Check if user is a customer_manager
-  const { data: userProfile } = await supabase
+  const profileResult = await supabase
     .from("users")
     .select("role, customer_id")
     .eq("id", user.id)
-    .single();
+    .maybeSingle();
+  assertPageQueriesSucceeded("sites/profile", profileResult);
+  const userProfile = profileResult.data;
 
   const role = userProfile?.role as UserRole | undefined;
   const customerId = userProfile?.customer_id as string | null;
@@ -35,55 +39,61 @@ export default async function SitesPage() {
     project_status: string;
     timezone: string;
     address: string | null;
-    slack_channel_id: string | null;
-    customer: { name: string }[] | null;
+    customer: { name: string }[] | { name: string } | null;
   }
 
   let sites: (SiteRow & { member_role: string })[] = [];
+  const admin = createAdminClient();
 
   if (isManager && customerId) {
     // Customer managers see ALL sites under their customer
-    const admin = createAdminClient();
-    const { data: allSites } = await admin
+    const sitesResult = await admin
       .from("sites")
-      .select("id, site_name, site_code, project_status, timezone, address, slack_channel_id, customer:customers(name)")
+      .select(
+        "id, site_name, site_code, project_status, timezone, address, customer:customers!inner(name)"
+      )
       .eq("customer_id", customerId)
       .eq("status", "active")
+      .in("customer.status", ["active", "trial"])
       .order("site_name");
+    assertPageQueriesSucceeded("sites/manager-list", sitesResult);
 
-    sites = (allSites || []).map((s) => ({
+    sites = (sitesResult.data || []).map((s) => ({
       ...(s as unknown as SiteRow),
       member_role: "manager",
     }));
   } else {
-    // Regular customer users see only their assigned sites
-    const { data: memberships } = await supabase
+    // Retained memberships are historical facts. Hydrate only their currently
+    // active sites under active/trial customers before presenting access.
+    const membershipsResult = await admin
       .from("site_members")
-      .select(
-        `
-        role,
-        sites(
-          id,
-          site_name,
-          site_code,
-          project_status,
-          timezone,
-          address,
-          slack_channel_id,
-          customer:customers(name)
-        )
-      `
-      )
+      .select("role, site_id")
       .eq("user_id", user.id);
+    assertPageQueriesSucceeded("sites/membership-list", membershipsResult);
 
-    sites =
-      memberships?.map((m) => {
-        const s = (Array.isArray(m.sites) ? m.sites[0] : m.sites) as unknown as SiteRow;
-        return {
-          ...s,
-          member_role: m.role,
-        };
-      }) || [];
+    const memberships = membershipsResult.data || [];
+    const memberRoleBySite = new Map(
+      memberships.map((membership) => [membership.site_id, membership.role])
+    );
+    const siteIds = [...memberRoleBySite.keys()];
+
+    if (siteIds.length > 0) {
+      const sitesResult = await admin
+        .from("sites")
+        .select(
+          "id, site_name, site_code, project_status, timezone, address, customer:customers!inner(name)"
+        )
+        .in("id", siteIds)
+        .eq("status", "active")
+        .in("customer.status", ["active", "trial"])
+        .order("site_name");
+      assertPageQueriesSucceeded("sites/member-site-list", sitesResult);
+
+      sites = (sitesResult.data || []).map((site) => ({
+        ...(site as unknown as SiteRow),
+        member_role: memberRoleBySite.get(site.id) || "member",
+      }));
+    }
   }
 
   return (
@@ -132,6 +142,7 @@ export default async function SitesPage() {
       ) : (
         <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {sites.map((site) => {
+            const customer = singleRelation(site.customer);
             const status = (site.project_status as string) || "pre_signoff";
             const statusLabel =
               PROJECT_STATUS_LABELS[
@@ -164,11 +175,11 @@ export default async function SitesPage() {
                 </div>
 
                 <div className="space-y-2 text-sm">
-                  {site.customer && site.customer[0]?.name && (
+                  {customer?.name && (
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Customer</span>
                       <span className="text-foreground font-medium">
-                        {site.customer[0].name}
+                        {customer.name}
                       </span>
                     </div>
                   )}

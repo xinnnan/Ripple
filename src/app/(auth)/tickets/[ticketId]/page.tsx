@@ -8,18 +8,72 @@ import {
   type Severity,
 } from "@/types/ticket";
 import { SPR_STATUS_LABELS, SPR_STATUS_COLORS, FSO_STATUS_LABELS, FSO_STATUS_COLORS, SERVICE_TYPE_LABELS } from "@/types/spare-parts";
-import { formatDate } from "@/lib/utils";
+import { formatDate, resolveSiteTimezone } from "@/lib/utils";
 import Link from "next/link";
 import { AIAssistButton } from "./ai-assist-button";
 import { TicketActionsPanel } from "./ticket-actions-panel";
 import { SLABadge } from "./sla-badge";
 import { getUserScope, scopeTickets } from "@/lib/supabase/scope";
 import { resolveTicketQuery } from "@/lib/tickets/lookup";
-import { isAdminRole } from "@/lib/roles";
 import { redirect } from "next/navigation";
+import {
+  EXTERNAL_TICKET_DETAIL_SELECT,
+  EXTERNAL_TICKET_DETAIL_PART_REQUEST_SELECT,
+  INTERNAL_TICKET_DETAIL_PART_REQUEST_SELECT,
+  INTERNAL_TICKET_DETAIL_SELECT,
+  TICKET_DETAIL_ATTACHMENT_SELECT,
+  TICKET_DETAIL_AI_SUGGESTION_SELECT,
+  TICKET_DETAIL_COMMENT_SELECT,
+  TICKET_DETAIL_EVENT_SELECT,
+  TICKET_DETAIL_FIELD_SERVICE_SELECT,
+} from "@/lib/resource-projections";
+import { assertPageQueriesSucceeded } from "@/lib/server-page-query";
 
 interface Props {
   params: Promise<{ ticketId: string }>;
+}
+
+interface TicketDetailRow {
+  id: string;
+  ticket_no: string;
+  source: string;
+  title: string;
+  description: string;
+  request_type: string;
+  severity: string;
+  impact: string | null;
+  status: string;
+  asset_id: string | null;
+  area: string | null;
+  owner_id?: string | null;
+  submitter_name?: string | null;
+  submitter_email?: string | null;
+  customer_visible_summary: string | null;
+  internal_summary?: string | null;
+  resolved_at: string | null;
+  closed_at: string | null;
+  created_at: string;
+  first_response_due_at: string | null;
+  resolve_due_at: string | null;
+  first_response_at: string | null;
+  first_response_breached_at: string | null;
+  resolution_breached_at: string | null;
+  customer: { id: string; name: string }[] | null;
+  site: {
+    id: string;
+    site_name: string;
+    site_code: string;
+    timezone: string;
+  }[] | null;
+  owner: { id?: string; full_name: string }[] | null;
+}
+
+interface TicketPartRequestRow {
+  id: string;
+  request_no: string;
+  status: string;
+  total_cost?: number | null;
+  items: { quantity: number }[] | null;
 }
 
 export default async function TicketDetailPage({ params }: Props) {
@@ -30,32 +84,25 @@ export default async function TicketDetailPage({ params }: Props) {
   if (!scope) redirect("/login");
   const currentUserId = scope.userId;
   const isInternal = scope.isInternal;
-  const isAdmin = isAdminRole(scope.role);
 
-  // Fetch ticket by ID or ticket_no, scoped so non-internal users can't see
-  // tickets outside their tenant.
-  // Keep a static, explicit projection so Supabase's generated query type
-  // remains valid. Internal-only fields are guarded at every render site
-  // below; unlike the old `*`, this list also excludes secure_token.
-  const ticketSelect = `
-      id, ticket_no, customer_id, site_id, source, title, description,
-      request_type, severity, impact, status, asset_id, area, owner_id,
-      created_by, submitter_name, customer_visible_summary, resolved_at,
-      closed_at, created_at, updated_at, sla_policy_id, sla_breached,
-      first_response_due_at, resolve_due_at, first_response_at,
-      first_response_breached_at, resolution_breached_at,
-      submitter_email, submitter_phone, internal_summary,
-      root_cause_category, follow_up_needed,
-      customer:customers(id, name),
-      site:sites(id, site_name, site_code, slack_channel_id, timezone),
-      owner:users!tickets_owner_id_fkey(id, full_name, email)
-    ` as const;
+  // The service-role client bypasses RLS and column grants. Select a distinct
+  // customer allow-list at query time instead of fetching internal fields and
+  // relying only on conditional rendering to hide them.
+  // Widen the conditional to `string` so Supabase's compile-time select
+  // parser does not attempt to materialize the union of two large nested
+  // relationship projections. Both concrete values remain tested constants.
+  const ticketSelect: string = isInternal
+    ? INTERNAL_TICKET_DETAIL_SELECT
+    : EXTERNAL_TICKET_DETAIL_SELECT;
   let ticketQuery = supabase
     .from("tickets")
     .select(ticketSelect);
   ticketQuery = resolveTicketQuery(ticketQuery, ticketId);
   ticketQuery = scopeTickets(ticketQuery, scope);
-  const { data: ticket } = await ticketQuery.maybeSingle();
+  const ticketResult = await ticketQuery.maybeSingle();
+  assertPageQueriesSucceeded("tickets/detail-primary", ticketResult);
+  const ticketData = ticketResult.data;
+  const ticket = ticketData as unknown as TicketDetailRow | null;
 
   if (!ticket) {
     return (
@@ -68,81 +115,114 @@ export default async function TicketDetailPage({ params }: Props) {
     );
   }
 
-  // Get site timezone for display
-  const siteData = Array.isArray(ticket.site) ? ticket.site[0] : ticket.site;
-  const userTimezone =
-    (siteData as unknown as { timezone?: string } | null)?.timezone ||
-    "America/New_York";
+  // Operational timestamps belong to the ticket's site. Missing or invalid
+  // legacy timezone values render deterministically in UTC.
+  const userTimezone = resolveSiteTimezone(ticket.site);
 
   // Comments: non-internal users only see customer-visible comments
   let commentsQuery = supabase
     .from("ticket_comments")
-    .select("*, author:users(full_name, role)")
+    .select(TICKET_DETAIL_COMMENT_SELECT)
     .eq("ticket_id", ticket.id)
     .order("created_at", { ascending: true });
   if (!isInternal) {
     commentsQuery = commentsQuery.eq("visibility", "customer");
   }
-  const { data: comments } = await commentsQuery;
-
   // Attachments: same visibility gating
   let attachmentsQuery = supabase
     .from("ticket_attachments")
-    .select("*")
+    .select(TICKET_DETAIL_ATTACHMENT_SELECT)
     .eq("ticket_id", ticket.id)
     .order("created_at", { ascending: true });
   if (!isInternal) {
     attachmentsQuery = attachmentsQuery.eq("visibility", "customer");
   }
-  const { data: attachments } = await attachmentsQuery;
-
   // Events: only internal users see the full audit trail. Customers get
   // a high-level "what happened" view built in the UI from the ticket
   // fields directly (no raw event rows).
-  const { data: events } = isInternal
-    ? await supabase
+  const eventsPromise = isInternal
+    ? supabase
         .from("ticket_events")
-        .select("*, actor:users!ticket_events_actor_id_fkey(full_name, email, role)")
+        .select(TICKET_DETAIL_EVENT_SELECT)
         .eq("ticket_id", ticket.id)
         .order("created_at", { ascending: true })
-    : { data: null };
+    : Promise.resolve({ data: null, error: null });
 
   // Available owners (for the owner selector — internal users only need this)
-  const { data: ownersData } = isInternal
-    ? await supabase
+  const ownersPromise = isInternal
+    ? supabase
         .from("users")
         .select("id, full_name")
         .in("role", ["admin", "engineer"])
         .eq("status", "active")
         .order("full_name")
-    : { data: [] };
-  const availableOwners = ownersData || [];
+    : Promise.resolve({ data: [], error: null });
 
   // Fetch AI suggestions — internal-only. The AI panel shows
   // troubleshooting notes, customer-reply drafts, and our
   // mock-fallback text ("Ripple Assist is offline..."), none of
   // which should leak to customer-role viewers.
-  const { data: aiSuggestions } = isInternal
-    ? await supabase
+  const aiSuggestionsPromise = isInternal
+    ? supabase
         .from("ai_suggestions")
-        .select("*")
+        .select(TICKET_DETAIL_AI_SUGGESTION_SELECT)
         .eq("ticket_id", ticket.id)
         .order("created_at", { ascending: false })
-    : { data: null };
+    : Promise.resolve({ data: null, error: null });
 
   // Fetch linked spare part requests
-  const { data: partRequests } = await supabase
+  const partRequestSelect: string = isInternal
+    ? INTERNAL_TICKET_DETAIL_PART_REQUEST_SELECT
+    : EXTERNAL_TICKET_DETAIL_PART_REQUEST_SELECT;
+  const partRequestsPromise = supabase
     .from("spare_part_requests")
-    .select("id, request_no, status, priority, total_cost, created_at, items:spare_part_request_items(quantity)")
+    .select(partRequestSelect)
     .eq("ticket_id", ticket.id)
     .order("created_at", { ascending: false });
 
   // Fetch linked field service orders
-  const { data: fieldServiceOrders } = await supabase
+  const fieldServiceOrdersPromise = supabase
     .from("field_service_orders")
-    .select("id, order_no, title, service_type, status, scheduled_date, estimated_hours, actual_hours, engineers:field_service_engineers(engineer:users(full_name))")
+    .select(TICKET_DETAIL_FIELD_SERVICE_SELECT)
     .eq("ticket_id", ticket.id)
     .order("created_at", { ascending: false });
+
+  const [
+    commentsResult,
+    attachmentsResult,
+    eventsResult,
+    ownersResult,
+    aiSuggestionsResult,
+    partRequestsResult,
+    fieldServiceOrdersResult,
+  ] = await Promise.all([
+    commentsQuery,
+    attachmentsQuery,
+    eventsPromise,
+    ownersPromise,
+    aiSuggestionsPromise,
+    partRequestsPromise,
+    fieldServiceOrdersPromise,
+  ]);
+  assertPageQueriesSucceeded(
+    "tickets/detail-related",
+    commentsResult,
+    attachmentsResult,
+    eventsResult,
+    ownersResult,
+    aiSuggestionsResult,
+    partRequestsResult,
+    fieldServiceOrdersResult
+  );
+  const comments = commentsResult.data;
+  const attachments = attachmentsResult.data;
+  const events = eventsResult.data;
+  const availableOwners = ownersResult.data || [];
+  const aiSuggestions = aiSuggestionsResult.data;
+  const partRequests = partRequestsResult.data as unknown as
+    | TicketPartRequestRow[]
+    | null;
+  const fieldServiceOrders = fieldServiceOrdersResult.data;
 
   // Format event type labels
   function formatEventType(type: string): string {
@@ -216,7 +296,7 @@ export default async function TicketDetailPage({ params }: Props) {
               <p className="text-sm text-muted-foreground">No comments yet.</p>
             ) : (
               <div className="space-y-4">
-                {comments.map((comment: { id: string; body: string; visibility: string; source: string; created_at: string; author: { full_name: string; role: string }[] }) => (
+                {comments.map((comment: { id: string; body: string; visibility: string; source: string; created_at: string; author: { full_name: string }[] }) => (
                   <div
                     key={comment.id}
                     className={`border-l-2 pl-4 ${
@@ -322,34 +402,34 @@ export default async function TicketDetailPage({ params }: Props) {
               </div>
             ) : (
               <div className="divide-y divide-border">
-                {partRequests.map((req: Record<string, unknown>) => {
+                {partRequests.map((req) => {
                   const statusColor = SPR_STATUS_COLORS[req.status as keyof typeof SPR_STATUS_COLORS] || "bg-gray-100 text-gray-800";
                   const itemCount = Array.isArray(req.items) ? req.items.length : 0;
                   const content = (
                     <>
                       <div className="flex items-center gap-3">
-                        <span className="text-xs font-mono font-medium text-primary">{req.request_no as string}</span>
+                        <span className="text-xs font-mono font-medium text-primary">{req.request_no}</span>
                         <span className="text-xs text-muted-foreground">{itemCount} items</span>
                       </div>
                       <div className="flex items-center gap-3">
                         {isInternal && req.total_cost ? <span className="text-xs text-muted-foreground">${Number(req.total_cost).toFixed(2)}</span> : null}
                         <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${statusColor}`}>
-                          {SPR_STATUS_LABELS[req.status as keyof typeof SPR_STATUS_LABELS] || req.status as string}
+                          {SPR_STATUS_LABELS[req.status as keyof typeof SPR_STATUS_LABELS] || req.status}
                         </span>
                       </div>
                     </>
                   );
                   return isInternal ? (
                     <Link
-                      key={req.id as string}
-                      href={`/admin/part-requests/${req.id as string}`}
+                      key={req.id}
+                      href={`/admin/part-requests/${req.id}`}
                       className="flex items-center justify-between p-3 hover:bg-muted/50 transition-colors"
                     >
                       {content}
                     </Link>
                   ) : (
                     <div
-                      key={req.id as string}
+                      key={req.id}
                       className="flex items-center justify-between p-3"
                     >
                       {content}
@@ -481,10 +561,10 @@ export default async function TicketDetailPage({ params }: Props) {
                   old_value: string | null;
                   new_value: string | null;
                   created_at: string;
-                  actor: { full_name: string; email: string; role: string }[] | null;
+                  actor: { full_name: string; email: string }[] | null;
                 }, i: number) => {
                   const actorData = ev.actor
-                    ? (Array.isArray(ev.actor) ? ev.actor[0] : ev.actor) as { full_name: string; email: string; role: string } | null
+                    ? (Array.isArray(ev.actor) ? ev.actor[0] : ev.actor) as { full_name: string; email: string } | null
                     : null;
 
                   return (
@@ -525,13 +605,14 @@ export default async function TicketDetailPage({ params }: Props) {
             ticketNo={ticket.ticket_no}
             currentStatus={ticket.status as TicketStatus}
             currentSeverity={ticket.severity as Severity}
-            currentOwnerId={ticket.owner_id}
+            currentOwnerId={isInternal ? ticket.owner_id ?? null : null}
             availableOwners={availableOwners}
-            currentUserId={currentUserId}
+            currentUserId={isInternal ? currentUserId : ""}
             isInternal={isInternal}
-            isAdmin={isAdmin}
             currentCustomerVisibleSummary={ticket.customer_visible_summary}
-            currentInternalSummary={ticket.internal_summary}
+            currentInternalSummary={
+              isInternal ? ticket.internal_summary ?? null : null
+            }
           />
         </div>
       </div>

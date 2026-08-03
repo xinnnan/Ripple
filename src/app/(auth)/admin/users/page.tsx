@@ -5,6 +5,7 @@ import type { UserRole } from "@/types/ticket";
 import { CreateUserForm } from "./create-user-form";
 import { ADMIN_ROLES } from "@/lib/roles";
 import { UsersTable } from "./users-table";
+import { assertPageQueriesSucceeded } from "@/lib/server-page-query";
 
 export const dynamic = "force-dynamic";
 
@@ -17,11 +18,13 @@ export default async function AdminUsersPage() {
 
   if (!authUser) redirect("/login");
 
-  const { data: userProfile } = await supabase
+  const profileResult = await supabase
     .from("users")
     .select("role")
     .eq("id", authUser.id)
-    .single();
+    .maybeSingle();
+  assertPageQueriesSucceeded("admin/user-list-profile", profileResult);
+  const userProfile = profileResult.data;
 
   const role = userProfile?.role as UserRole | undefined;
   if (!role || !ADMIN_ROLES.includes(role)) {
@@ -30,7 +33,7 @@ export default async function AdminUsersPage() {
 
   const admin = createAdminClient();
 
-  const { data: users } = await admin
+  const usersResult = await admin
     .from("users")
     .select(
       `
@@ -45,6 +48,8 @@ export default async function AdminUsersPage() {
     )
     .order("created_at", { ascending: false })
     .limit(100);
+  assertPageQueriesSucceeded("admin/user-list", usersResult);
+  const users = usersResult.data;
 
   const typedUsers = (users || []) as unknown as React.ComponentProps<typeof UsersTable>["users"];
 

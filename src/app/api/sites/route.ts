@@ -11,6 +11,8 @@ import {
   SITE_CODE_MAX_LENGTH,
   SITE_CODE_PATTERN,
 } from "@/lib/sites/site-code";
+import { EXTERNAL_SITE_SELECT } from "@/lib/resource-projections";
+import { parseSiteListFilters } from "@/lib/resource-list-filters";
 
 const createSiteSchema = z.object({
   customer_id: z.string().uuid(),
@@ -47,30 +49,55 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url);
+    const parsedFilters = parseSiteListFilters(searchParams);
+    if (!parsedFilters.success) {
+      return NextResponse.json(
+        { error: "Invalid site list filters" },
+        { status: 400 }
+      );
+    }
+    const filters = parsedFilters.data;
+    if (
+      filters.customerId &&
+      !scope.isInternal &&
+      scope.customerId !== filters.customerId
+    ) {
+      return NextResponse.json(
+        { error: "Forbidden: customer is outside your scope" },
+        { status: 403 }
+      );
+    }
+
     const supabase = createAdminClient();
 
     let query = supabase
       .from("sites")
-      .select("*, customer:customers(id, name)")
+      .select(
+        scope.isInternal
+          ? "*, customer:customers(id, name)"
+          : EXTERNAL_SITE_SELECT
+      )
       .order("site_name");
     query = scopeSites(query, scope);
 
     // Optional customer_id filter (must be allowed by scope)
-    const customerId = searchParams.get("customer_id");
-    if (customerId) {
-      if (!scope.isInternal && scope.customerId !== customerId) {
-        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-      }
-      query = query.eq("customer_id", customerId);
+    if (filters.customerId) {
+      query = query.eq("customer_id", filters.customerId);
     }
 
     const { data: sites, error } = await query;
 
     if (error) {
+      console.error("GET /api/sites failed:", {
+        code: (error as { code?: string }).code,
+      });
       return NextResponse.json({ error: "Failed to fetch sites" }, { status: 500 });
     }
 
-    return NextResponse.json({ sites });
+    return NextResponse.json(
+      { sites },
+      { headers: { "Cache-Control": "private, no-store" } }
+    );
   } catch (error) {
     console.error("Get sites error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
@@ -108,11 +135,31 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (error) {
-      console.error("Created site lookup failed:", error);
-      return NextResponse.json({ error: "Failed to load created site" }, { status: 500 });
+      // The atomic command has already committed. Preserve success semantics so
+      // callers do not retry the mutation and create a duplicate site merely
+      // because response hydration failed.
+      console.error("POST /api/sites hydration failed:", {
+        code: error.code,
+      });
+      return NextResponse.json(
+        {
+          site: { id: siteId },
+          warning: "Site created; detail refresh is temporarily unavailable",
+        },
+        {
+          status: 201,
+          headers: { "Cache-Control": "private, no-store" },
+        }
+      );
     }
 
-    return NextResponse.json({ site }, { status: 201 });
+    return NextResponse.json(
+      { site },
+      {
+        status: 201,
+        headers: { "Cache-Control": "private, no-store" },
+      }
+    );
   } catch (error) {
     if (error instanceof z.ZodError) {
       return NextResponse.json(
@@ -136,8 +183,11 @@ export async function POST(request: NextRequest) {
       if (error.code === "42501") {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
       }
+      console.error("create_admin_site_atomic RPC failed:", {
+        code: error.code,
+      });
     }
-    console.error("Create site error:", error);
+    console.error("POST /api/sites failed");
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

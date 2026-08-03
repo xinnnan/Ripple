@@ -7,6 +7,7 @@ import {
   AdminSiteMembershipMutationError,
   removeAdminSiteMembership,
 } from "@/lib/site-members/mutations";
+import { parseAdminSiteMemberListFilters } from "@/lib/admin-list-filters";
 
 /**
  * GET /api/admin/site-members — list site memberships (admin only).
@@ -20,27 +21,41 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url);
-    const siteId = searchParams.get("site_id");
-    const limit = Math.min(
-      Math.max(parseInt(searchParams.get("limit") || "100", 10) || 100, 1),
-      500
-    );
+    const parsedFilters = parseAdminSiteMemberListFilters(searchParams);
+    if (!parsedFilters.success) {
+      return NextResponse.json(
+        { error: "Invalid site membership filters" },
+        { status: 400 }
+      );
+    }
+    const filters = parsedFilters.data;
 
     const supabase = createAdminClient();
     let query = supabase
       .from("site_members")
-      .select("*, user:users(id, email, full_name, role), site:sites(id, site_name, site_code)")
+      .select(
+        "id, user_id, site_id, role, created_at, user:users(id, email, full_name, role), site:sites(id, site_name, site_code)"
+      )
       .order("created_at", { ascending: false })
-      .limit(limit);
+      .limit(filters.limit);
 
-    if (siteId) query = query.eq("site_id", siteId);
+    if (filters.siteId) query = query.eq("site_id", filters.siteId);
 
     const { data: members, error } = await query;
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      console.error("GET /api/admin/site-members failed:", {
+        code: (error as { code?: string }).code,
+      });
+      return NextResponse.json(
+        { error: "Failed to fetch site memberships" },
+        { status: 500 }
+      );
     }
 
-    return NextResponse.json({ members: members ?? [] });
+    return NextResponse.json(
+      { members: members ?? [] },
+      { headers: { "Cache-Control": "private, no-store" } }
+    );
   } catch {
     return NextResponse.json(
       { error: "Internal server error" },

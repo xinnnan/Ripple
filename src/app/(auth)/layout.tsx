@@ -3,6 +3,10 @@ import { createClient } from "@/lib/supabase/server";
 import type { UserRole } from "@/types/ticket";
 import { isAdminRole, isCustomerManager, isInternalUser } from "@/lib/roles";
 import { AppShell } from "@/components/app-shell";
+import {
+  isUnauthenticatedAuthError,
+  throwIdentityServiceUnavailable,
+} from "@/lib/supabase/auth-read";
 
 export const dynamic = "force-dynamic";
 
@@ -12,17 +16,30 @@ export default async function AuthLayout({
   children: React.ReactNode;
 }) {
   const supabase = await createClient();
+  const authResult = await supabase.auth.getUser();
   const {
     data: { user: authUser },
-  } = await supabase.auth.getUser();
+    error: authError,
+  } = authResult;
+
+  if (authError && !isUnauthenticatedAuthError(authError)) {
+    throwIdentityServiceUnavailable("auth-layout/auth", authError);
+  }
 
   if (!authUser) redirect("/login");
 
-  const { data: userProfile } = await supabase
+  const profileResult = await supabase
     .from("users")
     .select("role, email, status")
     .eq("id", authUser.id)
-    .single();
+    .maybeSingle();
+  if (profileResult.error) {
+    throwIdentityServiceUnavailable(
+      "auth-layout/profile",
+      profileResult.error
+    );
+  }
+  const userProfile = profileResult.data;
 
   if (!userProfile || userProfile.status !== "active") {
     redirect("/login?account=inactive");

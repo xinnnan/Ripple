@@ -6,26 +6,31 @@ import { EditUserForm } from "./edit-user-form";
 import { DetailTabs } from "@/components/detail-tabs";
 import { getCurrentTab } from "@/components/detail-tabs-helpers";
 import { TableEmpty } from "@/components/empty-state";
+import { parseUuidRouteId } from "@/lib/request-identifiers";
+import { notFound } from "next/navigation";
+import { assertPageQueriesSucceeded } from "@/lib/server-page-query";
 
 export const dynamic = "force-dynamic";
 
 interface Props {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ tab?: string }>;
+  searchParams: Promise<{ tab?: string | string[] }>;
 }
 
 export default async function AdminUserDetailPage({ params, searchParams }: Props) {
-  const { id } = await params;
+  const id = parseUuidRouteId((await params).id);
+  if (!id) notFound();
   const { tab } = await searchParams;
-  const activeTab = getCurrentTab({ tab }, "overview");
 
   const admin = createAdminClient();
 
-  const { data: user } = await admin
+  const userResult = await admin
     .from("users")
     .select("id, email, full_name, role, status, phone, customer_id, created_at, customer:customers(name)")
     .eq("id", id)
-    .single();
+    .maybeSingle();
+  assertPageQueriesSucceeded("admin/user-detail", userResult);
+  const user = userResult.data;
 
   if (!user) {
     return (
@@ -61,6 +66,12 @@ export default async function AdminUserDetailPage({ params, searchParams }: Prop
       .order("created_at", { ascending: false })
       .limit(20),
   ]);
+  assertPageQueriesSucceeded(
+    "admin/user-detail-related",
+    membershipsRes,
+    allSitesRes,
+    auditRes
+  );
 
   const memberships = (membershipsRes.data || []) as unknown as {
     id: string;
@@ -115,6 +126,11 @@ export default async function AdminUserDetailPage({ params, searchParams }: Prop
     { key: "sites", label: "Site Access", count: memberships.length },
     { key: "history", label: "History", count: audit.length },
   ];
+  const activeTab = getCurrentTab(
+    { tab },
+    "overview",
+    tabs.map(({ key }) => key)
+  );
 
   return (
     <div className="p-8">

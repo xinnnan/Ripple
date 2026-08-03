@@ -5,6 +5,11 @@ import { getUserScope, scopeTickets } from "@/lib/supabase/scope";
 import { resolveTicketQuery } from "@/lib/tickets/lookup";
 import { recordTicketCommentWithSla } from "@/lib/tickets/mutations";
 import { z } from "zod";
+import {
+  EXTERNAL_TICKET_COMMENT_SELECT,
+  INTERNAL_TICKET_COMMENT_SELECT,
+} from "@/lib/resource-projections";
+import { TICKET_COMMENT_MAX_LENGTH } from "@/lib/tickets/input-contract";
 
 interface RouteContext {
   params: Promise<{ ticketId: string }>;
@@ -14,9 +19,9 @@ const createCommentSchema = z.object({
   // author_id is intentionally NOT accepted — the route forces
   // author_id = auth.userId to prevent impersonation. See POST
   // handler for the full reasoning.
-  body: z.string().min(1).max(10000),
+  body: z.string().trim().min(1).max(TICKET_COMMENT_MAX_LENGTH),
   visibility: z.enum(["customer", "internal"]).default("customer"),
-});
+}).strict();
 
 export async function GET(
   request: NextRequest,
@@ -52,7 +57,11 @@ export async function GET(
 
     let query = supabase
       .from("ticket_comments")
-      .select("*, author:users(full_name, email, role)")
+      .select(
+        scope.isInternal
+          ? INTERNAL_TICKET_COMMENT_SELECT
+          : EXTERNAL_TICKET_COMMENT_SELECT
+      )
       .eq("ticket_id", ticket.id)
       .order("created_at", { ascending: true });
 
@@ -111,7 +120,9 @@ export async function POST(
       ticketId
     ).maybeSingle();
     if (ticketErr) {
-      console.error("Ticket lookup failed:", ticketErr);
+      console.error("POST /api/tickets/[ticketId]/comments lookup failed:", {
+        code: ticketErr.code,
+      });
       return NextResponse.json({ error: "Failed to load ticket" }, { status: 500 });
     }
     if (!ticket) {
@@ -132,7 +143,7 @@ export async function POST(
 
     // Non-internal users can never post internal comments — silently
     // downgrade to customer-visible.
-    const isInternal = auth.role === "admin" || auth.role === "engineer";
+    const isInternal = scope.isInternal;
     const safeVisibility = isInternal ? data.visibility : "customer";
 
     // Security: author_id must be the calling user. A non-internal
@@ -167,16 +178,40 @@ export async function POST(
 
     const { data: comment, error } = await supabase
       .from("ticket_comments")
-      .select("*, author:users(full_name, email)")
+      .select(
+        isInternal
+          ? INTERNAL_TICKET_COMMENT_SELECT
+          : EXTERNAL_TICKET_COMMENT_SELECT
+      )
       .eq("id", commentId)
       .single();
 
     if (error) {
-      console.error("Failed to create comment:", error);
-      return NextResponse.json({ error: "Failed to create comment" }, { status: 500 });
+      // The comment/timeline/SLA command has already committed. Preserve its
+      // success status when only response hydration is degraded.
+      console.error(
+        "POST /api/tickets/[ticketId]/comments hydration failed:",
+        { code: error.code }
+      );
+      return NextResponse.json(
+        {
+          comment: { id: commentId, ticket_id: ticket.id },
+          warning: "Comment added; detail refresh is temporarily unavailable",
+        },
+        {
+          status: 201,
+          headers: { "Cache-Control": "private, no-store" },
+        }
+      );
     }
 
-    return NextResponse.json({ comment }, { status: 201 });
+    return NextResponse.json(
+      { comment },
+      {
+        status: 201,
+        headers: { "Cache-Control": "private, no-store" },
+      }
+    );
   } catch (error) {
     if (error instanceof z.ZodError) {
       return NextResponse.json(
@@ -184,7 +219,9 @@ export async function POST(
         { status: 400 }
       );
     }
-    console.error("Create comment error:", error);
+    console.error("POST /api/tickets/[ticketId]/comments failed:", {
+      name: error instanceof Error ? error.name : "UnknownError",
+    });
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

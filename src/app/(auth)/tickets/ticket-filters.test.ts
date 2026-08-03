@@ -1,5 +1,14 @@
 import { describe, it, expect } from "vitest";
-import { parseFilters, buildParams, PAGE_SIZE } from "./ticket-filters";
+import {
+  parseFilters,
+  parseTicketListFilters,
+  buildParams,
+  PAGE_SIZE,
+} from "./ticket-filters";
+
+const CUSTOMER_ID = "11111111-1111-4111-8111-111111111111";
+const SITE_ID = "22222222-2222-4222-8222-222222222222";
+const OWNER_ID = "33333333-3333-4333-8333-333333333333";
 
 describe("parseFilters", () => {
   it("returns an empty state for no params", () => {
@@ -39,11 +48,13 @@ describe("parseFilters", () => {
 
   it("parses customer / site / owner by their URL keys", () => {
     const f = parseFilters(
-      new URLSearchParams("customer=c1&site=s1&owner=u1")
+      new URLSearchParams(
+        `customer=${CUSTOMER_ID}&site=${SITE_ID}&owner=${OWNER_ID}`
+      )
     );
-    expect(f.customer_id).toBe("c1");
-    expect(f.site_id).toBe("s1");
-    expect(f.owner_id).toBe("u1");
+    expect(f.customer_id).toBe(CUSTOMER_ID);
+    expect(f.site_id).toBe(SITE_ID);
+    expect(f.owner_id).toBe(OWNER_ID);
   });
 
   it("accepts only the 4 known range values; rejects everything else", () => {
@@ -64,6 +75,42 @@ describe("parseFilters", () => {
 
   it("parses the search query", () => {
     expect(parseFilters(new URLSearchParams("q=AMR-03")).q).toBe("AMR-03");
+  });
+
+  it("deduplicates valid repeated list filters", () => {
+    const result = parseTicketListFilters(
+      new URLSearchParams("status=new&status=new,closed&severity=P1,P1")
+    );
+    expect(result).toEqual(
+      expect.objectContaining({
+        isValid: true,
+        filters: expect.objectContaining({
+          status: ["new", "closed"],
+          severity: ["P1"],
+        }),
+      })
+    );
+  });
+
+  it.each([
+    "status=unknown",
+    "status=new,unknown",
+    "severity=P0",
+    "customer=not-a-uuid",
+    "site=not-a-uuid",
+    "owner=not-a-uuid",
+    "range=bogus",
+    "sla=late",
+    "page=2junk",
+    "page=100001",
+    "q=robot%2Coffline",
+    "q=first&q=second",
+    "unknown=value",
+    `customer=${CUSTOMER_ID}&customer=${SITE_ID}`,
+  ])("marks malformed or ambiguous filters invalid: %s", (query) => {
+    expect(parseTicketListFilters(new URLSearchParams(query)).isValid).toBe(
+      false
+    );
   });
 });
 
@@ -99,9 +146,9 @@ describe("buildParams", () => {
       q: "test",
       status: ["new", "in_progress"],
       severity: ["P1"],
-      customer_id: "c1",
-      site_id: "s1",
-      owner_id: "u1",
+      customer_id: CUSTOMER_ID,
+      site_id: SITE_ID,
+      owner_id: OWNER_ID,
       range: "7d",
       page: 3,
     });
@@ -110,9 +157,9 @@ describe("buildParams", () => {
       q: "test",
       status: ["new", "in_progress"],
       severity: ["P1"],
-      customer_id: "c1",
-      site_id: "s1",
-      owner_id: "u1",
+      customer_id: CUSTOMER_ID,
+      site_id: SITE_ID,
+      owner_id: OWNER_ID,
       range: "7d",
       page: 3,
     });

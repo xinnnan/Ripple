@@ -5,15 +5,39 @@ import {
   type InventoryPartOption,
   type InventorySiteOption,
 } from "./inventory-client";
+import { parseAdminInventoryPageFilters } from "@/lib/admin-list-filters";
+import { assertPageQueriesSucceeded } from "@/lib/server-page-query";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminInventoryPage({
   searchParams,
 }: {
-  searchParams: Promise<{ site?: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const { site: requestedSiteId } = await searchParams;
+  const raw = await searchParams;
+  const urlParams = new URLSearchParams();
+  for (const [key, value] of Object.entries(raw)) {
+    if (Array.isArray(value)) {
+      for (const entry of value) urlParams.append(key, entry);
+    } else if (value !== undefined) {
+      urlParams.append(key, value);
+    }
+  }
+  const parsedFilters = parseAdminInventoryPageFilters(urlParams);
+  if (!parsedFilters.success) {
+    return (
+      <InventoryClient
+        initialInventory={[]}
+        parts={[]}
+        sites={[]}
+        loadError="Invalid inventory site filter. Clear the filter and try again."
+        loadErrorActionHref="/admin/inventory"
+        initialSiteFilter="all"
+      />
+    );
+  }
+  const requestedSiteId = parsedFilters.data.siteId;
   const supabase = createAdminClient();
   const [inventoryResult, partsResult, sitesResult] = await Promise.all([
     supabase
@@ -44,29 +68,37 @@ export default async function AdminInventoryPage({
       .in("status", ["active", "commissioning"])
       .order("site_name"),
   ]);
+  assertPageQueriesSucceeded(
+    "admin/inventory-page",
+    inventoryResult,
+    partsResult,
+    sitesResult
+  );
 
-  const error =
-    inventoryResult.error || partsResult.error || sitesResult.error
-      ? "Inventory data could not be loaded. Refresh the page or try again later."
-      : null;
   const sites = (sitesResult.data || []).filter((site) => {
     const customer = Array.isArray(site.customer)
       ? site.customer[0]
       : site.customer;
     return customer?.status === "active" || customer?.status === "trial";
   }) as InventorySiteOption[];
+  const requestedSiteAvailable =
+    !requestedSiteId || sites.some((site) => site.id === requestedSiteId);
+  const filterError = requestedSiteAvailable
+    ? null
+    : "The selected site is unavailable for current inventory operations. Clear the filter and choose an active site.";
 
   return (
     <InventoryClient
-      initialInventory={(inventoryResult.data || []) as unknown as AdminInventoryRecord[]}
-      parts={(partsResult.data || []) as InventoryPartOption[]}
-      sites={sites}
-      loadError={error}
-      initialSiteFilter={
-        requestedSiteId && sites.some((site) => site.id === requestedSiteId)
-          ? requestedSiteId
-          : "all"
+      initialInventory={
+        requestedSiteAvailable
+          ? ((inventoryResult.data || []) as unknown as AdminInventoryRecord[])
+          : []
       }
+      parts={requestedSiteAvailable ? (partsResult.data || []) as InventoryPartOption[] : []}
+      sites={requestedSiteAvailable ? sites : []}
+      loadError={filterError}
+      loadErrorActionHref={filterError ? "/admin/inventory" : undefined}
+      initialSiteFilter={requestedSiteId || "all"}
     />
   );
 }

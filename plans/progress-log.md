@@ -7,13 +7,14 @@ meaningful change and before ending a work session. Newest entries go first.
 
 - **Branch:** `codex/prd-v1-1-gap-closure`
 - **Active phase:** Phase 0 — Containment and reproducible baseline
-- **Active work item:** run protected migrations 028–031 business probes when
-  the staging fixture becomes available; otherwise close the dashboard
-  timezone gap as the next locally executable checkpoint
-- **Last verified implementation commit:** `96e3897` (`fix: normalize malformed JSON responses`)
+- **Active work item:** apply and live-verify migration 047's replay-safe ticket
+  creation command before deploying its application caller; then resume the
+  remaining mutation-surface audit
+- **Last verified implementation commit:** `dc5f588` (`fix: make ticket creation replay safe`)
 - **Uncommitted work:** none expected after the documentation checkpoint;
   verify with `git status` before resuming
-- **Deployment gate:** migrations 001–046 are confirmed applied. Migration 044
+- **Deployment gate:** migrations 001–046 are confirmed applied. Migration 047
+  awaits application and must precede deployment of `dc5f588`. Migration 044
   passed a 130-assertion disposable live matrix with zero residue. Migration
   045 passed a 110-assertion live matrix with zero residue. Migration 046
   passed a 77-assertion live matrix with zero residue. Production
@@ -54,16 +55,1582 @@ meaningful change and before ending a work session. Newest entries go first.
   with Inter and no horizontal overflow. Public site-code invalid/unavailable
   states, bounded input, stale-request cancellation, checking-button state,
   Inter, and no-overflow behavior were reverified at 1280 and 390×844 with
-  zero reproducible console warnings/errors. Password-based login passed;
+  zero reproducible console warnings/errors. The authenticated internal
+  dashboard was reverified against real rows at 1280×720 and 390×844: site and
+  customer relations render, timestamps use each ticket site's timezone,
+  Inter is applied, all recent rows remain available, horizontal overflow is
+  absent, and the browser logged zero warnings/errors. Password-based login passed;
   recovery-email delivery and one-time link consumption still require a
-  dedicated staging mailbox.
-- **Exact next local step:** check whether the protected credential fixture is
-  available and, if so, run the migration 028–031 business probes plus the new
-  malformed-body HTTP checks. If it remains unavailable, audit and fix the
-  dashboard's hardcoded `America/New_York` rendering with unit, production,
-  and responsive browser verification. Configure `CRON_SECRET` separately
-  before production worker activation
+  dedicated staging mailbox. The public `/submit` account-detection path was
+  reverified at 1280×720 and 390×844 after P0-BJ: the guest form retains its
+  stable heading, labeled controls, Inter, clean console, and no horizontal
+  overflow. No ticket was submitted; protected signed-in profile/site-option
+  visual coverage still depends on the credentialed fixture.
+- **Exact next local step:** apply migration 047, then verify function/table
+  shape, service-only privileges, first create, exact replay, changed-input
+  rejection, concurrent replay cardinality, single audit/event/outbox effects,
+  cascade cleanup, and zero residue. Configure `CRON_SECRET` separately before
+  production worker activation
 - **Primary plan:** [`plans/prd-v1.1-gap-closure-plan.md`](./prd-v1.1-gap-closure-plan.md)
+
+## Overall project status — 2026-08-03
+
+- Ripple has a meaningful Phase 1–4 support-platform foundation, and Phase 0
+  containment is substantially implemented through migrations 001–046;
+  migration 047 is implemented locally and awaits application.
+- Against the full PRD v1.1 capability map, 17 domains remain
+  **Partial** or **Unsafe/Partial** and seven remain **Absent**. No full PRD
+  capability domain is yet honestly complete end to end.
+- The local deterministic baseline is green at 944 unit/contract tests, 40
+  production HTTP smoke checks, a production build, zero-warning lint, and
+  zero known dependency vulnerabilities.
+- Phase 0 cannot be declared exited until the protected six-account/two-tenant
+  matrix and remaining migration 028–037 positive/rollback probes run in
+  staging, hosted branch protection and the reviewer-protected staging
+  environment are activated, and production worker/provider configuration is
+  completed.
+- The largest remaining product gaps are the PRD authorization kernel,
+  queues/routing, business-calendar SLA clocks, remote support, appointments,
+  assets/entitlements, search/knowledge, i18n, versioned external APIs, and
+  production SRE/recovery evidence.
+
+## Session record — 2026-08-03 (P0-BR / replay-safe ticket creation)
+
+### Objective
+
+Prevent duplicate tickets when web or Slack creation is replayed after an
+ambiguous response, while preserving migration-first rollout and atomic
+timeline, audit, and delivery behavior.
+
+### Finding and implementation
+
+- Migration 034 made one invocation atomic but had no request identity, so a
+  network disconnect or Slack retry after commit could correctly execute the
+  command a second time. The command also returned only a UUID, requiring a
+  separate post-commit hydration read before the caller could receive a ticket
+  number and secure token.
+- Migration 047 adds a service-only `ticket_creation_requests` ledger and
+  `create_ticket_idempotent_atomic(jsonb)` wrapper. A transaction-scoped
+  advisory lock serializes each source/key pair; an exact replay returns the
+  first ticket, changed business input fails closed, and volatile secure-token
+  and SLA calculations cannot replace the committed receipt.
+- The wrapper delegates first creation to migration 034 in the same transaction
+  and returns the ticket UUID, number, and secure token directly. Existing
+  `create_ticket_atomic(jsonb)` remains available for migration-first rollout.
+- Public and authenticated forms retain a generated key only while the
+  normalized request body is unchanged, then rotate after edits or a new-form
+  reset. The API validates and echoes caller keys and generates one for legacy
+  callers. Slack derives a deterministic key from the signed submitted view ID.
+- `createTicketCore()` now consumes the transaction receipt without a
+  post-commit ticket query and re-drains existing outbox work on an exact replay.
+  Provider/database diagnostics on the touched path are bounded.
+- Fourteen new/expanded helper, route, core, migration, and real-source
+  contracts bring the suite to 944 tests across 121 files. Migration 047 is not
+  yet applied, and no live ticket was created.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| `npm test` | Passed; 121 files, 944 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build and type check |
+| `npm run test:e2e` | Passed; all 40 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+
+### Commit
+
+- Hash: `dc5f588`
+- Message: `fix: make ticket creation replay safe`
+
+### Next
+
+Apply migration 047 before deploying the application commit, then run the
+replay/concurrency/cardinality/privilege/cleanup live matrix. Resume the
+remaining mutation audit only after the command is live-green.
+
+## Session record — 2026-08-03 (P0-BQ / ticket mutation integrity)
+
+### Objective
+
+Align public and authenticated ticket creation, ticket detail actions,
+comments, attachments, and AI-assist controls with their server contracts while
+preventing raw failures, duplicate actions, stale form state, and false failure
+after a committed database command.
+
+### Finding and implementation
+
+- Ticket forms and detail actions assumed failed responses were JSON, exposed
+  arbitrary runtime/provider messages, and released controls before refresh or
+  navigation settled. Several controls were unbound or remained mutable during
+  an in-flight write.
+- Shared ticket and attachment contracts now centralize title, description,
+  context, submitter, comment, summary, root-cause, file-size, filename, and
+  ten-file submission limits. Both public and authenticated creation paths
+  normalize and validate against them before I/O.
+- The authenticated modal now sends the scoped site UUID, invalidates stale
+  site loads, preserves committed success with an explicit ticket link, and
+  uses route refresh rather than a timed full reload. The public form locks its
+  complete upload/create window, validates every attachment, retains ticket
+  success when a later upload fails, and provides a real state-reset action.
+- Ticket status/severity/owner, resolution, comment, attachment, and AI-assist
+  actions now guard duplicate execution, use bounded expected errors, contain
+  runtime detail, keep controls locked through refresh, and expose accessible
+  progress/outcome state. Resolution now correctly accepts a nullable internal
+  summary.
+- Ticket-create, ticket-patch, and comment request schemas are strict and
+  bounded. Successful authenticated responses are private/no-store. Ticket
+  PATCH dispatches the durable outbox immediately after commit, and PATCH or
+  comment hydration failure now returns committed success with the durable ID
+  and bounded warning instead of encouraging a duplicate retry.
+- Fifteen new route and real-source contracts bring the suite to 930 tests
+  across 118 files. No live ticket, comment, attachment, or AI suggestion was
+  created.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| `npm test` | Passed; 118 files, 930 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build and type check |
+| `npm run test:e2e` | Passed; all 40 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+
+### Commit
+
+- Hash: `6075296`
+- Message: `fix: harden ticket mutation workflows`
+
+### Next
+
+Run protected probes when their fixture is available. Otherwise make ticket
+creation replay-safe across ambiguous client/network outcomes, including both
+web and Slack creation callers.
+
+## Session record — 2026-08-03 (P0-BP / customer and site form integrity)
+
+### Objective
+
+Align customer/site create and edit UX with the atomic command contracts while
+preventing raw failures, duplicate retries, invalid identifiers, and edits to
+archived or tenant-ownership state.
+
+### Finding and implementation
+
+- All four forms assumed failed responses were JSON, exposed arbitrary thrown
+  messages, and disabled only submit during the HTTP request. Create flows then
+  released their lock before a one-second full-page reload, leaving a duplicate
+  mutation window after a successful commit.
+- Customer create/edit now trims names, normalizes domains, applies the
+  server's hostname and length contract before I/O, uses bounded expected API
+  errors, contains runtime/network detail, and stays locked through route
+  refresh. Archived customers also reject programmatic submission.
+- Site create/edit now share the canonical site-code normalizer/validator,
+  mirror site-name/code/address bounds, bind every control, collapse grids on
+  mobile, and keep all controls locked through refresh. Creation is unavailable
+  without an active customer; editing keeps customer ownership immutable and
+  archived sites read-only.
+- The atomic site-create command could commit successfully and then return 500
+  if response hydration failed, encouraging clients to retry and possibly
+  create a duplicate. It now returns a private/no-store 201 with the committed
+  ID and a bounded warning, while logging only the provider error code.
+- Five route tests and four real-source form contracts bring the suite to 915
+  tests across 115 files. No live customer or site was created or changed.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| `npm test` | Passed; 115 files, 915 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build and type check |
+| `npm run test:e2e` | Passed; all 40 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+
+### Commit
+
+- Hash: `e15dea6`
+- Message: `fix: harden customer site forms`
+
+### Next
+
+Run protected probes when their fixture is available. Otherwise harden ticket
+creation and detail mutation surfaces.
+
+## Session record — 2026-08-03 (P0-BO / service creation form integrity)
+
+### Objective
+
+Align field-service and spare-part request creation UX with atomic command
+contracts while preventing raw failures, duplicate submissions, numeric
+coercion, and silent loss of visible line items.
+
+### Finding and implementation
+
+- Both forms assumed failed responses were JSON and exposed arbitrary thrown
+  messages. They disabled only submit, not the rest of the mutable request
+  surface, and released busy state before navigation settled.
+- Field-service creation now trims/bounds title and description, validates
+  0–9,999.9 one-decimal hours plus scheduled date order before I/O, limits
+  assignment to the server's 20-engineer maximum, and clearly identifies the
+  first selected engineer as lead.
+- Every field-service control has a bound label or grouped legend, mobile grids
+  collapse to one column, errors are alerts, and request/navigation share one
+  duplicate-submit guard.
+- Spare-part creation previously filtered incomplete/invalid rows before POST,
+  silently discarding user work. It also coerced numeric edits early, used row
+  indexes as keys, allowed duplicate parts until server rejection, and mapped a
+  valid zero price to null.
+- Request rows now use stable IDs and editable strings. Every visible row must
+  validate and submit exactly once; duplicates, whole-number quantity bounds,
+  two-decimal price bounds, and the 100-line maximum fail precisely before I/O.
+  Zero price remains zero, unknown price remains null, and optional 500-character
+  line notes are available.
+- Request-level notes, controls, feedback, and responsive layout match server
+  limits and remain locked through navigation.
+- Seven new real-source contracts bring the suite to 906 tests across 113
+  files. Existing creation-page contracts were upgraded from request-only to
+  request-plus-navigation busy-state assertions.
+- No live order or request was created. Positive/rollback behavior remains
+  behind the protected staging fixture gate.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| `npm test` | Passed; 113 files, 906 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build and type check |
+| `npm run test:e2e` | Passed; all 40 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+
+### Commit
+
+- Hash: `a3ed0dd`
+- Message: `fix: harden service creation forms`
+
+### Next
+
+Run protected probes when their fixture is available. Otherwise harden
+customer/site create and edit forms, then ticket creation/detail mutation
+surfaces.
+
+## Session record — 2026-08-03 (P0-BN / service action workflow integrity)
+
+### Objective
+
+Make field-service status transitions and Slack channel linking reviewable,
+bounded, failure-contained, and protected from duplicate requests through the
+complete refresh/navigation lifecycle.
+
+### Finding and implementation
+
+- Service completion used two blocking browser prompts. It offered no bound
+  report guidance or durable correction state, while cancellation ran
+  immediately from one click.
+- Completion is now an inline labeled form with exact hours precision/range and
+  a 20,000-character report bound. Cancellation has an explicit consequence
+  statement and confirm/keep choice.
+- Field-service status responses now use the shared bounded mutation boundary,
+  contain unexpected runtime/network detail, announce success/error accessibly,
+  and guard duplicate actions through both HTTP and route refresh settlement.
+- Slack linking/unlinking now uses the same response boundary and complete
+  request/navigation busy window. Unlinking requires confirmation and explains
+  that new ticket posting will stop.
+- Slack channel loading is abortable and retryable, validates the complete
+  response shape, and never turns a malformed/provider response into a false
+  empty list. Controls are explicitly labeled and responsive.
+- The admin channel API now validates non-placeholder bot configuration,
+  retrieves/deduplicates/sorts up to ten 200-channel pages, reports truncation,
+  returns private/no-store data, and logs only the provider error code.
+- Thirteen new unit/route/source contracts bring the suite to 899 tests across
+  112 files.
+- No live field-service or Slack link mutation was executed. Positive and
+  rollback behavior remains behind the protected staging fixture gate.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| `npm test` | Passed; 112 files, 899 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build and type check |
+| `npm run test:e2e` | Passed; all 40 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+
+### Commit
+
+- Hash: `7ff594d`
+- Message: `fix: harden service action workflows`
+
+### Next
+
+Run protected probes when their fixture is available. Otherwise harden the
+field-service and part-request creation forms, then continue the remaining
+customer/site/ticket mutation surfaces.
+
+## Session record — 2026-08-03 (P0-BM / identity form mutation integrity)
+
+### Objective
+
+Prevent malformed responses, unexpected runtime failures, duplicate submits,
+and inactive-record edits from producing ambiguous admin-user or customer-team
+identity mutations.
+
+### Finding and implementation
+
+- Four identity create/edit forms assumed every failed response was JSON and
+  displayed arbitrary `Error.message` text. A gateway error could therefore
+  cause a second parse failure, while network/provider detail could reach the
+  UI.
+- A shared client mutation boundary now parses only non-2xx responses, accepts
+  only a non-empty string `error` of at most 300 characters, and uses a stable
+  fallback for malformed, unexpected, or oversized responses. Successful 204
+  responses remain valid and are not parsed.
+- Admin-user and customer-team forms now normalize submitted email/name/phone,
+  enforce the same browser limits as their server schemas, and retain password
+  minimum/maximum parity.
+- All mutable controls, cancel actions, site choices, and submit buttons lock
+  during the request. Submit handlers independently reject duplicate requests;
+  edit handlers also reject inactive records even when invoked outside the
+  normal button path.
+- Outcomes use accessible alert/status roles and busy state. Team site choices
+  are grouped with fieldset/legend semantics and expose pressed state; edit
+  labels are explicitly bound to controls.
+- Twenty new helper and real-source contracts bring the suite to 886 tests
+  across 110 files.
+- No live identity mutation was executed. Positive tenant/role and rollback
+  behavior remains behind the protected credential fixture gate.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| `npm test` | Passed; 110 files, 886 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build and type check |
+| `npm run test:e2e` | Passed; all 40 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+
+### Commit
+
+- Hash: `ec9cd65`
+- Message: `fix: contain identity form failures`
+
+### Next
+
+Run protected probes when their fixture is available. Otherwise harden the
+field-service action and Slack channel-link mutation surfaces, then continue
+the remaining authenticated fetch-form audit.
+
+## Session record — 2026-08-03 (P0-BL / lifecycle action settlement)
+
+### Objective
+
+Prevent duplicate lifecycle requests and silent mutation failures in the admin
+customer/site archive, user deactivation, and spare-part request status UIs.
+
+### Finding and implementation
+
+- Customer/site bulk archive and user bulk deactivation relied only on React
+  transition state, which starts after the HTTP request. Confirmation buttons,
+  selection controls, and batch actions therefore remained active while the
+  mutation was in flight and could submit the same lifecycle command twice.
+- Their fetch and JSON parsing paths had no catch/finally. Network failures or
+  non-JSON error responses could reject without an operator-visible outcome.
+- Spare-part request status actions ignored every non-2xx response and had no
+  error state, so rejected transitions looked like successful no-ops.
+- All three surfaces now track the complete request-plus-refresh lifecycle,
+  expose `aria-busy`, disable confirmation and selection during mutation, and
+  restore controls in `finally`.
+- Bulk selections and confirmation remain intact after total failure for an
+  exact retry; successful requests clear them, while partial command outcomes
+  retain explicit refresh/retry guidance.
+- JSON error bodies are guarded and type-checked. Network/non-JSON failures use
+  stable generic messages, and every failure is exposed through an alert.
+- Spare-part status changes now show progress, returned transition errors, and
+  generic network failure instead of silently doing nothing.
+- Six new real-source contracts bring the suite to 866 tests across 108 files.
+- No lifecycle mutation was executed during local testing; protected positive,
+  partial, and rollback behavior remains part of the staging fixture gate.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| `npm ci` | Passed from the lockfile earlier in this continuous session; 0 install-time vulnerabilities |
+| `npm test` | Passed; 108 files, 866 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build and type check |
+| `npm run test:e2e` | Passed; all 40 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+
+### Commit
+
+- Hash: `76091a3`
+- Message: `fix: settle lifecycle action failures`
+
+### Next
+
+Run protected probes when their fixture is available. Otherwise continue the
+authenticated fetch-form audit, replacing unguarded JSON/error handling and
+reviewing field-service and Slack action UX.
+
+## Session record — 2026-08-03 (P0-BK / authentication recovery integrity)
+
+### Objective
+
+Make sign-in, recovery request, recovery-link verification, password update,
+callback exchange, and sign-out settle truthfully across provider errors,
+throttling, rejected sessions, and partial session cleanup.
+
+### Finding and implementation
+
+- Sign-in and recovery-email requests did not catch thrown provider/network
+  failures, leaving their buttons indefinitely busy.
+- Recovery-link verification ignored authentication errors, presenting real
+  provider outages as expired links and allowing promise rejection to strand
+  the spinner.
+- Password update treated global sign-out as fire-and-forget. A changed
+  password could therefore redirect to the normal success notice even when
+  the recovery session was not confirmed ended.
+- The server logout and callback routes also ignored returned errors or thrown
+  exchange/sign-out failures.
+- Shared browser error contracts now distinguish invalid credentials and
+  throttling while keeping every other provider response generic. Explicit
+  recovery lookup misses preserve the non-enumerating success response.
+- Login, recovery request, and password update use `try/finally`; email fields
+  are bounded to 320 characters and password fields to 1,024.
+- Recovery verification now distinguishes checking, valid, rejected/expired,
+  provider unavailable, and post-update cleanup-failed states with a retry path.
+- A shared tested cleanup helper attempts global revocation first, falls back
+  to local device cleanup, reports partial cleanup truthfully, and never throws.
+  If both cleanup attempts fail after the password changed, the update form is
+  replaced by explicit sign-out/support guidance so the credential is not
+  changed twice.
+- Callback exchange failures and logout cleanup failures return stable same-
+  origin recovery paths with code/name/status-only diagnostics.
+- Fifteen new contracts bring the suite to 860 tests across 107 files.
+- No recovery email or password mutation was performed during local testing;
+  delivery, one-time link consumption, and signed-in cleanup outcomes still
+  require the dedicated staging mailbox/account fixture.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| `npm ci` | Passed from the lockfile earlier in this continuous session; 0 install-time vulnerabilities |
+| `npm test` | Passed; 107 files, 860 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build and type check |
+| `npm run test:e2e` | Passed; all 40 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+
+### Commit
+
+- Hash: `e887eec`
+- Message: `fix: harden authentication recovery states`
+
+### Next
+
+Run protected probes when their fixture is available. Otherwise audit the
+fetch-based authenticated mutation forms and integration/status UX for false
+success, unresolved loading, or raw backend detail.
+
+## Session record — 2026-08-03 (P0-BJ / browser account loading integrity)
+
+### Objective
+
+Prevent browser-side identity, profile, and site-option failures from becoming
+indefinite loading, raw provider errors, empty authenticated creation forms, or
+an unsafe signed-in-to-guest downgrade.
+
+### Finding and implementation
+
+- Both shared browser scope helpers ignored authentication, profile, and site
+  query errors, returning an empty site set for real availability failures.
+- The profile page could remain on its loading spinner when no session existed,
+  exposed raw provider messages during profile/password changes, and lacked a
+  bounded normalization contract for self-service fields.
+- The authenticated ticket modal silently treated failed site loading as no
+  sites and still allowed submission attempts.
+- Public intake caught every signed-in enrichment failure and continued as a
+  guest, potentially exposing the wrong site-entry contract and attribution.
+- Browser scope now preserves normal rejected-session and inactive-account
+  behavior while throwing generic availability failures with code-only logs.
+- Profile loading always settles into content or retry/sign-in recovery;
+  self-service name/phone writes are normalized and bounded, and password/
+  profile provider detail is no longer exposed.
+- Both ticket-entry surfaces distinguish loading, unavailable, legitimate
+  no-site, signed-in, and guest states; required site selection disables
+  submission when prerequisites are unavailable.
+- The modal has dialog semantics, bound labels, responsive grids, and an
+  accessible close control. Profile and public intake retain Inter and mobile
+  fit.
+- Twenty-two new behavioral contracts bring the suite to 845 tests across 105
+  files.
+- In-app browser QA passed for guest `/submit` at 1280×720 and 390×844 with a
+  clean console and no horizontal overflow. No ticket was submitted. Protected
+  signed-in visual coverage remains gated by the missing staging fixture.
+- The first complete gate caught that the temporary account-check screen had
+  removed the stable server-rendered route heading. The heading contract was
+  restored and the full gate was rerun from the beginning.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| `npm ci` | Passed from the lockfile earlier in this continuous session; 0 install-time vulnerabilities |
+| `npm test` | Passed; 105 files, 845 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build and type check |
+| `npm run test:e2e` | Passed; all 40 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+
+### Commit
+
+- Hash: `10a1547`
+- Message: `fix: harden browser account loading`
+
+### Next
+
+Run protected probes when their fixture is available. Otherwise inventory the
+remaining browser Supabase reads and harden the next coherent settings/write-
+form slice without broadening feature scope.
+
+## Session record — 2026-08-03 (P0-BI / server identity read integrity)
+
+### Objective
+
+Distinguish normal signed-out, rejected-session, inactive-account, and
+identity-provider/database failure states across the shared API authorization,
+tenant scope, and authenticated-shell boundaries.
+
+### Finding and implementation
+
+- `requireAdmin()`, `requireInternal()`, and `getAuthUser()` ignored both
+  identity-provider and profile-query errors, converting outages into 401/403.
+- `getUserScope()` ignored profile, manager-site, membership, and active-site
+  errors, converting them into logged-out or empty authorization scopes.
+- The authenticated layout redirected profile/database failures to the
+  inactive-account login path.
+- A shared classifier now keeps missing, expired, revoked, and otherwise
+  rejected sessions on the normal unauthenticated path while mapping real
+  provider/data failures to generic 503 or recovery errors.
+- Diagnostics include only stable code/name/status metadata. Provider messages,
+  SQL details, credentials, and caller data are excluded.
+- Profile reads are missing-safe; missing/inactive profiles retain the existing
+  forbidden behavior. Customer membership IDs are deduplicated before current
+  active-site hydration.
+- Thirty behavioral contracts across authorization helpers, the tenant-scope
+  resolver, and the real authenticated layout bring the suite to 823 tests
+  across 102 files.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| `npm ci` | Passed from the lockfile earlier in this continuous session; 0 install-time vulnerabilities |
+| `npm test` | Passed; 102 files, 823 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build and type check |
+| `npm run test:e2e` | Passed; all 40 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+
+### Commit
+
+- Hash: `2495cbd`
+- Message: `fix: distinguish identity read failures`
+
+### Next
+
+Run protected probes when their fixture is available. Otherwise harden browser
+scope/profile reads and the two ticket-creation entry points so authenticated
+provider failures cannot become silent empty options, indefinite loading, raw
+database messages, or guest fallback.
+
+## Session record — 2026-08-03 (P0-BH / ticket page read integrity)
+
+### Objective
+
+Prevent authenticated ticket list/detail database failures from rendering as
+empty results, missing tickets, or incomplete operational panels, while
+minimizing child-resource hydration at the service-role boundary.
+
+### Finding and implementation
+
+- The ticket list, internal/external filter options, primary detail lookup, and
+  every related detail read ignored database errors.
+- Ticket events and AI suggestions still used wildcard hydration. External
+  ticket detail also fetched spare-part request cost, while field-service
+  cards fetched scheduling, effort, and engineer data the UI did not use.
+- All list, option, primary, and related reads now use the shared code-only
+  generic recovery boundary. A failed primary lookup remains distinct from a
+  legitimate missing ticket.
+- Ticket events, AI suggestions, linked part requests, and linked field-service
+  orders now use explicit UI-minimum projections. The customer projection
+  excludes part-request cost, and customer views still receive no raw timeline
+  events or AI suggestions.
+- Related detail reads execute concurrently after the scoped ticket is found.
+  Thirteen behavioral contracts plus expanded projection checks bring the
+  suite to 793 tests across 99 files.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| `npm ci` | Passed from the lockfile earlier in this continuous session; 0 install-time vulnerabilities |
+| `npm test` | Passed; 99 files, 793 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build and type check |
+| `npm run test:e2e` | Passed; all 40 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+
+### Commit
+
+- Hash: `ce068a0`
+- Message: `fix: contain ticket page read failures`
+
+### Next
+
+Run protected probes when their fixture is available. Otherwise audit and
+harden `getUserScope()` plus authenticated layout/profile reads so query
+failures cannot collapse into false login, inactive-account, or empty-scope
+states.
+
+## Session record — 2026-08-03 (P0-BG / dashboard read integrity)
+
+### Objective
+
+Prevent all dashboard variants from presenting database failures as zero
+metrics, missing sites, or empty recent activity.
+
+### Finding and implementation
+
+- The dashboard profile read and every internal, manager, and customer metric/
+  list read ignored query errors.
+- Manager and customer variants also executed ticket queries for empty site
+  scopes, and regular-customer memberships hydrated retained site relations
+  without independently deriving current access.
+- The profile and every downstream query now use shared code-only generic
+  recovery. Legitimately empty scopes short-circuit without database `.in([])`
+  calls while retaining exact zero counts.
+- Manager sites are restricted to the exact organization plus active site and
+  active/trial customer lifecycle. Join-only customer data is stripped before
+  presentation.
+- Regular-customer membership IDs are deduplicated, then hydrated only through
+  active sites under active/trial customers before ticket scope is constructed.
+- Eleven behavioral contracts cover every failure stage, lifecycle/scope rules,
+  empty-scope short circuiting, and safe logs. The suite is now 780 tests across
+  98 files.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| `npm ci` | Passed from the lockfile earlier in this continuous session; 0 install-time vulnerabilities |
+| `npm test` | Passed; 98 files, 780 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build and type check |
+| `npm run test:e2e` | Passed; all 40 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+
+### Commit
+
+- Hash: `1b59d66`
+- Message: `fix: contain dashboard read failures`
+
+### Next
+
+Run protected probes when their fixture is available. Otherwise apply generic
+failure handling to ticket list/detail reads and replace the remaining internal
+ticket-event and AI-suggestion wildcard projections with explicit allow-lists.
+
+## Session record — 2026-08-03 (P0-BF / customer page read integrity)
+
+### Objective
+
+Prevent authenticated site and team pages from treating profile, tenant, or
+membership database failures as legitimate empty or unauthorized states.
+
+### Finding and implementation
+
+- `/sites` and `/team` ignored cookie-profile failures. Manager site reads,
+  team roster/site reads, and membership hydration also discarded errors.
+- Regular `/sites` presentation hydrated retained memberships directly and
+  could therefore encounter archived/missing relations instead of explicitly
+  deriving current access.
+- Both pages now use the shared code-only failure boundary for every read.
+- `/sites` first loads only the caller's membership IDs, then hydrates those IDs
+  through active sites under active/trial customers. Managers retain their
+  organization-wide scope under the same lifecycle predicate.
+- `/team` preserves its exact customer scope, applies the same active tenant/site
+  predicate, strips the join-only customer relation before client props, and
+  guards the roster, site, and membership reads.
+- Customer-name rendering now accepts both Supabase object and array relation
+  shapes. Eleven real-page contracts bring the suite to 769 tests across 97
+  files.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| `npm ci` | Passed from the lockfile earlier in this continuous session; 0 install-time vulnerabilities |
+| `npm test` | Passed; 97 files, 769 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build and type check |
+| `npm run test:e2e` | Passed; all 40 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+
+### Commit
+
+- Hash: `c336fb1`
+- Message: `fix: contain customer page read failures`
+
+### Next
+
+Run protected probes when their fixture is available. Otherwise apply code-only
+failure handling across all three dashboard variants so database failures do
+not become zero counts, missing sites, or empty recent-ticket activity.
+
+## Session record — 2026-08-03 (P0-BE / admin creation option integrity)
+
+### Objective
+
+Align part-request and field-service creation selectors with their transactional
+command rules and distinguish loader failures from genuinely unavailable data.
+
+### Finding and implementation
+
+- Both pages discarded option-query errors and rendered empty selectors during
+  database failures.
+- Their site queries accepted active sites under inactive customers even though
+  migrations 029 and 030 reject those commands.
+- Both pages now load options concurrently, use shared code-only generic failure
+  recovery, and restrict sites to active rows under active or trial customers.
+- The field-service engineer selector now exactly requests active `engineer`
+  accounts, matching the atomic command's assignee rule.
+- A part request cannot be submitted without both an eligible site and active
+  catalog part; a field-service order cannot be submitted without an eligible
+  site. Both forms explain the missing prerequisite instead of presenting an
+  apparently actionable empty selector.
+- Six contracts cover failures, lifecycle/role filters, and unavailable-data UI
+  guards. The suite is now 758 tests across 96 files.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| `npm ci` | Passed from the lockfile earlier in this continuous session; 0 install-time vulnerabilities |
+| `npm test` | Passed; 96 files, 758 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build and type check |
+| `npm run test:e2e` | Passed; all 40 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+
+### Commit
+
+- Hash: `0b15ef9`
+- Message: `fix: harden admin creation options`
+
+### Next
+
+Run protected probes when their fixture is available. Otherwise contain
+database/profile failures on the customer-facing `/sites` and `/team` pages,
+including manager service-role reads and membership hydration.
+
+## Session record — 2026-08-03 (P0-BD / admin list read integrity)
+
+### Objective
+
+Finish the admin list-page read audit by preventing database and authorization-
+profile failures from being presented as legitimate empty lists.
+
+### Finding and implementation
+
+- Customer, site, user, combined customer/site, spare-part, SLA-policy,
+  part-request, and field-service list pages discarded query errors and rendered
+  their normal empty states during database failures.
+- The four pages with explicit cookie-profile authorization also discarded
+  profile-read errors before constructing a service-role client.
+- All eight pages now apply the shared code-only page-query guard, producing a
+  generic recovery boundary without logging database messages or query detail.
+- The combined customer/site page no longer performs or serializes an unused
+  flat-site query, and the spare-parts list replaces wildcard hydration with an
+  explicit least-data projection.
+- Fourteen real-page contracts cover all eight list failures, all four profile
+  failures, redundant-query removal, and the catalog projection. The suite is
+  now 752 tests across 95 files.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| `npm ci` | Passed from the lockfile earlier in this continuous session; 0 install-time vulnerabilities |
+| `npm test` | Passed; 95 files, 752 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build and type check |
+| `npm run test:e2e` | Passed; all 40 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+
+### Commit
+
+- Hash: `0516fb5`
+- Message: `fix: surface admin list read failures`
+
+### Next
+
+Run protected probes when their fixture is available. Otherwise audit the
+admin part-request and field-service creation pages for failed option reads,
+least-data projections, lifecycle filtering, and misleading empty selectors.
+
+## Session record — 2026-08-03 (P0-BC / inventory page prefilter containment)
+
+### Objective
+
+Complete the authenticated server-page query-parameter inventory by preventing
+the inventory page's site prefilter from silently broadening invalid input.
+
+### Finding and implementation
+
+- `/admin/inventory?site=…` accepted malformed or repeated values and ignored
+  unknown keys. A valid UUID for an archived, inactive-customer, or missing site
+  silently selected `All sites`, exposing a materially different view than the
+  URL claimed.
+- A canonical page parser now accepts only one optional UUID `site` key. Invalid
+  input stops before service-role construction and renders an empty, clearable
+  error state.
+- A valid but operationally unavailable site also renders no inventory, parts,
+  or sites with a clear-filter action rather than broadening to all inventory.
+- The page now applies the shared code-only failure guard to its three database
+  reads. Five parser checks and six real-page contracts bring the suite to 738.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| `npm ci` | Passed from the lockfile earlier in this continuous session; 0 install-time vulnerabilities |
+| `npm test` | Passed; 94 files, 738 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build and type check |
+| `npm run test:e2e` | Passed; all 40 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+
+### Next
+
+Run protected probes when their fixture is available. Otherwise audit remaining
+admin list pages for ignored query errors, wildcard reads, and false empty-state
+presentation.
+
+## Session record — 2026-08-03 (P0-BB / detail-tab parameter containment)
+
+### Objective
+
+Prevent arbitrary or repeated tab query values from rendering authenticated
+admin detail pages with no active content.
+
+### Finding and implementation
+
+- The shared helper returned every string verbatim. Customer, site, and user
+  detail pages then compared it against fixed render branches; unknown values
+  made every branch false and produced an apparently blank page.
+- The helper now requires the page's declared tab keys and falls back for
+  missing, unknown, or repeated values. Each page derives the allow-list from
+  the exact tab array it renders so navigation and validation cannot drift.
+- Seven helper contracts cover every declared example plus missing, absent,
+  unknown, and repeated query values, bringing the suite to 727.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| `npm ci` | Passed from the lockfile earlier in this continuous session; 0 install-time vulnerabilities |
+| `npm test` | Passed; 93 files, 727 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build and type check |
+| `npm run test:e2e` | Passed; all 40 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+
+### Next
+
+Run protected probes when their fixture is available. Otherwise strictly
+contain the remaining authenticated server-page site prefilter on the admin
+inventory screen.
+
+## Session record — 2026-08-03 (P0-BA / detail-page read-failure integrity)
+
+### Objective
+
+Distinguish genuine missing resources from failed primary or related database
+reads across authenticated admin and customer-manager detail pages.
+
+### Finding and implementation
+
+- Primary `.single()` lookups and ignored errors made database failures render
+  as resource-not-found states. Related query failures silently showed zero
+  sites, tickets, members, inventory, history, or assignment options.
+- Primary reads now use missing-safe `.maybeSingle()` semantics. A shared page
+  guard checks every primary and related result, logs only stable error codes,
+  and throws a generic error into the existing recoverable application boundary.
+- The guard covers customer, site, user, team-member, spare-part, SLA-policy,
+  part-request, and field-service detail pages, including the team page's
+  cookie-scoped profile read.
+- Two adversarial helper tests plus eight real-page database-failure contracts
+  bring the suite to 720.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| `npm ci` | Passed from the lockfile earlier in this continuous session; 0 install-time vulnerabilities |
+| `npm test` | Passed; 92 files, 720 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build and type check |
+| `npm run test:e2e` | Passed; all 40 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+
+### Next
+
+Run protected probes when their fixture is available. Otherwise validate each
+admin detail page's `tab` value against its declared tab set and continue the
+remaining server-page parameter audit.
+
+## Session record — 2026-08-03 (P0-AZ / server detail-page identifier containment)
+
+### Objective
+
+Keep malformed authenticated detail-page UUIDs away from the service-role
+client while preserving each page's existing authorization order.
+
+### Finding and implementation
+
+- Customer, site, user, spare-part, SLA-policy, part-request, field-service,
+  and customer-manager team detail pages applied raw `[id]` strings directly
+  to UUID filters through the service-role client.
+- All eight pages now use the shared strict UUID parser and invoke the
+  authenticated not-found boundary before creating the admin client.
+- The team page deliberately retains session, active-profile, manager-role,
+  and tenant checks before target-ID rejection so malformed input cannot alter
+  its authorization behavior.
+- Seven parameterized real-page checks plus a dedicated team authorization-
+  ordering check bring the suite to 710.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| `npm ci` | Passed from the lockfile earlier in this continuous session; 0 install-time vulnerabilities |
+| `npm test` | Passed; 91 files, 710 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build and type check |
+| `npm run test:e2e` | Passed; all 40 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+
+### Next
+
+Run protected probes when their fixture is available. Otherwise distinguish
+database failures from genuine absence across authenticated detail-page primary
+and related reads, using generic recovery UI and code-only server logging.
+
+## Session record — 2026-08-03 (P0-AY / audit-page query containment)
+
+### Objective
+
+Prevent the server-rendered admin audit page from broadening or misreporting
+malformed queries and database failures at its service-role read boundary.
+
+### Finding and implementation
+
+- The page accepted permissive `parseInt` pages, arbitrary entity/action/actor
+  values, repeated and unknown keys, then passed them into the service-role
+  query. Invalid values could become a different query or reach PostgREST.
+- Page filters now reuse the canonical audit enums, validate exact singleton
+  keys and UUID actors, and bound pages to strict positive integers before the
+  admin client is created.
+- The audit view now uses an explicit projection and exact count. Pagination
+  reports the actual total and only offers a next page when rows remain.
+- Database failures log only the error code and render a generic recoverable
+  unavailable state instead of a misleading empty audit history.
+- Nine parser contracts and three real server-page tests bring the suite to 702.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| `npm ci` | Passed from the lockfile earlier in this continuous session; 0 install-time vulnerabilities |
+| `npm test` | Passed; 90 files, 702 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build and type check |
+| `npm run test:e2e` | Passed; all 40 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+
+### Next
+
+Run protected probes when their fixture is available. Otherwise validate raw
+UUID identifiers in authenticated admin/team server pages before service-role
+lookups and distinguish missing resources from database failures where the UI
+currently conflates them.
+
+## Session record — 2026-08-03 (P0-AX / resource route-identifier containment)
+
+### Objective
+
+Reject malformed resource identifiers before customer-capable detail reads or
+privileged mutation commands can reach PostgREST/RPC boundaries.
+
+### Finding and implementation
+
+- Spare-part-request, field-service-order, team-member, and admin-site detail
+  routes passed raw path identifiers into database filters or command wrappers.
+- A shared UUID route parser now returns stable 400 responses after
+  authentication/authorization but before service-role client construction,
+  request-body parsing, or mutation-command invocation.
+- Customer-capable spare-part and field-service detail GETs now distinguish
+  database failures from missing resources, log only database error codes, and
+  mark successful authenticated responses private/no-store.
+- PATCH hydration failures also retain only database error codes in server
+  logs. Five parser tests and ten real-handler contracts bring the suite to 690.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| `npm ci` | Passed from the lockfile earlier in this continuous session; 0 install-time vulnerabilities |
+| `npm test` | Passed; 89 files, 690 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build and type check |
+| `npm run test:e2e` | Passed; all 40 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+
+### Next
+
+Run protected probes when their fixture is available. Otherwise audit
+service-role server pages, starting with the admin audit page, for permissive
+search-parameter parsing and database-detail leakage.
+
+## Session record — 2026-08-03 (P0-AW / admin-list filter containment)
+
+### Objective
+
+Replace permissive parsing and sanitize-and-continue behavior in the remaining
+admin list APIs with strict, non-broadening read contracts.
+
+### Finding and implementation
+
+- Audit, inventory, site-membership, and spare-parts catalog GETs accepted
+  unknown/repeated keys or permissive numeric/boolean/UUID values. Invalid
+  catalog categories were ignored, and catalog search rewrote structural
+  characters into a different query.
+- Shared schemas now validate exact known keys, singleton parameters, audit
+  entity/action enums, UUIDs, bounded limits, catalog categories, explicit
+  true/false filters, and a bounded PostgREST-safe catalog search value.
+- `active=false` and `low_stock=false` now have explicit filtering semantics
+  rather than returning all records. SQL wildcards remain literal through
+  escaping; structural search grammar is rejected rather than rewritten.
+- Site-membership reads now use an explicit projection and no longer expose
+  raw PostgreSQL error messages. All four authenticated responses are
+  private/no-store, and query failures log only database codes.
+- Thirty-eight new parser and real-handler contracts bring the suite to 675.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| `npm ci` | Passed from the lockfile earlier in this continuous session; 0 install-time vulnerabilities |
+| `npm test` | Passed; 87 files, 675 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build and type check |
+| `npm run test:e2e` | Passed; all 40 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+
+### Next
+
+Run protected probes when their fixture is available. Otherwise validate
+remaining UUID route identifiers before customer-capable detail queries and
+mutation commands.
+
+## Session record — 2026-08-03 (P0-AV / customer-list filter containment)
+
+### Objective
+
+Make customer-capable spare-part-request, field-service-order, and site list
+filters strict, scope-aware, and non-cacheable before privileged query access.
+
+### Finding and implementation
+
+- All three endpoints accepted raw singleton values and ignored unsupported
+  keys; invalid enum/UUID inputs could reach PostgREST, while repeated or
+  misspelled filters could silently change the result set.
+- A shared parser now accepts only each endpoint's documented keys, rejects
+  repeated singletons, validates UUIDs, and validates spare-part status plus
+  field-service status/service-type enums from the domain contracts.
+- External site filters for spare-part and field-service lists, and customer
+  filters for site lists, are authorized against canonical scope before the
+  route constructs its service-role query. Foreign filters return a stable
+  403 rather than an ambiguous empty list.
+- Database logs retain only error codes on query failures, and successful
+  authenticated list responses now carry `Cache-Control: private, no-store`.
+- Twenty-six parser and real-handler tests bring the suite to 637.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| `npm ci` | Passed from the lockfile earlier in this continuous session; 0 install-time vulnerabilities |
+| `npm test` | Passed; 85 files, 637 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build and type check |
+| `npm run test:e2e` | Passed; all 40 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+
+### Next
+
+Run protected probes when their fixture is available. Otherwise audit the
+remaining admin/read query parameters and UUID route identifiers for permissive
+parsing, unknown-key broadening, and database-error behavior.
+
+## Session record — 2026-08-03 (P0-AU / ticket-list read containment)
+
+### Objective
+
+Prevent malformed or ambiguous authenticated ticket-list filters from reaching
+PostgREST, and remove the remaining customer ticket-list wildcard hydration.
+
+### Finding and implementation
+
+- The authenticated page cast arbitrary status/severity values, accepted
+  opaque IDs and permissive `parseInt` pages, and interpolated search content
+  into PostgREST `or` grammar after escaping only SQL wildcards. Its strict
+  shared parser now validates known keys, enums, UUIDs, singleton ambiguity,
+  bounded integer pages, and a 200-character grammar-safe search contract.
+- Invalid page filters stop before service-role client construction and render
+  a clearable error with zero rows. The CSV action is suppressed in that state,
+  preventing sanitized parameters from producing a silently broader export.
+- Ticket page and CSV export now share one guarded search-expression builder;
+  percent/underscore remain literal via escaping, while PostgREST structural
+  characters and controls are rejected. Export parsing also rejects unknown
+  and duplicated singleton parameters.
+- `GET /api/tickets` previously selected `tickets.*` for customer roles and
+  removed six fields after retrieval. It now selects a customer allow-list at
+  query time, retains the internal projection only for internal roles, strictly
+  validates status/severity/UUID/limit filters, authorizes customer/site
+  filters before client construction, contains database detail, and returns
+  private/no-store data.
+- Fifty new parser/search/projection/real-handler/source contracts bring the
+  suite to 611.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| `npm ci` | Passed from the lockfile earlier in this continuous session; 0 install-time vulnerabilities |
+| `npm test` | Passed; 83 files, 611 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build and type check |
+| `npm run test:e2e` | Passed; all 40 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+
+### Next
+
+Run protected probes when their fixture is available. Otherwise extend strict,
+scope-aware filter parsing and private/no-store delivery to the customer-
+capable spare-part-request, field-service-order, and site list endpoints.
+
+## Session record — 2026-08-03 (P0-AT / ticket CSV export containment)
+
+### Objective
+
+Make the existing ticket export safe to open in spreadsheet software and keep
+its authorization/filter contract aligned with the ticket-list UI.
+
+### Finding and implementation
+
+- Customer-controlled cells could begin with spreadsheet formula operators,
+  and the old encoder did not quote carriage returns. CSV cells now neutralize
+  formula-like prefixes after leading controls/whitespace and consistently
+  escape comma, quote, CR, and LF content.
+- The route assumed one Supabase relationship shape. Export generation now
+  normalizes object/array relations before reading site, customer, and owner
+  display values.
+- The export UI submitted canonical customer/site/owner, list-valued status
+  and severity, range, SLA, and search filters, while the handler recognized a
+  smaller legacy contract. A strict parser now validates and applies the full
+  canonical contract, preserves non-conflicting legacy aliases, rejects
+  malformed UUID/enumeration/date/search combinations, and prevents unsafe
+  PostgREST filter grammar from reaching the query builder.
+- Database failures now return a generic error while server logs retain the
+  error code. The response is UTF-8 BOM-prefixed, CRLF-delimited, private,
+  no-store, and `nosniff`.
+- Twenty-eight new encoder/parser/real-handler tests bring the suite to 561.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| `npm ci` | Passed from the lockfile earlier in this continuous session; 0 install-time vulnerabilities |
+| `npm test` | Passed; 79 files, 561 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build and type check |
+| `npm run test:e2e` | Passed; all 40 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+
+### Next
+
+Run protected probes when their fixture is available. Otherwise apply the same
+strict parsing and PostgREST-grammar containment to the authenticated ticket
+list search/filter path.
+
+## Session record — 2026-08-03 (P0-AS / external service projections)
+
+### Objective
+
+Stop customer spare-part and field-service reads from retrieving complete
+internal operations records before applying response-time omission.
+
+### Finding and implementation
+
+- External spare-part list/detail GETs fetched request, approver/requester,
+  line-item, and catalog wildcards. They now select only customer logistics,
+  site/ticket display fields, quantities, notes, and non-price catalog data;
+  total/unit costs and staff attribution are not read.
+- External field-service list/detail GETs fetched completion notes, staff IDs,
+  travel origin, assignment internals, and engineer email. They now select
+  customer-visible scheduling/service/report fields and only engineer display
+  name plus assignment role.
+- Internal branches retain the full operational projections. The existing
+  external response shapers remain in place as defense in depth rather than
+  becoming the only protection.
+- Four new projection/real-handler contracts bring the suite to 533 tests and
+  prove both list and detail routes select the external allow-lists.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| `npm ci` | Passed from the lockfile earlier in this continuous session; 0 install-time vulnerabilities |
+| `npm test` | Passed; 76 files, 533 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build and type check |
+| `npm run test:e2e` | Passed; all 40 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+
+### Next
+
+Run protected probes when their fixture is available. Otherwise harden ticket
+CSV export against formula execution, relationship-shape drift, malformed
+filters, and database-detail leakage.
+
+## Session record — 2026-08-03 (P0-AR / authenticated read containment)
+
+### Objective
+
+Prevent service-role reads from fetching or serializing internal ticket,
+comment, site-routing, attachment, and staff-attribution fields for
+authenticated customer roles.
+
+### Finding and implementation
+
+- `GET /api/tickets/[ticketId]/comments` returned wildcard comment rows joined
+  to author email and role for customer callers. Customer GET and post-create
+  responses now use a query-time allow-list containing only customer-visible
+  comment content, source, timestamp, and author display name.
+- Authenticated ticket detail conditionally hid `internal_summary` in its UI
+  but still passed that value and the assigned engineer UUID into a client
+  component, placing both in the React server payload. Role-specific ticket
+  projections now avoid fetching those fields for customer requests, and the
+  client boundary also receives null/empty internal identifiers defensively.
+- Ticket comments and attachments now use explicit minimal page projections;
+  attachment storage keys and uploader IDs are no longer fetched for display.
+- `GET /api/sites` now uses a customer allow-list that excludes Slack channel
+  and default-owner routing fields. The customer Sites page also stopped
+  retrieving its unused Slack channel field.
+- Twelve new pure/source/real-handler contracts bring the suite to 529 tests
+  and prove customer versus internal projection selection, customer comment
+  visibility, excluded sensitive fields, and protected client props.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| `npm ci` | Passed from the lockfile earlier in this continuous session; 0 install-time vulnerabilities |
+| `npm test` | Passed; 76 files, 529 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build and type check |
+| `npm run test:e2e` | Passed; all 40 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+
+### Next
+
+Run the protected migration/tenant probes when their fixture is available.
+Otherwise move spare-part-request and field-service-order external GET reads
+from wildcard hydration plus post-query omission to explicit query-time
+allow-lists.
+
+## Session record — 2026-08-03 (P0-AQ / customer-manager site scope)
+
+### Objective
+
+Make customer-manager site visibility consistently organization-wide while
+preventing retained memberships or archived sites from leaking into current
+customer-facing lists.
+
+### Finding and implementation
+
+- The authenticated public submit form loaded only direct `site_members`, so a
+  customer manager could not select every active site in their organization.
+  It now uses the canonical browser/RLS site-scope helper.
+- The customer-manager dashboard queried customer sites through the
+  service-role client without an active-lifecycle predicate. It now excludes
+  archived sites explicitly.
+- The team page and `GET /api/team` joined retained memberships directly to
+  site details, could present archived site names, and represented managers as
+  having no site access. A shared read model now gives managers all active
+  organization sites and customers only active retained assignments.
+- The team UI no longer offers an invalid edit action for another
+  `customer_manager`; it labels that inherited access `Organization-wide`.
+- Eight new handler/read-model/source contracts bring the deterministic suite
+  to 517 tests and cover empty rosters, active-site filtering, manager
+  inheritance, customer assignment, archived memberships, duplicates, and
+  ID-only membership projection.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| `npm ci` | Passed from the lockfile; 0 install-time vulnerabilities |
+| `npm test` | Passed; 73 files, 517 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build |
+| `npm run test:e2e` | Passed; all 40 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+
+The public submit page was also reviewed at 1280×720 and 390×844 with Inter,
+correct responsive fit, and no horizontal overflow. Protected team-page
+browser validation remains tied to the six-account staging fixture; the local
+browser held an expired refresh token, so no production-like identity was
+invented or provisioned for this checkpoint.
+
+### Next
+
+Run the protected migration/tenant probes when their fixture is available.
+Otherwise audit customer-facing service-role reads for wildcard or nested
+hidden-field exposure and missing active-lifecycle filters.
+
+## Session record — 2026-08-03 (P0-AP / conditional email readiness)
+
+### Objective
+
+Prevent a configured production email integration from silently emitting
+localhost/unsafe links or attempting delivery with malformed provider/sender
+configuration, while keeping intentionally disabled email optional.
+
+### Finding and implementation
+
+- `/api/health/ready` checked database, Slack, and outbox configuration but not
+  email. Separately, the sender defaulted a missing public application URL to
+  `http://localhost:3000` in every environment.
+- Commit `a991bbd` adds a shared public-origin contract: production requires a
+  public HTTPS root origin without credentials, path, query, or fragment;
+  localhost HTTP remains available only outside production. Obvious
+  placeholder, loopback, private-network, `.local`, and `.internal` targets are
+  rejected.
+- Email readiness now reports `disabled`, `ready`, or `not_ready`. A missing
+  Resend key is an intentional optional disable; once a key is present, key
+  shape, sender address, and public origin must all pass before the instance is
+  ready.
+- Actual delivery uses the same Resend-key, sender, and public-origin guards.
+  Invalid configuration is contained as the existing best-effort
+  `send_failed` result before any provider request, so ticket transactions do
+  not throw or roll back.
+- Thirty-seven new contracts cover public/private origins, production versus
+  development rules, sender/header injection, placeholder keys, readiness
+  states, secret-free results, renderer refusal, and no-throw delivery
+  containment. The production HTTP smoke now asserts the deterministic
+  `email: disabled` readiness state.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| `npm ci` | Passed from the lockfile; 0 install-time vulnerabilities |
+| `npm test` | Passed; 71 files, 509 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build |
+| `npm run test:e2e` | Passed; all 40 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+
+### Next
+
+Run protected migration and malformed-body probes when the credential fixture
+is available. Otherwise audit customer-manager list/read scope for the
+documented direct-membership versus organization-wide inconsistency. Resend
+sender-domain verification remains an external activation step.
+
+## Session record — 2026-08-03 (P0-AO / safe transactional email rendering)
+
+### Objective
+
+Close the remaining dynamic-field injection boundary in confirmation and
+resolution emails without changing durable outbox or provider-failure
+semantics.
+
+### Finding and implementation
+
+- The templates escaped ticket titles and most prose fields, but interpolated
+  `ticketNo` directly into HTML, constructed `href` values by string
+  concatenation, and placed ticket numbers/titles into subjects without
+  removing control characters.
+- Commit `92a3d87` separates pure rendering from delivery, HTML-escapes every
+  dynamic body field, builds links with encoded path/query components, permits
+  only HTTP(S) public origins, and HTML-escapes the completed attribute value.
+- Provider subjects now remove every ASCII control character and normalize
+  whitespace, preventing CR/LF header injection while preserving readable
+  ticket context.
+- Three adversarial tests cover markup/style injection, quote-based attribute
+  breakout, reserved URL characters, exact round-trip link components, and
+  the full ASCII control range. Existing outbox tests continue to prove the
+  provider-idempotency contract.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| `npm ci` | Passed from the lockfile; 0 install-time vulnerabilities |
+| `npm test` | Passed; 69 files, 472 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build |
+| `npm run test:e2e` | Passed; all 40 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+
+### Next
+
+Run protected migration and malformed-body probes when the credential fixture
+is available. Otherwise audit conditional readiness for the public application
+origin and Resend configuration; sender-domain verification remains an
+external activation step.
+
+## Session record — 2026-08-03 (P0-AN / site-aware Slack timestamps)
+
+### Objective
+
+Remove the remaining Eastern-Time assumption from Slack ticket cards and make
+initial posts, retries, action refreshes, and protected ticket detail use the
+same resource-owned timezone contract.
+
+### Finding and implementation
+
+- The Slack master-card builder formatted every created/updated instant in
+  `America/New_York` and appended `ET`, regardless of the ticket's site.
+- The durable outbox reload did not select `sites.timezone`, so correcting only
+  the formatter would have produced UTC during delivery and retries.
+- Commit `b253558` hydrates the site timezone through creation, action refresh,
+  and outbox paths; the Block Kit builder validates that IANA value through the
+  shared resolver and falls back deterministically to UTC.
+- The builder also normalizes Supabase object/array relationship shapes before
+  rendering customer, site, owner, and timezone fields. Ticket detail now uses
+  the same validated site-timezone resolver instead of a New York fallback.
+- Four new tests cover a Los Angeles timestamp crossing the calendar-date
+  boundary, invalid legacy fallback, relationship-shape rendering, every Slack
+  hydration path, absence of the hard-coded Eastern renderer, and ticket-detail
+  contract wiring.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| `npm ci` | Passed from the lockfile; 0 install-time vulnerabilities |
+| `npm test` | Passed; 68 files, 469 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build |
+| `npm run test:e2e` | Passed; all 40 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+
+### Next
+
+Run the protected migration 028–031 and malformed-body HTTP probes when the
+credential fixture becomes available. If it remains unavailable, audit email
+HTML interpolation and close any unescaped customer/site/dynamic-field path.
+
+## Session record — 2026-08-03 (P0-AM / deterministic dashboard metrics)
+
+### Objective
+
+Close the dashboard timezone/count defects using resource-local time, verify
+the protected UI with real data at desktop and mobile breakpoints, and preserve
+a zero-vulnerability dependency baseline.
+
+### Finding and implementation
+
+- Dashboard recent-ticket queries did not retrieve site timezones and relied
+  on the server host for date rendering. The renderer now uses each ticket
+  site's validated IANA timezone and falls back deterministically to UTC for
+  missing or invalid legacy values.
+- Supabase many-to-one relationships arrived as objects in the live query even
+  though the dashboard assumed arrays, producing `Unknown` customer/site
+  labels. A shared normalizer now accepts both supported shapes.
+- The regular-customer `Total Tickets` metric used a ten-row recent-ticket
+  list length. It now uses an independent exact count query.
+- Four focused utility/contract groups cover host-independent rendering,
+  explicit site timezone behavior, invalid fallback, relationship shapes, all
+  three dashboard variants, and exact totals.
+- The final audit detected newly disclosed `brace-expansion` advisory
+  GHSA-rgw5-rvv9-x895 against 5.0.8. The lockfile override is now 5.0.9 and the
+  clean dependency audit is back to zero known vulnerabilities.
+- Commit `0cf4aac` contains the application, regression-test, and dependency
+  changes.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| `npm ci` | Passed from the lockfile; 0 install-time vulnerabilities |
+| `npm test` | Passed; 67 files, 465 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build |
+| `npm run test:e2e` | Passed; all 40 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities with `brace-expansion` 5.0.9 |
+| Browser QA | Passed signed-in at 1280×720 and 390×844 with real relationships, site-local `EDT` timestamps, Inter, ten recent rows on mobile, no overflow, and zero console warnings/errors |
+| Disposable identity cleanup | Passed; Auth, profile, memberships, and target audit rows all verified absent |
+| `git diff --check` | Passed |
+
+### Next
+
+Run the protected migration 028–031 and malformed-body HTTP probes when the
+credential fixture becomes available. If it remains unavailable, remove the
+remaining hard-coded timezone from Slack message rendering and cover it with
+unit plus production smoke verification.
 
 ## Session record — 2026-08-03 (P0-AL / malformed-request normalization)
 

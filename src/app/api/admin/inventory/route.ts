@@ -2,13 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAdmin } from "@/lib/supabase/auth-helpers";
 import {
-  inventoryIdSchema,
   inventoryUpsertRequestSchema,
 } from "@/lib/spare-parts/inventory-contracts";
 import {
   AdminInventoryMutationError,
   upsertAdminInventoryAtomic,
 } from "@/lib/spare-parts/inventory-mutations";
+import { parseAdminInventoryListFilters } from "@/lib/admin-list-filters";
 
 export const dynamic = "force-dynamic";
 
@@ -34,20 +34,23 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: auth.error }, { status: auth.status });
   }
 
-  const supabase = createAdminClient();
   const { searchParams } = new URL(request.url);
-
-  const siteId = searchParams.get("site_id");
-  if (siteId && !inventoryIdSchema.safeParse(siteId).success) {
-    return NextResponse.json({ error: "Invalid site id" }, { status: 400 });
+  const parsedFilters = parseAdminInventoryListFilters(searchParams);
+  if (!parsedFilters.success) {
+    return NextResponse.json(
+      { error: "Invalid inventory filters" },
+      { status: 400 }
+    );
   }
+  const filters = parsedFilters.data;
+  const supabase = createAdminClient();
 
   try {
     let query = supabase
       .from("spare_part_inventory")
       .select(INVENTORY_PROJECTION)
       .order("created_at", { ascending: false });
-    if (siteId) query = query.eq("site_id", siteId);
+    if (filters.siteId) query = query.eq("site_id", filters.siteId);
 
     const { data, error } = await query;
     if (error) {
@@ -59,14 +62,19 @@ export async function GET(request: NextRequest) {
     }
 
     let result = data || [];
-    if (searchParams.get("low_stock") === "true") {
+    if (filters.lowStock !== undefined) {
       result = result.filter(
         (item: { quantity: number; min_quantity: number }) =>
-          item.quantity < item.min_quantity
+          filters.lowStock
+            ? item.quantity < item.min_quantity
+            : item.quantity >= item.min_quantity
       );
     }
 
-    return NextResponse.json({ data: result });
+    return NextResponse.json(
+      { data: result },
+      { headers: { "Cache-Control": "private, no-store" } }
+    );
   } catch (error) {
     console.error("GET /api/admin/inventory error:", error);
     return NextResponse.json(

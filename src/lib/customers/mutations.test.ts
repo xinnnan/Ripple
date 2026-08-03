@@ -187,7 +187,7 @@ describe("migration 040 admin customer integrity", () => {
     expect(createForm).toContain("grid-cols-1");
     expect(createForm).toContain("maxLength={253}");
     expect(editForm).toContain('htmlFor="customer-edit-status"');
-    expect(editForm).toContain("disabled={isArchived}");
+    expect(editForm).toContain("disabled={busy || isArchived}");
     expect(editForm).toContain("Archived customers are read-only");
     expect(editForm).toContain("md:grid-cols-2");
   });

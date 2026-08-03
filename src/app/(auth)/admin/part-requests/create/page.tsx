@@ -1,4 +1,5 @@
 import { createAdminClient } from "@/lib/supabase/admin";
+import { assertPageQueriesSucceeded } from "@/lib/server-page-query";
 import { CreatePartRequestForm } from "./create-part-request-form";
 
 export const dynamic = "force-dynamic";
@@ -6,17 +7,28 @@ export const dynamic = "force-dynamic";
 export default async function CreatePartRequestPage() {
   const supabase = createAdminClient();
 
-  const { data: sites } = await supabase
-    .from("sites")
-    .select("id, site_name, site_code, customer:customers(name)")
-    .eq("status", "active")
-    .order("site_name");
-
-  const { data: parts } = await supabase
-    .from("spare_parts")
-    .select("id, part_number, part_name, unit, unit_price")
-    .eq("is_active", true)
-    .order("part_name");
+  const [sitesResult, partsResult] = await Promise.all([
+    supabase
+      .from("sites")
+      .select(
+        "id, site_name, site_code, customer:customers!inner(name)"
+      )
+      .eq("status", "active")
+      .in("customer.status", ["active", "trial"])
+      .order("site_name"),
+    supabase
+      .from("spare_parts")
+      .select("id, part_number, part_name, unit, unit_price")
+      .eq("is_active", true)
+      .order("part_name"),
+  ]);
+  assertPageQueriesSucceeded(
+    "admin/part-request-create-options",
+    sitesResult,
+    partsResult
+  );
+  const sites = sitesResult.data;
+  const parts = partsResult.data;
 
   return (
     <div className="p-8">

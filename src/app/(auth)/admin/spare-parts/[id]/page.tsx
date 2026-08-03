@@ -3,18 +3,23 @@ import { SparePartForm } from "../spare-part-form";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { SparePart } from "@/types/spare-parts";
+import { parseUuidRouteId } from "@/lib/request-identifiers";
+import { assertPageQueriesSucceeded } from "@/lib/server-page-query";
 
 export const dynamic = "force-dynamic";
 
 export default async function EditSparePartPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;
+  const id = parseUuidRouteId((await params).id);
+  if (!id) notFound();
   const supabase = createAdminClient();
 
-  const { data: part } = await supabase
+  const partResult = await supabase
     .from("spare_parts")
     .select("*")
     .eq("id", id)
-    .single();
+    .maybeSingle();
+  assertPageQueriesSucceeded("admin/spare-part-detail", partResult);
+  const part = partResult.data;
 
   if (!part) {
     notFound();

@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import type { AdminInventoryRecord } from "@/lib/spare-parts/inventory-mutations";
 
 export interface InventoryPartOption {
@@ -21,6 +22,7 @@ interface InventoryClientProps {
   parts: InventoryPartOption[];
   sites: InventorySiteOption[];
   loadError: string | null;
+  loadErrorActionHref?: string;
   initialSiteFilter: string;
 }
 
@@ -31,6 +33,7 @@ export function InventoryClient({
   parts,
   sites,
   loadError,
+  loadErrorActionHref,
   initialSiteFilter,
 }: InventoryClientProps) {
   const router = useRouter();
@@ -211,7 +214,12 @@ export function InventoryClient({
           {loadError ||
             (!parts.length
               ? "Create an active spare part before adding site inventory."
-              : "An active or commissioning site is required before adding inventory.")}
+              : "An active or commissioning site is required before adding inventory.")}{" "}
+          {loadError && loadErrorActionHref ? (
+            <Link href={loadErrorActionHref} className="font-medium underline">
+              Clear site filter
+            </Link>
+          ) : null}
         </div>
       )}
 
