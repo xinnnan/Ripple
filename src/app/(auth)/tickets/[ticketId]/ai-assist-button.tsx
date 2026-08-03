@@ -1,13 +1,17 @@
 "use client";
 
 import { useState } from "react";
+import {
+  clientMutationErrorMessage,
+  ExpectedClientMutationError,
+  readClientJsonResponse,
+} from "@/lib/http/client-mutation";
 
 interface AIAssistButtonProps {
   ticketId: string;
-  userId?: string;
 }
 
-export function AIAssistButton({ ticketId, userId }: AIAssistButtonProps) {
+export function AIAssistButton({ ticketId }: AIAssistButtonProps) {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<{
     output_text: string;
@@ -19,6 +23,7 @@ export function AIAssistButton({ ticketId, userId }: AIAssistButtonProps) {
   const [showPanel, setShowPanel] = useState(false);
 
   async function requestSuggestion(type: string) {
+    if (loading) return;
     setLoading(true);
     setError(null);
     setResult(null);
@@ -33,15 +38,40 @@ export function AIAssistButton({ ticketId, userId }: AIAssistButtonProps) {
         }),
       });
 
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || "Failed to get suggestion");
+      const data = await readClientJsonResponse(
+        res,
+        "Failed to get suggestion"
+      );
+      if (
+        typeof data !== "object" ||
+        data === null ||
+        !("output_text" in data) ||
+        typeof data.output_text !== "string" ||
+        !("suggestion_type" in data) ||
+        typeof data.suggestion_type !== "string" ||
+        !("model_name" in data) ||
+        typeof data.model_name !== "string" ||
+        !("confidence_level" in data) ||
+        typeof data.confidence_level !== "string"
+      ) {
+        throw new ExpectedClientMutationError(
+          "Ripple Assist returned an invalid response. Please retry."
+        );
       }
 
-      const data = await res.json();
-      setResult(data);
+      setResult({
+        output_text: data.output_text,
+        suggestion_type: data.suggestion_type,
+        model_name: data.model_name,
+        confidence_level: data.confidence_level,
+      });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to get AI suggestion");
+      setError(
+        clientMutationErrorMessage(
+          err,
+          "Ripple Assist is temporarily unavailable. Please retry."
+        )
+      );
     } finally {
       setLoading(false);
     }
@@ -50,7 +80,11 @@ export function AIAssistButton({ ticketId, userId }: AIAssistButtonProps) {
   return (
     <div>
       <button
+        type="button"
         onClick={() => setShowPanel(!showPanel)}
+        aria-expanded={showPanel}
+        aria-controls="ripple-assist-panel"
+        disabled={loading}
         className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors flex items-center gap-2"
       >
         <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
@@ -60,7 +94,11 @@ export function AIAssistButton({ ticketId, userId }: AIAssistButtonProps) {
       </button>
 
       {showPanel && (
-        <div className="mt-4 rounded-xl border border-blue-200 bg-blue-50 p-6">
+        <div
+          id="ripple-assist-panel"
+          aria-busy={loading}
+          className="mt-4 rounded-xl border border-blue-200 bg-blue-50 p-6"
+        >
           <h3 className="text-sm font-semibold text-blue-800 mb-4">
             🤖 Ripple Assist — AI Suggestions
           </h3>
@@ -74,6 +112,7 @@ export function AIAssistButton({ ticketId, userId }: AIAssistButtonProps) {
             ].map((opt) => (
               <button
                 key={opt.type}
+                type="button"
                 onClick={() => requestSuggestion(opt.type)}
                 disabled={loading}
                 className="rounded-lg border border-blue-300 bg-white px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-100 transition-colors disabled:opacity-50"
@@ -94,7 +133,10 @@ export function AIAssistButton({ ticketId, userId }: AIAssistButtonProps) {
           )}
 
           {error && (
-            <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            <div
+              role="alert"
+              className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+            >
               {error}
             </div>
           )}

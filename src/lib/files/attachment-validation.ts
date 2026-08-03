@@ -1,6 +1,10 @@
 import { randomUUID } from "node:crypto";
+import {
+  MAX_ATTACHMENT_BYTES,
+  MAX_ATTACHMENT_FILE_NAME_LENGTH,
+} from "./attachment-contract";
 
-export const MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024;
+export { MAX_ATTACHMENT_BYTES } from "./attachment-contract";
 
 type AttachmentKind =
   | "jpeg"
@@ -130,7 +134,7 @@ export async function validateAttachmentFile(
   if (
     fileName !== fileName.trim() ||
     fileName.length < 3 ||
-    fileName.length > 255 ||
+    fileName.length > MAX_ATTACHMENT_FILE_NAME_LENGTH ||
     /[\\/\u0000-\u001f\u007f]/.test(fileName) ||
     fileName.includes("..")
   ) {

@@ -9,6 +9,7 @@ import {
   EXTERNAL_TICKET_COMMENT_SELECT,
   INTERNAL_TICKET_COMMENT_SELECT,
 } from "@/lib/resource-projections";
+import { TICKET_COMMENT_MAX_LENGTH } from "@/lib/tickets/input-contract";
 
 interface RouteContext {
   params: Promise<{ ticketId: string }>;
@@ -18,9 +19,9 @@ const createCommentSchema = z.object({
   // author_id is intentionally NOT accepted — the route forces
   // author_id = auth.userId to prevent impersonation. See POST
   // handler for the full reasoning.
-  body: z.string().min(1).max(10000),
+  body: z.string().trim().min(1).max(TICKET_COMMENT_MAX_LENGTH),
   visibility: z.enum(["customer", "internal"]).default("customer"),
-});
+}).strict();
 
 export async function GET(
   request: NextRequest,
@@ -119,7 +120,9 @@ export async function POST(
       ticketId
     ).maybeSingle();
     if (ticketErr) {
-      console.error("Ticket lookup failed:", ticketErr);
+      console.error("POST /api/tickets/[ticketId]/comments lookup failed:", {
+        code: ticketErr.code,
+      });
       return NextResponse.json({ error: "Failed to load ticket" }, { status: 500 });
     }
     if (!ticket) {
@@ -184,11 +187,31 @@ export async function POST(
       .single();
 
     if (error) {
-      console.error("Failed to create comment:", error);
-      return NextResponse.json({ error: "Failed to create comment" }, { status: 500 });
+      // The comment/timeline/SLA command has already committed. Preserve its
+      // success status when only response hydration is degraded.
+      console.error(
+        "POST /api/tickets/[ticketId]/comments hydration failed:",
+        { code: error.code }
+      );
+      return NextResponse.json(
+        {
+          comment: { id: commentId, ticket_id: ticket.id },
+          warning: "Comment added; detail refresh is temporarily unavailable",
+        },
+        {
+          status: 201,
+          headers: { "Cache-Control": "private, no-store" },
+        }
+      );
     }
 
-    return NextResponse.json({ comment }, { status: 201 });
+    return NextResponse.json(
+      { comment },
+      {
+        status: 201,
+        headers: { "Cache-Control": "private, no-store" },
+      }
+    );
   } catch (error) {
     if (error instanceof z.ZodError) {
       return NextResponse.json(
@@ -196,7 +219,9 @@ export async function POST(
         { status: 400 }
       );
     }
-    console.error("Create comment error:", error);
+    console.error("POST /api/tickets/[ticketId]/comments failed:", {
+      name: error instanceof Error ? error.name : "UnknownError",
+    });
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

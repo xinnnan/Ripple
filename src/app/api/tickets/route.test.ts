@@ -125,6 +125,23 @@ describe("public ticket submission rate limit", () => {
     expect(distributedRateLimitMock).toHaveBeenCalledOnce();
   });
 
+  it("rejects unknown submission fields after consuming anonymous guards", async () => {
+    const response = await POST(
+      request({
+        site_code: "INDY-01",
+        title: "Stopped conveyor",
+        description: "The main conveyor stopped during production.",
+        request_type: "incident",
+        severity: "P1",
+        created_by: "11111111-1111-4111-8111-111111111111",
+      })
+    );
+
+    expect(response.status).toBe(400);
+    expect(localRateLimitMock).toHaveBeenCalledOnce();
+    expect(distributedRateLimitMock).toHaveBeenCalledOnce();
+  });
+
   it("does not apply anonymous IP quotas to active authenticated users", async () => {
     authMock.mockResolvedValueOnce({
       userId: "11111111-1111-4111-8111-111111111111",

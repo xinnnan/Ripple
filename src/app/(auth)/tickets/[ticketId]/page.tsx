@@ -15,7 +15,6 @@ import { TicketActionsPanel } from "./ticket-actions-panel";
 import { SLABadge } from "./sla-badge";
 import { getUserScope, scopeTickets } from "@/lib/supabase/scope";
 import { resolveTicketQuery } from "@/lib/tickets/lookup";
-import { isAdminRole } from "@/lib/roles";
 import { redirect } from "next/navigation";
 import {
   EXTERNAL_TICKET_DETAIL_SELECT,
@@ -85,7 +84,6 @@ export default async function TicketDetailPage({ params }: Props) {
   if (!scope) redirect("/login");
   const currentUserId = scope.userId;
   const isInternal = scope.isInternal;
-  const isAdmin = isAdminRole(scope.role);
 
   // The service-role client bypasses RLS and column grants. Select a distinct
   // customer allow-list at query time instead of fetching internal fields and
@@ -611,7 +609,6 @@ export default async function TicketDetailPage({ params }: Props) {
             availableOwners={availableOwners}
             currentUserId={isInternal ? currentUserId : ""}
             isInternal={isInternal}
-            isAdmin={isAdmin}
             currentCustomerVisibleSummary={ticket.customer_visible_summary}
             currentInternalSummary={
               isInternal ? ticket.internal_summary ?? null : null

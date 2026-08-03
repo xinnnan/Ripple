@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { CreateTicketModal } from "./create-ticket-modal";
 
 interface TicketsPageHeaderProps {
@@ -14,6 +15,7 @@ export function TicketsPageHeader({
   isInternal = true,
   canExport = true,
 }: TicketsPageHeaderProps) {
+  const router = useRouter();
   const [modalOpen, setModalOpen] = useState(false);
 
   return (
@@ -28,6 +30,7 @@ export function TicketsPageHeader({
       </div>
       <div className="flex gap-3">
         <button
+          type="button"
           onClick={() => setModalOpen(true)}
           className="flex-1 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 sm:flex-none"
         >
@@ -46,7 +49,7 @@ export function TicketsPageHeader({
       <CreateTicketModal
         open={modalOpen}
         onClose={() => setModalOpen(false)}
-        onCreated={() => window.location.reload()}
+        onCreated={() => router.refresh()}
       />
     </div>
   );

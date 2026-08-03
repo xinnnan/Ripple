@@ -26,6 +26,14 @@ import {
   EXTERNAL_TICKET_LIST_SELECT,
   INTERNAL_TICKET_LIST_SELECT,
 } from "@/lib/resource-projections";
+import {
+  TICKET_CONTEXT_MAX_LENGTH,
+  TICKET_DESCRIPTION_MAX_LENGTH,
+  TICKET_SUBMITTER_EMAIL_MAX_LENGTH,
+  TICKET_SUBMITTER_NAME_MAX_LENGTH,
+  TICKET_SUBMITTER_PHONE_MAX_LENGTH,
+  TICKET_TITLE_MAX_LENGTH,
+} from "@/lib/tickets/input-contract";
 
 const createTicketSchema = z.object({
   customer_id: z.string().uuid().optional(),
@@ -37,8 +45,8 @@ const createTicketSchema = z.object({
     .max(SITE_CODE_MAX_LENGTH)
     .regex(SITE_CODE_PATTERN)
     .optional(),
-  title: z.string().trim().min(1).max(200),
-  description: z.string().trim().min(1).max(20_000),
+  title: z.string().trim().min(1).max(TICKET_TITLE_MAX_LENGTH),
+  description: z.string().trim().min(1).max(TICKET_DESCRIPTION_MAX_LENGTH),
   request_type: z.enum([
     "incident",
     "service_request",
@@ -58,12 +66,25 @@ const createTicketSchema = z.object({
       "no_impact",
     ])
     .optional(),
-  asset_id: z.string().trim().max(500).optional(),
-  area: z.string().trim().max(500).optional(),
-  submitter_name: z.string().trim().max(200).optional(),
-  submitter_email: z.string().trim().email().max(320).optional(),
-  submitter_phone: z.string().trim().max(50).optional(),
-});
+  asset_id: z.string().trim().max(TICKET_CONTEXT_MAX_LENGTH).optional(),
+  area: z.string().trim().max(TICKET_CONTEXT_MAX_LENGTH).optional(),
+  submitter_name: z
+    .string()
+    .trim()
+    .max(TICKET_SUBMITTER_NAME_MAX_LENGTH)
+    .optional(),
+  submitter_email: z
+    .string()
+    .trim()
+    .email()
+    .max(TICKET_SUBMITTER_EMAIL_MAX_LENGTH)
+    .optional(),
+  submitter_phone: z
+    .string()
+    .trim()
+    .max(TICKET_SUBMITTER_PHONE_MAX_LENGTH)
+    .optional(),
+}).strict();
 
 export async function POST(request: NextRequest) {
   try {
@@ -180,7 +201,9 @@ export async function POST(request: NextRequest) {
       .in("customer.status", ["active", "trial"])
       .maybeSingle();
     if (siteErr) {
-      console.error("POST /api/tickets site lookup failed:", siteErr);
+      console.error("POST /api/tickets site lookup failed:", {
+        code: siteErr.code,
+      });
       return NextResponse.json(
         { error: "Internal server error" },
         { status: 500 }
@@ -240,7 +263,10 @@ export async function POST(request: NextRequest) {
         secure_token: result.secure_token,
         message: "Ticket created successfully",
       },
-      { status: 201 }
+      {
+        status: 201,
+        headers: { "Cache-Control": "private, no-store" },
+      }
     );
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -249,7 +275,9 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
-    console.error("Create ticket error:", error);
+    console.error("POST /api/tickets failed:", {
+      name: error instanceof Error ? error.name : "UnknownError",
+    });
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }
