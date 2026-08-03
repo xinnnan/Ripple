@@ -15,6 +15,7 @@ import {
 } from "./ticket-filters.shared";
 import { TicketListControls } from "./ticket-list-controls";
 import { buildTicketSearchFilter } from "@/lib/tickets/search-filter";
+import { assertPageQueriesSucceeded } from "@/lib/server-page-query";
 
 export const dynamic = "force-dynamic";
 
@@ -172,7 +173,10 @@ export default async function TicketsPage({ searchParams }: Props) {
   const toIdx = fromIdx + PAGE_SIZE - 1;
   query = query.range(fromIdx, toIdx);
 
-  const { data: tickets, count } = await query;
+  const ticketsResult = await query;
+  assertPageQueriesSucceeded("tickets/list", ticketsResult);
+  const tickets = ticketsResult.data;
+  const count = ticketsResult.count;
   const totalCount = count ?? tickets?.length ?? 0;
 
   // ---- Build filter options (customers / sites / owners) for the UI --------
@@ -224,6 +228,12 @@ async function loadFilterOptions(
         .eq("status", "active")
         .order("full_name"),
     ]);
+    assertPageQueriesSucceeded(
+      "tickets/filter-options-internal",
+      customersRes,
+      sitesRes,
+      ownersRes
+    );
 
     return {
       customers: customersRes.data || [],
@@ -242,7 +252,10 @@ async function loadFilterOptions(
           .select("id, name")
           .eq("id", scope.customerId)
           .eq("status", "active")
-      : Promise.resolve({ data: [] as { id: string; name: string }[] }),
+      : Promise.resolve({
+          data: [] as { id: string; name: string }[],
+          error: null,
+        }),
     (async () => {
       let q = admin
         .from("sites")
@@ -253,6 +266,11 @@ async function loadFilterOptions(
       return q;
     })(),
   ]);
+  assertPageQueriesSucceeded(
+    "tickets/filter-options-external",
+    customersRes,
+    sitesRes
+  );
 
   return {
     customers: customersRes.data || [],

@@ -11,8 +11,13 @@ import {
   INTERNAL_FIELD_SERVICE_ORDER_SELECT,
   INTERNAL_SPARE_PART_REQUEST_SELECT,
   INTERNAL_TICKET_COMMENT_SELECT,
+  EXTERNAL_TICKET_DETAIL_PART_REQUEST_SELECT,
+  INTERNAL_TICKET_DETAIL_PART_REQUEST_SELECT,
   TICKET_DETAIL_ATTACHMENT_SELECT,
+  TICKET_DETAIL_AI_SUGGESTION_SELECT,
   TICKET_DETAIL_COMMENT_SELECT,
+  TICKET_DETAIL_EVENT_SELECT,
+  TICKET_DETAIL_FIELD_SERVICE_SELECT,
 } from "./resource-projections";
 
 describe("customer-boundary query projections", () => {
@@ -37,11 +42,21 @@ describe("customer-boundary query projections", () => {
     for (const projection of [
       TICKET_DETAIL_COMMENT_SELECT,
       TICKET_DETAIL_ATTACHMENT_SELECT,
+      TICKET_DETAIL_EVENT_SELECT,
+      TICKET_DETAIL_AI_SUGGESTION_SELECT,
+      INTERNAL_TICKET_DETAIL_PART_REQUEST_SELECT,
+      EXTERNAL_TICKET_DETAIL_PART_REQUEST_SELECT,
+      TICKET_DETAIL_FIELD_SERVICE_SELECT,
     ]) {
       expect(projection).not.toContain("*");
     }
     expect(TICKET_DETAIL_ATTACHMENT_SELECT).not.toContain("storage_path");
     expect(TICKET_DETAIL_ATTACHMENT_SELECT).not.toContain("uploaded_by");
+    expect(EXTERNAL_TICKET_DETAIL_PART_REQUEST_SELECT).not.toContain(
+      "total_cost"
+    );
+    expect(TICKET_DETAIL_FIELD_SERVICE_SELECT).not.toContain("engineers");
+    expect(TICKET_DETAIL_AI_SUGGESTION_SELECT).not.toContain("input_context");
   });
 
   it("does not retrieve internal ticket fields for customer detail views", () => {

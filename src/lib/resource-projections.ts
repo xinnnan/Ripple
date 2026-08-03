@@ -32,6 +32,29 @@ export const TICKET_DETAIL_ATTACHMENT_SELECT = `
   id, file_name, file_type, file_size, visibility, created_at
 ` as const;
 
+export const TICKET_DETAIL_EVENT_SELECT = `
+  id, event_type, old_value, new_value, created_at,
+  actor:users!ticket_events_actor_id_fkey(full_name, email)
+` as const;
+
+export const TICKET_DETAIL_AI_SUGGESTION_SELECT = `
+  id, suggestion_type, output_text, confidence_level, model_name, created_at
+` as const;
+
+export const INTERNAL_TICKET_DETAIL_PART_REQUEST_SELECT = `
+  id, request_no, status, total_cost,
+  items:spare_part_request_items(quantity)
+` as const;
+
+export const EXTERNAL_TICKET_DETAIL_PART_REQUEST_SELECT = `
+  id, request_no, status,
+  items:spare_part_request_items(quantity)
+` as const;
+
+export const TICKET_DETAIL_FIELD_SERVICE_SELECT = `
+  id, order_no, title, service_type, status
+` as const;
+
 export const INTERNAL_TICKET_DETAIL_SELECT = `
   id, ticket_no, source, title, description, request_type, severity, impact,
   status, asset_id, area, owner_id, submitter_name, submitter_email,

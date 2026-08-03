@@ -19,10 +19,16 @@ import { isAdminRole } from "@/lib/roles";
 import { redirect } from "next/navigation";
 import {
   EXTERNAL_TICKET_DETAIL_SELECT,
+  EXTERNAL_TICKET_DETAIL_PART_REQUEST_SELECT,
+  INTERNAL_TICKET_DETAIL_PART_REQUEST_SELECT,
   INTERNAL_TICKET_DETAIL_SELECT,
   TICKET_DETAIL_ATTACHMENT_SELECT,
+  TICKET_DETAIL_AI_SUGGESTION_SELECT,
   TICKET_DETAIL_COMMENT_SELECT,
+  TICKET_DETAIL_EVENT_SELECT,
+  TICKET_DETAIL_FIELD_SERVICE_SELECT,
 } from "@/lib/resource-projections";
+import { assertPageQueriesSucceeded } from "@/lib/server-page-query";
 
 interface Props {
   params: Promise<{ ticketId: string }>;
@@ -63,6 +69,14 @@ interface TicketDetailRow {
   owner: { id?: string; full_name: string }[] | null;
 }
 
+interface TicketPartRequestRow {
+  id: string;
+  request_no: string;
+  status: string;
+  total_cost?: number | null;
+  items: { quantity: number }[] | null;
+}
+
 export default async function TicketDetailPage({ params }: Props) {
   const { ticketId } = await params;
   const supabase = createAdminClient();
@@ -87,7 +101,9 @@ export default async function TicketDetailPage({ params }: Props) {
     .select(ticketSelect);
   ticketQuery = resolveTicketQuery(ticketQuery, ticketId);
   ticketQuery = scopeTickets(ticketQuery, scope);
-  const { data: ticketData } = await ticketQuery.maybeSingle();
+  const ticketResult = await ticketQuery.maybeSingle();
+  assertPageQueriesSucceeded("tickets/detail-primary", ticketResult);
+  const ticketData = ticketResult.data;
   const ticket = ticketData as unknown as TicketDetailRow | null;
 
   if (!ticket) {
@@ -114,8 +130,6 @@ export default async function TicketDetailPage({ params }: Props) {
   if (!isInternal) {
     commentsQuery = commentsQuery.eq("visibility", "customer");
   }
-  const { data: comments } = await commentsQuery;
-
   // Attachments: same visibility gating
   let attachmentsQuery = supabase
     .from("ticket_attachments")
@@ -125,55 +139,92 @@ export default async function TicketDetailPage({ params }: Props) {
   if (!isInternal) {
     attachmentsQuery = attachmentsQuery.eq("visibility", "customer");
   }
-  const { data: attachments } = await attachmentsQuery;
-
   // Events: only internal users see the full audit trail. Customers get
   // a high-level "what happened" view built in the UI from the ticket
   // fields directly (no raw event rows).
-  const { data: events } = isInternal
-    ? await supabase
+  const eventsPromise = isInternal
+    ? supabase
         .from("ticket_events")
-        .select("*, actor:users!ticket_events_actor_id_fkey(full_name, email, role)")
+        .select(TICKET_DETAIL_EVENT_SELECT)
         .eq("ticket_id", ticket.id)
         .order("created_at", { ascending: true })
-    : { data: null };
+    : Promise.resolve({ data: null, error: null });
 
   // Available owners (for the owner selector — internal users only need this)
-  const { data: ownersData } = isInternal
-    ? await supabase
+  const ownersPromise = isInternal
+    ? supabase
         .from("users")
         .select("id, full_name")
         .in("role", ["admin", "engineer"])
         .eq("status", "active")
         .order("full_name")
-    : { data: [] };
-  const availableOwners = ownersData || [];
+    : Promise.resolve({ data: [], error: null });
 
   // Fetch AI suggestions — internal-only. The AI panel shows
   // troubleshooting notes, customer-reply drafts, and our
   // mock-fallback text ("Ripple Assist is offline..."), none of
   // which should leak to customer-role viewers.
-  const { data: aiSuggestions } = isInternal
-    ? await supabase
+  const aiSuggestionsPromise = isInternal
+    ? supabase
         .from("ai_suggestions")
-        .select("*")
+        .select(TICKET_DETAIL_AI_SUGGESTION_SELECT)
         .eq("ticket_id", ticket.id)
         .order("created_at", { ascending: false })
-    : { data: null };
+    : Promise.resolve({ data: null, error: null });
 
   // Fetch linked spare part requests
-  const { data: partRequests } = await supabase
+  const partRequestSelect: string = isInternal
+    ? INTERNAL_TICKET_DETAIL_PART_REQUEST_SELECT
+    : EXTERNAL_TICKET_DETAIL_PART_REQUEST_SELECT;
+  const partRequestsPromise = supabase
     .from("spare_part_requests")
-    .select("id, request_no, status, priority, total_cost, created_at, items:spare_part_request_items(quantity)")
+    .select(partRequestSelect)
     .eq("ticket_id", ticket.id)
     .order("created_at", { ascending: false });
 
   // Fetch linked field service orders
-  const { data: fieldServiceOrders } = await supabase
+  const fieldServiceOrdersPromise = supabase
     .from("field_service_orders")
-    .select("id, order_no, title, service_type, status, scheduled_date, estimated_hours, actual_hours, engineers:field_service_engineers(engineer:users(full_name))")
+    .select(TICKET_DETAIL_FIELD_SERVICE_SELECT)
     .eq("ticket_id", ticket.id)
     .order("created_at", { ascending: false });
+
+  const [
+    commentsResult,
+    attachmentsResult,
+    eventsResult,
+    ownersResult,
+    aiSuggestionsResult,
+    partRequestsResult,
+    fieldServiceOrdersResult,
+  ] = await Promise.all([
+    commentsQuery,
+    attachmentsQuery,
+    eventsPromise,
+    ownersPromise,
+    aiSuggestionsPromise,
+    partRequestsPromise,
+    fieldServiceOrdersPromise,
+  ]);
+  assertPageQueriesSucceeded(
+    "tickets/detail-related",
+    commentsResult,
+    attachmentsResult,
+    eventsResult,
+    ownersResult,
+    aiSuggestionsResult,
+    partRequestsResult,
+    fieldServiceOrdersResult
+  );
+  const comments = commentsResult.data;
+  const attachments = attachmentsResult.data;
+  const events = eventsResult.data;
+  const availableOwners = ownersResult.data || [];
+  const aiSuggestions = aiSuggestionsResult.data;
+  const partRequests = partRequestsResult.data as unknown as
+    | TicketPartRequestRow[]
+    | null;
+  const fieldServiceOrders = fieldServiceOrdersResult.data;
 
   // Format event type labels
   function formatEventType(type: string): string {
@@ -353,34 +404,34 @@ export default async function TicketDetailPage({ params }: Props) {
               </div>
             ) : (
               <div className="divide-y divide-border">
-                {partRequests.map((req: Record<string, unknown>) => {
+                {partRequests.map((req) => {
                   const statusColor = SPR_STATUS_COLORS[req.status as keyof typeof SPR_STATUS_COLORS] || "bg-gray-100 text-gray-800";
                   const itemCount = Array.isArray(req.items) ? req.items.length : 0;
                   const content = (
                     <>
                       <div className="flex items-center gap-3">
-                        <span className="text-xs font-mono font-medium text-primary">{req.request_no as string}</span>
+                        <span className="text-xs font-mono font-medium text-primary">{req.request_no}</span>
                         <span className="text-xs text-muted-foreground">{itemCount} items</span>
                       </div>
                       <div className="flex items-center gap-3">
                         {isInternal && req.total_cost ? <span className="text-xs text-muted-foreground">${Number(req.total_cost).toFixed(2)}</span> : null}
                         <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${statusColor}`}>
-                          {SPR_STATUS_LABELS[req.status as keyof typeof SPR_STATUS_LABELS] || req.status as string}
+                          {SPR_STATUS_LABELS[req.status as keyof typeof SPR_STATUS_LABELS] || req.status}
                         </span>
                       </div>
                     </>
                   );
                   return isInternal ? (
                     <Link
-                      key={req.id as string}
-                      href={`/admin/part-requests/${req.id as string}`}
+                      key={req.id}
+                      href={`/admin/part-requests/${req.id}`}
                       className="flex items-center justify-between p-3 hover:bg-muted/50 transition-colors"
                     >
                       {content}
                     </Link>
                   ) : (
                     <div
-                      key={req.id as string}
+                      key={req.id}
                       className="flex items-center justify-between p-3"
                     >
                       {content}
@@ -512,10 +563,10 @@ export default async function TicketDetailPage({ params }: Props) {
                   old_value: string | null;
                   new_value: string | null;
                   created_at: string;
-                  actor: { full_name: string; email: string; role: string }[] | null;
+                  actor: { full_name: string; email: string }[] | null;
                 }, i: number) => {
                   const actorData = ev.actor
-                    ? (Array.isArray(ev.actor) ? ev.actor[0] : ev.actor) as { full_name: string; email: string; role: string } | null
+                    ? (Array.isArray(ev.actor) ? ev.actor[0] : ev.actor) as { full_name: string; email: string } | null
                     : null;
 
                   return (
