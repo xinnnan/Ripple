@@ -295,7 +295,7 @@ npm run dev
 - `npm run build` — production build
 - `npm run start` — production server
 - `npm run lint` — direct ESLint CLI across the repository; warnings fail the gate
-- `npm test` — Vitest unit/contract suite (738 tests)
+- `npm test` — Vitest unit/contract suite (752 tests)
 - `npm run test:e2e` — 40-check production HTTP smoke plus optional credentialed Playwright/API/RLS matrix; requires a successful build
 - `npm run test:e2e:credentialed` — real six-account/two-tenant matrix; set `RIPPLE_E2E_FIXTURES_FILE`
 - `npm run test:e2e:install-browser` — install the pinned Chromium runtime
@@ -1319,7 +1319,10 @@ resume work; this section remains the broader historical summary.
   code-only recovery errors, bringing the suite to 720 tests; then constrained
   three admin detail-page tab parameters to their declared render branches,
   bringing the suite to 727 tests; then made the admin inventory page's site
-  prefilter exact and non-broadening, bringing the suite to 738 tests.
+  prefilter exact and non-broadening, bringing the suite to 738 tests; then
+  surfaced database/profile failures across the remaining eight admin list
+  pages, removed a redundant site read, and constrained catalog hydration,
+  bringing the suite to 752 tests.
 
 ### Known issues / open work
 | Priority | Item | Where | Notes |
@@ -1343,6 +1346,7 @@ resume work; this section remains the broader historical summary.
 | ✅ Closed | Detail-page database failure ambiguity | `src/lib/server-page-query.ts`, admin/customer-manager detail pages | Commit `7790bae` uses missing-safe primary reads and fails every primary/related query into generic recovery with code-only logging instead of false not-found or empty panels |
 | ✅ Closed | Admin detail-tab blank-page ambiguity | `src/components/detail-tabs-helpers.ts`, customer/site/user admin detail pages | Commit `bbd185d` requires each page's exact rendered tab keys and falls back safely for missing, unknown, or repeated values |
 | ✅ Closed | Admin inventory site-prefilter broadening | `src/lib/admin-list-filters.ts`, `/admin/inventory` | Commit `31ef0ab` validates the one optional UUID before service-role access and renders empty clearable states for malformed or unavailable sites instead of all-site inventory |
+| ✅ Closed | Admin list-page database failure ambiguity | `src/app/admin-list-page-read-integrity.test.tsx`, admin customer/site/user/catalog/SLA/service list pages | Commit `0516fb5` gives all eight list pages and four profile reads code-only generic recovery, removes the redundant customer-site query, and replaces catalog wildcard hydration with an explicit projection |
 | 🟡 Med | `/settings` is read-only integration status | `src/app/(auth)/settings/page.tsx` | Add notification preferences, user timezone, and theme controls |
 | ✅ Verified | Migration 046 durable public rate limits | `supabase/migrations/046_durable_public_rate_limits.sql` | Applied 2026-08-02; 77 live assertions covered grants, constraints, concurrency, reset/retention, bounded cleanup, real HTTP limits/lifecycle, and zero residue |
 | 🟡 Med | Exact site-code validation remains an existence oracle | `/api/sites/validate` | Responses are minimal and migration 046 enforces 20 checks/minute/IP across instances, but full anti-enumeration still requires CAPTCHA, an invitation/intake token, or authenticated submission |
@@ -1562,6 +1566,13 @@ resume work; this section remains the broader historical summary.
     optional site UUID before service-role access, refuses unavailable-site
     broadening, adds a clear-filter recovery action, and applies code-only query
     failure handling. Eleven tests bring the suite to 738; all deterministic
+    quality gates are green.
+52. **Surface admin list-page read failures.** Commit `0516fb5` applies shared
+    code-only recovery to customer, site, user, combined customer/site,
+    spare-part, SLA-policy, part-request, and field-service list reads plus the
+    four explicit profile reads. It also removes the combined page's unused
+    flat-site query and replaces spare-part wildcard hydration with a fixed
+    projection. Fourteen tests bring the suite to 752; all deterministic
     quality gates are green.
 
 ### Open architectural questions

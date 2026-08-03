@@ -33,7 +33,7 @@ Ripple is a useful support-ticket prototype with meaningful Phase 1–4 work:
 - spare-parts and field-service skeletons
 - simple wall-clock SLA targets
 - email and AI integrations with graceful failure
-- 738 committed unit/contract tests, production HTTP smoke, and an opt-in
+- 752 committed unit/contract tests, production HTTP smoke, and an opt-in
   credentialed browser/API/RLS matrix
 
 It is not yet the operations platform described by PRD v1.1. The old
@@ -66,7 +66,7 @@ The correct approach is therefore:
 
 | Gate | Result through 2026-08-03 | Meaning |
 |---|---|---|
-| Unit tests | 738/738 passed | Scope, lifecycle and exhaustive ticket-transition guards, atomic ticket/customer/catalog/inventory/attachment creation and updates, attachment content and storage-key validation, direct-write privilege containment, durable public-rate-limit/share-view contracts, notification outbox leases/idempotency/retry contracts, context-safe transactional email rendering and conditional provider/public-origin readiness, tenant-safe site/user/customer/SLA/catalog/inventory administration, secure user provisioning and membership containment, canonical manager-wide active-site presentation, explicit authenticated customer ticket/comment/site/spare-part/field-service read projections and client-payload containment, spreadsheet-safe ticket CSV encoding, strict ticket page/API/export, customer-capable service/site and admin list/page filters, guarded PostgREST search construction, strict API and authenticated server-page UUID boundaries, non-broadening inventory preselection, exact audit pagination, missing-safe detail reads, contained code-only load failures, and allow-listed admin detail tabs, qualified-SQL-expression repair, visibility, auth recovery/redirects, public/responsive/admin UI contracts, deterministic site-timezone dashboard and Slack rendering with exact totals, Slack authentication/configuration/action filtering and direct AI-service invocation, readiness, CI policy, filters, SLA, fixture validation, migration/RPC contracts, spare-part, field-service, and team-access transaction containment, DATE handling, and audit coverage is green |
+| Unit tests | 752/752 passed | Scope, lifecycle and exhaustive ticket-transition guards, atomic ticket/customer/catalog/inventory/attachment creation and updates, attachment content and storage-key validation, direct-write privilege containment, durable public-rate-limit/share-view contracts, notification outbox leases/idempotency/retry contracts, context-safe transactional email rendering and conditional provider/public-origin readiness, tenant-safe site/user/customer/SLA/catalog/inventory administration, secure user provisioning and membership containment, canonical manager-wide active-site presentation, explicit authenticated customer ticket/comment/site/spare-part/field-service read projections and client-payload containment, spreadsheet-safe ticket CSV encoding, strict ticket page/API/export, customer-capable service/site and admin list/page filters, guarded PostgREST search construction, strict API and authenticated server-page UUID boundaries, non-broadening inventory preselection, exact audit pagination, missing-safe detail reads, contained code-only admin list/detail load failures, least-data admin catalog hydration, and allow-listed admin detail tabs, qualified-SQL-expression repair, visibility, auth recovery/redirects, public/responsive/admin UI contracts, deterministic site-timezone dashboard and Slack rendering with exact totals, Slack authentication/configuration/action filtering and direct AI-service invocation, readiness, CI policy, filters, SLA, fixture validation, migration/RPC contracts, spare-part, field-service, and team-access transaction containment, DATE handling, and audit coverage is green |
 | Lint | Passed, no warnings | Direct ESLint CLI with zero-warning enforcement and generated-artifact ignores |
 | Production build | Passed on Next.js 15.5.22 | Environment-free build is reproducible |
 | Dependency audit | 0 vulnerabilities | Patched direct/transitive versions are lockfile-pinned and compatibility-tested |
@@ -652,6 +652,13 @@ Every implementation slice must:
     sites rather than silently showing all inventory. Its three reads also use
     code-only generic failure recovery. Eleven tests bring the suite to 738 and
     all gates are green.
-54. **Next local integrity work:** run protected positive/rollback probes when
-    fixtures are available; otherwise audit remaining admin list pages for
-    ignored database errors, wildcard hydration, and false empty states.
+54. **P0-BD — closed in `0516fb5`:** Eight admin list pages now distinguish
+    database and profile-read failures from legitimate empty data using shared
+    code-only generic recovery. The combined customer/site page removes its
+    redundant flat-site query and hidden serialization, while the spare-parts
+    list uses an explicit least-data projection. Fourteen real-page contracts
+    bring the suite to 752 and all gates are green.
+55. **Next local integrity work:** run protected positive/rollback probes when
+    fixtures are available; otherwise audit the admin part-request and field-
+    service creation-page option loaders for failed reads, lifecycle filtering,
+    least-data projection, and misleading empty selectors.

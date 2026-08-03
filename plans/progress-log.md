@@ -8,9 +8,9 @@ meaningful change and before ending a work session. Newest entries go first.
 - **Branch:** `codex/prd-v1-1-gap-closure`
 - **Active phase:** Phase 0 — Containment and reproducible baseline
 - **Active work item:** run protected migrations 028–031 business probes when
-  the staging fixture becomes available; otherwise audit remaining admin list
-  pages for database-failure/empty-state ambiguity
-- **Last verified implementation commit:** `31ef0ab` (`fix: contain inventory page prefilter`)
+  the staging fixture becomes available; otherwise contain option-loading
+  failures on the admin part-request and field-service creation pages
+- **Last verified implementation commit:** `0516fb5` (`fix: surface admin list read failures`)
 - **Uncommitted work:** none expected after the documentation checkpoint;
   verify with `git status` before resuming
 - **Deployment gate:** migrations 001–046 are confirmed applied. Migration 044
@@ -63,10 +63,10 @@ meaningful change and before ending a work session. Newest entries go first.
   dedicated staging mailbox.
 - **Exact next local step:** check whether the protected credential fixture is
   available and, if so, run the migration 028–031 business probes plus the new
-  malformed-body HTTP checks. If it remains unavailable, audit remaining admin
-  server list pages for ignored database errors, wildcard hydration, and false
-  empty states. Configure `CRON_SECRET` separately before production worker
-  activation
+  malformed-body HTTP checks. If it remains unavailable, audit and contain the
+  admin part-request and field-service creation-page option loaders so database
+  failures cannot render misleading empty selectors. Configure `CRON_SECRET`
+  separately before production worker activation
 - **Primary plan:** [`plans/prd-v1.1-gap-closure-plan.md`](./prd-v1.1-gap-closure-plan.md)
 
 ## Overall project status — 2026-08-03
@@ -76,7 +76,7 @@ meaningful change and before ending a work session. Newest entries go first.
 - Against the full PRD v1.1 capability map, 17 domains remain
   **Partial** or **Unsafe/Partial** and seven remain **Absent**. No full PRD
   capability domain is yet honestly complete end to end.
-- The local deterministic baseline is green at 738 unit/contract tests, 40
+- The local deterministic baseline is green at 752 unit/contract tests, 40
   production HTTP smoke checks, a production build, zero-warning lint, and
   zero known dependency vulnerabilities.
 - Phase 0 cannot be declared exited until the protected six-account/two-tenant
@@ -88,6 +88,52 @@ meaningful change and before ending a work session. Newest entries go first.
   queues/routing, business-calendar SLA clocks, remote support, appointments,
   assets/entitlements, search/knowledge, i18n, versioned external APIs, and
   production SRE/recovery evidence.
+
+## Session record — 2026-08-03 (P0-BD / admin list read integrity)
+
+### Objective
+
+Finish the admin list-page read audit by preventing database and authorization-
+profile failures from being presented as legitimate empty lists.
+
+### Finding and implementation
+
+- Customer, site, user, combined customer/site, spare-part, SLA-policy,
+  part-request, and field-service list pages discarded query errors and rendered
+  their normal empty states during database failures.
+- The four pages with explicit cookie-profile authorization also discarded
+  profile-read errors before constructing a service-role client.
+- All eight pages now apply the shared code-only page-query guard, producing a
+  generic recovery boundary without logging database messages or query detail.
+- The combined customer/site page no longer performs or serializes an unused
+  flat-site query, and the spare-parts list replaces wildcard hydration with an
+  explicit least-data projection.
+- Fourteen real-page contracts cover all eight list failures, all four profile
+  failures, redundant-query removal, and the catalog projection. The suite is
+  now 752 tests across 95 files.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| `npm ci` | Passed from the lockfile earlier in this continuous session; 0 install-time vulnerabilities |
+| `npm test` | Passed; 95 files, 752 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build and type check |
+| `npm run test:e2e` | Passed; all 40 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+
+### Commit
+
+- Hash: `0516fb5`
+- Message: `fix: surface admin list read failures`
+
+### Next
+
+Run protected probes when their fixture is available. Otherwise audit the
+admin part-request and field-service creation pages for failed option reads,
+least-data projections, lifecycle filtering, and misleading empty selectors.
 
 ## Session record — 2026-08-03 (P0-BC / inventory page prefilter containment)
 
