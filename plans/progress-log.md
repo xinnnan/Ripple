@@ -8,9 +8,9 @@ meaningful change and before ending a work session. Newest entries go first.
 - **Branch:** `codex/prd-v1-1-gap-closure`
 - **Active phase:** Phase 0 — Containment and reproducible baseline
 - **Active work item:** run protected migrations 028–031 business probes when
-  the staging fixture becomes available; otherwise validate and scope the
-  remaining customer-capable service/site list filters before PostgREST access
-- **Last verified implementation commit:** `38f8b5e` (`fix: contain ticket list reads`)
+  the staging fixture becomes available; otherwise contain remaining
+  admin/read query parameters and detail identifiers before PostgREST access
+- **Last verified implementation commit:** `5840b17` (`fix: validate customer list filters`)
 - **Uncommitted work:** none expected after the documentation checkpoint;
   verify with `git status` before resuming
 - **Deployment gate:** migrations 001–046 are confirmed applied. Migration 044
@@ -63,10 +63,9 @@ meaningful change and before ending a work session. Newest entries go first.
   dedicated staging mailbox.
 - **Exact next local step:** check whether the protected credential fixture is
   available and, if so, run the migration 028–031 business probes plus the new
-  malformed-body HTTP checks. If it remains unavailable, add strict,
-  scope-aware filter contracts to customer-capable spare-part, field-service,
-  and site list GETs. Configure `CRON_SECRET` separately before production
-  worker activation
+  malformed-body HTTP checks. If it remains unavailable, audit and contain the
+  remaining admin/read filter and route-identifier contracts. Configure
+  `CRON_SECRET` separately before production worker activation
 - **Primary plan:** [`plans/prd-v1.1-gap-closure-plan.md`](./prd-v1.1-gap-closure-plan.md)
 
 ## Overall project status — 2026-08-03
@@ -76,7 +75,7 @@ meaningful change and before ending a work session. Newest entries go first.
 - Against the full PRD v1.1 capability map, 17 domains remain
   **Partial** or **Unsafe/Partial** and seven remain **Absent**. No full PRD
   capability domain is yet honestly complete end to end.
-- The local deterministic baseline is green at 611 unit/contract tests, 40
+- The local deterministic baseline is green at 637 unit/contract tests, 40
   production HTTP smoke checks, a production build, zero-warning lint, and
   zero known dependency vulnerabilities.
 - Phase 0 cannot be declared exited until the protected six-account/two-tenant
@@ -88,6 +87,47 @@ meaningful change and before ending a work session. Newest entries go first.
   queues/routing, business-calendar SLA clocks, remote support, appointments,
   assets/entitlements, search/knowledge, i18n, versioned external APIs, and
   production SRE/recovery evidence.
+
+## Session record — 2026-08-03 (P0-AV / customer-list filter containment)
+
+### Objective
+
+Make customer-capable spare-part-request, field-service-order, and site list
+filters strict, scope-aware, and non-cacheable before privileged query access.
+
+### Finding and implementation
+
+- All three endpoints accepted raw singleton values and ignored unsupported
+  keys; invalid enum/UUID inputs could reach PostgREST, while repeated or
+  misspelled filters could silently change the result set.
+- A shared parser now accepts only each endpoint's documented keys, rejects
+  repeated singletons, validates UUIDs, and validates spare-part status plus
+  field-service status/service-type enums from the domain contracts.
+- External site filters for spare-part and field-service lists, and customer
+  filters for site lists, are authorized against canonical scope before the
+  route constructs its service-role query. Foreign filters return a stable
+  403 rather than an ambiguous empty list.
+- Database logs retain only error codes on query failures, and successful
+  authenticated list responses now carry `Cache-Control: private, no-store`.
+- Twenty-six parser and real-handler tests bring the suite to 637.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| `npm ci` | Passed from the lockfile earlier in this continuous session; 0 install-time vulnerabilities |
+| `npm test` | Passed; 85 files, 637 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build and type check |
+| `npm run test:e2e` | Passed; all 40 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+
+### Next
+
+Run protected probes when their fixture is available. Otherwise audit the
+remaining admin/read query parameters and UUID route identifiers for permissive
+parsing, unknown-key broadening, and database-error behavior.
 
 ## Session record — 2026-08-03 (P0-AU / ticket-list read containment)
 
