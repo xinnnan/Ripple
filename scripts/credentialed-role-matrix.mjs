@@ -403,6 +403,25 @@ async function getJson(context, pathName, expectedStatus) {
   return body;
 }
 
+async function expectMalformedJson(context, pathName, method) {
+  const response = await context.request.fetch(pathName, {
+    method,
+    failOnStatusCode: false,
+    headers: { "content-type": "application/json" },
+    data: "{",
+  });
+  const body = await response.json();
+  assert(
+    response.status() === 400,
+    `${method} ${pathName} malformed JSON expected 400, received ${response.status()}`
+  );
+  assert(
+    body?.error === "Invalid JSON body",
+    `${method} ${pathName} returned an unstable malformed JSON error`
+  );
+  pass(`API ${method} ${pathName} rejects malformed JSON`);
+}
+
 function assertExternalTicketShape(ticket, label) {
   assert(ticket && typeof ticket === "object", `${label} did not return a ticket`);
   for (const field of SENSITIVE_TICKET_FIELDS) {
@@ -656,6 +675,27 @@ async function runBrowserAndApiMatrix(browser, fixture) {
       "customer comments API returned the fixture internal comment"
     );
     pass("API customer-visible comment shaping");
+
+    await expectMalformedJson(
+      sessions.customerA.context,
+      "/api/tickets",
+      "POST"
+    );
+    await expectMalformedJson(
+      sessions.engineer.context,
+      `/api/tickets/${tenantA.activeTicketId}`,
+      "PATCH"
+    );
+    await expectMalformedJson(
+      sessions.engineer.context,
+      `/api/tickets/${tenantA.activeTicketId}/comments`,
+      "POST"
+    );
+    await expectMalformedJson(
+      sessions.engineer.context,
+      "/api/ai/suggest",
+      "POST"
+    );
 
     await getJson(sessions.admin.context, "/api/admin/audit?limit=1", 200);
     await getJson(sessions.engineer.context, "/api/admin/audit?limit=1", 403);
