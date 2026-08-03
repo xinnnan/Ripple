@@ -33,7 +33,7 @@ Ripple is a useful support-ticket prototype with meaningful Phase 1–4 work:
 - spare-parts and field-service skeletons
 - simple wall-clock SLA targets
 - email and AI integrations with graceful failure
-- 465 committed unit/contract tests, production HTTP smoke, and an opt-in
+- 517 committed unit/contract tests, production HTTP smoke, and an opt-in
   credentialed browser/API/RLS matrix
 
 It is not yet the operations platform described by PRD v1.1. The old
@@ -66,7 +66,7 @@ The correct approach is therefore:
 
 | Gate | Result through 2026-08-03 | Meaning |
 |---|---|---|
-| Unit tests | 509/509 passed | Scope, lifecycle and exhaustive ticket-transition guards, atomic ticket/customer/catalog/inventory/attachment creation and updates, attachment content and storage-key validation, direct-write privilege containment, durable public-rate-limit/share-view contracts, notification outbox leases/idempotency/retry contracts, context-safe transactional email rendering and conditional provider/public-origin readiness, tenant-safe site/user/customer/SLA/catalog/inventory administration, secure user provisioning and membership containment, qualified-SQL-expression repair, visibility, auth recovery/redirects, public/responsive/admin UI contracts, deterministic site-timezone dashboard and Slack rendering with exact totals, Slack authentication/configuration/action filtering and direct AI-service invocation, readiness, CI policy, filters, SLA, fixture validation, migration/RPC contracts, spare-part, field-service, and team-access transaction containment, DATE handling, and audit coverage is green |
+| Unit tests | 517/517 passed | Scope, lifecycle and exhaustive ticket-transition guards, atomic ticket/customer/catalog/inventory/attachment creation and updates, attachment content and storage-key validation, direct-write privilege containment, durable public-rate-limit/share-view contracts, notification outbox leases/idempotency/retry contracts, context-safe transactional email rendering and conditional provider/public-origin readiness, tenant-safe site/user/customer/SLA/catalog/inventory administration, secure user provisioning and membership containment, canonical manager-wide active-site presentation, qualified-SQL-expression repair, visibility, auth recovery/redirects, public/responsive/admin UI contracts, deterministic site-timezone dashboard and Slack rendering with exact totals, Slack authentication/configuration/action filtering and direct AI-service invocation, readiness, CI policy, filters, SLA, fixture validation, migration/RPC contracts, spare-part, field-service, and team-access transaction containment, DATE handling, and audit coverage is green |
 | Lint | Passed, no warnings | Direct ESLint CLI with zero-warning enforcement and generated-artifact ignores |
 | Production build | Passed on Next.js 15.5.22 | Environment-free build is reproducible |
 | Dependency audit | 0 vulnerabilities | Patched direct/transitive versions are lockfile-pinned and compatibility-tested |
@@ -157,8 +157,9 @@ has a release-blocking security or integrity problem.
 ### Platform gaps that become risks at scale
 
 - Ticket, part-request, and field-order scope is repeated across routes.
-- Customer managers are incorrectly scoped to direct `site_members` in some
-  list APIs instead of all customer sites.
+- Customer-manager list/read scope is now consistently organization-wide for
+  active sites in the audited dashboard, team API/page, and authenticated
+  public-submit paths (`67ce908`).
 - Exact site-code validation remains an existence oracle. Migration 046 provides a
   durable 20/minute/IP limiter, but CAPTCHA, invitation/intake proof, or
   authenticated submission is still required for full anti-enumeration.
@@ -574,7 +575,14 @@ Every implementation slice must:
     before provider I/O while preserving best-effort results. Thirty-seven
     tests bring the suite to 509, and HTTP smoke asserts the secret-free email
     readiness state; all quality gates are green.
-41. **Next local integrity work:** run protected positive/rollback probes when
-    fixtures are available; otherwise audit customer-manager list/read paths
-    and close any direct-membership-only under-scoping against the canonical
-    organization-wide role contract.
+41. **P0-AQ — closed in `67ce908`:** Customer-manager site selection and
+    presentation now use the organization-wide active-site contract across
+    authenticated public submit, dashboard, team page, and `GET /api/team`.
+    A shared team read model filters retained archived memberships, preserves
+    customer assignment scope, represents manager inheritance explicitly, and
+    avoids empty membership queries. Eight tests bring the suite to 517; the
+    40-check smoke, production build, lint, dependency audit, and public-form
+    desktop/mobile QA are green.
+42. **Next local integrity work:** run protected positive/rollback probes when
+    fixtures are available; otherwise audit customer-facing service-role reads
+    for wildcard/nested hidden-field exposure and missing lifecycle filters.

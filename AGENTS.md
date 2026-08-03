@@ -295,7 +295,7 @@ npm run dev
 - `npm run build` — production build
 - `npm run start` — production server
 - `npm run lint` — direct ESLint CLI across the repository; warnings fail the gate
-- `npm test` — Vitest unit/contract suite (509 tests)
+- `npm test` — Vitest unit/contract suite (517 tests)
 - `npm run test:e2e` — 40-check production HTTP smoke plus optional credentialed Playwright/API/RLS matrix; requires a successful build
 - `npm run test:e2e:credentialed` — real six-account/two-tenant matrix; set `RIPPLE_E2E_FIXTURES_FILE`
 - `npm run test:e2e:install-browser` — install the pinned Chromium runtime
@@ -403,6 +403,14 @@ Tailwind v4 uses `@theme` in CSS instead of `tailwind.config.ts`. Color tokens (
 - `customer_manager` sees **all** sites/tickets under their `customer_id` (org-wide)
 - `customer` only sees their own `site_members` rows
 - The Create Ticket modal (`src/app/(auth)/tickets/create-ticket-modal.tsx:48`) branches on this — 3 different site-loading paths. Keep that branching centralized if adding a new role.
+
+Retained memberships are historical evidence, not current manager scope.
+Customer-facing list/read models must first constrain sites to the active
+tenant lifecycle, then apply role semantics: managers inherit every active
+organization site; customers receive only active assigned sites. This matters
+especially for `createAdminClient()` queries because the service role bypasses
+both RLS and lifecycle policies. The canonical audited implementation is
+`src/lib/team/read-model.ts` (commit `67ce908`).
 
 ### Audit-driven fixes work
 The `plans/e2e-audit-and-test-plan.md` from 2026-05-23 was the most productive doc — surfaced 12 issues (2 critical, 5 medium, 4 low) and we shipped 7 fixes in commit `a62c043`. **Run a similar audit before any major phase** (Phase 4, etc.).
@@ -1234,7 +1242,9 @@ resume work; this section remains the broader historical summary.
   tests; then made transactional email HTML, links, and provider subjects
   context-safe, bringing the suite to 472 tests; then added conditional email
   readiness and execution-time configuration guards, bringing the suite to
-  509 tests.
+  509 tests; then aligned customer-manager presentation with organization-wide
+  active-site inheritance while filtering retained archived memberships,
+  bringing the suite to 517 tests.
 
 ### Known issues / open work
 | Priority | Item | Where | Notes |
@@ -1245,6 +1255,7 @@ resume work; this section remains the broader historical summary.
 | ✅ Closed | Transactional email interpolation safety | `src/lib/email/send.ts` | Commit `92a3d87` escapes all dynamic HTML fields, encodes link components, rejects non-HTTP(S) origins, and strips subject control characters with adversarial contracts |
 | ✅ Closed | Dashboard timezone, relation shape, and capped total | `src/app/(auth)/dashboard/page.tsx`, `src/lib/utils.ts` | Commit `0cf4aac` uses each ticket site's validated timezone with UTC fallback, normalizes relation objects/arrays, and counts all customer tickets independently of the recent list |
 | ✅ Closed | Slack/ticket-detail Eastern-Time assumption | `src/lib/slack/blocks/ticket-master.ts`, `src/lib/tickets/outbox.ts`, `src/app/(auth)/tickets/[ticketId]/page.tsx` | Commit `b253558` hydrates and validates the ticket site's timezone for initial/retried/refreshed Slack cards and ticket detail, with deterministic UTC fallback |
+| ✅ Closed | Customer-manager direct-membership under-scoping | `src/lib/team/read-model.ts`, `/api/team`, `/team`, `/submit`, `/dashboard` | Commit `67ce908` makes manager access organization-wide over active sites, keeps customers assignment-scoped, and excludes retained archived memberships from current presentation |
 | 🟡 Med | `/settings` is read-only integration status | `src/app/(auth)/settings/page.tsx` | Add notification preferences, user timezone, and theme controls |
 | ✅ Verified | Migration 046 durable public rate limits | `supabase/migrations/046_durable_public_rate_limits.sql` | Applied 2026-08-02; 77 live assertions covered grants, constraints, concurrency, reset/retention, bounded cleanup, real HTTP limits/lifecycle, and zero residue |
 | 🟡 Med | Exact site-code validation remains an existence oracle | `/api/sites/validate` | Responses are minimal and migration 046 enforces 20 checks/minute/IP across instances, but full anti-enumeration still requires CAPTCHA, an invitation/intake token, or authenticated submission |
@@ -1397,6 +1408,13 @@ resume work; this section remains the broader historical summary.
     delivery. Disabled email remains optional; malformed enabled email fails
     readiness and is contained before provider I/O. Thirty-seven tests bring
     the suite to 509; all quality gates are green.
+39. **Align customer-manager site scope.** Commit `67ce908` makes
+    organization-wide active-site inheritance consistent in authenticated
+    public submit, dashboard, team page, and the team API. A shared read model
+    keeps customer assignments site-scoped, filters retained archived
+    memberships, and represents manager access accurately. Eight tests bring
+    the suite to 517; all quality gates and responsive public-form QA are
+    green.
 
 ### Open architectural questions
 - The RLS recursion bug surfaces a bigger question: do we keep `createAdminClient() + code filter` (the current pattern in `lib/supabase/scope.ts`) or move back to proper RLS once migration 019 + similar fixes are in place? The current pattern scales fine but has a lower safety margin for new queries.

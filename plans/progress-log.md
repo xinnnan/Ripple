@@ -8,10 +8,10 @@ meaningful change and before ending a work session. Newest entries go first.
 - **Branch:** `codex/prd-v1-1-gap-closure`
 - **Active phase:** Phase 0 — Containment and reproducible baseline
 - **Active work item:** run protected migrations 028–031 business probes when
-  the staging fixture becomes available; otherwise audit every customer-
-  manager read/list path for organization-wide scope consistency as the next
-  locally executable tenant-integrity checkpoint
-- **Last verified implementation commit:** `a991bbd` (`fix: enforce email delivery readiness`)
+  the staging fixture becomes available; otherwise audit customer-facing
+  service-role reads for wildcard/hidden-field exposure and missing lifecycle
+  filters as the next locally executable containment checkpoint
+- **Last verified implementation commit:** `67ce908` (`fix: align customer manager site scope`)
 - **Uncommitted work:** none expected after the documentation checkpoint;
   verify with `git status` before resuming
 - **Deployment gate:** migrations 001–046 are confirmed applied. Migration 044
@@ -64,10 +64,11 @@ meaningful change and before ending a work session. Newest entries go first.
   dedicated staging mailbox.
 - **Exact next local step:** check whether the protected credential fixture is
   available and, if so, run the migration 028–031 business probes plus the new
-  malformed-body HTTP checks. If it remains unavailable, inventory customer-
-  manager list/read routes and pages, then replace any direct-membership-only
-  scope with the canonical organization-wide contract. Configure
-  `CRON_SECRET` separately before production worker activation
+  malformed-body HTTP checks. If it remains unavailable, inventory every
+  customer-facing page/API that uses `createAdminClient()` and replace
+  wildcard/nested over-fetching or missing active-lifecycle predicates with
+  explicit safe projections. Configure `CRON_SECRET` separately before
+  production worker activation
 - **Primary plan:** [`plans/prd-v1.1-gap-closure-plan.md`](./prd-v1.1-gap-closure-plan.md)
 
 ## Overall project status — 2026-08-03
@@ -77,7 +78,7 @@ meaningful change and before ending a work session. Newest entries go first.
 - Against the full PRD v1.1 capability map, 17 domains remain
   **Partial** or **Unsafe/Partial** and seven remain **Absent**. No full PRD
   capability domain is yet honestly complete end to end.
-- The local deterministic baseline is green at 509 unit/contract tests, 40
+- The local deterministic baseline is green at 517 unit/contract tests, 40
   production HTTP smoke checks, a production build, zero-warning lint, and
   zero known dependency vulnerabilities.
 - Phase 0 cannot be declared exited until the protected six-account/two-tenant
@@ -89,6 +90,57 @@ meaningful change and before ending a work session. Newest entries go first.
   queues/routing, business-calendar SLA clocks, remote support, appointments,
   assets/entitlements, search/knowledge, i18n, versioned external APIs, and
   production SRE/recovery evidence.
+
+## Session record — 2026-08-03 (P0-AQ / customer-manager site scope)
+
+### Objective
+
+Make customer-manager site visibility consistently organization-wide while
+preventing retained memberships or archived sites from leaking into current
+customer-facing lists.
+
+### Finding and implementation
+
+- The authenticated public submit form loaded only direct `site_members`, so a
+  customer manager could not select every active site in their organization.
+  It now uses the canonical browser/RLS site-scope helper.
+- The customer-manager dashboard queried customer sites through the
+  service-role client without an active-lifecycle predicate. It now excludes
+  archived sites explicitly.
+- The team page and `GET /api/team` joined retained memberships directly to
+  site details, could present archived site names, and represented managers as
+  having no site access. A shared read model now gives managers all active
+  organization sites and customers only active retained assignments.
+- The team UI no longer offers an invalid edit action for another
+  `customer_manager`; it labels that inherited access `Organization-wide`.
+- Eight new handler/read-model/source contracts bring the deterministic suite
+  to 517 tests and cover empty rosters, active-site filtering, manager
+  inheritance, customer assignment, archived memberships, duplicates, and
+  ID-only membership projection.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| `npm ci` | Passed from the lockfile; 0 install-time vulnerabilities |
+| `npm test` | Passed; 73 files, 517 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build |
+| `npm run test:e2e` | Passed; all 40 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+
+The public submit page was also reviewed at 1280×720 and 390×844 with Inter,
+correct responsive fit, and no horizontal overflow. Protected team-page
+browser validation remains tied to the six-account staging fixture; the local
+browser held an expired refresh token, so no production-like identity was
+invented or provisioned for this checkpoint.
+
+### Next
+
+Run the protected migration/tenant probes when their fixture is available.
+Otherwise audit customer-facing service-role reads for wildcard or nested
+hidden-field exposure and missing active-lifecycle filters.
 
 ## Session record — 2026-08-03 (P0-AP / conditional email readiness)
 
