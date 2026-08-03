@@ -33,7 +33,7 @@ Ripple is a useful support-ticket prototype with meaningful Phase 1–4 work:
 - spare-parts and field-service skeletons
 - simple wall-clock SLA targets
 - email and AI integrations with graceful failure
-- 529 committed unit/contract tests, production HTTP smoke, and an opt-in
+- 533 committed unit/contract tests, production HTTP smoke, and an opt-in
   credentialed browser/API/RLS matrix
 
 It is not yet the operations platform described by PRD v1.1. The old
@@ -66,7 +66,7 @@ The correct approach is therefore:
 
 | Gate | Result through 2026-08-03 | Meaning |
 |---|---|---|
-| Unit tests | 529/529 passed | Scope, lifecycle and exhaustive ticket-transition guards, atomic ticket/customer/catalog/inventory/attachment creation and updates, attachment content and storage-key validation, direct-write privilege containment, durable public-rate-limit/share-view contracts, notification outbox leases/idempotency/retry contracts, context-safe transactional email rendering and conditional provider/public-origin readiness, tenant-safe site/user/customer/SLA/catalog/inventory administration, secure user provisioning and membership containment, canonical manager-wide active-site presentation, explicit authenticated customer ticket/comment/site read projections and client-payload containment, qualified-SQL-expression repair, visibility, auth recovery/redirects, public/responsive/admin UI contracts, deterministic site-timezone dashboard and Slack rendering with exact totals, Slack authentication/configuration/action filtering and direct AI-service invocation, readiness, CI policy, filters, SLA, fixture validation, migration/RPC contracts, spare-part, field-service, and team-access transaction containment, DATE handling, and audit coverage is green |
+| Unit tests | 533/533 passed | Scope, lifecycle and exhaustive ticket-transition guards, atomic ticket/customer/catalog/inventory/attachment creation and updates, attachment content and storage-key validation, direct-write privilege containment, durable public-rate-limit/share-view contracts, notification outbox leases/idempotency/retry contracts, context-safe transactional email rendering and conditional provider/public-origin readiness, tenant-safe site/user/customer/SLA/catalog/inventory administration, secure user provisioning and membership containment, canonical manager-wide active-site presentation, explicit authenticated customer ticket/comment/site/spare-part/field-service read projections and client-payload containment, qualified-SQL-expression repair, visibility, auth recovery/redirects, public/responsive/admin UI contracts, deterministic site-timezone dashboard and Slack rendering with exact totals, Slack authentication/configuration/action filtering and direct AI-service invocation, readiness, CI policy, filters, SLA, fixture validation, migration/RPC contracts, spare-part, field-service, and team-access transaction containment, DATE handling, and audit coverage is green |
 | Lint | Passed, no warnings | Direct ESLint CLI with zero-warning enforcement and generated-artifact ignores |
 | Production build | Passed on Next.js 15.5.22 | Environment-free build is reproducible |
 | Dependency audit | 0 vulnerabilities | Patched direct/transitive versions are lockfile-pinned and compatibility-tested |
@@ -165,9 +165,9 @@ has a release-blocking security or integrity problem.
   authenticated submission is still required for full anti-enumeration.
 - Malware scanning/quarantine, checksums, retention, and a durable operator
   reconciliation queue for ambiguous cross-system attachment outcomes remain.
-- Authenticated ticket/comment/site service-role reads now use explicit
-  customer projections, but spare-part and field-service external GET paths
-  still fetch wildcard internal records and sanitize afterward.
+- Current customer-capable ticket/comment/site/spare-part/field-service
+  service-role reads use query-time allow-lists; remaining wildcard
+  application reads are internal-only hydration paths.
 - README, architecture notes, migration counts, test counts, role names, and
   AI-provider notes are stale in several documents.
 
@@ -591,6 +591,13 @@ Every implementation slice must:
     attachment storage keys, or uploader IDs. Twelve tests bring the suite to
     529; the production build/type check, 40-check smoke, lint, and dependency
     audit are green.
-43. **Next local integrity work:** run protected positive/rollback probes when
-    fixtures are available; otherwise replace spare-part and field-service
-    external wildcard hydration with explicit query-time projections.
+43. **P0-AS — closed in `2c4faad`:** Spare-part-request and field-service-order
+    external list/detail reads now select customer allow-lists before data
+    leaves Postgres. Price/staff attribution and completion-note/travel/staff
+    assignment fields are no longer retrieved for customer roles; response
+    shapers remain as defense in depth. Four tests bring the suite to 533 and
+    all quality gates are green.
+44. **Next local integrity work:** run protected positive/rollback probes when
+    fixtures are available; otherwise harden ticket CSV export against
+    spreadsheet formulas, relationship-shape drift, malformed filters, and
+    database-detail leakage.
