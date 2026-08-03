@@ -7,12 +7,13 @@ import { cn } from "@/lib/utils";
 import {
   PAGE_SIZE,
   parseFilters,
+  parseTicketListFilters,
   buildParams,
   type TicketFiltersState,
   type TicketFilterOptions,
 } from "./ticket-filters.shared";
 
-export { PAGE_SIZE, parseFilters, buildParams };
+export { PAGE_SIZE, parseFilters, parseTicketListFilters, buildParams };
 export type { TicketFiltersState, TicketFilterOptions };
 
 const QUICK_STATUSES: TicketStatus[] = [

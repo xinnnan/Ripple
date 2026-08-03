@@ -4,6 +4,7 @@ import { getAuthUser } from "@/lib/supabase/auth-helpers";
 import { getUserScope, scopeTickets } from "@/lib/supabase/scope";
 import { buildTicketCsv } from "@/lib/tickets/csv-export";
 import { parseTicketExportFilters } from "@/lib/tickets/export-filters";
+import { buildTicketSearchFilter } from "@/lib/tickets/search-filter";
 
 export const dynamic = "force-dynamic";
 
@@ -110,10 +111,7 @@ export async function GET(request: NextRequest) {
     }
 
     if (filters.q) {
-      const safe = filters.q.replace(/[%_]/g, (match) => `\\${match}`);
-      query = query.or(
-        `ticket_no.ilike.%${safe}%,title.ilike.%${safe}%`
-      );
+      query = query.or(buildTicketSearchFilter(filters.q));
     }
 
     if (filters.range && filters.range !== "all") {

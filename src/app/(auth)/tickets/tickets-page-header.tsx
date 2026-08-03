@@ -6,9 +6,14 @@ import { CreateTicketModal } from "./create-ticket-modal";
 interface TicketsPageHeaderProps {
   filterQuery: string;
   isInternal?: boolean;
+  canExport?: boolean;
 }
 
-export function TicketsPageHeader({ filterQuery, isInternal = true }: TicketsPageHeaderProps) {
+export function TicketsPageHeader({
+  filterQuery,
+  isInternal = true,
+  canExport = true,
+}: TicketsPageHeaderProps) {
   const [modalOpen, setModalOpen] = useState(false);
 
   return (
@@ -28,7 +33,7 @@ export function TicketsPageHeader({ filterQuery, isInternal = true }: TicketsPag
         >
           + Submit Ticket
         </button>
-        {isInternal && (
+        {isInternal && canExport && (
           <a
             href={`/api/tickets/export${filterQuery}`}
             className="flex-1 rounded-lg border border-border px-4 py-2 text-center text-sm font-medium text-foreground transition-colors hover:bg-accent sm:flex-none"

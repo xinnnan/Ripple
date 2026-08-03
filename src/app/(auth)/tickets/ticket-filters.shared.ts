@@ -5,7 +5,8 @@
 //  are pure functions so they live here and are imported by both
 //  the page (server) and the client controls.)
 
-import type { TicketStatus, Severity } from "@/types/ticket";
+import { TICKET_STATUSES, type TicketStatus, type Severity } from "@/types/ticket";
+import { parseTicketSearch } from "@/lib/tickets/search-filter";
 
 export type TicketFiltersState = {
   q?: string;
@@ -29,29 +30,138 @@ export type TicketFilterOptions = {
 };
 
 export const PAGE_SIZE = 20;
+export const MAX_TICKET_LIST_PAGE = 100_000;
+
+const SEVERITIES = ["P1", "P2", "P3", "P4"] as const;
+const RANGES = ["7d", "30d", "90d", "all"] as const;
+const SLA_BUCKETS = [
+  "all",
+  "breached",
+  "breaching",
+  "on_track",
+  "no_sla",
+] as const;
+const FILTER_KEYS = new Set([
+  "q",
+  "status",
+  "severity",
+  "customer",
+  "site",
+  "owner",
+  "range",
+  "sla",
+  "page",
+]);
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function singleParam(params: URLSearchParams, key: string) {
+  const values = params.getAll(key);
+  if (values.length > 1) return { valid: false as const };
+  const value = values[0]?.trim();
+  return { valid: true as const, value: value || undefined };
+}
+
+function listParam(params: URLSearchParams, key: string) {
+  return params
+    .getAll(key)
+    .flatMap((value) => value.split(","))
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
+
+function unique<T>(values: T[]): T[] {
+  return [...new Set(values)];
+}
+
+export type TicketFilterParseResult = {
+  filters: TicketFiltersState;
+  isValid: boolean;
+};
+
+export function parseTicketListFilters(
+  params: URLSearchParams
+): TicketFilterParseResult {
+  let isValid = true;
+  for (const key of params.keys()) {
+    if (!FILTER_KEYS.has(key)) isValid = false;
+  }
+  const readSingle = (key: string) => {
+    const result = singleParam(params, key);
+    if (!result.valid) isValid = false;
+    return result.valid ? result.value : undefined;
+  };
+
+  const rawSearch = readSingle("q");
+  const search = parseTicketSearch(rawSearch);
+  if (!search.success) isValid = false;
+
+  const rawStatuses = listParam(params, "status");
+  const statuses = rawStatuses.filter((value): value is TicketStatus =>
+    TICKET_STATUSES.includes(value as TicketStatus)
+  );
+  if (statuses.length !== rawStatuses.length) isValid = false;
+
+  const rawSeverities = listParam(params, "severity");
+  const severities = rawSeverities.filter((value): value is Severity =>
+    SEVERITIES.includes(value as Severity)
+  );
+  if (severities.length !== rawSeverities.length) isValid = false;
+
+  const customerId = readSingle("customer");
+  const siteId = readSingle("site");
+  const ownerId = readSingle("owner");
+  for (const value of [customerId, siteId, ownerId]) {
+    if (value && !UUID_PATTERN.test(value)) isValid = false;
+  }
+
+  const range = readSingle("range");
+  if (range && !RANGES.includes(range as (typeof RANGES)[number])) {
+    isValid = false;
+  }
+  const sla = readSingle("sla");
+  if (sla && !SLA_BUCKETS.includes(sla as (typeof SLA_BUCKETS)[number])) {
+    isValid = false;
+  }
+
+  const rawPage = readSingle("page");
+  let page = 1;
+  if (rawPage) {
+    if (!/^[1-9]\d*$/.test(rawPage)) {
+      isValid = false;
+    } else {
+      const parsedPage = Number(rawPage);
+      if (!Number.isSafeInteger(parsedPage) || parsedPage > MAX_TICKET_LIST_PAGE) {
+        isValid = false;
+      } else {
+        page = parsedPage;
+      }
+    }
+  }
+
+  return {
+    filters: {
+      q: search.success ? search.value : undefined,
+      status: unique(statuses),
+      severity: unique(severities),
+      customer_id:
+        customerId && UUID_PATTERN.test(customerId) ? customerId : undefined,
+      site_id: siteId && UUID_PATTERN.test(siteId) ? siteId : undefined,
+      owner_id: ownerId && UUID_PATTERN.test(ownerId) ? ownerId : undefined,
+      range: RANGES.includes(range as (typeof RANGES)[number])
+        ? (range as TicketFiltersState["range"])
+        : undefined,
+      sla: SLA_BUCKETS.includes(sla as (typeof SLA_BUCKETS)[number])
+        ? (sla as TicketFiltersState["sla"])
+        : undefined,
+      page,
+    },
+    isValid,
+  };
+}
 
 export function parseFilters(params: URLSearchParams): TicketFiltersState {
-  const get = (k: string) => params.get(k) ?? undefined;
-  const list = (k: string) =>
-    (params.get(k) || "")
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean);
-
-  const range = get("range") as TicketFiltersState["range"];
-  const slaRaw = get("sla") as TicketFiltersState["sla"];
-  const page = parseInt(get("page") || "1", 10);
-  return {
-    q: get("q"),
-    status: list("status") as TicketStatus[],
-    severity: list("severity") as Severity[],
-    customer_id: get("customer"),
-    site_id: get("site"),
-    owner_id: get("owner"),
-    range: range && ["7d", "30d", "90d", "all"].includes(range) ? range : undefined,
-    sla: slaRaw && ["all", "breached", "breaching", "on_track", "no_sla"].includes(slaRaw) ? slaRaw : undefined,
-    page: Number.isFinite(page) && page > 0 ? page : 1,
-  };
+  return parseTicketListFilters(params).filters;
 }
 
 export function buildParams(filters: TicketFiltersState): string {

@@ -53,6 +53,24 @@ export const EXTERNAL_TICKET_DETAIL_SELECT = `
   owner:users!tickets_owner_id_fkey(full_name)
 ` as const;
 
+export const INTERNAL_TICKET_LIST_SELECT = `
+  *,
+  customer:customers(id, name),
+  site:sites(id, site_name, site_code),
+  owner:users!tickets_owner_id_fkey(id, full_name)
+` as const;
+
+export const EXTERNAL_TICKET_LIST_SELECT = `
+  id, ticket_no, title, description, request_type, severity, impact, status,
+  source, asset_id, area, customer_visible_summary, created_at, updated_at,
+  resolved_at, closed_at, first_response_due_at, resolve_due_at,
+  first_response_at, first_response_breached_at, resolution_breached_at,
+  sla_breached,
+  customer:customers(id, name),
+  site:sites(id, site_name, site_code),
+  owner:users!tickets_owner_id_fkey(full_name)
+` as const;
+
 export const INTERNAL_SPARE_PART_REQUEST_SELECT = `
   *,
   site:sites(id, site_name, site_code),

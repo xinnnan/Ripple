@@ -4,8 +4,10 @@ import {
   EXTERNAL_FIELD_SERVICE_ORDER_SELECT,
   EXTERNAL_SPARE_PART_REQUEST_SELECT,
   EXTERNAL_TICKET_DETAIL_SELECT,
+  EXTERNAL_TICKET_LIST_SELECT,
   EXTERNAL_TICKET_COMMENT_SELECT,
   INTERNAL_TICKET_DETAIL_SELECT,
+  INTERNAL_TICKET_LIST_SELECT,
   INTERNAL_FIELD_SERVICE_ORDER_SELECT,
   INTERNAL_SPARE_PART_REQUEST_SELECT,
   INTERNAL_TICKET_COMMENT_SELECT,
@@ -61,6 +63,28 @@ describe("customer-boundary query projections", () => {
     expect(EXTERNAL_TICKET_DETAIL_SELECT).toContain("customer_visible_summary");
     expect(INTERNAL_TICKET_DETAIL_SELECT).toContain("internal_summary");
     expect(INTERNAL_TICKET_DETAIL_SELECT).toContain("submitter_email");
+  });
+
+  it("does not retrieve internal ticket fields for customer API lists", () => {
+    expect(EXTERNAL_TICKET_LIST_SELECT).not.toContain("*");
+    for (const field of [
+      "secure_token",
+      "submitter_name",
+      "submitter_email",
+      "submitter_phone",
+      "internal_summary",
+      "root_cause_category",
+      "follow_up_needed",
+      "created_by",
+      "outbox_event_id",
+    ]) {
+      expect(EXTERNAL_TICKET_LIST_SELECT).not.toContain(field);
+    }
+    expect(EXTERNAL_TICKET_LIST_SELECT).not.toMatch(
+      /(?:^|,)\s*owner_id\s*(?:,|$)/m
+    );
+    expect(EXTERNAL_TICKET_LIST_SELECT).toContain("customer_visible_summary");
+    expect(INTERNAL_TICKET_LIST_SELECT).toContain("*");
   });
 
   it("selects external spare-part logistics without staff or price fields", () => {

@@ -61,6 +61,8 @@ describe("ticket export filters", () => {
     "sla=late",
     "q=alarm%2Cstatus.eq.closed",
     "q=alarm%29",
+    "q=first&q=second",
+    "unknown=value",
     "date_from=not-a-date",
     "date_from=2026-08-04&date_to=2026-08-03",
     "range=7d&date_from=2026-08-01",

@@ -1,5 +1,9 @@
 import { z } from "zod";
 import { TICKET_STATUSES } from "@/types/ticket";
+import {
+  TICKET_SEARCH_MAX_LENGTH,
+  TICKET_SEARCH_PATTERN,
+} from "@/lib/tickets/search-filter";
 
 const severities = ["P1", "P2", "P3", "P4"] as const;
 const ranges = ["7d", "30d", "90d", "all"] as const;
@@ -14,6 +18,21 @@ const dateBoundarySchema = z.union([
   z.string().date(),
   z.string().datetime({ offset: true }),
 ]);
+const FILTER_KEYS = new Set([
+  "q",
+  "status",
+  "severity",
+  "customer",
+  "customer_id",
+  "site",
+  "site_id",
+  "owner",
+  "owner_id",
+  "range",
+  "sla",
+  "date_from",
+  "date_to",
+]);
 
 const ticketExportFilterSchema = z
   .object({
@@ -21,8 +40,8 @@ const ticketExportFilterSchema = z
       .string()
       .trim()
       .min(1)
-      .max(200)
-      .regex(/^[^,()"\\\u0000-\u001f\u007f]*$/)
+      .max(TICKET_SEARCH_MAX_LENGTH)
+      .regex(TICKET_SEARCH_PATTERN)
       .optional(),
     status: z.array(z.enum(TICKET_STATUSES)).max(TICKET_STATUSES.length),
     severity: z.array(z.enum(severities)).max(severities.length),
@@ -56,9 +75,11 @@ const ticketExportFilterSchema = z
 
 export type TicketExportFilters = z.infer<typeof ticketExportFilterSchema>;
 
-function optionalParam(params: URLSearchParams, key: string) {
-  const value = params.get(key)?.trim();
-  return value || undefined;
+function singleParam(params: URLSearchParams, key: string) {
+  const values = params.getAll(key);
+  if (values.length > 1) return { value: undefined, conflict: true };
+  const value = values[0]?.trim();
+  return { value: value || undefined, conflict: false };
 }
 
 function listParam(params: URLSearchParams, key: string): string[] {
@@ -74,35 +95,56 @@ function aliasedParam(
   canonical: string,
   legacy: string
 ): { value?: string; conflict: boolean } {
-  const canonicalValue = optionalParam(params, canonical);
-  const legacyValue = optionalParam(params, legacy);
+  const canonicalResult = singleParam(params, canonical);
+  const legacyResult = singleParam(params, legacy);
+  const canonicalValue = canonicalResult.value;
+  const legacyValue = legacyResult.value;
   return {
     value: canonicalValue ?? legacyValue,
     conflict: Boolean(
-      canonicalValue && legacyValue && canonicalValue !== legacyValue
+      canonicalResult.conflict ||
+        legacyResult.conflict ||
+        (canonicalValue && legacyValue && canonicalValue !== legacyValue)
     ),
   };
 }
 
 export function parseTicketExportFilters(params: URLSearchParams) {
+  for (const key of params.keys()) {
+    if (!FILTER_KEYS.has(key)) return { success: false as const };
+  }
   const customer = aliasedParam(params, "customer", "customer_id");
   const site = aliasedParam(params, "site", "site_id");
   const owner = aliasedParam(params, "owner", "owner_id");
-  if (customer.conflict || site.conflict || owner.conflict) {
+  const q = singleParam(params, "q");
+  const range = singleParam(params, "range");
+  const sla = singleParam(params, "sla");
+  const dateFrom = singleParam(params, "date_from");
+  const dateTo = singleParam(params, "date_to");
+  if (
+    customer.conflict ||
+    site.conflict ||
+    owner.conflict ||
+    q.conflict ||
+    range.conflict ||
+    sla.conflict ||
+    dateFrom.conflict ||
+    dateTo.conflict
+  ) {
     return { success: false as const };
   }
 
   const parsed = ticketExportFilterSchema.safeParse({
-    q: optionalParam(params, "q"),
+    q: q.value,
     status: listParam(params, "status"),
     severity: listParam(params, "severity"),
     customerId: customer.value,
     siteId: site.value,
     ownerId: owner.value,
-    range: optionalParam(params, "range"),
-    sla: optionalParam(params, "sla"),
-    dateFrom: optionalParam(params, "date_from"),
-    dateTo: optionalParam(params, "date_to"),
+    range: range.value,
+    sla: sla.value,
+    dateFrom: dateFrom.value,
+    dateTo: dateTo.value,
   });
 
   return parsed.success
