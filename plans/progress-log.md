@@ -7,13 +7,14 @@ meaningful change and before ending a work session. Newest entries go first.
 
 - **Branch:** `codex/prd-v1-1-gap-closure`
 - **Active phase:** Phase 0 — Containment and reproducible baseline
-- **Active work item:** run protected migrations 028–031 business probes when
-  the staging fixture becomes available; otherwise design replay-safe ticket
-  creation idempotency and continue the remaining mutation-surface audit
-- **Last verified implementation commit:** `6075296` (`fix: harden ticket mutation workflows`)
+- **Active work item:** apply and live-verify migration 047's replay-safe ticket
+  creation command before deploying its application caller; then resume the
+  remaining mutation-surface audit
+- **Last verified implementation commit:** `dc5f588` (`fix: make ticket creation replay safe`)
 - **Uncommitted work:** none expected after the documentation checkpoint;
   verify with `git status` before resuming
-- **Deployment gate:** migrations 001–046 are confirmed applied. Migration 044
+- **Deployment gate:** migrations 001–046 are confirmed applied. Migration 047
+  awaits application and must precede deployment of `dc5f588`. Migration 044
   passed a 130-assertion disposable live matrix with zero residue. Migration
   045 passed a 110-assertion live matrix with zero residue. Migration 046
   passed a 77-assertion live matrix with zero residue. Production
@@ -65,22 +66,22 @@ meaningful change and before ending a work session. Newest entries go first.
   stable heading, labeled controls, Inter, clean console, and no horizontal
   overflow. No ticket was submitted; protected signed-in profile/site-option
   visual coverage still depends on the credentialed fixture.
-- **Exact next local step:** check whether the protected credential fixture is
-  available and, if so, run the migration 028–031 business probes plus the new
-  malformed-body HTTP checks. If it remains unavailable, trace every web and
-  Slack ticket-create caller and add a replay-safe idempotency contract so an
-  ambiguous client/network outcome cannot create duplicate tickets. Configure
-  `CRON_SECRET` separately before production worker activation
+- **Exact next local step:** apply migration 047, then verify function/table
+  shape, service-only privileges, first create, exact replay, changed-input
+  rejection, concurrent replay cardinality, single audit/event/outbox effects,
+  cascade cleanup, and zero residue. Configure `CRON_SECRET` separately before
+  production worker activation
 - **Primary plan:** [`plans/prd-v1.1-gap-closure-plan.md`](./prd-v1.1-gap-closure-plan.md)
 
 ## Overall project status — 2026-08-03
 
 - Ripple has a meaningful Phase 1–4 support-platform foundation, and Phase 0
-  containment is substantially implemented through migrations 001–046.
+  containment is substantially implemented through migrations 001–046;
+  migration 047 is implemented locally and awaits application.
 - Against the full PRD v1.1 capability map, 17 domains remain
   **Partial** or **Unsafe/Partial** and seven remain **Absent**. No full PRD
   capability domain is yet honestly complete end to end.
-- The local deterministic baseline is green at 930 unit/contract tests, 40
+- The local deterministic baseline is green at 944 unit/contract tests, 40
   production HTTP smoke checks, a production build, zero-warning lint, and
   zero known dependency vulnerabilities.
 - Phase 0 cannot be declared exited until the protected six-account/two-tenant
@@ -92,6 +93,62 @@ meaningful change and before ending a work session. Newest entries go first.
   queues/routing, business-calendar SLA clocks, remote support, appointments,
   assets/entitlements, search/knowledge, i18n, versioned external APIs, and
   production SRE/recovery evidence.
+
+## Session record — 2026-08-03 (P0-BR / replay-safe ticket creation)
+
+### Objective
+
+Prevent duplicate tickets when web or Slack creation is replayed after an
+ambiguous response, while preserving migration-first rollout and atomic
+timeline, audit, and delivery behavior.
+
+### Finding and implementation
+
+- Migration 034 made one invocation atomic but had no request identity, so a
+  network disconnect or Slack retry after commit could correctly execute the
+  command a second time. The command also returned only a UUID, requiring a
+  separate post-commit hydration read before the caller could receive a ticket
+  number and secure token.
+- Migration 047 adds a service-only `ticket_creation_requests` ledger and
+  `create_ticket_idempotent_atomic(jsonb)` wrapper. A transaction-scoped
+  advisory lock serializes each source/key pair; an exact replay returns the
+  first ticket, changed business input fails closed, and volatile secure-token
+  and SLA calculations cannot replace the committed receipt.
+- The wrapper delegates first creation to migration 034 in the same transaction
+  and returns the ticket UUID, number, and secure token directly. Existing
+  `create_ticket_atomic(jsonb)` remains available for migration-first rollout.
+- Public and authenticated forms retain a generated key only while the
+  normalized request body is unchanged, then rotate after edits or a new-form
+  reset. The API validates and echoes caller keys and generates one for legacy
+  callers. Slack derives a deterministic key from the signed submitted view ID.
+- `createTicketCore()` now consumes the transaction receipt without a
+  post-commit ticket query and re-drains existing outbox work on an exact replay.
+  Provider/database diagnostics on the touched path are bounded.
+- Fourteen new/expanded helper, route, core, migration, and real-source
+  contracts bring the suite to 944 tests across 121 files. Migration 047 is not
+  yet applied, and no live ticket was created.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| `npm test` | Passed; 121 files, 944 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build and type check |
+| `npm run test:e2e` | Passed; all 40 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+
+### Commit
+
+- Hash: `dc5f588`
+- Message: `fix: make ticket creation replay safe`
+
+### Next
+
+Apply migration 047 before deploying the application commit, then run the
+replay/concurrency/cardinality/privilege/cleanup live matrix. Resume the
+remaining mutation audit only after the command is live-green.
 
 ## Session record — 2026-08-03 (P0-BQ / ticket mutation integrity)
 

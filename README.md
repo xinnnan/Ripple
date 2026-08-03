@@ -49,14 +49,14 @@ A Slack-native support portal for DropletAI Services. Centralises customer suppo
 | Layer | Tool |
 |-------|------|
 | Frontend | Next.js 15.5.22 (App Router) + React 19 + TypeScript + Tailwind CSS v4 + self-hosted Inter |
-| Database | Supabase Postgres (46 migrations, see `supabase/migrations/`) |
+| Database | Supabase Postgres (47 migrations, see `supabase/migrations/`) |
 | Auth | Supabase Auth (email + password + recovery) + new `sb_publishable_` / `sb_secret_` key format |
 | Storage | Supabase Storage — bucket `ripple-attachments`, **50 MB cap per file** |
 | Slack | `@slack/bolt` + `@slack/web-api` (runs inside Next.js API routes, no separate process) |
 | AI | **MiniMax AI** (OpenAI-compatible) — was OpenAI → Zhipu → MiniMax. **See "AI provider" section below.** |
 | Email | Resend (transactional: ticket confirmation, resolution notice) |
 | Validation | Zod (all API request bodies) |
-| Testing | Vitest (449 unit/contract tests) + 40-check production HTTP smoke + credentialed Playwright/API/RLS matrix |
+| Testing | Vitest (944 unit/contract tests) + 40-check production HTTP smoke + credentialed Playwright/API/RLS matrix |
 | Hosting | Vercel (serverless API routes) |
 
 ## Phases
@@ -91,7 +91,7 @@ cp .env.local.example .env.local
 
 ### Run database migrations
 
-Apply the SQL files in `supabase/migrations/` **in order** (001 → 046) via the Supabase SQL editor or `supabase db push`:
+Apply the SQL files in `supabase/migrations/` **in order** (001 → 047) via the Supabase SQL editor or `supabase db push`:
 
 ```
 001_create_customers.sql
@@ -140,11 +140,13 @@ Apply the SQL files in `supabase/migrations/` **in order** (001 → 046) via the
 044_atomic_ticket_attachment_metadata.sql
 045_restrict_direct_application_writes.sql
 046_durable_public_rate_limits.sql
+047_idempotent_ticket_creation.sql
 ```
 
 Later migrations replace policies/functions and should be applied once in
 order. Migration `017` also performs role data updates and must not be re-run
 blindly. Migrations 001–046 are confirmed applied as of 2026-08-02. Migration
+047 awaits application; deploy it before application commit `dc5f588`. Migration
 043 passed a disposable 72-assertion live matrix covering create/existing
 upsert, positive/no-op PATCH, stock and location constraints, active-parent and
 privilege guards, direct-command grants, concurrent serialization, exact audit

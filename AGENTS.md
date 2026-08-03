@@ -105,7 +105,7 @@ Vercel.
 │   │   ├── ticket.ts                    # ⭐ All domain enums + labels
 │   │   └── spare-parts.ts               # ⭐ Spare parts + field service enums
 │   └── middleware.ts                    # ⭐ Route guard + session refresh
-├── supabase/migrations/                 # 001–046, apply in order
+├── supabase/migrations/                 # 001–047, apply in order
 ├── plans/                               # Architecture + phase planning docs
 │   ├── architecture.md
 │   ├── phase2-customer-auth-and-user-management.md
@@ -124,7 +124,7 @@ Vercel.
 - Ticket detail UI → `src/app/(auth)/tickets/[ticketId]/page.tsx` (server) + `ticket-actions-panel.tsx` (client)
 - Slack ticket creation → `src/app/api/slack/command/ticket/route.ts` + `src/lib/slack/blocks/ticket-form.ts`
 - AI assist → `src/app/api/ai/suggest/route.ts` + `src/lib/ai/suggest.ts`
-- DB schema → `supabase/migrations/001_*.sql` … `046_durable_public_rate_limits.sql`
+- DB schema → `supabase/migrations/001_*.sql` … `047_idempotent_ticket_creation.sql`
 
 ---
 
@@ -162,8 +162,8 @@ const isInternal = role ? INTERNAL_ROLES.includes(role) : email ? isInternalEmai
 
 ## 5. Database Schema (Supabase)
 
-46 migrations, to be applied in order. Migrations 001–046 are confirmed
-applied as of 2026-08-02. Key tables:
+47 migrations, to be applied in order. Migrations 001–046 are confirmed
+applied as of 2026-08-02; migration 047 awaits application. Key tables:
 
 | Table | Purpose | Notes |
 |---|---|---|
@@ -172,6 +172,7 @@ applied as of 2026-08-02. Key tables:
 | `users` | All users (internal + external) | `role` (4 values, see §4), `customer_id`, `slack_user_id`; migration 038 makes same-family admin PATCH/deactivation serialized and transactionally audited. Migration 039 stops trusting signup role metadata and adds atomic admin/team provisioning finalizers |
 | `site_members` | User ↔ Site (M:N) | Customers join via this; customer_manager bypasses. Migration 035 adds tenant-contained, transactionally audited admin add/remove commands. Migration 045 removes the legacy direct authenticated write path; its 110-assertion live matrix is green |
 | `tickets` | Core ticket entity | `ticket_no` (RPL-XXXXXX), `secure_token` (32-byte hex), `severity` (P1–P4), 8-state `status`, response/resolution due/achieved/breached timestamps; migration 027 column-limits direct authenticated SELECT |
+| `ticket_creation_requests` | Service-only ticket-create replay ledger | Migration 047 serializes source/request keys, returns the first durable receipt for exact retries, and rejects altered reuse; awaits application |
 | `ticket_comments` | Discussion, `visibility: customer\|internal` | `is_automated`; only human internal-authored customer-visible messages satisfy First Response |
 | `ticket_attachments` | File refs (storage_path) | Bucket `ripple-attachments`, 50MB cap; direct authenticated bucket access is removed by migration 027 and app routes mediate objects. Migration 044 adds bounded metadata/path constraints and atomic metadata plus timeline creation; its 130-assertion live matrix is green |
 | `ticket_events` | Audit log | `actor_id`, `event_type`, `old_value`/`new_value` |
@@ -285,7 +286,7 @@ if ("error" in auth) return NextResponse.json({ error: auth.error }, { status: a
 npm install
 cp .env.local.example .env.local   # fill in real values
 # Run migrations in Supabase SQL editor (or `supabase db push` if using CLI):
-#   001 → 046 in order
+#   001 → 047 in order
 # Enable pgvector: CREATE EXTENSION IF NOT EXISTS vector;
 npm run dev
 ```
@@ -295,7 +296,7 @@ npm run dev
 - `npm run build` — production build
 - `npm run start` — production server
 - `npm run lint` — direct ESLint CLI across the repository; warnings fail the gate
-- `npm test` — Vitest unit/contract suite (930 tests)
+- `npm test` — Vitest unit/contract suite (944 tests)
 - `npm run test:e2e` — 40-check production HTTP smoke plus optional credentialed Playwright/API/RLS matrix; requires a successful build
 - `npm run test:e2e:credentialed` — real six-account/two-tenant matrix; set `RIPPLE_E2E_FIXTURES_FILE`
 - `npm run test:e2e:install-browser` — install the pinned Chromium runtime
@@ -1317,6 +1318,26 @@ hydration is not allowed to reverse its HTTP success semantics. Return the
 durable identity, disclose that detail refresh is degraded, and let clients
 reconcile without replaying the write.
 
+### Atomic creation still needs a caller-stable replay key
+Found 2026-08-03 in web and Slack ticket creation. Migration 034 committed the
+ticket, timeline, audit, and outbox atomically, but an HTTP disconnect or Slack
+retry after commit could invoke that correct command twice. The browser also
+generated no stable attempt identity, while Slack already supplied a stable
+signed modal view ID.
+
+Commit `dc5f588` adds migration 047's service-only request ledger and
+transaction-scoped source/key serialization. Exact retries return the original
+ticket ID, number, and secure token; reuse with changed business input fails.
+Web forms retain a key only while normalized input is unchanged, Slack derives
+one from the submitted view ID, legacy API callers receive a generated/echoed
+key, and `createTicketCore()` no longer needs a post-commit ticket hydration
+query.
+
+**Lesson:** transaction atomicity prevents partial state, not duplicate
+commands. Every externally retryable create path needs a stable caller attempt
+key, exact-input collision detection, concurrent serialization, and a durable
+receipt returned by the committing transaction.
+
 ---
 
 ## 10. Current State & Roadmap
@@ -1485,7 +1506,10 @@ resume work; this section remains the broader historical summary.
   success through hydration failure, bringing the suite to 915 tests; then
   aligned public/authenticated ticket creation and detail actions with strict
   bounded contracts, complete mutation locking, safe response handling, and
-  committed-success hydration semantics, bringing the suite to 930 tests.
+  committed-success hydration semantics, bringing the suite to 930 tests; then
+  made web and Slack ticket creation replay-safe with source/key serialization,
+  exact-input collision rejection, and transaction-returned durable receipts,
+  bringing the suite to 944 tests.
 
 ### Known issues / open work
 | Priority | Item | Where | Notes |
@@ -1523,6 +1547,7 @@ resume work; this section remains the broader historical summary.
 | ✅ Closed | Service creation form coercion/silent-row loss | field-service and spare-part request creation forms | Commit `a3ed0dd` applies total row validation, stable keys, zero-safe prices, exact bounds/date checks, accessible labels/errors, responsive layout, and request-plus-navigation locking |
 | ✅ Closed | Customer/site form and post-commit hydration ambiguity | customer/site create/edit forms, `POST /api/sites` | Commit `e15dea6` applies canonical normalization/bounds, accessible responsive locking, archived/ownership guards, prerequisite messaging, and committed-success 201 semantics when site detail hydration is degraded |
 | ✅ Closed | Ticket mutation raw failure, duplicate-action, and hydration ambiguity | public/authenticated ticket creation, ticket detail actions, ticket PATCH/comments | Commit `6075296` centralizes bounded input/file contracts, locks request plus refresh settlement, validates safe response shapes, preserves committed success through hydration failure, and immediately drains the durable ticket outbox |
+| 🟡 Apply | Replay-safe ticket creation | migration 047, web ticket forms, Slack modal submission | Commit `dc5f588` adds stable attempt keys, serialized exact replay, changed-input rejection, and durable transaction receipts; migration 047 must be applied and live-verified before application deployment |
 | 🟡 Med | `/settings` is read-only integration status | `src/app/(auth)/settings/page.tsx` | Add notification preferences, user timezone, and theme controls |
 | ✅ Verified | Migration 046 durable public rate limits | `supabase/migrations/046_durable_public_rate_limits.sql` | Applied 2026-08-02; 77 live assertions covered grants, constraints, concurrency, reset/retention, bounded cleanup, real HTTP limits/lifecycle, and zero residue |
 | 🟡 Med | Exact site-code validation remains an existence oracle | `/api/sites/validate` | Responses are minimal and migration 046 enforces 20 checks/minute/IP across instances, but full anti-enumeration still requires CAPTCHA, an invitation/intake token, or authenticated submission |
@@ -1835,6 +1860,13 @@ resume work; this section remains the broader historical summary.
     comment creation preserve committed success if only response hydration
     fails; PATCH also triggers the durable outbox fast drain. Fifteen contracts
     bring the suite to 930; all deterministic quality gates are green.
+66. **Make ticket creation replay-safe.** Commit `dc5f588` adds migration 047's
+    service-only source/key ledger and transaction-scoped serialization. Exact
+    web/Slack retries return the first ticket receipt, changed input is rejected,
+    browser keys rotate only after edits, Slack keys bind to signed view IDs,
+    legacy HTTP callers receive an echoed generated key, and post-commit ticket
+    hydration is removed. Fourteen contracts bring the suite to 944; all local
+    deterministic gates are green and migration application/live probes remain.
 
 ### Open architectural questions
 - The RLS recursion bug surfaces a bigger question: do we keep `createAdminClient() + code filter` (the current pattern in `lib/supabase/scope.ts`) or move back to proper RLS once migration 019 + similar fixes are in place? The current pattern scales fine but has a lower safety margin for new queries.
@@ -1856,7 +1888,7 @@ npm audit
 ```
 
 **Apply a new migration:**
-1. Create `supabase/migrations/047_xxx.sql` (next number)
+1. Create `supabase/migrations/048_xxx.sql` (next number)
 2. Test locally: `supabase db reset` (drops + re-applies all)
 3. Apply to prod via Supabase SQL editor
 4. Document in this file's §5 + §10
