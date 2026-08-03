@@ -295,7 +295,7 @@ npm run dev
 - `npm run build` — production build
 - `npm run start` — production server
 - `npm run lint` — direct ESLint CLI across the repository; warnings fail the gate
-- `npm test` — Vitest unit/contract suite (472 tests)
+- `npm test` — Vitest unit/contract suite (509 tests)
 - `npm run test:e2e` — 40-check production HTTP smoke plus optional credentialed Playwright/API/RLS matrix; requires a successful build
 - `npm run test:e2e:credentialed` — real six-account/two-tenant matrix; set `RIPPLE_E2E_FIXTURES_FILE`
 - `npm run test:e2e:install-browser` — install the pinned Chromium runtime
@@ -1075,6 +1075,24 @@ interpolation as HTML text, URL component, HTML attribute, or provider header;
 encode from the inside out, test hostile values at each boundary, and keep the
 renderer pure so safety can be verified without external side effects.
 
+### Optional integrations need disabled, ready, and invalid states
+Found 2026-08-03 after email-rendering hardening. Readiness ignored Resend, and
+delivery defaulted an absent production `NEXT_PUBLIC_APP_URL` to localhost.
+Treating “not configured” and “configured incorrectly” as the same optional
+state would let a broken deployment accept work and accumulate retries with
+unusable customer links.
+
+Commit `a991bbd` introduces three email readiness states. Missing Resend
+credentials intentionally disable email without failing the service; once a
+key is present, its shape, the plain sender address, and a public HTTPS
+production origin must pass. The same guards run at delivery time, where bad
+configuration becomes a contained `send_failed` result before provider I/O.
+
+**Lesson:** optional means absence may be healthy, not that malformed enabled
+configuration is healthy. Model explicit disabled/ready/not-ready states, keep
+readiness output secret-free, validate both at the health boundary and the
+execution boundary, and allow localhost fallbacks only in non-production.
+
 ### Supabase SSR auth cookies belong on the response you return
 Found 2026-07-29 while adding password recovery. The authorization-code
 callback created a redirect inside the Supabase `setAll` callback, attached
@@ -1214,13 +1232,16 @@ resume work; this section remains the broader historical summary.
   patched 5.0.9, bringing the suite to 465 tests; then removed the remaining
   Slack/ticket-detail Eastern-Time assumption, bringing the suite to 469
   tests; then made transactional email HTML, links, and provider subjects
-  context-safe, bringing the suite to 472 tests.
+  context-safe, bringing the suite to 472 tests; then added conditional email
+  readiness and execution-time configuration guards, bringing the suite to
+  509 tests.
 
 ### Known issues / open work
 | Priority | Item | Where | Notes |
 |---|---|---|---|
 | 🟡 Med | MiniMax AI key invalid (`401 invalid api key (2049)`). | `.env` `MINIMAX_API_KEY` | Mock fallback is in place; real AI works once key is fixed. Provider URL `https://api.minimax.chat/v1/` resolves and returns proper error responses, so the gateway is real — just the key is wrong. |
 | 🟡 Med | Resend sender domain `dropletai.services` not verified | `src/lib/email/send.ts` | Email send returns `send_failed` until domain is verified at resend.com/domains. Ticket creation still works. |
+| ✅ Closed | Unsafe enabled email configuration | `src/lib/config/readiness.ts`, `src/lib/config/public-app-url.ts`, `src/lib/email/config.ts` | Commit `a991bbd` distinguishes disabled/ready/not-ready email, requires safe provider/sender/public-origin configuration, and enforces it before provider I/O |
 | ✅ Closed | Transactional email interpolation safety | `src/lib/email/send.ts` | Commit `92a3d87` escapes all dynamic HTML fields, encodes link components, rejects non-HTTP(S) origins, and strips subject control characters with adversarial contracts |
 | ✅ Closed | Dashboard timezone, relation shape, and capped total | `src/app/(auth)/dashboard/page.tsx`, `src/lib/utils.ts` | Commit `0cf4aac` uses each ticket site's validated timezone with UTC fallback, normalizes relation objects/arrays, and counts all customer tickets independently of the recent list |
 | ✅ Closed | Slack/ticket-detail Eastern-Time assumption | `src/lib/slack/blocks/ticket-master.ts`, `src/lib/tickets/outbox.ts`, `src/app/(auth)/tickets/[ticketId]/page.tsx` | Commit `b253558` hydrates and validates the ticket site's timezone for initial/retried/refreshed Slack cards and ticket detail, with deterministic UTC fallback |
@@ -1371,6 +1392,11 @@ resume work; this section remains the broader historical summary.
     constructs HTTP(S) tracking links with encoded path/query components, and
     strips provider-subject controls. Three adversarial tests bring the suite
     to 472; all quality gates are green.
+38. **Enforce conditional email readiness.** Commit `a991bbd` adds shared
+    Resend-key, sender-address, and public-origin contracts to readiness and
+    delivery. Disabled email remains optional; malformed enabled email fails
+    readiness and is contained before provider I/O. Thirty-seven tests bring
+    the suite to 509; all quality gates are green.
 
 ### Open architectural questions
 - The RLS recursion bug surfaces a bigger question: do we keep `createAdminClient() + code filter` (the current pattern in `lib/supabase/scope.ts`) or move back to proper RLS once migration 019 + similar fixes are in place? The current pattern scales fine but has a lower safety margin for new queries.

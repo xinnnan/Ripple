@@ -8,10 +8,10 @@ meaningful change and before ending a work session. Newest entries go first.
 - **Branch:** `codex/prd-v1-1-gap-closure`
 - **Active phase:** Phase 0 — Containment and reproducible baseline
 - **Active work item:** run protected migrations 028–031 business probes when
-  the staging fixture becomes available; otherwise audit the conditional
-  production-readiness contract for public email links and provider settings
-  as the next locally executable checkpoint
-- **Last verified implementation commit:** `92a3d87` (`fix: harden transactional email rendering`)
+  the staging fixture becomes available; otherwise audit every customer-
+  manager read/list path for organization-wide scope consistency as the next
+  locally executable tenant-integrity checkpoint
+- **Last verified implementation commit:** `a991bbd` (`fix: enforce email delivery readiness`)
 - **Uncommitted work:** none expected after the documentation checkpoint;
   verify with `git status` before resuming
 - **Deployment gate:** migrations 001–046 are confirmed applied. Migration 044
@@ -64,10 +64,10 @@ meaningful change and before ending a work session. Newest entries go first.
   dedicated staging mailbox.
 - **Exact next local step:** check whether the protected credential fixture is
   available and, if so, run the migration 028–031 business probes plus the new
-  malformed-body HTTP checks. If it remains unavailable, audit readiness so a
-  configured production email provider cannot silently emit localhost or
-  invalid public links. Configure `CRON_SECRET` separately before production
-  worker activation
+  malformed-body HTTP checks. If it remains unavailable, inventory customer-
+  manager list/read routes and pages, then replace any direct-membership-only
+  scope with the canonical organization-wide contract. Configure
+  `CRON_SECRET` separately before production worker activation
 - **Primary plan:** [`plans/prd-v1.1-gap-closure-plan.md`](./prd-v1.1-gap-closure-plan.md)
 
 ## Overall project status — 2026-08-03
@@ -77,7 +77,7 @@ meaningful change and before ending a work session. Newest entries go first.
 - Against the full PRD v1.1 capability map, 17 domains remain
   **Partial** or **Unsafe/Partial** and seven remain **Absent**. No full PRD
   capability domain is yet honestly complete end to end.
-- The local deterministic baseline is green at 472 unit/contract tests, 40
+- The local deterministic baseline is green at 509 unit/contract tests, 40
   production HTTP smoke checks, a production build, zero-warning lint, and
   zero known dependency vulnerabilities.
 - Phase 0 cannot be declared exited until the protected six-account/two-tenant
@@ -89,6 +89,57 @@ meaningful change and before ending a work session. Newest entries go first.
   queues/routing, business-calendar SLA clocks, remote support, appointments,
   assets/entitlements, search/knowledge, i18n, versioned external APIs, and
   production SRE/recovery evidence.
+
+## Session record — 2026-08-03 (P0-AP / conditional email readiness)
+
+### Objective
+
+Prevent a configured production email integration from silently emitting
+localhost/unsafe links or attempting delivery with malformed provider/sender
+configuration, while keeping intentionally disabled email optional.
+
+### Finding and implementation
+
+- `/api/health/ready` checked database, Slack, and outbox configuration but not
+  email. Separately, the sender defaulted a missing public application URL to
+  `http://localhost:3000` in every environment.
+- Commit `a991bbd` adds a shared public-origin contract: production requires a
+  public HTTPS root origin without credentials, path, query, or fragment;
+  localhost HTTP remains available only outside production. Obvious
+  placeholder, loopback, private-network, `.local`, and `.internal` targets are
+  rejected.
+- Email readiness now reports `disabled`, `ready`, or `not_ready`. A missing
+  Resend key is an intentional optional disable; once a key is present, key
+  shape, sender address, and public origin must all pass before the instance is
+  ready.
+- Actual delivery uses the same Resend-key, sender, and public-origin guards.
+  Invalid configuration is contained as the existing best-effort
+  `send_failed` result before any provider request, so ticket transactions do
+  not throw or roll back.
+- Thirty-seven new contracts cover public/private origins, production versus
+  development rules, sender/header injection, placeholder keys, readiness
+  states, secret-free results, renderer refusal, and no-throw delivery
+  containment. The production HTTP smoke now asserts the deterministic
+  `email: disabled` readiness state.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| `npm ci` | Passed from the lockfile; 0 install-time vulnerabilities |
+| `npm test` | Passed; 71 files, 509 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build |
+| `npm run test:e2e` | Passed; all 40 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+
+### Next
+
+Run protected migration and malformed-body probes when the credential fixture
+is available. Otherwise audit customer-manager list/read scope for the
+documented direct-membership versus organization-wide inconsistency. Resend
+sender-domain verification remains an external activation step.
 
 ## Session record — 2026-08-03 (P0-AO / safe transactional email rendering)
 

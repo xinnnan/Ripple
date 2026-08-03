@@ -356,9 +356,9 @@ AGENTS.md                        # ⭐ project context, lessons learned, roadmap
 | `MINIMAX_API_KEY` | MiniMax / OpenAI-compatible API key |
 | `MINIMAX_BASE_URL` | OpenAI-compatible base URL (default `https://api.minimax.chat/v1/`) |
 | `MINIMAX_MODEL` | Model name (default `M2.7-highspeed`) |
-| `RESEND_API_KEY` | Resend API key for transactional email |
-| `EMAIL_FROM` | Sender email address (default `support@dropletai.services`) |
-| `NEXT_PUBLIC_APP_URL` | Public app URL (default `http://localhost:3000`) |
+| `RESEND_API_KEY` | Optional Resend key; blank disables email, while a configured key activates email readiness checks |
+| `EMAIL_FROM` | Plain sender email address (default `support@dropletai.services`) |
+| `NEXT_PUBLIC_APP_URL` | Public root origin used in email links; production requires public HTTPS, while localhost HTTP is development-only |
 | `CRON_SECRET` | Long server-only bearer secret for the durable outbox recovery worker |
 
 ## Documentation
