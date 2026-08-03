@@ -7,6 +7,7 @@ import { isCustomerManager, ROLE_LABELS } from "@/lib/roles";
 import { formatDate } from "@/lib/utils";
 import { CreateTeamMemberForm } from "./create-team-member-form";
 import { TableEmpty } from "@/components/empty-state";
+import { buildTeamSiteAccess } from "@/lib/team/read-model";
 
 export const dynamic = "force-dynamic";
 
@@ -33,34 +34,31 @@ export default async function TeamPage() {
   }
 
   const admin = createAdminClient();
-  const { data: users } = await admin
-    .from("users")
-    .select("id, email, full_name, role, status, phone, created_at")
-    .eq("customer_id", customerId)
-    .order("created_at", { ascending: true });
+  const [usersResult, sitesResult] = await Promise.all([
+    admin
+      .from("users")
+      .select("id, email, full_name, role, status, phone, created_at")
+      .eq("customer_id", customerId)
+      .order("created_at", { ascending: true }),
+    admin
+      .from("sites")
+      .select("id, site_name, site_code")
+      .eq("customer_id", customerId)
+      .eq("status", "active")
+      .order("site_name"),
+  ]);
+  const users = usersResult.data || [];
+  const sites = sitesResult.data || [];
 
-  const userIds = (users || []).map((u: { id: string }) => u.id);
-  const { data: memberships } = await admin
-    .from("site_members")
-    .select("user_id, site_id, sites(id, site_name, site_code)")
-    .in("user_id", userIds);
-
-  interface SiteInfo { id: string; site_name: string; site_code: string }
-  const membershipMap = new Map<string, SiteInfo[]>();
-  (memberships || []).forEach((m: { user_id: string; sites: unknown }) => {
-    const site = (Array.isArray(m.sites) ? m.sites[0] : m.sites) as SiteInfo | null;
-    if (!site) return;
-    const existing = membershipMap.get(m.user_id) || [];
-    existing.push({ id: site.id, site_name: site.site_name, site_code: site.site_code });
-    membershipMap.set(m.user_id, existing);
-  });
-
-  const { data: sites } = await admin
-    .from("sites")
-    .select("id, site_name, site_code")
-    .eq("customer_id", customerId)
-    .eq("status", "active")
-    .order("site_name");
+  const userIds = users.map((u: { id: string }) => u.id);
+  const { data: memberships } =
+    userIds.length > 0
+      ? await admin
+          .from("site_members")
+          .select("user_id, site_id")
+          .in("user_id", userIds)
+      : { data: [] };
+  const siteAccess = buildTeamSiteAccess(users, sites, memberships || []);
 
   const total = users?.length || 0;
   const active = users?.filter((u: { status: string }) => u.status === "active").length || 0;
@@ -98,7 +96,7 @@ export default async function TeamPage() {
         </div>
       </div>
 
-      <CreateTeamMemberForm sites={sites || []} />
+      <CreateTeamMemberForm sites={sites} />
 
       {/* Team Members Table */}
       <div className="rounded-xl border border-border overflow-hidden">
@@ -147,7 +145,7 @@ export default async function TeamPage() {
                   phone: string | null;
                   created_at: string;
                 }) => {
-                  const userSites = membershipMap.get(u.id) || [];
+                  const userSites = siteAccess.get(u.id) || [];
                   return (
                     <tr key={u.id} className="hover:bg-muted/30">
                       <td className="p-3">
@@ -203,12 +201,18 @@ export default async function TeamPage() {
                         {formatDate(u.created_at)}
                       </td>
                       <td className="p-3 text-right">
-                        <Link
-                          href={`/team/${u.id}`}
-                          className="text-sm font-medium text-primary hover:text-primary/80"
-                        >
-                          Edit
-                        </Link>
+                        {u.role === "customer_manager" ? (
+                          <span className="text-xs text-muted-foreground">
+                            Organization-wide
+                          </span>
+                        ) : (
+                          <Link
+                            href={`/team/${u.id}`}
+                            className="text-sm font-medium text-primary hover:text-primary/80"
+                          >
+                            Edit
+                          </Link>
+                        )}
                       </td>
                     </tr>
                   );

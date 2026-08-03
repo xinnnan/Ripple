@@ -214,7 +214,8 @@ async function CustomerManagerDashboard({ customerId }: { userId: string; custom
   const { data: sites } = await supabase
     .from("sites")
     .select("id, site_name, site_code, project_status")
-    .eq("customer_id", customerId);
+    .eq("customer_id", customerId)
+    .eq("status", "active");
 
   const siteIds = (sites || []).map((s) => s.id);
 

@@ -15,6 +15,7 @@ import { createClient } from "@/lib/supabase/client";
 import { PublicSiteFooter } from "@/components/public-site-footer";
 import { PublicSiteHeader } from "@/components/public-site-header";
 import { SITE_CODE_MAX_LENGTH } from "@/lib/sites/site-code";
+import { getCurrentSites } from "@/lib/supabase/scope.client";
 
 interface FormData {
   site_code: string;
@@ -124,22 +125,17 @@ export default function SubmitTicketPage() {
               submitter_phone: profile.phone || "",
             }));
           }
-          // Load user's sites
-          const { data: memberships } = await supabase
-            .from("site_members")
-            .select("site_id, sites(id, site_code, site_name)")
-            .eq("user_id", user.id);
-          if (memberships) {
-            const sites = memberships.map((m) => {
-              const s = (Array.isArray(m.sites) ? m.sites[0] : m.sites) as unknown as { id: string; site_code: string; site_name: string };
-              return {
-                site_id: s.id,
-                site_code: s.site_code,
-                site_name: s.site_name,
-              };
-            });
-            setUserSites(sites);
-          }
+          // Use the shared RLS-scoped site contract. Customer managers receive
+          // every active site in their organization; customer users receive
+          // only active sites assigned through site_members.
+          const sites = await getCurrentSites();
+          setUserSites(
+            sites.map((site) => ({
+              site_id: site.id,
+              site_code: site.site_code,
+              site_name: site.site_name,
+            }))
+          );
         }
       } catch {
         // Not logged in, continue as guest

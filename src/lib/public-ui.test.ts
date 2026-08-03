@@ -45,6 +45,12 @@ describe("public and responsive UI contracts", () => {
     expect(submitPage).toContain("maxLength={SITE_CODE_MAX_LENGTH}");
   });
 
+  it("loads authenticated submit sites through the canonical role scope", () => {
+    expect(submitPage).toContain('import { getCurrentSites }');
+    expect(submitPage).toContain("const sites = await getCurrentSites()");
+    expect(submitPage).not.toContain('.from("site_members")');
+  });
+
   it("provides an accessible mobile application drawer", () => {
     expect(appShell).toContain('aria-controls="mobile-navigation"');
     expect(appShell).toContain('id="mobile-navigation"');

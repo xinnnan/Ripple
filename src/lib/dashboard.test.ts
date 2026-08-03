@@ -27,4 +27,10 @@ describe("dashboard time and count contracts", () => {
       "recentTickets.length > 0 ? recentTickets.length : 0"
     );
   });
+
+  it("limits the customer-manager dashboard to active organization sites", () => {
+    expect(dashboard).toMatch(
+      /\.eq\("customer_id", customerId\)\s*\.eq\("status", "active"\)/
+    );
+  });
 });
