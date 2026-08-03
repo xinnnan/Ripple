@@ -295,7 +295,7 @@ npm run dev
 - `npm run build` — production build
 - `npm run start` — production server
 - `npm run lint` — direct ESLint CLI across the repository; warnings fail the gate
-- `npm test` — Vitest unit/contract suite (710 tests)
+- `npm test` — Vitest unit/contract suite (720 tests)
 - `npm run test:e2e` — 40-check production HTTP smoke plus optional credentialed Playwright/API/RLS matrix; requires a successful build
 - `npm run test:e2e:credentialed` — real six-account/two-tenant matrix; set `RIPPLE_E2E_FIXTURES_FILE`
 - `npm run test:e2e:install-browser` — install the pinned Chromium runtime
@@ -1314,7 +1314,9 @@ resume work; this section remains the broader historical summary.
   to 690 tests; then contained the server-rendered audit page's exact filters,
   projection, pagination, and failure state, bringing the suite to 702 tests;
   then rejected malformed UUIDs across eight authenticated admin/team detail
-  pages before service-role construction, bringing the suite to 710 tests.
+  pages before service-role construction, bringing the suite to 710 tests; then
+  distinguished missing detail records from failed primary/related reads with
+  code-only recovery errors, bringing the suite to 720 tests.
 
 ### Known issues / open work
 | Priority | Item | Where | Notes |
@@ -1335,6 +1337,7 @@ resume work; this section remains the broader historical summary.
 | ✅ Closed | Malformed resource route identifiers | `src/lib/request-identifiers.ts`, `/api/spare-part-requests/[id]`, `/api/field-service-orders/[id]`, `/api/team/[id]`, `/api/admin/sites/[id]` | Commit `03bc82d` rejects invalid UUIDs before service-role queries, body parsing, or mutation commands; customer-capable detail reads are private/no-store and database logs retain only codes |
 | ✅ Closed | Admin audit-page query ambiguity | `src/lib/admin-list-filters.ts`, `/admin/audit` | Commit `77c06f3` validates exact page filters before service-role creation, uses a fixed projection and exact count, and renders generic database failures instead of a false empty history |
 | ✅ Closed | Authenticated server detail-page UUID ambiguity | `src/app/server-detail-page-identifiers.test.ts`, admin/customer-manager detail pages | Commit `d049640` applies the shared UUID boundary before service-role construction across eight pages while preserving the team page's session/role/tenant checks first |
+| ✅ Closed | Detail-page database failure ambiguity | `src/lib/server-page-query.ts`, admin/customer-manager detail pages | Commit `7790bae` uses missing-safe primary reads and fails every primary/related query into generic recovery with code-only logging instead of false not-found or empty panels |
 | 🟡 Med | `/settings` is read-only integration status | `src/app/(auth)/settings/page.tsx` | Add notification preferences, user timezone, and theme controls |
 | ✅ Verified | Migration 046 durable public rate limits | `supabase/migrations/046_durable_public_rate_limits.sql` | Applied 2026-08-02; 77 live assertions covered grants, constraints, concurrency, reset/retention, bounded cleanup, real HTTP limits/lifecycle, and zero residue |
 | 🟡 Med | Exact site-code validation remains an existence oracle | `/api/sites/validate` | Responses are minimal and migration 046 enforces 20 checks/minute/IP across instances, but full anti-enumeration still requires CAPTCHA, an invitation/intake token, or authenticated submission |
@@ -1540,6 +1543,11 @@ resume work; this section remains the broader historical summary.
     authentication and tenant-role ordering before target validation. Eight
     real-page contracts bring the suite to 710; all deterministic quality gates
     are green.
+49. **Surface detail-page read failures.** Commit `7790bae` converts primary
+    lookups to missing-safe reads and applies one code-only failure guard across
+    all primary and related admin/team detail queries. Database outages now hit
+    generic recovery rather than false absence or zero-panel states. Ten tests
+    bring the suite to 720; all deterministic quality gates are green.
 
 ### Open architectural questions
 - The RLS recursion bug surfaces a bigger question: do we keep `createAdminClient() + code filter` (the current pattern in `lib/supabase/scope.ts`) or move back to proper RLS once migration 019 + similar fixes are in place? The current pattern scales fine but has a lower safety margin for new queries.
