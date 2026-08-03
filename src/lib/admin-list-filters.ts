@@ -36,16 +36,30 @@ export const ADMIN_AUDIT_ACTIONS = [
   "role_changed",
 ] as const;
 
-const auditListSchema = z.object({
+const auditFilterShape = {
   entityType: z.enum(ADMIN_AUDIT_ENTITIES).optional(),
   action: z.enum(ADMIN_AUDIT_ACTIONS).optional(),
   actorId: z.string().uuid().optional(),
+};
+
+const auditListSchema = z.object({
+  ...auditFilterShape,
   limit: z
     .string()
     .regex(/^[1-9]\d*$/)
     .transform(Number)
     .refine((value) => Number.isSafeInteger(value) && value <= 200)
     .default("50"),
+});
+
+const auditPageSchema = z.object({
+  ...auditFilterShape,
+  page: z
+    .string()
+    .regex(/^[1-9]\d*$/)
+    .transform(Number)
+    .refine((value) => Number.isSafeInteger(value) && value <= 10_000)
+    .default("1"),
 });
 
 const inventoryListSchema = z.object({
@@ -107,6 +121,19 @@ export function parseAdminAuditListFilters(params: URLSearchParams) {
       limit: "limit",
     },
     schema: auditListSchema,
+  });
+}
+
+export function parseAdminAuditPageFilters(params: URLSearchParams) {
+  return parseSingletonParams({
+    params,
+    fields: {
+      entity_type: "entityType",
+      action: "action",
+      actor_id: "actorId",
+      page: "page",
+    },
+    schema: auditPageSchema,
   });
 }
 

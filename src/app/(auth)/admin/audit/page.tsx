@@ -2,12 +2,19 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { formatDate } from "@/lib/utils";
 import Link from "next/link";
 import { TableEmpty } from "@/components/empty-state";
+import {
+  ADMIN_AUDIT_ACTIONS,
+  ADMIN_AUDIT_ENTITIES,
+  parseAdminAuditPageFilters,
+} from "@/lib/admin-list-filters";
 
 export const dynamic = "force-dynamic";
 
 const PAGE_SIZE = 50;
+const AUDIT_PAGE_SELECT =
+  "id, created_at, entity_type, entity_id, action, field_name, old_value, new_value, actor_email, actor_full_name, actor_role, metadata";
 
-const ENTITY_LABELS: Record<string, string> = {
+const ENTITY_LABELS: Record<(typeof ADMIN_AUDIT_ENTITIES)[number], string> = {
   ticket: "Ticket",
   customer: "Customer",
   site: "Site",
@@ -21,7 +28,7 @@ const ENTITY_LABELS: Record<string, string> = {
   auth: "Auth",
 };
 
-const ACTION_LABELS: Record<string, string> = {
+const ACTION_LABELS: Record<(typeof ADMIN_AUDIT_ACTIONS)[number], string> = {
   created: "Created",
   updated: "Updated",
   archived: "Archived",
@@ -42,38 +49,76 @@ const ACTION_LABELS: Record<string, string> = {
 };
 
 interface Props {
-  searchParams: Promise<{
-    entity_type?: string;
-    action?: string;
-    actor_id?: string;
-    page?: string;
-  }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}
+
+interface AuditLogRow {
+  id: string;
+  created_at: string;
+  entity_type: string;
+  entity_id: string | null;
+  action: string;
+  field_name: string | null;
+  old_value: string | null;
+  new_value: string | null;
+  actor_email: string | null;
+  actor_full_name: string | null;
+  actor_role: string | null;
+  metadata: Record<string, unknown> | null;
 }
 
 export default async function AuditPage({ searchParams }: Props) {
   const raw = await searchParams;
-  const entityType = raw.entity_type || "";
-  const action = raw.action || "";
-  const actorId = raw.actor_id || "";
-  const page = Math.max(1, parseInt(raw.page || "1", 10) || 1);
-
-  const supabase = createAdminClient();
-
-  let query = supabase
-    .from("audit_logs_with_actor")
-    .select("*")
-    .order("created_at", { ascending: false });
-
-  if (entityType) query = query.eq("entity_type", entityType);
-  if (action) query = query.eq("action", action);
-  if (actorId) query = query.eq("actor_id", actorId);
-
+  const urlParams = new URLSearchParams();
+  for (const [key, value] of Object.entries(raw)) {
+    if (Array.isArray(value)) {
+      for (const entry of value) urlParams.append(key, entry);
+    } else if (value !== undefined) {
+      urlParams.append(key, value);
+    }
+  }
+  const parsedFilters = parseAdminAuditPageFilters(urlParams);
+  const filters = parsedFilters.success
+    ? parsedFilters.data
+    : { entityType: undefined, action: undefined, actorId: undefined, page: 1 };
+  const entityType = filters.entityType || "";
+  const action = filters.action || "";
+  const actorId = filters.actorId || "";
+  const page = filters.page;
   const from = (page - 1) * PAGE_SIZE;
-  const to = from + PAGE_SIZE - 1;
-  query = query.range(from, to);
 
-  const { data: logs } = await query;
-  const total = logs?.length || 0;
+  let logs: AuditLogRow[] = [];
+  let total = 0;
+  let loadError = parsedFilters.success
+    ? null
+    : "Invalid audit filters. Clear the filters and try again.";
+
+  if (parsedFilters.success) {
+    const supabase = createAdminClient();
+    let query = supabase
+      .from("audit_logs_with_actor")
+      .select(AUDIT_PAGE_SELECT, { count: "exact" })
+      .order("created_at", { ascending: false });
+
+    if (entityType) query = query.eq("entity_type", entityType);
+    if (action) query = query.eq("action", action);
+    if (actorId) query = query.eq("actor_id", actorId);
+
+    const { data, error, count } = await query.range(
+      from,
+      from + PAGE_SIZE - 1
+    );
+    if (error) {
+      console.error("[admin/audit] query failed:", {
+        code: (error as { code?: string }).code,
+      });
+      loadError =
+        "Audit entries could not be loaded. Refresh the page or try again later.";
+    } else {
+      logs = (data || []) as AuditLogRow[];
+      total = count ?? logs.length;
+    }
+  }
 
   return (
     <div className="p-8">
@@ -137,11 +182,23 @@ export default async function AuditPage({ searchParams }: Props) {
         )}
       </form>
 
-      <p className="text-xs text-muted-foreground mb-3">
-        {total === 0
-          ? "No entries match"
-          : `Showing ${from + 1}–${from + total} of this page (page ${page}, ${PAGE_SIZE} per page)`}
-      </p>
+      {loadError ? (
+        <div
+          role="alert"
+          className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
+        >
+          {loadError}{" "}
+          <Link href="/admin/audit" className="font-medium underline">
+            Clear filters
+          </Link>
+        </div>
+      ) : (
+        <p className="text-xs text-muted-foreground mb-3">
+          {total === 0
+            ? "No entries match"
+            : `Showing ${from + 1}–${from + logs.length} of ${total}`}
+        </p>
+      )}
 
       <div className="rounded-xl border border-border overflow-hidden">
         <table className="w-full">
@@ -165,38 +222,27 @@ export default async function AuditPage({ searchParams }: Props) {
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
-            {total === 0 ? (
+            {logs.length === 0 ? (
               <TableEmpty
                 colSpan={5}
                 icon="search"
-                title="No audit entries"
+                title={loadError ? "Audit log unavailable" : "No audit entries"}
                 description={
-                  entityType || action
+                  loadError
+                    ? "No audit data was shown because the request could not be completed."
+                    : entityType || action || actorId
                     ? "No entries match the current filter."
                     : "Once customers / sites / users / spare parts are mutated, the changes will appear here."
                 }
                 action={
-                  entityType || action
+                  loadError || entityType || action || actorId
                     ? { label: "Clear filters", href: "/admin/audit" }
                     : undefined
                 }
               />
             ) : (
-              logs?.map(
-                (log: {
-                  id: string;
-                  created_at: string;
-                  entity_type: string;
-                  entity_id: string | null;
-                  action: string;
-                  field_name: string | null;
-                  old_value: string | null;
-                  new_value: string | null;
-                  actor_email: string | null;
-                  actor_full_name: string | null;
-                  actor_role: string | null;
-                  metadata: Record<string, unknown> | null;
-                }) => {
+              logs.map(
+                (log) => {
                   const actor = log.actor_full_name || log.actor_email || "—";
                   return (
                     <tr key={log.id} className="hover:bg-muted/30 transition-colors">
@@ -212,11 +258,15 @@ export default async function AuditPage({ searchParams }: Props) {
                         )}
                       </td>
                       <td className="p-3 text-sm">
-                        {ACTION_LABELS[log.action] || log.action}
+                        {ACTION_LABELS[
+                          log.action as keyof typeof ACTION_LABELS
+                        ] || log.action}
                       </td>
                       <td className="p-3 text-sm">
                         <span className="text-muted-foreground">
-                          {ENTITY_LABELS[log.entity_type] || log.entity_type}
+                          {ENTITY_LABELS[
+                            log.entity_type as keyof typeof ENTITY_LABELS
+                          ] || log.entity_type}
                         </span>
                         {log.entity_type === "ticket" && log.entity_id && (
                           <Link
@@ -290,7 +340,7 @@ export default async function AuditPage({ searchParams }: Props) {
             ‹ Previous
           </Link>
         )}
-        {total === PAGE_SIZE && (
+        {!loadError && from + logs.length < total && (
           <Link
             href={`/admin/audit?${new URLSearchParams({
               ...(entityType && { entity_type: entityType }),

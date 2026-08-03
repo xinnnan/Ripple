@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildAdminSparePartSearchFilter,
   parseAdminAuditListFilters,
+  parseAdminAuditPageFilters,
   parseAdminInventoryListFilters,
   parseAdminSiteMemberListFilters,
   parseAdminSparePartListFilters,
@@ -37,6 +38,48 @@ describe("admin list filters", () => {
     "page=2",
   ])("rejects malformed audit filters: %s", (query) => {
     expect(parseAdminAuditListFilters(new URLSearchParams(query)).success).toBe(
+      false
+    );
+  });
+
+  it("parses bounded audit-page filters independently of the API limit", () => {
+    expect(
+      parseAdminAuditPageFilters(
+        new URLSearchParams(
+          `entity_type=site&action=archived&actor_id=${ID}&page=2`
+        )
+      )
+    ).toEqual({
+      success: true,
+      data: {
+        entityType: "site",
+        action: "archived",
+        actorId: ID,
+        page: 2,
+      },
+    });
+    expect(parseAdminAuditPageFilters(new URLSearchParams())).toEqual({
+      success: true,
+      data: {
+        entityType: undefined,
+        action: undefined,
+        actorId: undefined,
+        page: 1,
+      },
+    });
+  });
+
+  it.each([
+    "entity_type=unknown",
+    "action=unknown",
+    "actor_id=not-a-uuid",
+    "page=0",
+    "page=2junk",
+    "page=10001",
+    "page=1&page=2",
+    "limit=50",
+  ])("rejects malformed audit-page filters: %s", (query) => {
+    expect(parseAdminAuditPageFilters(new URLSearchParams(query)).success).toBe(
       false
     );
   });
