@@ -29,6 +29,7 @@ export function UsersTable({
   const router = useRouter();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [pending, startTransition] = useTransition();
+  const [actionPending, setActionPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
 
@@ -55,27 +56,39 @@ export function UsersTable({
   async function performDeactivate() {
     if (selected.size === 0) return;
     setError(null);
-    setConfirming(false);
     const ids = Array.from(selected);
-    const res = await fetch("/api/admin/users/bulk-deactivate", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ids }),
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      setError(data.error || "Bulk deactivation failed");
-      return;
+    setActionPending(true);
+    try {
+      const res = await fetch("/api/admin/users/bulk-deactivate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: unknown;
+        failed?: unknown;
+      };
+      if (!res.ok) {
+        setError(
+          typeof data.error === "string"
+            ? data.error
+            : "User deactivation failed. Please retry."
+        );
+        return;
+      }
+      setConfirming(false);
+      setSelected(new Set());
+      if (Array.isArray(data.failed) && data.failed.length > 0) {
+        setError("Some users could not be deactivated. Refresh and retry.");
+      }
+      startTransition(() => {
+        router.refresh();
+      });
+    } catch {
+      setError("User deactivation is temporarily unavailable. Please retry.");
+    } finally {
+      setActionPending(false);
     }
-    setSelected(new Set());
-    if (data.failed && data.failed.length > 0) {
-      setError(
-        "Some users could not be deactivated. Refresh and retry."
-      );
-    }
-    startTransition(() => {
-      router.refresh();
-    });
   }
 
   const eligibleCount = users.filter(
@@ -83,11 +96,12 @@ export function UsersTable({
   ).length;
   const allSelected = eligibleCount > 0 && selected.size === eligibleCount;
   const someSelected = selected.size > 0 && selected.size < eligibleCount;
+  const busy = pending || actionPending;
 
   return (
-    <div className="space-y-3">
+    <div aria-busy={busy} className="space-y-3">
       {error && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+        <div role="alert" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
           {error}
         </div>
       )}
@@ -99,16 +113,18 @@ export function UsersTable({
         <div className="flex items-center gap-2">
           {selected.size > 0 && (
             <button
+              type="button"
               onClick={() => setSelected(new Set())}
               className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-accent transition-colors"
-              disabled={pending}
+              disabled={busy}
             >
               Clear
             </button>
           )}
           <button
+            type="button"
             onClick={() => setConfirming(true)}
-            disabled={selected.size === 0 || pending}
+            disabled={selected.size === 0 || busy}
             className="rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
             Deactivate selected ({selected.size})
@@ -125,15 +141,17 @@ export function UsersTable({
           </p>
           <div className="flex gap-2">
             <button
+              type="button"
               onClick={performDeactivate}
-              disabled={pending}
+              disabled={busy}
               className="rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-700 transition-colors disabled:opacity-40"
             >
-              {pending ? "Deactivating…" : "Yes, deactivate"}
+              {busy ? "Deactivating…" : "Yes, deactivate"}
             </button>
             <button
+              type="button"
               onClick={() => setConfirming(false)}
-              disabled={pending}
+              disabled={busy}
               className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-accent transition-colors"
             >
               Cancel
@@ -151,6 +169,7 @@ export function UsersTable({
                   type="checkbox"
                   aria-label="Select all"
                   checked={allSelected}
+                  disabled={busy}
                   ref={(el) => {
                     if (el) el.indeterminate = someSelected;
                   }}
@@ -184,7 +203,7 @@ export function UsersTable({
                       type="checkbox"
                       aria-label={`Select ${u.email}`}
                       checked={selected.has(u.id)}
-                      disabled={u.id === currentUserId || u.status === "inactive"}
+                      disabled={busy || u.id === currentUserId || u.status === "inactive"}
                       onChange={() => toggle(u.id)}
                       className="h-4 w-4 rounded border-border disabled:opacity-40"
                     />

@@ -37,6 +37,7 @@ export function CustomersSitesCards({
   const [selectedCustomers, setSelectedCustomers] = useState<Set<string>>(new Set());
   const [selectedSites, setSelectedSites] = useState<Set<string>>(new Set());
   const [pending, startTransition] = useTransition();
+  const [actionPending, setActionPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<null | "customers" | "sites">(null);
 
@@ -84,56 +85,81 @@ export function CustomersSitesCards({
   async function performCustomersArchive() {
     if (selectedCustomers.size === 0) return;
     setError(null);
-    setConfirming(null);
-    const res = await fetch("/api/admin/customers/bulk-archive", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ids: Array.from(selectedCustomers) }),
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      setError(data.error || "Bulk archive failed");
-      return;
+    setActionPending(true);
+    try {
+      const res = await fetch("/api/admin/customers/bulk-archive", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: Array.from(selectedCustomers) }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: unknown;
+        failed?: unknown;
+      };
+      if (!res.ok) {
+        setError(
+          typeof data.error === "string"
+            ? data.error
+            : "Customer archive failed. Please retry."
+        );
+        return;
+      }
+      setConfirming(null);
+      setSelectedCustomers(new Set());
+      setSelectedSites(new Set());
+      if (Array.isArray(data.failed) && data.failed.length > 0) {
+        setError("Some customers could not be archived. Refresh and retry.");
+      }
+      startTransition(() => router.refresh());
+    } catch {
+      setError("Customer archive is temporarily unavailable. Please retry.");
+    } finally {
+      setActionPending(false);
     }
-    setSelectedCustomers(new Set());
-    setSelectedSites(new Set());
-    if (data.failed && data.failed.length > 0) {
-      setError(
-        "Some customers could not be archived. Refresh and retry."
-      );
-    }
-    startTransition(() => router.refresh());
   }
 
   async function performSitesArchive() {
     if (selectedSites.size === 0) return;
     setError(null);
-    setConfirming(null);
-    const res = await fetch("/api/admin/sites/bulk-archive", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ids: Array.from(selectedSites) }),
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      setError(data.error || "Bulk archive failed");
-      return;
+    setActionPending(true);
+    try {
+      const res = await fetch("/api/admin/sites/bulk-archive", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: Array.from(selectedSites) }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: unknown;
+        failed?: unknown;
+      };
+      if (!res.ok) {
+        setError(
+          typeof data.error === "string"
+            ? data.error
+            : "Site archive failed. Please retry."
+        );
+        return;
+      }
+      setConfirming(null);
+      setSelectedSites(new Set());
+      if (Array.isArray(data.failed) && data.failed.length > 0) {
+        setError("Some sites could not be archived. Refresh and retry.");
+      }
+      startTransition(() => router.refresh());
+    } catch {
+      setError("Site archive is temporarily unavailable. Please retry.");
+    } finally {
+      setActionPending(false);
     }
-    setSelectedSites(new Set());
-    if (data.failed && data.failed.length > 0) {
-      setError(
-        "Some sites could not be archived. Refresh and retry."
-      );
-    }
-    startTransition(() => router.refresh());
   }
 
   const totalSelected = selectedCustomers.size + selectedSites.size;
+  const busy = pending || actionPending;
 
   return (
-    <div className="space-y-4">
+    <div aria-busy={busy} className="space-y-4">
       {error && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+        <div role="alert" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
           {error}
         </div>
       )}
@@ -157,20 +183,22 @@ export function CustomersSitesCards({
         <div className="flex items-center gap-2">
           {totalSelected > 0 && (
             <button
+              type="button"
               onClick={() => {
                 setSelectedCustomers(new Set());
                 setSelectedSites(new Set());
               }}
               className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-accent transition-colors"
-              disabled={pending}
+              disabled={busy}
             >
               Clear
             </button>
           )}
           {selectedSites.size > 0 && (
             <button
+              type="button"
               onClick={() => setConfirming("sites")}
-              disabled={pending}
+              disabled={busy}
               className="rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-700 transition-colors disabled:opacity-40"
             >
               Archive {selectedSites.size} site{selectedSites.size === 1 ? "" : "s"}
@@ -178,8 +206,9 @@ export function CustomersSitesCards({
           )}
           {selectedCustomers.size > 0 && (
             <button
+              type="button"
               onClick={() => setConfirming("customers")}
-              disabled={pending}
+              disabled={busy}
               className="rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-700 transition-colors disabled:opacity-40"
             >
               Archive {selectedCustomers.size} customer{selectedCustomers.size === 1 ? "" : "s"}
@@ -211,15 +240,17 @@ export function CustomersSitesCards({
           )}
           <div className="flex gap-2">
             <button
+              type="button"
               onClick={confirming === "customers" ? performCustomersArchive : performSitesArchive}
-              disabled={pending}
+              disabled={busy}
               className="rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-700 transition-colors disabled:opacity-40"
             >
-              {pending ? "Archiving…" : "Yes, archive"}
+              {busy ? "Archiving…" : "Yes, archive"}
             </button>
             <button
+              type="button"
               onClick={() => setConfirming(null)}
-              disabled={pending}
+              disabled={busy}
               className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-accent transition-colors"
             >
               Cancel
@@ -249,7 +280,7 @@ export function CustomersSitesCards({
                       type="checkbox"
                       aria-label={`Select ${customer.name}`}
                       checked={isCustSelected}
-                      disabled={customer.status === "inactive"}
+                      disabled={busy || customer.status === "inactive"}
                       onChange={() => toggleCustomer(customer.id)}
                       className="h-4 w-4 rounded border-border disabled:opacity-40"
                     />
@@ -322,7 +353,7 @@ export function CustomersSitesCards({
                               type="checkbox"
                               aria-label={`Select ${site.site_name}`}
                               checked={isSiteSelected}
-                              disabled={customerSelected || site.status === "decommissioned"}
+                              disabled={busy || customerSelected || site.status === "decommissioned"}
                               onChange={() => toggleSite(site.id, customer.id)}
                               className="h-4 w-4 rounded border-border disabled:opacity-50"
                             />
