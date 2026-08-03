@@ -416,6 +416,7 @@ export default function ProfilePage() {
                 type="password"
                 autoComplete="new-password"
                 minLength={12}
+                maxLength={1024}
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
                 placeholder="At least 12 characters"
@@ -431,6 +432,7 @@ export default function ProfilePage() {
                 type="password"
                 autoComplete="new-password"
                 minLength={12}
+                maxLength={1024}
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 placeholder="Repeat new password"

@@ -6,6 +6,12 @@ import { ArrowLeft, CheckCircle2, Mail } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { PublicSiteHeader } from "@/components/public-site-header";
 import { PublicSiteFooter } from "@/components/public-site-footer";
+import {
+  getRecoveryErrorMessage,
+  isAuthRateLimitError,
+  isRecoveryLookupMiss,
+} from "@/lib/auth/browser-flow";
+import { logIdentityReadFailure } from "@/lib/supabase/auth-read";
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("");
@@ -25,27 +31,36 @@ export default function ForgotPasswordPage() {
     setLoading(true);
     setError(null);
 
-    const supabase = createClient();
-    const { error: resetError } = await supabase.auth.resetPasswordForEmail(
-      email.trim(),
-      {
-        redirectTo: `${window.location.origin}/auth/callback?next=/reset-password`,
-      }
-    );
-
-    setLoading(false);
-    if (resetError) {
-      setError(
-        resetError.status === 429
-          ? "Too many requests. Wait a few minutes before trying again."
-          : "We could not send a recovery email right now. Please try again."
+    try {
+      const supabase = createClient();
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(
+        email.trim(),
+        {
+          redirectTo: `${window.location.origin}/auth/callback?next=/reset-password`,
+        }
       );
-      return;
-    }
 
-    // Keep this response identical whether or not the address belongs to an
-    // account so the recovery form cannot be used for account discovery.
-    setSubmitted(true);
+      if (resetError) {
+        if (isRecoveryLookupMiss(resetError)) {
+          setSubmitted(true);
+          return;
+        }
+        if (!isAuthRateLimitError(resetError)) {
+          logIdentityReadFailure("forgot-password/request", resetError);
+        }
+        setError(getRecoveryErrorMessage(resetError));
+        return;
+      }
+
+      // Keep this response identical whether or not the address belongs to an
+      // account so the recovery form cannot be used for account discovery.
+      setSubmitted(true);
+    } catch (resetError) {
+      logIdentityReadFailure("forgot-password/request-unexpected", resetError);
+      setError(getRecoveryErrorMessage(resetError));
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -136,6 +151,7 @@ export default function ForgotPasswordPage() {
                   value={email}
                   onChange={(event) => setEmail(event.target.value)}
                   required
+                  maxLength={320}
                   placeholder="you@company.com"
                   className="h-12 w-full rounded-xl border border-slate-300 bg-white px-4 text-sm text-slate-950 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-primary focus:ring-4 focus:ring-lime-100"
                 />

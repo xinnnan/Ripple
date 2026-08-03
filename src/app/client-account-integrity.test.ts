@@ -42,6 +42,7 @@ describe("browser account and ticket-intake integrity", () => {
       expect(profilePage).toContain(`id=\"${id}\"`);
     }
     expect(profilePage).toContain('placeholder="At least 12 characters"');
+    expect(profilePage).toContain("maxLength={1024}");
     expect(profilePage).not.toContain('placeholder="At least 6 characters"');
   });
 
