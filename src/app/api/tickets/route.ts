@@ -34,6 +34,11 @@ import {
   TICKET_SUBMITTER_PHONE_MAX_LENGTH,
   TICKET_TITLE_MAX_LENGTH,
 } from "@/lib/tickets/input-contract";
+import {
+  generateTicketIdempotencyKey,
+  normalizeTicketIdempotencyKey,
+  TICKET_IDEMPOTENCY_KEY_HEADER,
+} from "@/lib/tickets/idempotency";
 
 const createTicketSchema = z.object({
   customer_id: z.string().uuid().optional(),
@@ -169,6 +174,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
     }
     const data = createTicketSchema.parse(body);
+    const suppliedIdempotencyKey = request.headers.get(
+      TICKET_IDEMPOTENCY_KEY_HEADER
+    );
+    const idempotencyKey =
+      suppliedIdempotencyKey === null
+        ? generateTicketIdempotencyKey()
+        : normalizeTicketIdempotencyKey(suppliedIdempotencyKey);
+    if (!idempotencyKey) {
+      return NextResponse.json(
+        { error: "Invalid Idempotency-Key header" },
+        { status: 400 }
+      );
+    }
 
     const createdBy = auth?.userId ?? null;
 
@@ -240,6 +258,7 @@ export async function POST(request: NextRequest) {
       // Slack and future email intake call createTicketCore from their own
       // verified server-side handlers.
       source: "web",
+      idempotency_key: idempotencyKey,
       title: data.title,
       description: data.description,
       request_type: data.request_type,
@@ -258,14 +277,17 @@ export async function POST(request: NextRequest) {
         // `id` is the UUID — the form needs it to attach files via
         // /api/upload. `secure_token` is the unauthed proof-of-ownership
         // token for the attachment upload (and for the /t/[token] page).
-        id: result.ticket.id,
+        id: result.ticket_id,
         ticket_no: result.ticket_no,
         secure_token: result.secure_token,
         message: "Ticket created successfully",
       },
       {
         status: 201,
-        headers: { "Cache-Control": "private, no-store" },
+        headers: {
+          "Cache-Control": "private, no-store",
+          [TICKET_IDEMPOTENCY_KEY_HEADER]: idempotencyKey,
+        },
       }
     );
   } catch (error) {

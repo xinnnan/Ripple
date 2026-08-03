@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -38,6 +38,10 @@ import {
   MAX_ATTACHMENT_FILE_NAME_LENGTH,
   MAX_TICKET_SUBMISSION_ATTACHMENTS,
 } from "@/lib/files/attachment-contract";
+import {
+  generateTicketIdempotencyKey,
+  TICKET_IDEMPOTENCY_KEY_HEADER,
+} from "@/lib/tickets/idempotency";
 
 interface FormData {
   site_code: string;
@@ -127,6 +131,10 @@ export default function SubmitTicketPage() {
   const [siteCodeValidating, setSiteCodeValidating] = useState(false);
   const [validatedSiteName, setValidatedSiteName] = useState("");
   const [siteCodeError, setSiteCodeError] = useState("");
+  const creationAttemptRef = useRef<{
+    fingerprint: string;
+    key: string;
+  } | null>(null);
 
   const checkAuth = useCallback(async () => {
     setAuthChecking(true);
@@ -302,6 +310,7 @@ export default function SubmitTicketPage() {
   };
 
   const handleSubmitAnother = () => {
+    creationAttemptRef.current = null;
     setResult(null);
     setFiles([]);
     setFormData((previous) => ({
@@ -375,11 +384,23 @@ export default function SubmitTicketPage() {
         );
       }
 
-      // Create ticket first
+      const requestBody = JSON.stringify(normalized);
+      if (creationAttemptRef.current?.fingerprint !== requestBody) {
+        creationAttemptRef.current = {
+          fingerprint: requestBody,
+          key: generateTicketIdempotencyKey(),
+        };
+      }
+
+      // Create ticket first. Exact retries keep the same request key; editing
+      // any ticket field produces a new key and therefore a new command.
       const res = await fetch("/api/tickets", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(normalized),
+        headers: {
+          "Content-Type": "application/json",
+          [TICKET_IDEMPOTENCY_KEY_HEADER]: creationAttemptRef.current.key,
+        },
+        body: requestBody,
       });
 
       const data = await readClientJsonResponse(

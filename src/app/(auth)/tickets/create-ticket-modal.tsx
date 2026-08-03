@@ -21,6 +21,10 @@ import {
   TICKET_DESCRIPTION_MAX_LENGTH,
   TICKET_TITLE_MAX_LENGTH,
 } from "@/lib/tickets/input-contract";
+import {
+  generateTicketIdempotencyKey,
+  TICKET_IDEMPOTENCY_KEY_HEADER,
+} from "@/lib/tickets/idempotency";
 
 interface UserSite {
   site_id: string;
@@ -55,6 +59,10 @@ export function CreateTicketModal({
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const siteRequestIdRef = useRef(0);
+  const creationAttemptRef = useRef<{
+    fingerprint: string;
+    key: string;
+  } | null>(null);
 
   useEffect(() => {
     if (open) void loadSites();
@@ -102,6 +110,7 @@ export function CreateTicketModal({
     setDescription("");
     setError(null);
     setSuccess(null);
+    creationAttemptRef.current = null;
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -131,19 +140,30 @@ export function CreateTicketModal({
     setSubmitting(true);
 
     try {
+      const requestBody = JSON.stringify({
+        site_id: site.site_id,
+        title: normalizedTitle,
+        request_type: requestType,
+        severity,
+        impact: impact || undefined,
+        asset_id: assetId.trim() || undefined,
+        area: area.trim() || undefined,
+        description: normalizedDescription,
+      });
+      if (creationAttemptRef.current?.fingerprint !== requestBody) {
+        creationAttemptRef.current = {
+          fingerprint: requestBody,
+          key: generateTicketIdempotencyKey(),
+        };
+      }
+
       const res = await fetch("/api/tickets", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          site_id: site.site_id,
-          title: normalizedTitle,
-          request_type: requestType,
-          severity,
-          impact: impact || undefined,
-          asset_id: assetId.trim() || undefined,
-          area: area.trim() || undefined,
-          description: normalizedDescription,
-        }),
+        headers: {
+          "Content-Type": "application/json",
+          [TICKET_IDEMPOTENCY_KEY_HEADER]: creationAttemptRef.current.key,
+        },
+        body: requestBody,
       });
 
       const data = await readClientJsonResponse(

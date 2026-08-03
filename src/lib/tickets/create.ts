@@ -13,8 +13,8 @@
 //
 // The functions are intentionally small and side-effect-aware:
 //   - `resolveSite*` queries are pure reads
-//   - `createTicketCore` calls one command; migration 034 atomically records the
-//     timeline/audit/outbox effects and the request path drains them promptly
+//   - `createTicketCore` calls one command; migrations 034/047 atomically record
+//     timeline/audit/outbox effects and deduplicate exact request replays
 //
 // Callers must resolve site/source context. The database command independently
 // validates active actor and site scope; null actors are allowed only for the
@@ -27,13 +27,7 @@ import { generateSecureToken } from "@/lib/utils";
 import { dispatchTicketOutboxBestEffort } from "@/lib/tickets/outbox";
 import { computeSlaTargets, findPolicyForCustomer } from "@/lib/sla";
 import { normalizeSiteCode } from "@/lib/sites/site-code";
-import type {
-  Ticket,
-  TicketSource,
-  RequestType,
-  Severity,
-  Impact,
-} from "@/types/ticket";
+import type { TicketSource, RequestType, Severity, Impact } from "@/types/ticket";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -45,6 +39,8 @@ export interface CreateTicketInput {
   /** Already-resolved site id (uuid). */
   site_id: string;
   source: TicketSource;
+  /** Stable per-attempt key reused only when replaying the same command. */
+  idempotency_key: string;
   title: string;
   description: string;
   request_type: RequestType;
@@ -76,9 +72,24 @@ export interface CreateTicketOptions {
 }
 
 export interface CreateTicketResult {
-  ticket: Ticket;
+  ticket_id: string;
   ticket_no: string;
   secure_token: string;
+}
+
+function isTicketCreationReceipt(
+  value: unknown
+): value is { id: string; ticket_no: string; secure_token: string } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "id" in value &&
+    typeof value.id === "string" &&
+    "ticket_no" in value &&
+    typeof value.ticket_no === "string" &&
+    "secure_token" in value &&
+    typeof value.secure_token === "string"
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -142,9 +153,9 @@ export async function resolveSiteBySlackChannel(
 // ---------------------------------------------------------------------------
 
 /**
- * Insert a ticket once. Migration 034 validates the creator/site boundary and
- * atomically writes the creation event, cross-entity audit row, and durable
- * Slack/email outbox records inside that INSERT transaction.
+ * Insert or replay a ticket once. Migration 034 validates the creator/site
+ * boundary and atomically writes the creation event, audit row, and durable
+ * outbox records. Migration 047 serializes a stable request key around it.
  */
 export async function createTicketCore(
   input: CreateTicketInput,
@@ -174,15 +185,17 @@ export async function createTicketCore(
       firstResponseDueAt = targets.responseDueAt?.toISOString() ?? null;
       resolveDueAt = targets.resolveDueAt?.toISOString() ?? null;
     }
-  } catch (e) {
+  } catch (error) {
     // SLA lookup is best-effort — a failed policy fetch must not
     // block ticket creation. The ticket is created without SLA,
     // which the UI can flag if it becomes a pattern.
-    console.warn("[tickets] SLA policy lookup failed (non-fatal):", e);
+    console.warn("[tickets] SLA policy lookup failed (non-fatal):", {
+      name: error instanceof Error ? error.name : "UnknownError",
+    });
   }
 
-  const { data: ticketId, error: commandError } = await supabase.rpc(
-    "create_ticket_atomic",
+  const { data: receipt, error: commandError } = await supabase.rpc(
+    "create_ticket_idempotent_atomic",
     {
       p_input: {
         customer_id: input.customer_id,
@@ -203,53 +216,26 @@ export async function createTicketCore(
         sla_policy_id: slaPolicyId,
         first_response_due_at: firstResponseDueAt,
         resolve_due_at: resolveDueAt,
+        idempotency_key: input.idempotency_key,
       },
     }
   );
 
-  if (commandError || typeof ticketId !== "string") {
-    throw new Error(
-      `Atomic ticket creation failed: ${
-        commandError?.message ?? "invalid RPC response"
-      }`
-    );
+  if (commandError || !isTicketCreationReceipt(receipt)) {
+    throw new Error("Atomic ticket creation failed");
   }
 
-  const { data: ticket, error } = await supabase
-    .from("tickets")
-    .select(
-      `
-      *,
-      customer:customers(id, name),
-      site:sites(id, site_name, site_code, slack_channel_id, timezone),
-      owner:users!tickets_owner_id_fkey(id, full_name, email),
-      creator:users!tickets_created_by_fkey(id, full_name, email)
-    `
-    )
-    .eq("id", ticketId)
-    .single();
-
-  if (error || !ticket) {
-    throw new Error(
-      `Ticket hydration failed: ${error?.message ?? "no row returned"}`
-    );
-  }
-
-  const targetChannel =
-    options.slackChannelId ??
-    (Array.isArray(ticket.site) ? ticket.site[0] : ticket.site)?.slack_channel_id ??
-    null;
   await dispatchTicketOutboxBestEffort({
-    aggregateId: ticket.id,
+    aggregateId: receipt.id,
     slackOptions: {
-      channelId: targetChannel,
+      channelId: options.slackChannelId,
       client: options.slackClient,
     },
   });
 
   return {
-    ticket: ticket as Ticket,
-    ticket_no: ticket.ticket_no,
-    secure_token: ticket.secure_token,
+    ticket_id: receipt.id,
+    ticket_no: receipt.ticket_no,
+    secure_token: receipt.secure_token,
   };
 }

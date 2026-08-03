@@ -17,12 +17,13 @@ const ticketDetail = readFileSync(
 );
 
 describe("resource-owned operational timezone contracts", () => {
-  it("hydrates a site timezone through every Slack master-card path", () => {
+  it("hydrates a site timezone at each Slack master-card rendering path", () => {
     const fullSiteProjection =
       "site:sites(id, site_name, site_code, slack_channel_id, timezone)";
 
     expect(outboxWorker).toContain(fullSiteProjection);
-    expect(ticketCreation).toContain(fullSiteProjection);
+    expect(ticketCreation).not.toContain('.from("tickets")');
+    expect(ticketCreation).toContain("dispatchTicketOutboxBestEffort");
     expect(slackActions).toContain("site:sites(site_name, site_code, timezone)");
     expect(slackMaster).toContain("resolveSiteTimezone(site)");
     expect(slackMaster).not.toContain("America/New_York");

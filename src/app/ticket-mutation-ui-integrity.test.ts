@@ -28,6 +28,8 @@ describe("ticket mutation UI integrity", () => {
     expect(createModal).not.toContain("setTimeout");
     expect(ticketsHeader).toContain("router.refresh()");
     expect(ticketsHeader).not.toContain("window.location.reload");
+    expect(createModal).toContain("creationAttemptRef");
+    expect(createModal).toContain("TICKET_IDEMPOTENCY_KEY_HEADER");
   });
 
   it("normalizes and bounds both ticket creation surfaces", () => {
@@ -40,6 +42,7 @@ describe("ticket mutation UI integrity", () => {
     expect(publicSubmit).toContain("TICKET_SUBMITTER_EMAIL_MAX_LENGTH");
     expect(publicSubmit).toContain("MAX_TICKET_SUBMISSION_ATTACHMENTS");
     expect(publicSubmit).toContain("MAX_ATTACHMENT_BYTES");
+    expect(publicSubmit).toContain("creationAttemptRef");
   });
 
   it("contains returned and unexpected ticket action failures", () => {

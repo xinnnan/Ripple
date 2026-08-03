@@ -18,6 +18,7 @@ import {
   requestAiSuggestion,
 } from "@/lib/ai/service";
 import { isSuggestionType } from "@/lib/ai/suggest";
+import { buildSlackTicketIdempotencyKey } from "@/lib/tickets/idempotency";
 
 interface ActionPayload {
   actions: { action_id: string; value?: string; selected_option?: { value: string } }[];
@@ -288,7 +289,7 @@ export async function handleBlockAction(
 }
 
 export async function handleViewSubmission(
-  payload: { view: { callback_id: string; private_metadata: string; state: { values: Record<string, Record<string, { value?: string; selected_option?: { value: string }; type: string }>> } }; user: { id: string } },
+  payload: { view: { id: string; callback_id: string; private_metadata: string; state: { values: Record<string, Record<string, { value?: string; selected_option?: { value: string }; type: string }>> } }; user: { id: string } },
   client: WebClient
 ) {
   const callbackId = payload.view.callback_id;
@@ -366,6 +367,7 @@ export async function handleViewSubmission(
             customer_id: customerId,
             site_id: siteId,
             source: "slack",
+            idempotency_key: buildSlackTicketIdempotencyKey(payload.view.id),
             title,
             description,
             request_type: requestType as
@@ -393,8 +395,10 @@ export async function handleViewSubmission(
             slackClient: client,
           }
         );
-      } catch (err) {
-        console.error("[ticket_form_submit] createTicketCore failed:", err);
+      } catch (error) {
+        console.error("[ticket_form_submit] createTicketCore failed:", {
+          name: error instanceof Error ? error.name : "UnknownError",
+        });
         return {
           response_action: "errors",
           errors: { title_block: "Failed to create ticket. Please try again." },
