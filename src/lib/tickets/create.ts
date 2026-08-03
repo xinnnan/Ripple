@@ -221,7 +221,7 @@ export async function createTicketCore(
       `
       *,
       customer:customers(id, name),
-      site:sites(id, site_name, site_code, slack_channel_id),
+      site:sites(id, site_name, site_code, slack_channel_id, timezone),
       owner:users!tickets_owner_id_fkey(id, full_name, email),
       creator:users!tickets_created_by_fkey(id, full_name, email)
     `

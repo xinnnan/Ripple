@@ -8,7 +8,7 @@ import {
   type Severity,
 } from "@/types/ticket";
 import { SPR_STATUS_LABELS, SPR_STATUS_COLORS, FSO_STATUS_LABELS, FSO_STATUS_COLORS, SERVICE_TYPE_LABELS } from "@/types/spare-parts";
-import { formatDate } from "@/lib/utils";
+import { formatDate, resolveSiteTimezone } from "@/lib/utils";
 import Link from "next/link";
 import { AIAssistButton } from "./ai-assist-button";
 import { TicketActionsPanel } from "./ticket-actions-panel";
@@ -68,11 +68,9 @@ export default async function TicketDetailPage({ params }: Props) {
     );
   }
 
-  // Get site timezone for display
-  const siteData = Array.isArray(ticket.site) ? ticket.site[0] : ticket.site;
-  const userTimezone =
-    (siteData as unknown as { timezone?: string } | null)?.timezone ||
-    "America/New_York";
+  // Operational timestamps belong to the ticket's site. Missing or invalid
+  // legacy timezone values render deterministically in UTC.
+  const userTimezone = resolveSiteTimezone(ticket.site);
 
   // Comments: non-internal users only see customer-visible comments
   let commentsQuery = supabase

@@ -31,7 +31,7 @@ interface ActionPayload {
 const SLACK_TICKET_SELECT = `
   *,
   customer:customers(name),
-  site:sites(site_name, site_code),
+  site:sites(site_name, site_code, timezone),
   owner:users!tickets_owner_id_fkey(full_name)
 `;
 

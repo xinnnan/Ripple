@@ -5,6 +5,7 @@ import {
   canTransitionTicketStatus,
   ticketStatusAcceptsAssignment,
 } from "@/lib/tickets/status";
+import { formatDate, resolveSiteTimezone, singleRelation } from "@/lib/utils";
 
 function getSeverityEmoji(severity: Severity): string {
   switch (severity) {
@@ -43,6 +44,10 @@ function getStatusEmoji(status: TicketStatus): string {
 export function buildMasterTicketMessage(ticket: Ticket): (KnownBlock | Block)[] {
   const severityEmoji = getSeverityEmoji(ticket.severity);
   const statusEmoji = getStatusEmoji(ticket.status);
+  const customer = singleRelation(ticket.customer);
+  const site = singleRelation(ticket.site);
+  const owner = singleRelation(ticket.owner);
+  const siteTimezone = resolveSiteTimezone(site);
 
   return [
     {
@@ -61,11 +66,11 @@ export function buildMasterTicketMessage(ticket: Ticket): (KnownBlock | Block)[]
       fields: [
         {
           type: "mrkdwn",
-          text: `*Customer:*\n${ticket.customer?.name || "N/A"}`,
+          text: `*Customer:*\n${customer?.name || "N/A"}`,
         },
         {
           type: "mrkdwn",
-          text: `*Site:*\n${ticket.site?.site_name || "N/A"}`,
+          text: `*Site:*\n${site?.site_name || "N/A"}`,
         },
         {
           type: "mrkdwn",
@@ -73,7 +78,7 @@ export function buildMasterTicketMessage(ticket: Ticket): (KnownBlock | Block)[]
         },
         {
           type: "mrkdwn",
-          text: `*Owner:*\n${ticket.owner?.full_name || "Unassigned"}`,
+          text: `*Owner:*\n${owner?.full_name || "Unassigned"}`,
         },
         {
           type: "mrkdwn",
@@ -118,11 +123,11 @@ export function buildMasterTicketMessage(ticket: Ticket): (KnownBlock | Block)[]
       elements: [
         {
           type: "mrkdwn",
-          text: `Created: ${new Date(ticket.created_at).toLocaleString("en-US", { timeZone: "America/New_York" })} ET`,
+          text: `Created: ${formatDate(ticket.created_at, siteTimezone)}`,
         },
         {
           type: "mrkdwn",
-          text: `| Updated: ${new Date(ticket.updated_at).toLocaleString("en-US", { timeZone: "America/New_York" })} ET`,
+          text: `| Updated: ${formatDate(ticket.updated_at, siteTimezone)}`,
         },
       ],
     },
