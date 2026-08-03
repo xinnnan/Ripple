@@ -14,6 +14,7 @@ import { getCurrentTab } from "@/components/detail-tabs-helpers";
 import { TableEmpty } from "@/components/empty-state";
 import { parseUuidRouteId } from "@/lib/request-identifiers";
 import { notFound } from "next/navigation";
+import { assertPageQueriesSucceeded } from "@/lib/server-page-query";
 
 export const dynamic = "force-dynamic";
 
@@ -31,7 +32,7 @@ export default async function AdminSiteDetailPage({ params, searchParams }: Prop
   const supabase = createAdminClient();
 
   // Get site details
-  const { data: site } = await supabase
+  const siteResult = await supabase
     .from("sites")
     .select(
       `
@@ -50,7 +51,9 @@ export default async function AdminSiteDetailPage({ params, searchParams }: Prop
     `
     )
     .eq("id", id)
-    .single();
+    .maybeSingle();
+  assertPageQueriesSucceeded("admin/site-detail", siteResult);
+  const site = siteResult.data;
 
   if (!site) {
     return (
@@ -108,6 +111,14 @@ export default async function AdminSiteDetailPage({ params, searchParams }: Prop
         .or(`customer_id.eq.${site.customer_id},customer_id.is.null`)
         .order("full_name"),
     ]);
+  assertPageQueriesSucceeded(
+    "admin/site-detail-related",
+    membersRes,
+    ticketsRes,
+    auditRes,
+    inventoryRes,
+    eligibleUsersRes
+  );
 
   const members = (membersRes.data || []) as unknown as {
     id: string;

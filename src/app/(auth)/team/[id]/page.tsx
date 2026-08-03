@@ -6,6 +6,7 @@ import type { UserRole } from "@/types/ticket";
 import { isCustomerManager, ROLE_LABELS } from "@/lib/roles";
 import { EditTeamMemberForm } from "./edit-team-member-form";
 import { parseUuidRouteId } from "@/lib/request-identifiers";
+import { assertPageQueriesSucceeded } from "@/lib/server-page-query";
 
 export const dynamic = "force-dynamic";
 
@@ -24,11 +25,13 @@ export default async function EditTeamMemberPage({
   if (!authUser) redirect("/login");
 
   // Verify customer_manager role
-  const { data: userProfile } = await supabase
+  const profileResult = await supabase
     .from("users")
     .select("role, email, customer_id")
     .eq("id", authUser.id)
-    .single();
+    .maybeSingle();
+  assertPageQueriesSucceeded("team/member-detail-profile", profileResult);
+  const userProfile = profileResult.data;
 
   const role = userProfile?.role as UserRole | undefined;
   const customerId = userProfile?.customer_id as string | null;
@@ -43,11 +46,13 @@ export default async function EditTeamMemberPage({
   const admin = createAdminClient();
 
   // Get the target user
-  const { data: targetUser } = await admin
+  const targetResult = await admin
     .from("users")
     .select("id, email, full_name, role, status, phone, customer_id")
     .eq("id", id)
-    .single();
+    .maybeSingle();
+  assertPageQueriesSucceeded("team/member-detail", targetResult);
+  const targetUser = targetResult.data;
 
   if (!targetUser || (targetUser as unknown as { customer_id: string | null }).customer_id !== customerId) {
     return (
@@ -61,18 +66,25 @@ export default async function EditTeamMemberPage({
   }
 
   // Get user's current sites
-  const { data: memberships } = await admin
+  const membershipsResult = await admin
     .from("site_members")
     .select("site_id")
     .eq("user_id", id);
 
   // Get available sites for the customer
-  const { data: sites } = await admin
+  const sitesResult = await admin
     .from("sites")
     .select("id, site_name, site_code")
     .eq("customer_id", customerId)
     .eq("status", "active")
     .order("site_name");
+  assertPageQueriesSucceeded(
+    "team/member-detail-related",
+    membershipsResult,
+    sitesResult
+  );
+  const memberships = membershipsResult.data;
+  const sites = sitesResult.data;
 
   // Archived sites cannot be newly assigned. Excluding their legacy
   // memberships from the desired set lets the atomic update remove stale

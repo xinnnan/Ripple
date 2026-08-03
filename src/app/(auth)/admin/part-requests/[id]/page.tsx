@@ -4,6 +4,7 @@ import Link from "next/link";
 import { PartRequestActions } from "./part-request-actions";
 import { parseUuidRouteId } from "@/lib/request-identifiers";
 import { notFound } from "next/navigation";
+import { assertPageQueriesSucceeded } from "@/lib/server-page-query";
 
 export const dynamic = "force-dynamic";
 
@@ -45,7 +46,7 @@ export default async function PartRequestDetailPage({ params }: { params: Promis
   if (!id) notFound();
   const supabase = createAdminClient();
 
-  const { data: request } = await supabase
+  const requestResult = await supabase
     .from("spare_part_requests")
     .select(`
       *,
@@ -56,7 +57,9 @@ export default async function PartRequestDetailPage({ params }: { params: Promis
       items:spare_part_request_items(*, spare_part:spare_parts(part_name, part_number))
     `)
     .eq("id", id)
-    .single();
+    .maybeSingle();
+  assertPageQueriesSucceeded("admin/part-request-detail", requestResult);
+  const request = requestResult.data;
 
   if (!request) {
     return (

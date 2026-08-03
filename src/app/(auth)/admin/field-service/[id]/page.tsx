@@ -5,6 +5,7 @@ import Link from "next/link";
 import { FieldServiceActions } from "./field-service-actions";
 import { parseUuidRouteId } from "@/lib/request-identifiers";
 import { notFound } from "next/navigation";
+import { assertPageQueriesSucceeded } from "@/lib/server-page-query";
 
 export const dynamic = "force-dynamic";
 
@@ -42,7 +43,7 @@ export default async function FieldServiceDetailPage({ params }: { params: Promi
   if (!id) notFound();
   const supabase = createAdminClient();
 
-  const { data: order } = await supabase
+  const orderResult = await supabase
     .from("field_service_orders")
     .select(`
       *,
@@ -53,7 +54,9 @@ export default async function FieldServiceDetailPage({ params }: { params: Promi
       engineers:field_service_engineers(role, engineer:users(full_name))
     `)
     .eq("id", id)
-    .single();
+    .maybeSingle();
+  assertPageQueriesSucceeded("admin/field-service-detail", orderResult);
+  const order = orderResult.data;
 
   if (!order) {
     return (

@@ -15,6 +15,7 @@ import { getCurrentTab } from "@/components/detail-tabs-helpers";
 import { TableEmpty } from "@/components/empty-state";
 import { parseUuidRouteId } from "@/lib/request-identifiers";
 import { notFound } from "next/navigation";
+import { assertPageQueriesSucceeded } from "@/lib/server-page-query";
 
 export const dynamic = "force-dynamic";
 
@@ -31,11 +32,13 @@ export default async function AdminCustomerDetailPage({ params, searchParams }: 
 
   const admin = createAdminClient();
 
-  const { data: customer } = await admin
+  const customerResult = await admin
     .from("customers")
     .select("id, name, domain, status, created_at")
     .eq("id", id)
-    .single();
+    .maybeSingle();
+  assertPageQueriesSucceeded("admin/customer-detail", customerResult);
+  const customer = customerResult.data;
 
   if (!customer) {
     return (
@@ -76,6 +79,13 @@ export default async function AdminCustomerDetailPage({ params, searchParams }: 
       .eq("customer_id", id)
       .order("full_name"),
   ]);
+  assertPageQueriesSucceeded(
+    "admin/customer-detail-related",
+    sitesRes,
+    ticketsRes,
+    auditRes,
+    teamRes
+  );
 
   const sites = sitesRes.data || [];
   const tickets = (ticketsRes.data || []) as unknown as {
