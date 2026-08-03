@@ -8,10 +8,9 @@ meaningful change and before ending a work session. Newest entries go first.
 - **Branch:** `codex/prd-v1-1-gap-closure`
 - **Active phase:** Phase 0 — Containment and reproducible baseline
 - **Active work item:** run protected migrations 028–031 business probes when
-  the staging fixture becomes available; otherwise harden ticket CSV export
-  against spreadsheet-formula injection, relationship-shape drift, malformed
-  filters, and database-detail leakage
-- **Last verified implementation commit:** `2c4faad` (`fix: constrain external service reads`)
+  the staging fixture becomes available; otherwise contain malformed and
+  grammar-sensitive ticket-list filters before they reach PostgREST
+- **Last verified implementation commit:** `bef2323` (`fix: harden ticket CSV export`)
 - **Uncommitted work:** none expected after the documentation checkpoint;
   verify with `git status` before resuming
 - **Deployment gate:** migrations 001–046 are confirmed applied. Migration 044
@@ -64,9 +63,9 @@ meaningful change and before ending a work session. Newest entries go first.
   dedicated staging mailbox.
 - **Exact next local step:** check whether the protected credential fixture is
   available and, if so, run the migration 028–031 business probes plus the new
-  malformed-body HTTP checks. If it remains unavailable, harden ticket CSV
-  export cells, relationship normalization, filter validation, and generic
-  failure containment. Configure `CRON_SECRET` separately before production
+  malformed-body HTTP checks. If it remains unavailable, validate and contain
+  the authenticated ticket-list search/filter contract before constructing
+  PostgREST expressions. Configure `CRON_SECRET` separately before production
   worker activation
 - **Primary plan:** [`plans/prd-v1.1-gap-closure-plan.md`](./prd-v1.1-gap-closure-plan.md)
 
@@ -77,7 +76,7 @@ meaningful change and before ending a work session. Newest entries go first.
 - Against the full PRD v1.1 capability map, 17 domains remain
   **Partial** or **Unsafe/Partial** and seven remain **Absent**. No full PRD
   capability domain is yet honestly complete end to end.
-- The local deterministic baseline is green at 533 unit/contract tests, 40
+- The local deterministic baseline is green at 561 unit/contract tests, 40
   production HTTP smoke checks, a production build, zero-warning lint, and
   zero known dependency vulnerabilities.
 - Phase 0 cannot be declared exited until the protected six-account/two-tenant
@@ -89,6 +88,51 @@ meaningful change and before ending a work session. Newest entries go first.
   queues/routing, business-calendar SLA clocks, remote support, appointments,
   assets/entitlements, search/knowledge, i18n, versioned external APIs, and
   production SRE/recovery evidence.
+
+## Session record — 2026-08-03 (P0-AT / ticket CSV export containment)
+
+### Objective
+
+Make the existing ticket export safe to open in spreadsheet software and keep
+its authorization/filter contract aligned with the ticket-list UI.
+
+### Finding and implementation
+
+- Customer-controlled cells could begin with spreadsheet formula operators,
+  and the old encoder did not quote carriage returns. CSV cells now neutralize
+  formula-like prefixes after leading controls/whitespace and consistently
+  escape comma, quote, CR, and LF content.
+- The route assumed one Supabase relationship shape. Export generation now
+  normalizes object/array relations before reading site, customer, and owner
+  display values.
+- The export UI submitted canonical customer/site/owner, list-valued status
+  and severity, range, SLA, and search filters, while the handler recognized a
+  smaller legacy contract. A strict parser now validates and applies the full
+  canonical contract, preserves non-conflicting legacy aliases, rejects
+  malformed UUID/enumeration/date/search combinations, and prevents unsafe
+  PostgREST filter grammar from reaching the query builder.
+- Database failures now return a generic error while server logs retain the
+  error code. The response is UTF-8 BOM-prefixed, CRLF-delimited, private,
+  no-store, and `nosniff`.
+- Twenty-eight new encoder/parser/real-handler tests bring the suite to 561.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| `npm ci` | Passed from the lockfile earlier in this continuous session; 0 install-time vulnerabilities |
+| `npm test` | Passed; 79 files, 561 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build and type check |
+| `npm run test:e2e` | Passed; all 40 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+
+### Next
+
+Run protected probes when their fixture is available. Otherwise apply the same
+strict parsing and PostgREST-grammar containment to the authenticated ticket
+list search/filter path.
 
 ## Session record — 2026-08-03 (P0-AS / external service projections)
 

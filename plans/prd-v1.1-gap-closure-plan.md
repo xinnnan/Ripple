@@ -33,7 +33,7 @@ Ripple is a useful support-ticket prototype with meaningful Phase 1–4 work:
 - spare-parts and field-service skeletons
 - simple wall-clock SLA targets
 - email and AI integrations with graceful failure
-- 533 committed unit/contract tests, production HTTP smoke, and an opt-in
+- 561 committed unit/contract tests, production HTTP smoke, and an opt-in
   credentialed browser/API/RLS matrix
 
 It is not yet the operations platform described by PRD v1.1. The old
@@ -66,7 +66,7 @@ The correct approach is therefore:
 
 | Gate | Result through 2026-08-03 | Meaning |
 |---|---|---|
-| Unit tests | 533/533 passed | Scope, lifecycle and exhaustive ticket-transition guards, atomic ticket/customer/catalog/inventory/attachment creation and updates, attachment content and storage-key validation, direct-write privilege containment, durable public-rate-limit/share-view contracts, notification outbox leases/idempotency/retry contracts, context-safe transactional email rendering and conditional provider/public-origin readiness, tenant-safe site/user/customer/SLA/catalog/inventory administration, secure user provisioning and membership containment, canonical manager-wide active-site presentation, explicit authenticated customer ticket/comment/site/spare-part/field-service read projections and client-payload containment, qualified-SQL-expression repair, visibility, auth recovery/redirects, public/responsive/admin UI contracts, deterministic site-timezone dashboard and Slack rendering with exact totals, Slack authentication/configuration/action filtering and direct AI-service invocation, readiness, CI policy, filters, SLA, fixture validation, migration/RPC contracts, spare-part, field-service, and team-access transaction containment, DATE handling, and audit coverage is green |
+| Unit tests | 561/561 passed | Scope, lifecycle and exhaustive ticket-transition guards, atomic ticket/customer/catalog/inventory/attachment creation and updates, attachment content and storage-key validation, direct-write privilege containment, durable public-rate-limit/share-view contracts, notification outbox leases/idempotency/retry contracts, context-safe transactional email rendering and conditional provider/public-origin readiness, tenant-safe site/user/customer/SLA/catalog/inventory administration, secure user provisioning and membership containment, canonical manager-wide active-site presentation, explicit authenticated customer ticket/comment/site/spare-part/field-service read projections and client-payload containment, spreadsheet-safe ticket CSV encoding and strict export-filter parity, qualified-SQL-expression repair, visibility, auth recovery/redirects, public/responsive/admin UI contracts, deterministic site-timezone dashboard and Slack rendering with exact totals, Slack authentication/configuration/action filtering and direct AI-service invocation, readiness, CI policy, filters, SLA, fixture validation, migration/RPC contracts, spare-part, field-service, and team-access transaction containment, DATE handling, and audit coverage is green |
 | Lint | Passed, no warnings | Direct ESLint CLI with zero-warning enforcement and generated-artifact ignores |
 | Production build | Passed on Next.js 15.5.22 | Environment-free build is reproducible |
 | Dependency audit | 0 vulnerabilities | Patched direct/transitive versions are lockfile-pinned and compatibility-tested |
@@ -99,7 +99,7 @@ has a release-blocking security or integrity problem.
 | File Service | Partial | `03499f9` plus deployed migration 044 add magic-byte/text/container checks, canonical MIME, environment/tenant/ticket-bound keys, null guest attribution, and atomic metadata/timeline handling; its 130-assertion live matrix is green. Malware scanning, quarantine, checksums, retention, and durable ambiguous-outcome reconciliation remain |
 | Search / Knowledge | Absent | No permission-aware index, degradation mode, related history, KB lifecycle, or feedback |
 | Notifications / Templates | Partial | Durable ticket creation/update/resolution delivery records/retry/dead-letter are committed; template versioning, locale fallback, preferences, and in-app inbox remain |
-| Reporting / Export | Partial | Ticket CSV and role-scoped dashboard counts exist; customer totals are exact and recent-ticket timestamps use the ticket site's validated timezone, but there is no broader metric contract, SLA/operations report suite, scheduled generation, or permission-aware export model |
+| Reporting / Export | Partial | Ticket CSV now uses spreadsheet-safe cells, normalized relations, strict role-aware filter parity, generic failures, and private/no-store delivery; customer dashboard totals are exact and recent-ticket timestamps use the ticket site's validated timezone, but there is no broader metric contract, SLA/operations report suite, scheduled generation, paginated large-export contract, or general permission-aware export model |
 | Internationalization | Absent | English strings are embedded in code; no locale resolution, translation catalog, formatting rules, or four-language QA |
 | Administration | Partial | Site/membership/user/customer/SLA/catalog/inventory authorization-root writes are deployed atomically, and migration 045 removes proven direct membership/SLA bypasses plus other public API-role write grants; configuration hierarchy, form/custom-field builder, workflow publishing, feature flags, retention, and integration console remain absent |
 | External API / Webhooks | Absent | Unversioned internal REST only; no client credentials, scopes, idempotency, concurrency, stable errors, signed webhooks, or docs |
@@ -597,7 +597,12 @@ Every implementation slice must:
     assignment fields are no longer retrieved for customer roles; response
     shapers remain as defense in depth. Four tests bring the suite to 533 and
     all quality gates are green.
-44. **Next local integrity work:** run protected positive/rollback probes when
-    fixtures are available; otherwise harden ticket CSV export against
-    spreadsheet formulas, relationship-shape drift, malformed filters, and
-    database-detail leakage.
+44. **P0-AT — closed in `bef2323`:** Ticket CSV export now neutralizes
+    spreadsheet-formula cells, quotes CR/LF correctly, normalizes Supabase
+    relationship shapes, validates the complete canonical UI filter contract,
+    contains PostgREST search grammar, returns generic database failures, and
+    sends a private/no-store UTF-8 response. Twenty-eight tests bring the suite
+    to 561 and all quality gates are green.
+45. **Next local integrity work:** run protected positive/rollback probes when
+    fixtures are available; otherwise validate and contain authenticated
+    ticket-list search/filter input before constructing PostgREST expressions.

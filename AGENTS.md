@@ -295,7 +295,7 @@ npm run dev
 - `npm run build` — production build
 - `npm run start` — production server
 - `npm run lint` — direct ESLint CLI across the repository; warnings fail the gate
-- `npm test` — Vitest unit/contract suite (533 tests)
+- `npm test` — Vitest unit/contract suite (561 tests)
 - `npm run test:e2e` — 40-check production HTTP smoke plus optional credentialed Playwright/API/RLS matrix; requires a successful build
 - `npm run test:e2e:credentialed` — real six-account/two-tenant matrix; set `RIPPLE_E2E_FIXTURES_FILE`
 - `npm run test:e2e:install-browser` — install the pinned Chromium runtime
@@ -1150,6 +1150,24 @@ Measure document `scrollWidth`, inspect both desktop and mobile, and keep wide
 data tables in a deliberate local scroller. Temporary test identities must be
 scoped, read-only in use, and verified deleted.
 
+### CSV exports are an active-content boundary
+Found 2026-08-03 while checking reporting behavior against the ticket-list UI.
+Customer-controlled title/description values could become spreadsheet formulas,
+carriage returns were not quoted, Supabase relationship shape was assumed, and
+the export handler silently ignored several filters emitted by its own UI.
+
+Commit `bef2323` adds a pure spreadsheet-safe encoder, object/array relation
+normalization, and one strict canonical export-filter parser with guarded
+legacy aliases. The handler now applies the UI's complete role-aware contract,
+rejects grammar-sensitive search input before PostgREST construction, hides
+database detail, and returns a private/no-store UTF-8 BOM/CRLF response.
+
+**Lesson:** CSV is not inert text once opened in a spreadsheet. Neutralize
+formula-like cells even after leading whitespace/control characters, quote CR
+as well as LF, and test hostile cell values. Treat the UI and handler filter
+contract as one API: validate it centrally, reject ambiguous aliases, and do
+not silently turn malformed filters into broader exports.
+
 ---
 
 ## 10. Current State & Roadmap
@@ -1263,7 +1281,10 @@ resume work; this section remains the broader historical summary.
   ticket/comment/site queries and React client payloads with explicit
   allow-lists, bringing the suite to 529 tests; then moved customer
   spare-part and field-service list/detail reads to query-time allow-lists
-  while retaining response shaping, bringing the suite to 533 tests.
+  while retaining response shaping, bringing the suite to 533 tests; then
+  hardened ticket CSV export against spreadsheet formulas, relation-shape
+  drift, filter-contract mismatch, PostgREST grammar hazards, and database
+  detail leakage, bringing the suite to 561 tests.
 
 ### Known issues / open work
 | Priority | Item | Where | Notes |
@@ -1277,6 +1298,7 @@ resume work; this section remains the broader historical summary.
 | ✅ Closed | Customer-manager direct-membership under-scoping | `src/lib/team/read-model.ts`, `/api/team`, `/team`, `/submit`, `/dashboard` | Commit `67ce908` makes manager access organization-wide over active sites, keeps customers assignment-scoped, and excludes retained archived memberships from current presentation |
 | ✅ Closed | Authenticated ticket/comment/site hidden-field reads | `src/lib/resource-projections.ts`, `/tickets/[ticketId]`, `/api/tickets/[ticketId]/comments`, `/api/sites` | Commit `d276ede` applies role-specific query allow-lists and prevents internal summaries, staff identifiers/metadata, Slack routing, and attachment storage metadata from entering customer responses or React client props |
 | ✅ Closed | External service-resource wildcard hydration | `src/lib/resource-projections.ts`, `/api/spare-part-requests`, `/api/field-service-orders` | Commit `2c4faad` applies external list/detail allow-lists before retrieval, excluding price/staff attribution and internal completion/travel/assignment fields while retaining response shaping as defense in depth |
+| ✅ Closed | Ticket CSV active-content and filter-contract exposure | `src/lib/tickets/csv-export.ts`, `src/lib/tickets/export-filters.ts`, `/api/tickets/export` | Commit `bef2323` neutralizes spreadsheet formulas, normalizes relationship shapes, validates/applies canonical role-aware filters, contains PostgREST grammar, hides database detail, and sends private/no-store UTF-8 CSV |
 | 🟡 Med | `/settings` is read-only integration status | `src/app/(auth)/settings/page.tsx` | Add notification preferences, user timezone, and theme controls |
 | ✅ Verified | Migration 046 durable public rate limits | `supabase/migrations/046_durable_public_rate_limits.sql` | Applied 2026-08-02; 77 live assertions covered grants, constraints, concurrency, reset/retention, bounded cleanup, real HTTP limits/lifecycle, and zero residue |
 | 🟡 Med | Exact site-code validation remains an existence oracle | `/api/sites/validate` | Responses are minimal and migration 046 enforces 20 checks/minute/IP across instances, but full anti-enumeration still requires CAPTCHA, an invitation/intake token, or authenticated submission |
@@ -1444,6 +1466,11 @@ resume work; this section remains the broader historical summary.
     field-service external list/detail GETs query-time allow-lists while
     retaining response shapers as defense in depth. Four tests bring the suite
     to 533; all quality gates are green.
+42. **Harden ticket CSV export.** Commit `bef2323` adds spreadsheet-safe cell
+    encoding, relation normalization, strict UI-filter parity and alias
+    conflict handling, PostgREST search containment, generic database errors,
+    and private/no-store UTF-8 delivery. Twenty-eight tests bring the suite to
+    561; all deterministic quality gates are green.
 
 ### Open architectural questions
 - The RLS recursion bug surfaces a bigger question: do we keep `createAdminClient() + code filter` (the current pattern in `lib/supabase/scope.ts`) or move back to proper RLS once migration 019 + similar fixes are in place? The current pattern scales fine but has a lower safety margin for new queries.
