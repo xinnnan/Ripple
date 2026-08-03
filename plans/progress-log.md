@@ -8,10 +8,10 @@ meaningful change and before ending a work session. Newest entries go first.
 - **Branch:** `codex/prd-v1-1-gap-closure`
 - **Active phase:** Phase 0 — Containment and reproducible baseline
 - **Active work item:** run protected migrations 028–031 business probes when
-  the staging fixture becomes available; otherwise audit the remaining browser
-  Supabase reads, beginning with settings and authenticated write forms, so
-  provider/database failures cannot become false empty or success states
-- **Last verified implementation commit:** `10a1547` (`fix: harden browser account loading`)
+  the staging fixture becomes available; otherwise audit authenticated fetch-
+  based mutation forms and integration/status UX for false success, raw error,
+  or unresolved loading behavior
+- **Last verified implementation commit:** `e887eec` (`fix: harden authentication recovery states`)
 - **Uncommitted work:** none expected after the documentation checkpoint;
   verify with `git status` before resuming
 - **Deployment gate:** migrations 001–046 are confirmed applied. Migration 044
@@ -68,9 +68,10 @@ meaningful change and before ending a work session. Newest entries go first.
   visual coverage still depends on the credentialed fixture.
 - **Exact next local step:** check whether the protected credential fixture is
   available and, if so, run the migration 028–031 business probes plus the new
-  malformed-body HTTP checks. If it remains unavailable, inventory remaining
-  browser Supabase reads and harden the next coherent settings/write-form slice.
-  Configure `CRON_SECRET` separately before production worker activation
+  malformed-body HTTP checks. If it remains unavailable, audit fetch-based
+  authenticated mutation forms and integration/status UX for false success,
+  unresolved loading, or raw backend detail. Configure `CRON_SECRET` separately
+  before production worker activation
 - **Primary plan:** [`plans/prd-v1.1-gap-closure-plan.md`](./prd-v1.1-gap-closure-plan.md)
 
 ## Overall project status — 2026-08-03
@@ -80,7 +81,7 @@ meaningful change and before ending a work session. Newest entries go first.
 - Against the full PRD v1.1 capability map, 17 domains remain
   **Partial** or **Unsafe/Partial** and seven remain **Absent**. No full PRD
   capability domain is yet honestly complete end to end.
-- The local deterministic baseline is green at 845 unit/contract tests, 40
+- The local deterministic baseline is green at 860 unit/contract tests, 40
   production HTTP smoke checks, a production build, zero-warning lint, and
   zero known dependency vulnerabilities.
 - Phase 0 cannot be declared exited until the protected six-account/two-tenant
@@ -92,6 +93,68 @@ meaningful change and before ending a work session. Newest entries go first.
   queues/routing, business-calendar SLA clocks, remote support, appointments,
   assets/entitlements, search/knowledge, i18n, versioned external APIs, and
   production SRE/recovery evidence.
+
+## Session record — 2026-08-03 (P0-BK / authentication recovery integrity)
+
+### Objective
+
+Make sign-in, recovery request, recovery-link verification, password update,
+callback exchange, and sign-out settle truthfully across provider errors,
+throttling, rejected sessions, and partial session cleanup.
+
+### Finding and implementation
+
+- Sign-in and recovery-email requests did not catch thrown provider/network
+  failures, leaving their buttons indefinitely busy.
+- Recovery-link verification ignored authentication errors, presenting real
+  provider outages as expired links and allowing promise rejection to strand
+  the spinner.
+- Password update treated global sign-out as fire-and-forget. A changed
+  password could therefore redirect to the normal success notice even when
+  the recovery session was not confirmed ended.
+- The server logout and callback routes also ignored returned errors or thrown
+  exchange/sign-out failures.
+- Shared browser error contracts now distinguish invalid credentials and
+  throttling while keeping every other provider response generic. Explicit
+  recovery lookup misses preserve the non-enumerating success response.
+- Login, recovery request, and password update use `try/finally`; email fields
+  are bounded to 320 characters and password fields to 1,024.
+- Recovery verification now distinguishes checking, valid, rejected/expired,
+  provider unavailable, and post-update cleanup-failed states with a retry path.
+- A shared tested cleanup helper attempts global revocation first, falls back
+  to local device cleanup, reports partial cleanup truthfully, and never throws.
+  If both cleanup attempts fail after the password changed, the update form is
+  replaced by explicit sign-out/support guidance so the credential is not
+  changed twice.
+- Callback exchange failures and logout cleanup failures return stable same-
+  origin recovery paths with code/name/status-only diagnostics.
+- Fifteen new contracts bring the suite to 860 tests across 107 files.
+- No recovery email or password mutation was performed during local testing;
+  delivery, one-time link consumption, and signed-in cleanup outcomes still
+  require the dedicated staging mailbox/account fixture.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| `npm ci` | Passed from the lockfile earlier in this continuous session; 0 install-time vulnerabilities |
+| `npm test` | Passed; 107 files, 860 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build and type check |
+| `npm run test:e2e` | Passed; all 40 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+
+### Commit
+
+- Hash: `e887eec`
+- Message: `fix: harden authentication recovery states`
+
+### Next
+
+Run protected probes when their fixture is available. Otherwise audit the
+fetch-based authenticated mutation forms and integration/status UX for false
+success, unresolved loading, or raw backend detail.
 
 ## Session record — 2026-08-03 (P0-BJ / browser account loading integrity)
 
