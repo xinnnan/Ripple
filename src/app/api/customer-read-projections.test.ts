@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import {
+  EXTERNAL_FIELD_SERVICE_ORDER_SELECT,
   EXTERNAL_SITE_SELECT,
+  EXTERNAL_SPARE_PART_REQUEST_SELECT,
   EXTERNAL_TICKET_COMMENT_SELECT,
   INTERNAL_TICKET_COMMENT_SELECT,
 } from "@/lib/resource-projections";
@@ -28,6 +30,7 @@ vi.mock("@/lib/supabase/auth-helpers", () => ({
 vi.mock("@/lib/supabase/scope", () => ({
   getUserScope: getUserScopeMock,
   scopeSites: (query: unknown) => query,
+  scopeSiteRows: (query: unknown) => query,
   scopeTickets: (query: unknown) => query,
 }));
 vi.mock("@/lib/tickets/lookup", () => ({
@@ -36,6 +39,10 @@ vi.mock("@/lib/tickets/lookup", () => ({
 
 import { GET as getSites } from "./sites/route";
 import { GET as getComments } from "./tickets/[ticketId]/comments/route";
+import { GET as getSparePartRequests } from "./spare-part-requests/route";
+import { GET as getSparePartRequest } from "./spare-part-requests/[id]/route";
+import { GET as getFieldServiceOrders } from "./field-service-orders/route";
+import { GET as getFieldServiceOrder } from "./field-service-orders/[id]/route";
 
 type QueryResult = { data: unknown; error: unknown };
 
@@ -174,5 +181,67 @@ describe("authenticated customer query projections", () => {
       "visibility",
       "internal"
     );
+  });
+
+  it("uses the external spare-part projection for list and detail reads", async () => {
+    const listMock = adminClient({
+      spare_part_requests: { data: [], error: null },
+    });
+    createAdminClientMock.mockReturnValueOnce(listMock.client);
+
+    const listResponse = await getSparePartRequests(
+      new NextRequest("http://localhost/api/spare-part-requests")
+    );
+
+    expect(listResponse.status).toBe(200);
+    expect(
+      listMock.queries.get("spare_part_requests")?.select
+    ).toHaveBeenCalledWith(EXTERNAL_SPARE_PART_REQUEST_SELECT);
+
+    const detailMock = adminClient({
+      spare_part_requests: { data: { id: "request-a" }, error: null },
+    });
+    createAdminClientMock.mockReturnValueOnce(detailMock.client);
+
+    const detailResponse = await getSparePartRequest(
+      new NextRequest("http://localhost/api/spare-part-requests/request-a"),
+      { params: Promise.resolve({ id: "request-a" }) }
+    );
+
+    expect(detailResponse.status).toBe(200);
+    expect(
+      detailMock.queries.get("spare_part_requests")?.select
+    ).toHaveBeenCalledWith(EXTERNAL_SPARE_PART_REQUEST_SELECT);
+  });
+
+  it("uses the external field-service projection for list and detail reads", async () => {
+    const listMock = adminClient({
+      field_service_orders: { data: [], error: null },
+    });
+    createAdminClientMock.mockReturnValueOnce(listMock.client);
+
+    const listResponse = await getFieldServiceOrders(
+      new NextRequest("http://localhost/api/field-service-orders")
+    );
+
+    expect(listResponse.status).toBe(200);
+    expect(
+      listMock.queries.get("field_service_orders")?.select
+    ).toHaveBeenCalledWith(EXTERNAL_FIELD_SERVICE_ORDER_SELECT);
+
+    const detailMock = adminClient({
+      field_service_orders: { data: { id: "order-a" }, error: null },
+    });
+    createAdminClientMock.mockReturnValueOnce(detailMock.client);
+
+    const detailResponse = await getFieldServiceOrder(
+      new NextRequest("http://localhost/api/field-service-orders/order-a"),
+      { params: Promise.resolve({ id: "order-a" }) }
+    );
+
+    expect(detailResponse.status).toBe(200);
+    expect(
+      detailMock.queries.get("field_service_orders")?.select
+    ).toHaveBeenCalledWith(EXTERNAL_FIELD_SERVICE_ORDER_SELECT);
   });
 });

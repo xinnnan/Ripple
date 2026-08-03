@@ -9,6 +9,10 @@ import {
 } from "@/lib/field-service/mutations";
 import { fieldServiceOrderForExternal } from "@/lib/resource-visibility";
 import { z } from "zod";
+import {
+  EXTERNAL_FIELD_SERVICE_ORDER_SELECT,
+  INTERNAL_FIELD_SERVICE_ORDER_SELECT,
+} from "@/lib/resource-projections";
 
 export const dynamic = "force-dynamic";
 
@@ -23,16 +27,12 @@ export async function GET(request: NextRequest) {
     const admin = createAdminClient();
     const { searchParams } = new URL(request.url);
 
+    const orderSelect: string = scope.isInternal
+      ? INTERNAL_FIELD_SERVICE_ORDER_SELECT
+      : EXTERNAL_FIELD_SERVICE_ORDER_SELECT;
     let query = admin
       .from("field_service_orders")
-      .select(`
-        *,
-        site:sites(id, site_name, site_code),
-        ticket:tickets(id, ticket_no, title),
-        requester:users!field_service_orders_requested_by_fkey(id, full_name),
-        completer:users!field_service_orders_completed_by_fkey(id, full_name),
-        engineers:field_service_engineers(*, engineer:users(id, full_name, email))
-      `)
+      .select(orderSelect)
       .order("created_at", { ascending: false });
 
     query = scopeSiteRows(query, scope);

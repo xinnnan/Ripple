@@ -52,3 +52,49 @@ export const EXTERNAL_TICKET_DETAIL_SELECT = `
   site:sites(id, site_name, site_code, timezone),
   owner:users!tickets_owner_id_fkey(full_name)
 ` as const;
+
+export const INTERNAL_SPARE_PART_REQUEST_SELECT = `
+  *,
+  site:sites(id, site_name, site_code),
+  ticket:tickets(id, ticket_no, title),
+  requester:users!spare_part_requests_requested_by_fkey(id, full_name),
+  approver:users!spare_part_requests_approved_by_fkey(id, full_name),
+  items:spare_part_request_items(*, spare_part:spare_parts(*))
+` as const;
+
+export const EXTERNAL_SPARE_PART_REQUEST_SELECT = `
+  id, request_no, ticket_id, site_id, status, priority, notes, shipped_at,
+  delivered_at, shipping_carrier, shipping_tracking, created_at, updated_at,
+  site:sites(id, site_name, site_code),
+  ticket:tickets(id, ticket_no, title),
+  items:spare_part_request_items(
+    id, request_id, spare_part_id, quantity, fulfilled_quantity, notes,
+    created_at,
+    spare_part:spare_parts(
+      id, part_number, part_name, description, category, unit,
+      compatible_models, image_url, is_active, created_at, updated_at
+    )
+  )
+` as const;
+
+export const INTERNAL_FIELD_SERVICE_ORDER_SELECT = `
+  *,
+  site:sites(id, site_name, site_code),
+  ticket:tickets(id, ticket_no, title),
+  requester:users!field_service_orders_requested_by_fkey(id, full_name),
+  completer:users!field_service_orders_completed_by_fkey(id, full_name),
+  engineers:field_service_engineers(*, engineer:users(id, full_name, email))
+` as const;
+
+export const EXTERNAL_FIELD_SERVICE_ORDER_SELECT = `
+  id, order_no, ticket_id, site_id, service_type, status, priority, title,
+  description, scheduled_date, scheduled_end_date, estimated_hours,
+  actual_hours, travel_required, completion_report, completed_at, created_at,
+  updated_at,
+  site:sites(id, site_name, site_code),
+  ticket:tickets(id, ticket_no, title),
+  engineers:field_service_engineers(
+    role,
+    engineer:users(id, full_name)
+  )
+` as const;

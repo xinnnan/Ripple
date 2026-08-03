@@ -8,6 +8,10 @@ import {
 } from "@/lib/spare-parts/mutations";
 import { sparePartRequestForExternal } from "@/lib/resource-visibility";
 import { z } from "zod";
+import {
+  EXTERNAL_SPARE_PART_REQUEST_SELECT,
+  INTERNAL_SPARE_PART_REQUEST_SELECT,
+} from "@/lib/resource-projections";
 
 export const dynamic = "force-dynamic";
 
@@ -56,16 +60,12 @@ export async function GET(
     const { id } = await params;
     const admin = createAdminClient();
 
+    const requestSelect: string = scope.isInternal
+      ? INTERNAL_SPARE_PART_REQUEST_SELECT
+      : EXTERNAL_SPARE_PART_REQUEST_SELECT;
     let query = admin
       .from("spare_part_requests")
-      .select(`
-        *,
-        site:sites(id, site_name, site_code),
-        ticket:tickets(id, ticket_no, title),
-        requester:users!spare_part_requests_requested_by_fkey(id, full_name),
-        approver:users!spare_part_requests_approved_by_fkey(id, full_name),
-        items:spare_part_request_items(*, spare_part:spare_parts(*))
-      `)
+      .select(requestSelect)
       .eq("id", id);
     query = scopeSiteRows(query, scope);
     const { data, error } = await query.maybeSingle();

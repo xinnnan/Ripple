@@ -1,9 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
   EXTERNAL_SITE_SELECT,
+  EXTERNAL_FIELD_SERVICE_ORDER_SELECT,
+  EXTERNAL_SPARE_PART_REQUEST_SELECT,
   EXTERNAL_TICKET_DETAIL_SELECT,
   EXTERNAL_TICKET_COMMENT_SELECT,
   INTERNAL_TICKET_DETAIL_SELECT,
+  INTERNAL_FIELD_SERVICE_ORDER_SELECT,
+  INTERNAL_SPARE_PART_REQUEST_SELECT,
   INTERNAL_TICKET_COMMENT_SELECT,
   TICKET_DETAIL_ATTACHMENT_SELECT,
   TICKET_DETAIL_COMMENT_SELECT,
@@ -57,5 +61,38 @@ describe("customer-boundary query projections", () => {
     expect(EXTERNAL_TICKET_DETAIL_SELECT).toContain("customer_visible_summary");
     expect(INTERNAL_TICKET_DETAIL_SELECT).toContain("internal_summary");
     expect(INTERNAL_TICKET_DETAIL_SELECT).toContain("submitter_email");
+  });
+
+  it("selects external spare-part logistics without staff or price fields", () => {
+    expect(EXTERNAL_SPARE_PART_REQUEST_SELECT).not.toContain("*");
+    for (const field of [
+      "total_cost",
+      "approved_by",
+      "requested_by",
+      "unit_price",
+      "approver:",
+      "requester:",
+    ]) {
+      expect(EXTERNAL_SPARE_PART_REQUEST_SELECT).not.toContain(field);
+    }
+    expect(EXTERNAL_SPARE_PART_REQUEST_SELECT).toContain("shipping_tracking");
+    expect(INTERNAL_SPARE_PART_REQUEST_SELECT).toContain("*");
+  });
+
+  it("selects external field-service deliverables without operations data", () => {
+    expect(EXTERNAL_FIELD_SERVICE_ORDER_SELECT).not.toContain("*");
+    for (const field of [
+      "completion_notes",
+      "requested_by",
+      "completed_by",
+      "travel_from",
+      "requester:",
+      "completer:",
+      "email",
+    ]) {
+      expect(EXTERNAL_FIELD_SERVICE_ORDER_SELECT).not.toContain(field);
+    }
+    expect(EXTERNAL_FIELD_SERVICE_ORDER_SELECT).toContain("completion_report");
+    expect(INTERNAL_FIELD_SERVICE_ORDER_SELECT).toContain("*");
   });
 });
