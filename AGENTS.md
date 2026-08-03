@@ -295,7 +295,7 @@ npm run dev
 - `npm run build` — production build
 - `npm run start` — production server
 - `npm run lint` — direct ESLint CLI across the repository; warnings fail the gate
-- `npm test` — Vitest unit/contract suite (469 tests)
+- `npm test` — Vitest unit/contract suite (472 tests)
 - `npm run test:e2e` — 40-check production HTTP smoke plus optional credentialed Playwright/API/RLS matrix; requires a successful build
 - `npm run test:e2e:credentialed` — real six-account/two-tenant matrix; set `RIPPLE_E2E_FIXTURES_FILE`
 - `npm run test:e2e:install-browser` — install the pinned Chromium runtime
@@ -1057,6 +1057,24 @@ legacy timezone strings with a stable UTC fallback, never infer business time
 from a server host, and never derive totals from a presentation-limited list.
 Normalize Supabase relationship shapes at one boundary before rendering.
 
+### Email safety is context-specific
+Found 2026-08-03 while auditing the Resend confirmation and resolution
+templates. Several prose fields were HTML-escaped, but `ticketNo` remained a
+raw HTML interpolation, the tracking URL was assembled by string
+concatenation, and subject values retained CR/LF and other control characters.
+
+Commit `92a3d87` separates pure rendering from provider delivery. Dynamic body
+values use HTML-text escaping, ticket identifiers and secure tokens are encoded
+as URL path/query components before the complete HTTP(S) URL is escaped for an
+HTML attribute, and subject fragments strip ASCII controls and normalize
+whitespace. Adversarial contracts verify markup, style, quote, URL-reserved,
+and full control-range payloads without sending external email.
+
+**Lesson:** escaping is not one universal transformation. Classify every
+interpolation as HTML text, URL component, HTML attribute, or provider header;
+encode from the inside out, test hostile values at each boundary, and keep the
+renderer pure so safety can be verified without external side effects.
+
 ### Supabase SSR auth cookies belong on the response you return
 Found 2026-07-29 while adding password recovery. The authorization-code
 callback created a redirect inside the Supabase `setAll` callback, attached
@@ -1194,13 +1212,16 @@ resume work; this section remains the broader historical summary.
   zero-vulnerability dependency baseline; then made dashboard time/count
   rendering deterministic and updated the `brace-expansion` override to
   patched 5.0.9, bringing the suite to 465 tests; then removed the remaining
-  Slack/ticket-detail Eastern-Time assumption, bringing the suite to 469 tests.
+  Slack/ticket-detail Eastern-Time assumption, bringing the suite to 469
+  tests; then made transactional email HTML, links, and provider subjects
+  context-safe, bringing the suite to 472 tests.
 
 ### Known issues / open work
 | Priority | Item | Where | Notes |
 |---|---|---|---|
 | 🟡 Med | MiniMax AI key invalid (`401 invalid api key (2049)`). | `.env` `MINIMAX_API_KEY` | Mock fallback is in place; real AI works once key is fixed. Provider URL `https://api.minimax.chat/v1/` resolves and returns proper error responses, so the gateway is real — just the key is wrong. |
 | 🟡 Med | Resend sender domain `dropletai.services` not verified | `src/lib/email/send.ts` | Email send returns `send_failed` until domain is verified at resend.com/domains. Ticket creation still works. |
+| ✅ Closed | Transactional email interpolation safety | `src/lib/email/send.ts` | Commit `92a3d87` escapes all dynamic HTML fields, encodes link components, rejects non-HTTP(S) origins, and strips subject control characters with adversarial contracts |
 | ✅ Closed | Dashboard timezone, relation shape, and capped total | `src/app/(auth)/dashboard/page.tsx`, `src/lib/utils.ts` | Commit `0cf4aac` uses each ticket site's validated timezone with UTC fallback, normalizes relation objects/arrays, and counts all customer tickets independently of the recent list |
 | ✅ Closed | Slack/ticket-detail Eastern-Time assumption | `src/lib/slack/blocks/ticket-master.ts`, `src/lib/tickets/outbox.ts`, `src/app/(auth)/tickets/[ticketId]/page.tsx` | Commit `b253558` hydrates and validates the ticket site's timezone for initial/retried/refreshed Slack cards and ticket detail, with deterministic UTC fallback |
 | 🟡 Med | `/settings` is read-only integration status | `src/app/(auth)/settings/page.tsx` | Add notification preferences, user timezone, and theme controls |
@@ -1345,6 +1366,11 @@ resume work; this section remains the broader historical summary.
     and durable outbox paths hydrate `sites.timezone`; the builder normalizes
     relation shapes and shares the validated UTC-fallback resolver with ticket
     detail. Four tests bring the suite to 469; all quality gates are green.
+37. **Harden transactional email rendering.** Commit `92a3d87` extracts pure
+    confirmation/resolution builders, escapes every dynamic HTML field,
+    constructs HTTP(S) tracking links with encoded path/query components, and
+    strips provider-subject controls. Three adversarial tests bring the suite
+    to 472; all quality gates are green.
 
 ### Open architectural questions
 - The RLS recursion bug surfaces a bigger question: do we keep `createAdminClient() + code filter` (the current pattern in `lib/supabase/scope.ts`) or move back to proper RLS once migration 019 + similar fixes are in place? The current pattern scales fine but has a lower safety margin for new queries.

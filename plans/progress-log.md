@@ -8,10 +8,10 @@ meaningful change and before ending a work session. Newest entries go first.
 - **Branch:** `codex/prd-v1-1-gap-closure`
 - **Active phase:** Phase 0 — Containment and reproducible baseline
 - **Active work item:** run protected migrations 028–031 business probes when
-  the staging fixture becomes available; otherwise audit outbound email HTML
-  interpolation and close any remaining unescaped dynamic-field boundary as
-  the next locally executable checkpoint
-- **Last verified implementation commit:** `b253558` (`fix: make Slack timestamps site-aware`)
+  the staging fixture becomes available; otherwise audit the conditional
+  production-readiness contract for public email links and provider settings
+  as the next locally executable checkpoint
+- **Last verified implementation commit:** `92a3d87` (`fix: harden transactional email rendering`)
 - **Uncommitted work:** none expected after the documentation checkpoint;
   verify with `git status` before resuming
 - **Deployment gate:** migrations 001–046 are confirmed applied. Migration 044
@@ -64,10 +64,10 @@ meaningful change and before ending a work session. Newest entries go first.
   dedicated staging mailbox.
 - **Exact next local step:** check whether the protected credential fixture is
   available and, if so, run the migration 028–031 business probes plus the new
-  malformed-body HTTP checks. If it remains unavailable, audit every outbound
-  email HTML interpolation and add one shared escaping contract for any dynamic
-  fields that remain unsafe. Configure `CRON_SECRET` separately before
-  production worker activation
+  malformed-body HTTP checks. If it remains unavailable, audit readiness so a
+  configured production email provider cannot silently emit localhost or
+  invalid public links. Configure `CRON_SECRET` separately before production
+  worker activation
 - **Primary plan:** [`plans/prd-v1.1-gap-closure-plan.md`](./prd-v1.1-gap-closure-plan.md)
 
 ## Overall project status — 2026-08-03
@@ -77,7 +77,7 @@ meaningful change and before ending a work session. Newest entries go first.
 - Against the full PRD v1.1 capability map, 17 domains remain
   **Partial** or **Unsafe/Partial** and seven remain **Absent**. No full PRD
   capability domain is yet honestly complete end to end.
-- The local deterministic baseline is green at 469 unit/contract tests, 40
+- The local deterministic baseline is green at 472 unit/contract tests, 40
   production HTTP smoke checks, a production build, zero-warning lint, and
   zero known dependency vulnerabilities.
 - Phase 0 cannot be declared exited until the protected six-account/two-tenant
@@ -89,6 +89,50 @@ meaningful change and before ending a work session. Newest entries go first.
   queues/routing, business-calendar SLA clocks, remote support, appointments,
   assets/entitlements, search/knowledge, i18n, versioned external APIs, and
   production SRE/recovery evidence.
+
+## Session record — 2026-08-03 (P0-AO / safe transactional email rendering)
+
+### Objective
+
+Close the remaining dynamic-field injection boundary in confirmation and
+resolution emails without changing durable outbox or provider-failure
+semantics.
+
+### Finding and implementation
+
+- The templates escaped ticket titles and most prose fields, but interpolated
+  `ticketNo` directly into HTML, constructed `href` values by string
+  concatenation, and placed ticket numbers/titles into subjects without
+  removing control characters.
+- Commit `92a3d87` separates pure rendering from delivery, HTML-escapes every
+  dynamic body field, builds links with encoded path/query components, permits
+  only HTTP(S) public origins, and HTML-escapes the completed attribute value.
+- Provider subjects now remove every ASCII control character and normalize
+  whitespace, preventing CR/LF header injection while preserving readable
+  ticket context.
+- Three adversarial tests cover markup/style injection, quote-based attribute
+  breakout, reserved URL characters, exact round-trip link components, and
+  the full ASCII control range. Existing outbox tests continue to prove the
+  provider-idempotency contract.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| `npm ci` | Passed from the lockfile; 0 install-time vulnerabilities |
+| `npm test` | Passed; 69 files, 472 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build |
+| `npm run test:e2e` | Passed; all 40 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+
+### Next
+
+Run protected migration and malformed-body probes when the credential fixture
+is available. Otherwise audit conditional readiness for the public application
+origin and Resend configuration; sender-domain verification remains an
+external activation step.
 
 ## Session record — 2026-08-03 (P0-AN / site-aware Slack timestamps)
 

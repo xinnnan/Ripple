@@ -66,7 +66,7 @@ The correct approach is therefore:
 
 | Gate | Result through 2026-08-03 | Meaning |
 |---|---|---|
-| Unit tests | 469/469 passed | Scope, lifecycle and exhaustive ticket-transition guards, atomic ticket/customer/catalog/inventory/attachment creation and updates, attachment content and storage-key validation, direct-write privilege containment, durable public-rate-limit/share-view contracts, notification outbox leases/idempotency/retry contracts, tenant-safe site/user/customer/SLA/catalog/inventory administration, secure user provisioning and membership containment, qualified-SQL-expression repair, visibility, auth recovery/redirects, public/responsive/admin UI contracts, deterministic site-timezone dashboard and Slack rendering with exact totals, Slack authentication/configuration/action filtering and direct AI-service invocation, readiness, CI policy, filters, SLA, fixture validation, migration/RPC contracts, spare-part, field-service, and team-access transaction containment, DATE handling, and audit coverage is green |
+| Unit tests | 472/472 passed | Scope, lifecycle and exhaustive ticket-transition guards, atomic ticket/customer/catalog/inventory/attachment creation and updates, attachment content and storage-key validation, direct-write privilege containment, durable public-rate-limit/share-view contracts, notification outbox leases/idempotency/retry contracts, context-safe transactional email rendering, tenant-safe site/user/customer/SLA/catalog/inventory administration, secure user provisioning and membership containment, qualified-SQL-expression repair, visibility, auth recovery/redirects, public/responsive/admin UI contracts, deterministic site-timezone dashboard and Slack rendering with exact totals, Slack authentication/configuration/action filtering and direct AI-service invocation, readiness, CI policy, filters, SLA, fixture validation, migration/RPC contracts, spare-part, field-service, and team-access transaction containment, DATE handling, and audit coverage is green |
 | Lint | Passed, no warnings | Direct ESLint CLI with zero-warning enforcement and generated-artifact ignores |
 | Production build | Passed on Next.js 15.5.22 | Environment-free build is reproducible |
 | Dependency audit | 0 vulnerabilities | Patched direct/transitive versions are lockfile-pinned and compatibility-tested |
@@ -95,7 +95,7 @@ has a release-blocking security or integrity problem.
 | Appointment / Dispatch | Absent | No appointment object, preferred windows, conflict checks, reminders, reschedule/no-show logic, or dispatch calendar engine |
 | Parts / RMA | Partial | Atomic request creation/update, catalog, and inventory commands are deployed/live-verified; approval policy, reservations, consumption, and RMA remain |
 | Assets / Entitlements | Absent | Ticket `asset_id` is free text; no hierarchy, lifecycle, versions, contracts, or coverage decision |
-| Communication / Email | Partial | Confirmation and resolution email are outbox-backed and provider-idempotent; recipient resolution, versioned templates, preferences, localization, and a unified communication model remain |
+| Communication / Email | Partial | Confirmation and resolution email are outbox-backed, provider-idempotent, and context-safe across HTML text, URL attributes, and provider subjects; recipient resolution, versioned templates, preferences, localization, and a unified communication model remain |
 | File Service | Partial | `03499f9` plus deployed migration 044 add magic-byte/text/container checks, canonical MIME, environment/tenant/ticket-bound keys, null guest attribution, and atomic metadata/timeline handling; its 130-assertion live matrix is green. Malware scanning, quarantine, checksums, retention, and durable ambiguous-outcome reconciliation remain |
 | Search / Knowledge | Absent | No permission-aware index, degradation mode, related history, KB lifecycle, or feedback |
 | Notifications / Templates | Partial | Durable ticket creation/update/resolution delivery records/retry/dead-letter are committed; template versioning, locale fallback, preferences, and in-app inbox remain |
@@ -166,7 +166,6 @@ has a release-blocking security or integrity problem.
   reconciliation queue for ambiguous cross-system attachment outcomes remain.
 - Direct admin-client page queries can reintroduce hidden-field leaks even when
   the JSON API is sanitized.
-- Email templates do not escape every organization/site field.
 - README, architecture notes, migration counts, test counts, role names, and
   AI-provider notes are stale in several documents.
 
@@ -562,6 +561,13 @@ Every implementation slice must:
     fallback. Protected ticket detail now uses the same resolver. Four tests
     bring the suite to 469; the 40-check smoke, production build, lint, and
     dependency audit are green.
-39. **Next local integrity work:** run protected positive/rollback probes when
-    fixtures are available; otherwise audit outbound email HTML interpolation
-    and close any remaining unescaped dynamic-field boundary.
+39. **P0-AO — closed in `92a3d87`:** Confirmation and resolution rendering is
+    now pure and context-aware. Every dynamic HTML field is escaped, ticket
+    links use encoded path/query components plus an HTTP(S)-only origin, and
+    provider subjects strip control characters and normalize whitespace. Three
+    adversarial tests bring the suite to 472; the 40-check smoke, production
+    build, lint, and dependency audit are green.
+40. **Next local integrity work:** run protected positive/rollback probes when
+    fixtures are available; otherwise audit conditional production readiness
+    so configured email delivery cannot silently emit localhost or invalid
+    public links.
