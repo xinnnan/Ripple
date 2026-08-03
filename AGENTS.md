@@ -260,8 +260,10 @@ if ("error" in auth) return NextResponse.json({ error: auth.error }, { status: a
 - All `TIMESTAMPTZ` in DB; never store local time
 - Each `sites` row has its own `timezone` field (select via `COMMON_TIMEZONES` in `src/lib/utils.ts:37`)
 - `formatDate()` in `src/lib/utils.ts:20` accepts an optional timezone arg
-- **Ticket detail page uses `site.timezone`** for display (`src/app/(auth)/tickets/[ticketId]/page.tsx:58`)
-- **TODO:** the dashboard uses the server's local timezone, not the user's — needs fixing
+- Ticket detail, dashboard recent rows, and Slack master cards use the ticket's
+  validated `site.timezone`; missing/invalid legacy values fall back to UTC
+- Never append a fixed `ET`/zone label or derive operational display time from
+  the deployment host
 
 ### Error handling
 - API: return `{ error: "..." }` with appropriate status; Zod errors include `details: error.errors`
@@ -293,7 +295,7 @@ npm run dev
 - `npm run build` — production build
 - `npm run start` — production server
 - `npm run lint` — direct ESLint CLI across the repository; warnings fail the gate
-- `npm test` — Vitest unit/contract suite (465 tests)
+- `npm test` — Vitest unit/contract suite (469 tests)
 - `npm run test:e2e` — 40-check production HTTP smoke plus optional credentialed Playwright/API/RLS matrix; requires a successful build
 - `npm run test:e2e:credentialed` — real six-account/two-tenant matrix; set `RIPPLE_E2E_FIXTURES_FILE`
 - `npm run test:e2e:install-browser` — install the pinned Chromium runtime
@@ -1043,6 +1045,12 @@ independent exact count. Signed-in browser QA at 1280×720 and 390×844 verified
 real relationship labels, site-local timestamps, Inter, responsive fit, and
 zero browser warnings/errors.
 
+Commit `b253558` extends that same contract to Slack. Initial card delivery,
+outbox retries, and action refresh hydration now select `sites.timezone`; the
+Block Kit builder normalizes customer/site/owner relation shapes before using
+the shared resolver and no longer appends a fixed `ET`. Protected ticket detail
+also uses the validated resolver instead of a New York fallback.
+
 **Lesson:** an operational instant needs an explicit display-timezone owner.
 Use the resource/site timezone when the event belongs to a site, validate
 legacy timezone strings with a stable UTC fallback, never infer business time
@@ -1185,7 +1193,8 @@ resume work; this section remains the broader historical summary.
   public-rate-limit ordering, with 457 unit/contract tests plus a
   zero-vulnerability dependency baseline; then made dashboard time/count
   rendering deterministic and updated the `brace-expansion` override to
-  patched 5.0.9, bringing the suite to 465 tests.
+  patched 5.0.9, bringing the suite to 465 tests; then removed the remaining
+  Slack/ticket-detail Eastern-Time assumption, bringing the suite to 469 tests.
 
 ### Known issues / open work
 | Priority | Item | Where | Notes |
@@ -1193,6 +1202,7 @@ resume work; this section remains the broader historical summary.
 | 🟡 Med | MiniMax AI key invalid (`401 invalid api key (2049)`). | `.env` `MINIMAX_API_KEY` | Mock fallback is in place; real AI works once key is fixed. Provider URL `https://api.minimax.chat/v1/` resolves and returns proper error responses, so the gateway is real — just the key is wrong. |
 | 🟡 Med | Resend sender domain `dropletai.services` not verified | `src/lib/email/send.ts` | Email send returns `send_failed` until domain is verified at resend.com/domains. Ticket creation still works. |
 | ✅ Closed | Dashboard timezone, relation shape, and capped total | `src/app/(auth)/dashboard/page.tsx`, `src/lib/utils.ts` | Commit `0cf4aac` uses each ticket site's validated timezone with UTC fallback, normalizes relation objects/arrays, and counts all customer tickets independently of the recent list |
+| ✅ Closed | Slack/ticket-detail Eastern-Time assumption | `src/lib/slack/blocks/ticket-master.ts`, `src/lib/tickets/outbox.ts`, `src/app/(auth)/tickets/[ticketId]/page.tsx` | Commit `b253558` hydrates and validates the ticket site's timezone for initial/retried/refreshed Slack cards and ticket detail, with deterministic UTC fallback |
 | 🟡 Med | `/settings` is read-only integration status | `src/app/(auth)/settings/page.tsx` | Add notification preferences, user timezone, and theme controls |
 | ✅ Verified | Migration 046 durable public rate limits | `supabase/migrations/046_durable_public_rate_limits.sql` | Applied 2026-08-02; 77 live assertions covered grants, constraints, concurrency, reset/retention, bounded cleanup, real HTTP limits/lifecycle, and zero residue |
 | 🟡 Med | Exact site-code validation remains an existence oracle | `/api/sites/validate` | Responses are minimal and migration 046 enforces 20 checks/minute/IP across instances, but full anti-enumeration still requires CAPTCHA, an invitation/intake token, or authenticated submission |
@@ -1330,6 +1340,11 @@ resume work; this section remains the broader historical summary.
     mobile browser QA and the 40-check production smoke are green. The same
     checkpoint updates `brace-expansion` to patched 5.0.9 after
     GHSA-rgw5-rvv9-x895 was disclosed, restoring a zero-vulnerability audit.
+36. **Make Slack timestamps site-aware.** Commit `b253558` removes the fixed
+    Eastern-Time renderer from Slack master cards. Creation, action refresh,
+    and durable outbox paths hydrate `sites.timezone`; the builder normalizes
+    relation shapes and shares the validated UTC-fallback resolver with ticket
+    detail. Four tests bring the suite to 469; all quality gates are green.
 
 ### Open architectural questions
 - The RLS recursion bug surfaces a bigger question: do we keep `createAdminClient() + code filter` (the current pattern in `lib/supabase/scope.ts`) or move back to proper RLS once migration 019 + similar fixes are in place? The current pattern scales fine but has a lower safety margin for new queries.

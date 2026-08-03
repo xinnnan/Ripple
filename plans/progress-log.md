@@ -8,10 +8,10 @@ meaningful change and before ending a work session. Newest entries go first.
 - **Branch:** `codex/prd-v1-1-gap-closure`
 - **Active phase:** Phase 0 — Containment and reproducible baseline
 - **Active work item:** run protected migrations 028–031 business probes when
-  the staging fixture becomes available; otherwise audit and remove the
-  remaining hard-coded Slack timestamp timezone as the next locally executable
-  checkpoint
-- **Last verified implementation commit:** `0cf4aac` (`fix: harden dashboard metrics and dependency baseline`)
+  the staging fixture becomes available; otherwise audit outbound email HTML
+  interpolation and close any remaining unescaped dynamic-field boundary as
+  the next locally executable checkpoint
+- **Last verified implementation commit:** `b253558` (`fix: make Slack timestamps site-aware`)
 - **Uncommitted work:** none expected after the documentation checkpoint;
   verify with `git status` before resuming
 - **Deployment gate:** migrations 001–046 are confirmed applied. Migration 044
@@ -64,9 +64,9 @@ meaningful change and before ending a work session. Newest entries go first.
   dedicated staging mailbox.
 - **Exact next local step:** check whether the protected credential fixture is
   available and, if so, run the migration 028–031 business probes plus the new
-  malformed-body HTTP checks. If it remains unavailable, audit the remaining
-  hard-coded Slack timestamp timezone and move Slack rendering onto an explicit
-  resource/site timezone contract. Configure `CRON_SECRET` separately before
+  malformed-body HTTP checks. If it remains unavailable, audit every outbound
+  email HTML interpolation and add one shared escaping contract for any dynamic
+  fields that remain unsafe. Configure `CRON_SECRET` separately before
   production worker activation
 - **Primary plan:** [`plans/prd-v1.1-gap-closure-plan.md`](./prd-v1.1-gap-closure-plan.md)
 
@@ -77,7 +77,7 @@ meaningful change and before ending a work session. Newest entries go first.
 - Against the full PRD v1.1 capability map, 17 domains remain
   **Partial** or **Unsafe/Partial** and seven remain **Absent**. No full PRD
   capability domain is yet honestly complete end to end.
-- The local deterministic baseline is green at 465 unit/contract tests, 40
+- The local deterministic baseline is green at 469 unit/contract tests, 40
   production HTTP smoke checks, a production build, zero-warning lint, and
   zero known dependency vulnerabilities.
 - Phase 0 cannot be declared exited until the protected six-account/two-tenant
@@ -89,6 +89,49 @@ meaningful change and before ending a work session. Newest entries go first.
   queues/routing, business-calendar SLA clocks, remote support, appointments,
   assets/entitlements, search/knowledge, i18n, versioned external APIs, and
   production SRE/recovery evidence.
+
+## Session record — 2026-08-03 (P0-AN / site-aware Slack timestamps)
+
+### Objective
+
+Remove the remaining Eastern-Time assumption from Slack ticket cards and make
+initial posts, retries, action refreshes, and protected ticket detail use the
+same resource-owned timezone contract.
+
+### Finding and implementation
+
+- The Slack master-card builder formatted every created/updated instant in
+  `America/New_York` and appended `ET`, regardless of the ticket's site.
+- The durable outbox reload did not select `sites.timezone`, so correcting only
+  the formatter would have produced UTC during delivery and retries.
+- Commit `b253558` hydrates the site timezone through creation, action refresh,
+  and outbox paths; the Block Kit builder validates that IANA value through the
+  shared resolver and falls back deterministically to UTC.
+- The builder also normalizes Supabase object/array relationship shapes before
+  rendering customer, site, owner, and timezone fields. Ticket detail now uses
+  the same validated site-timezone resolver instead of a New York fallback.
+- Four new tests cover a Los Angeles timestamp crossing the calendar-date
+  boundary, invalid legacy fallback, relationship-shape rendering, every Slack
+  hydration path, absence of the hard-coded Eastern renderer, and ticket-detail
+  contract wiring.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| `npm ci` | Passed from the lockfile; 0 install-time vulnerabilities |
+| `npm test` | Passed; 68 files, 469 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build |
+| `npm run test:e2e` | Passed; all 40 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+
+### Next
+
+Run the protected migration 028–031 and malformed-body HTTP probes when the
+credential fixture becomes available. If it remains unavailable, audit email
+HTML interpolation and close any unescaped customer/site/dynamic-field path.
 
 ## Session record — 2026-08-03 (P0-AM / deterministic dashboard metrics)
 

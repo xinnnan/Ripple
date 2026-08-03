@@ -66,7 +66,7 @@ The correct approach is therefore:
 
 | Gate | Result through 2026-08-03 | Meaning |
 |---|---|---|
-| Unit tests | 465/465 passed | Scope, lifecycle and exhaustive ticket-transition guards, atomic ticket/customer/catalog/inventory/attachment creation and updates, attachment content and storage-key validation, direct-write privilege containment, durable public-rate-limit/share-view contracts, notification outbox leases/idempotency/retry contracts, tenant-safe site/user/customer/SLA/catalog/inventory administration, secure user provisioning and membership containment, qualified-SQL-expression repair, visibility, auth recovery/redirects, public/responsive/admin UI contracts, deterministic site-timezone dashboard rendering and exact totals, Slack authentication/configuration/action filtering and direct AI-service invocation, readiness, CI policy, filters, SLA, fixture validation, migration/RPC contracts, spare-part, field-service, and team-access transaction containment, DATE handling, and audit coverage is green |
+| Unit tests | 469/469 passed | Scope, lifecycle and exhaustive ticket-transition guards, atomic ticket/customer/catalog/inventory/attachment creation and updates, attachment content and storage-key validation, direct-write privilege containment, durable public-rate-limit/share-view contracts, notification outbox leases/idempotency/retry contracts, tenant-safe site/user/customer/SLA/catalog/inventory administration, secure user provisioning and membership containment, qualified-SQL-expression repair, visibility, auth recovery/redirects, public/responsive/admin UI contracts, deterministic site-timezone dashboard and Slack rendering with exact totals, Slack authentication/configuration/action filtering and direct AI-service invocation, readiness, CI policy, filters, SLA, fixture validation, migration/RPC contracts, spare-part, field-service, and team-access transaction containment, DATE handling, and audit coverage is green |
 | Lint | Passed, no warnings | Direct ESLint CLI with zero-warning enforcement and generated-artifact ignores |
 | Production build | Passed on Next.js 15.5.22 | Environment-free build is reproducible |
 | Dependency audit | 0 vulnerabilities | Patched direct/transitive versions are lockfile-pinned and compatibility-tested |
@@ -167,7 +167,6 @@ has a release-blocking security or integrity problem.
 - Direct admin-client page queries can reintroduce hidden-field leaks even when
   the JSON API is sanitized.
 - Email templates do not escape every organization/site field.
-- Slack timestamps are hard-coded to Eastern Time.
 - README, architecture notes, migration counts, test counts, role names, and
   AI-provider notes are stale in several documents.
 
@@ -556,6 +555,13 @@ Every implementation slice must:
     desktop/mobile browser QA and the 40-check smoke are green. The same
     checkpoint moves `brace-expansion` to patched 5.0.9 after
     GHSA-rgw5-rvv9-x895, restoring the zero-vulnerability audit.
-38. **Next local integrity work:** run protected positive/rollback probes when
-    fixtures are available; otherwise remove the remaining hard-coded Slack
-    timestamp timezone and cover the explicit site/resource timezone contract.
+38. **P0-AN — closed in `b253558`:** Slack ticket cards no longer force
+    Eastern Time. Creation, action refresh, and durable outbox hydration carry
+    `sites.timezone`; the renderer normalizes live relation shapes and formats
+    created/updated instants in the validated ticket-site timezone with UTC
+    fallback. Protected ticket detail now uses the same resolver. Four tests
+    bring the suite to 469; the 40-check smoke, production build, lint, and
+    dependency audit are green.
+39. **Next local integrity work:** run protected positive/rollback probes when
+    fixtures are available; otherwise audit outbound email HTML interpolation
+    and close any remaining unescaped dynamic-field boundary.
