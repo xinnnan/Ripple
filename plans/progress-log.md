@@ -8,9 +8,9 @@ meaningful change and before ending a work session. Newest entries go first.
 - **Branch:** `codex/prd-v1-1-gap-closure`
 - **Active phase:** Phase 0 — Containment and reproducible baseline
 - **Active work item:** run protected migrations 028–031 business probes when
-  the staging fixture becomes available; otherwise contain malformed and
-  grammar-sensitive ticket-list filters before they reach PostgREST
-- **Last verified implementation commit:** `bef2323` (`fix: harden ticket CSV export`)
+  the staging fixture becomes available; otherwise validate and scope the
+  remaining customer-capable service/site list filters before PostgREST access
+- **Last verified implementation commit:** `38f8b5e` (`fix: contain ticket list reads`)
 - **Uncommitted work:** none expected after the documentation checkpoint;
   verify with `git status` before resuming
 - **Deployment gate:** migrations 001–046 are confirmed applied. Migration 044
@@ -63,9 +63,9 @@ meaningful change and before ending a work session. Newest entries go first.
   dedicated staging mailbox.
 - **Exact next local step:** check whether the protected credential fixture is
   available and, if so, run the migration 028–031 business probes plus the new
-  malformed-body HTTP checks. If it remains unavailable, validate and contain
-  the authenticated ticket-list search/filter contract before constructing
-  PostgREST expressions. Configure `CRON_SECRET` separately before production
+  malformed-body HTTP checks. If it remains unavailable, add strict,
+  scope-aware filter contracts to customer-capable spare-part, field-service,
+  and site list GETs. Configure `CRON_SECRET` separately before production
   worker activation
 - **Primary plan:** [`plans/prd-v1.1-gap-closure-plan.md`](./prd-v1.1-gap-closure-plan.md)
 
@@ -76,7 +76,7 @@ meaningful change and before ending a work session. Newest entries go first.
 - Against the full PRD v1.1 capability map, 17 domains remain
   **Partial** or **Unsafe/Partial** and seven remain **Absent**. No full PRD
   capability domain is yet honestly complete end to end.
-- The local deterministic baseline is green at 561 unit/contract tests, 40
+- The local deterministic baseline is green at 611 unit/contract tests, 40
   production HTTP smoke checks, a production build, zero-warning lint, and
   zero known dependency vulnerabilities.
 - Phase 0 cannot be declared exited until the protected six-account/two-tenant
@@ -88,6 +88,54 @@ meaningful change and before ending a work session. Newest entries go first.
   queues/routing, business-calendar SLA clocks, remote support, appointments,
   assets/entitlements, search/knowledge, i18n, versioned external APIs, and
   production SRE/recovery evidence.
+
+## Session record — 2026-08-03 (P0-AU / ticket-list read containment)
+
+### Objective
+
+Prevent malformed or ambiguous authenticated ticket-list filters from reaching
+PostgREST, and remove the remaining customer ticket-list wildcard hydration.
+
+### Finding and implementation
+
+- The authenticated page cast arbitrary status/severity values, accepted
+  opaque IDs and permissive `parseInt` pages, and interpolated search content
+  into PostgREST `or` grammar after escaping only SQL wildcards. Its strict
+  shared parser now validates known keys, enums, UUIDs, singleton ambiguity,
+  bounded integer pages, and a 200-character grammar-safe search contract.
+- Invalid page filters stop before service-role client construction and render
+  a clearable error with zero rows. The CSV action is suppressed in that state,
+  preventing sanitized parameters from producing a silently broader export.
+- Ticket page and CSV export now share one guarded search-expression builder;
+  percent/underscore remain literal via escaping, while PostgREST structural
+  characters and controls are rejected. Export parsing also rejects unknown
+  and duplicated singleton parameters.
+- `GET /api/tickets` previously selected `tickets.*` for customer roles and
+  removed six fields after retrieval. It now selects a customer allow-list at
+  query time, retains the internal projection only for internal roles, strictly
+  validates status/severity/UUID/limit filters, authorizes customer/site
+  filters before client construction, contains database detail, and returns
+  private/no-store data.
+- Fifty new parser/search/projection/real-handler/source contracts bring the
+  suite to 611.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| `npm ci` | Passed from the lockfile earlier in this continuous session; 0 install-time vulnerabilities |
+| `npm test` | Passed; 83 files, 611 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build and type check |
+| `npm run test:e2e` | Passed; all 40 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+
+### Next
+
+Run protected probes when their fixture is available. Otherwise extend strict,
+scope-aware filter parsing and private/no-store delivery to the customer-
+capable spare-part-request, field-service-order, and site list endpoints.
 
 ## Session record — 2026-08-03 (P0-AT / ticket CSV export containment)
 

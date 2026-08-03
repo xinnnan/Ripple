@@ -295,7 +295,7 @@ npm run dev
 - `npm run build` — production build
 - `npm run start` — production server
 - `npm run lint` — direct ESLint CLI across the repository; warnings fail the gate
-- `npm test` — Vitest unit/contract suite (561 tests)
+- `npm test` — Vitest unit/contract suite (611 tests)
 - `npm run test:e2e` — 40-check production HTTP smoke plus optional credentialed Playwright/API/RLS matrix; requires a successful build
 - `npm run test:e2e:credentialed` — real six-account/two-tenant matrix; set `RIPPLE_E2E_FIXTURES_FILE`
 - `npm run test:e2e:install-browser` — install the pinned Chromium runtime
@@ -1168,6 +1168,23 @@ as well as LF, and test hostile cell values. Treat the UI and handler filter
 contract as one API: validate it centrally, reject ambiguous aliases, and do
 not silently turn malformed filters into broader exports.
 
+### Read filters are part of the authorization boundary
+Found 2026-08-03 while following CSV filter parity back into authenticated
+ticket lists. The page cast arbitrary enums/identifiers and interpolated search
+content into a PostgREST `or` expression; the ticket API accepted permissive
+numeric input and still fetched `tickets.*` for customers before redaction.
+
+Commit `38f8b5e` adds strict page/API parsers, a shared guarded search builder,
+and an explicit external ticket-list projection. Invalid page filters stop
+before service-role client construction, show zero rows with a clear action,
+and disable export; out-of-scope API filters return 403 before query creation.
+
+**Lesson:** a malformed read filter must not become a broader read. Validate
+known keys, duplicate singleton parameters, enum/UUID shape, pagination bounds,
+and query-language grammar before a privileged client is created. Authorize
+resource filters independently of base scope, select customer-safe columns at
+query time, and mark authenticated list responses private/no-store.
+
 ---
 
 ## 10. Current State & Roadmap
@@ -1284,7 +1301,9 @@ resume work; this section remains the broader historical summary.
   while retaining response shaping, bringing the suite to 533 tests; then
   hardened ticket CSV export against spreadsheet formulas, relation-shape
   drift, filter-contract mismatch, PostgREST grammar hazards, and database
-  detail leakage, bringing the suite to 561 tests.
+  detail leakage, bringing the suite to 561 tests; then strictly contained
+  authenticated ticket page/API filters and removed customer `tickets.*`
+  hydration, bringing the suite to 611 tests.
 
 ### Known issues / open work
 | Priority | Item | Where | Notes |
@@ -1299,6 +1318,7 @@ resume work; this section remains the broader historical summary.
 | ✅ Closed | Authenticated ticket/comment/site hidden-field reads | `src/lib/resource-projections.ts`, `/tickets/[ticketId]`, `/api/tickets/[ticketId]/comments`, `/api/sites` | Commit `d276ede` applies role-specific query allow-lists and prevents internal summaries, staff identifiers/metadata, Slack routing, and attachment storage metadata from entering customer responses or React client props |
 | ✅ Closed | External service-resource wildcard hydration | `src/lib/resource-projections.ts`, `/api/spare-part-requests`, `/api/field-service-orders` | Commit `2c4faad` applies external list/detail allow-lists before retrieval, excluding price/staff attribution and internal completion/travel/assignment fields while retaining response shaping as defense in depth |
 | ✅ Closed | Ticket CSV active-content and filter-contract exposure | `src/lib/tickets/csv-export.ts`, `src/lib/tickets/export-filters.ts`, `/api/tickets/export` | Commit `bef2323` neutralizes spreadsheet formulas, normalizes relationship shapes, validates/applies canonical role-aware filters, contains PostgREST grammar, hides database detail, and sends private/no-store UTF-8 CSV |
+| ✅ Closed | Ticket-list filter and wildcard-read exposure | `src/lib/tickets/search-filter.ts`, `src/lib/tickets/api-list-filters.ts`, `/tickets`, `/api/tickets` | Commit `38f8b5e` validates page/API filter grammar and scope before service-role access, disables broadened invalid-filter export, uses an external query-time allow-list, and returns private/no-store list data |
 | 🟡 Med | `/settings` is read-only integration status | `src/app/(auth)/settings/page.tsx` | Add notification preferences, user timezone, and theme controls |
 | ✅ Verified | Migration 046 durable public rate limits | `supabase/migrations/046_durable_public_rate_limits.sql` | Applied 2026-08-02; 77 live assertions covered grants, constraints, concurrency, reset/retention, bounded cleanup, real HTTP limits/lifecycle, and zero residue |
 | 🟡 Med | Exact site-code validation remains an existence oracle | `/api/sites/validate` | Responses are minimal and migration 046 enforces 20 checks/minute/IP across instances, but full anti-enumeration still requires CAPTCHA, an invitation/intake token, or authenticated submission |
@@ -1471,6 +1491,11 @@ resume work; this section remains the broader historical summary.
     conflict handling, PostgREST search containment, generic database errors,
     and private/no-store UTF-8 delivery. Twenty-eight tests bring the suite to
     561; all deterministic quality gates are green.
+43. **Contain ticket-list reads.** Commit `38f8b5e` adds strict page/API filter
+    parsing, shared guarded PostgREST search construction, invalid-filter
+    zero-result/export suppression, scope-aware API filters, and a customer
+    query-time ticket allow-list. Fifty tests bring the suite to 611; all
+    deterministic quality gates are green.
 
 ### Open architectural questions
 - The RLS recursion bug surfaces a bigger question: do we keep `createAdminClient() + code filter` (the current pattern in `lib/supabase/scope.ts`) or move back to proper RLS once migration 019 + similar fixes are in place? The current pattern scales fine but has a lower safety margin for new queries.
