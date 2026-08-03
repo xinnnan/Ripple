@@ -295,7 +295,7 @@ npm run dev
 - `npm run build` — production build
 - `npm run start` — production server
 - `npm run lint` — direct ESLint CLI across the repository; warnings fail the gate
-- `npm test` — Vitest unit/contract suite (517 tests)
+- `npm test` — Vitest unit/contract suite (529 tests)
 - `npm run test:e2e` — 40-check production HTTP smoke plus optional credentialed Playwright/API/RLS matrix; requires a successful build
 - `npm run test:e2e:credentialed` — real six-account/two-tenant matrix; set `RIPPLE_E2E_FIXTURES_FILE`
 - `npm run test:e2e:install-browser` — install the pinned Chromium runtime
@@ -411,6 +411,21 @@ organization site; customers receive only active assigned sites. This matters
 especially for `createAdminClient()` queries because the service role bypasses
 both RLS and lifecycle policies. The canonical audited implementation is
 `src/lib/team/read-model.ts` (commit `67ce908`).
+
+### Conditional rendering is not a server-component data boundary
+
+Found 2026-08-03 in authenticated ticket detail. The page hid
+`internal_summary` for customer roles but passed the real value, along with an
+assigned engineer UUID, into a client component whose own JSX later decided
+not to display internal controls. Client-component props are serialized in the
+React server payload, so the hidden values still crossed the browser boundary.
+
+**Lesson:** service-role reads for customer-capable pages need role-specific
+query-time projections, and client props must independently contain sensitive
+values. Commit `d276ede` centralizes audited customer projections for ticket,
+comment, attachment, and site reads; future service-role customer paths should
+extend `src/lib/resource-projections.ts` instead of fetching `*` and hiding
+fields after retrieval.
 
 ### Audit-driven fixes work
 The `plans/e2e-audit-and-test-plan.md` from 2026-05-23 was the most productive doc — surfaced 12 issues (2 critical, 5 medium, 4 low) and we shipped 7 fixes in commit `a62c043`. **Run a similar audit before any major phase** (Phase 4, etc.).
@@ -1244,7 +1259,9 @@ resume work; this section remains the broader historical summary.
   readiness and execution-time configuration guards, bringing the suite to
   509 tests; then aligned customer-manager presentation with organization-wide
   active-site inheritance while filtering retained archived memberships,
-  bringing the suite to 517 tests.
+  bringing the suite to 517 tests; then contained authenticated customer
+  ticket/comment/site queries and React client payloads with explicit
+  allow-lists, bringing the suite to 529 tests.
 
 ### Known issues / open work
 | Priority | Item | Where | Notes |
@@ -1256,6 +1273,7 @@ resume work; this section remains the broader historical summary.
 | ✅ Closed | Dashboard timezone, relation shape, and capped total | `src/app/(auth)/dashboard/page.tsx`, `src/lib/utils.ts` | Commit `0cf4aac` uses each ticket site's validated timezone with UTC fallback, normalizes relation objects/arrays, and counts all customer tickets independently of the recent list |
 | ✅ Closed | Slack/ticket-detail Eastern-Time assumption | `src/lib/slack/blocks/ticket-master.ts`, `src/lib/tickets/outbox.ts`, `src/app/(auth)/tickets/[ticketId]/page.tsx` | Commit `b253558` hydrates and validates the ticket site's timezone for initial/retried/refreshed Slack cards and ticket detail, with deterministic UTC fallback |
 | ✅ Closed | Customer-manager direct-membership under-scoping | `src/lib/team/read-model.ts`, `/api/team`, `/team`, `/submit`, `/dashboard` | Commit `67ce908` makes manager access organization-wide over active sites, keeps customers assignment-scoped, and excludes retained archived memberships from current presentation |
+| ✅ Closed | Authenticated ticket/comment/site hidden-field reads | `src/lib/resource-projections.ts`, `/tickets/[ticketId]`, `/api/tickets/[ticketId]/comments`, `/api/sites` | Commit `d276ede` applies role-specific query allow-lists and prevents internal summaries, staff identifiers/metadata, Slack routing, and attachment storage metadata from entering customer responses or React client props |
 | 🟡 Med | `/settings` is read-only integration status | `src/app/(auth)/settings/page.tsx` | Add notification preferences, user timezone, and theme controls |
 | ✅ Verified | Migration 046 durable public rate limits | `supabase/migrations/046_durable_public_rate_limits.sql` | Applied 2026-08-02; 77 live assertions covered grants, constraints, concurrency, reset/retention, bounded cleanup, real HTTP limits/lifecycle, and zero residue |
 | 🟡 Med | Exact site-code validation remains an existence oracle | `/api/sites/validate` | Responses are minimal and migration 046 enforces 20 checks/minute/IP across instances, but full anti-enumeration still requires CAPTCHA, an invitation/intake token, or authenticated submission |
@@ -1415,6 +1433,10 @@ resume work; this section remains the broader historical summary.
     memberships, and represents manager access accurately. Eight tests bring
     the suite to 517; all quality gates and responsive public-form QA are
     green.
+40. **Contain authenticated customer reads.** Commit `d276ede` replaces
+    customer-capable ticket/comment/site wildcard or common internal reads
+    with role-specific query allow-lists and contains client-component props.
+    Twelve tests bring the suite to 529; all quality gates are green.
 
 ### Open architectural questions
 - The RLS recursion bug surfaces a bigger question: do we keep `createAdminClient() + code filter` (the current pattern in `lib/supabase/scope.ts`) or move back to proper RLS once migration 019 + similar fixes are in place? The current pattern scales fine but has a lower safety margin for new queries.

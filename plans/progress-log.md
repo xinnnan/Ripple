@@ -8,10 +8,10 @@ meaningful change and before ending a work session. Newest entries go first.
 - **Branch:** `codex/prd-v1-1-gap-closure`
 - **Active phase:** Phase 0 — Containment and reproducible baseline
 - **Active work item:** run protected migrations 028–031 business probes when
-  the staging fixture becomes available; otherwise audit customer-facing
-  service-role reads for wildcard/hidden-field exposure and missing lifecycle
-  filters as the next locally executable containment checkpoint
-- **Last verified implementation commit:** `67ce908` (`fix: align customer manager site scope`)
+  the staging fixture becomes available; otherwise replace spare-part and
+  field-service customer reads that still fetch wildcard internal records and
+  sanitize afterward with query-time external allow-lists
+- **Last verified implementation commit:** `d276ede` (`fix: contain authenticated customer reads`)
 - **Uncommitted work:** none expected after the documentation checkpoint;
   verify with `git status` before resuming
 - **Deployment gate:** migrations 001–046 are confirmed applied. Migration 044
@@ -64,11 +64,10 @@ meaningful change and before ending a work session. Newest entries go first.
   dedicated staging mailbox.
 - **Exact next local step:** check whether the protected credential fixture is
   available and, if so, run the migration 028–031 business probes plus the new
-  malformed-body HTTP checks. If it remains unavailable, inventory every
-  customer-facing page/API that uses `createAdminClient()` and replace
-  wildcard/nested over-fetching or missing active-lifecycle predicates with
-  explicit safe projections. Configure `CRON_SECRET` separately before
-  production worker activation
+  malformed-body HTTP checks. If it remains unavailable, replace the
+  spare-part-request and field-service-order external GET branches with
+  explicit query-time projections rather than wildcard fetch plus omission.
+  Configure `CRON_SECRET` separately before production worker activation
 - **Primary plan:** [`plans/prd-v1.1-gap-closure-plan.md`](./prd-v1.1-gap-closure-plan.md)
 
 ## Overall project status — 2026-08-03
@@ -78,7 +77,7 @@ meaningful change and before ending a work session. Newest entries go first.
 - Against the full PRD v1.1 capability map, 17 domains remain
   **Partial** or **Unsafe/Partial** and seven remain **Absent**. No full PRD
   capability domain is yet honestly complete end to end.
-- The local deterministic baseline is green at 517 unit/contract tests, 40
+- The local deterministic baseline is green at 529 unit/contract tests, 40
   production HTTP smoke checks, a production build, zero-warning lint, and
   zero known dependency vulnerabilities.
 - Phase 0 cannot be declared exited until the protected six-account/two-tenant
@@ -90,6 +89,53 @@ meaningful change and before ending a work session. Newest entries go first.
   queues/routing, business-calendar SLA clocks, remote support, appointments,
   assets/entitlements, search/knowledge, i18n, versioned external APIs, and
   production SRE/recovery evidence.
+
+## Session record — 2026-08-03 (P0-AR / authenticated read containment)
+
+### Objective
+
+Prevent service-role reads from fetching or serializing internal ticket,
+comment, site-routing, attachment, and staff-attribution fields for
+authenticated customer roles.
+
+### Finding and implementation
+
+- `GET /api/tickets/[ticketId]/comments` returned wildcard comment rows joined
+  to author email and role for customer callers. Customer GET and post-create
+  responses now use a query-time allow-list containing only customer-visible
+  comment content, source, timestamp, and author display name.
+- Authenticated ticket detail conditionally hid `internal_summary` in its UI
+  but still passed that value and the assigned engineer UUID into a client
+  component, placing both in the React server payload. Role-specific ticket
+  projections now avoid fetching those fields for customer requests, and the
+  client boundary also receives null/empty internal identifiers defensively.
+- Ticket comments and attachments now use explicit minimal page projections;
+  attachment storage keys and uploader IDs are no longer fetched for display.
+- `GET /api/sites` now uses a customer allow-list that excludes Slack channel
+  and default-owner routing fields. The customer Sites page also stopped
+  retrieving its unused Slack channel field.
+- Twelve new pure/source/real-handler contracts bring the suite to 529 tests
+  and prove customer versus internal projection selection, customer comment
+  visibility, excluded sensitive fields, and protected client props.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| `npm ci` | Passed from the lockfile earlier in this continuous session; 0 install-time vulnerabilities |
+| `npm test` | Passed; 76 files, 529 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build and type check |
+| `npm run test:e2e` | Passed; all 40 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+
+### Next
+
+Run the protected migration/tenant probes when their fixture is available.
+Otherwise move spare-part-request and field-service-order external GET reads
+from wildcard hydration plus post-query omission to explicit query-time
+allow-lists.
 
 ## Session record — 2026-08-03 (P0-AQ / customer-manager site scope)
 
