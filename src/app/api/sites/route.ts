@@ -11,6 +11,7 @@ import {
   SITE_CODE_MAX_LENGTH,
   SITE_CODE_PATTERN,
 } from "@/lib/sites/site-code";
+import { EXTERNAL_SITE_SELECT } from "@/lib/resource-projections";
 
 const createSiteSchema = z.object({
   customer_id: z.string().uuid(),
@@ -51,7 +52,11 @@ export async function GET(request: NextRequest) {
 
     let query = supabase
       .from("sites")
-      .select("*, customer:customers(id, name)")
+      .select(
+        scope.isInternal
+          ? "*, customer:customers(id, name)"
+          : EXTERNAL_SITE_SELECT
+      )
       .order("site_name");
     query = scopeSites(query, scope);
 

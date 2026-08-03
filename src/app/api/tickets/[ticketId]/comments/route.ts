@@ -5,6 +5,10 @@ import { getUserScope, scopeTickets } from "@/lib/supabase/scope";
 import { resolveTicketQuery } from "@/lib/tickets/lookup";
 import { recordTicketCommentWithSla } from "@/lib/tickets/mutations";
 import { z } from "zod";
+import {
+  EXTERNAL_TICKET_COMMENT_SELECT,
+  INTERNAL_TICKET_COMMENT_SELECT,
+} from "@/lib/resource-projections";
 
 interface RouteContext {
   params: Promise<{ ticketId: string }>;
@@ -52,7 +56,11 @@ export async function GET(
 
     let query = supabase
       .from("ticket_comments")
-      .select("*, author:users(full_name, email, role)")
+      .select(
+        scope.isInternal
+          ? INTERNAL_TICKET_COMMENT_SELECT
+          : EXTERNAL_TICKET_COMMENT_SELECT
+      )
       .eq("ticket_id", ticket.id)
       .order("created_at", { ascending: true });
 
@@ -132,7 +140,7 @@ export async function POST(
 
     // Non-internal users can never post internal comments — silently
     // downgrade to customer-visible.
-    const isInternal = auth.role === "admin" || auth.role === "engineer";
+    const isInternal = scope.isInternal;
     const safeVisibility = isInternal ? data.visibility : "customer";
 
     // Security: author_id must be the calling user. A non-internal
@@ -167,7 +175,11 @@ export async function POST(
 
     const { data: comment, error } = await supabase
       .from("ticket_comments")
-      .select("*, author:users(full_name, email)")
+      .select(
+        isInternal
+          ? INTERNAL_TICKET_COMMENT_SELECT
+          : EXTERNAL_TICKET_COMMENT_SELECT
+      )
       .eq("id", commentId)
       .single();
 

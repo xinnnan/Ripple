@@ -17,9 +17,50 @@ import { getUserScope, scopeTickets } from "@/lib/supabase/scope";
 import { resolveTicketQuery } from "@/lib/tickets/lookup";
 import { isAdminRole } from "@/lib/roles";
 import { redirect } from "next/navigation";
+import {
+  EXTERNAL_TICKET_DETAIL_SELECT,
+  INTERNAL_TICKET_DETAIL_SELECT,
+  TICKET_DETAIL_ATTACHMENT_SELECT,
+  TICKET_DETAIL_COMMENT_SELECT,
+} from "@/lib/resource-projections";
 
 interface Props {
   params: Promise<{ ticketId: string }>;
+}
+
+interface TicketDetailRow {
+  id: string;
+  ticket_no: string;
+  source: string;
+  title: string;
+  description: string;
+  request_type: string;
+  severity: string;
+  impact: string | null;
+  status: string;
+  asset_id: string | null;
+  area: string | null;
+  owner_id?: string | null;
+  submitter_name?: string | null;
+  submitter_email?: string | null;
+  customer_visible_summary: string | null;
+  internal_summary?: string | null;
+  resolved_at: string | null;
+  closed_at: string | null;
+  created_at: string;
+  first_response_due_at: string | null;
+  resolve_due_at: string | null;
+  first_response_at: string | null;
+  first_response_breached_at: string | null;
+  resolution_breached_at: string | null;
+  customer: { id: string; name: string }[] | null;
+  site: {
+    id: string;
+    site_name: string;
+    site_code: string;
+    timezone: string;
+  }[] | null;
+  owner: { id?: string; full_name: string }[] | null;
 }
 
 export default async function TicketDetailPage({ params }: Props) {
@@ -32,30 +73,22 @@ export default async function TicketDetailPage({ params }: Props) {
   const isInternal = scope.isInternal;
   const isAdmin = isAdminRole(scope.role);
 
-  // Fetch ticket by ID or ticket_no, scoped so non-internal users can't see
-  // tickets outside their tenant.
-  // Keep a static, explicit projection so Supabase's generated query type
-  // remains valid. Internal-only fields are guarded at every render site
-  // below; unlike the old `*`, this list also excludes secure_token.
-  const ticketSelect = `
-      id, ticket_no, customer_id, site_id, source, title, description,
-      request_type, severity, impact, status, asset_id, area, owner_id,
-      created_by, submitter_name, customer_visible_summary, resolved_at,
-      closed_at, created_at, updated_at, sla_policy_id, sla_breached,
-      first_response_due_at, resolve_due_at, first_response_at,
-      first_response_breached_at, resolution_breached_at,
-      submitter_email, submitter_phone, internal_summary,
-      root_cause_category, follow_up_needed,
-      customer:customers(id, name),
-      site:sites(id, site_name, site_code, slack_channel_id, timezone),
-      owner:users!tickets_owner_id_fkey(id, full_name, email)
-    ` as const;
+  // The service-role client bypasses RLS and column grants. Select a distinct
+  // customer allow-list at query time instead of fetching internal fields and
+  // relying only on conditional rendering to hide them.
+  // Widen the conditional to `string` so Supabase's compile-time select
+  // parser does not attempt to materialize the union of two large nested
+  // relationship projections. Both concrete values remain tested constants.
+  const ticketSelect: string = isInternal
+    ? INTERNAL_TICKET_DETAIL_SELECT
+    : EXTERNAL_TICKET_DETAIL_SELECT;
   let ticketQuery = supabase
     .from("tickets")
     .select(ticketSelect);
   ticketQuery = resolveTicketQuery(ticketQuery, ticketId);
   ticketQuery = scopeTickets(ticketQuery, scope);
-  const { data: ticket } = await ticketQuery.maybeSingle();
+  const { data: ticketData } = await ticketQuery.maybeSingle();
+  const ticket = ticketData as unknown as TicketDetailRow | null;
 
   if (!ticket) {
     return (
@@ -75,7 +108,7 @@ export default async function TicketDetailPage({ params }: Props) {
   // Comments: non-internal users only see customer-visible comments
   let commentsQuery = supabase
     .from("ticket_comments")
-    .select("*, author:users(full_name, role)")
+    .select(TICKET_DETAIL_COMMENT_SELECT)
     .eq("ticket_id", ticket.id)
     .order("created_at", { ascending: true });
   if (!isInternal) {
@@ -86,7 +119,7 @@ export default async function TicketDetailPage({ params }: Props) {
   // Attachments: same visibility gating
   let attachmentsQuery = supabase
     .from("ticket_attachments")
-    .select("*")
+    .select(TICKET_DETAIL_ATTACHMENT_SELECT)
     .eq("ticket_id", ticket.id)
     .order("created_at", { ascending: true });
   if (!isInternal) {
@@ -214,7 +247,7 @@ export default async function TicketDetailPage({ params }: Props) {
               <p className="text-sm text-muted-foreground">No comments yet.</p>
             ) : (
               <div className="space-y-4">
-                {comments.map((comment: { id: string; body: string; visibility: string; source: string; created_at: string; author: { full_name: string; role: string }[] }) => (
+                {comments.map((comment: { id: string; body: string; visibility: string; source: string; created_at: string; author: { full_name: string }[] }) => (
                   <div
                     key={comment.id}
                     className={`border-l-2 pl-4 ${
@@ -523,13 +556,15 @@ export default async function TicketDetailPage({ params }: Props) {
             ticketNo={ticket.ticket_no}
             currentStatus={ticket.status as TicketStatus}
             currentSeverity={ticket.severity as Severity}
-            currentOwnerId={ticket.owner_id}
+            currentOwnerId={isInternal ? ticket.owner_id ?? null : null}
             availableOwners={availableOwners}
-            currentUserId={currentUserId}
+            currentUserId={isInternal ? currentUserId : ""}
             isInternal={isInternal}
             isAdmin={isAdmin}
             currentCustomerVisibleSummary={ticket.customer_visible_summary}
-            currentInternalSummary={ticket.internal_summary}
+            currentInternalSummary={
+              isInternal ? ticket.internal_summary ?? null : null
+            }
           />
         </div>
       </div>

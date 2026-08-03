@@ -35,7 +35,6 @@ export default async function SitesPage() {
     project_status: string;
     timezone: string;
     address: string | null;
-    slack_channel_id: string | null;
     customer: { name: string }[] | null;
   }
 
@@ -46,7 +45,7 @@ export default async function SitesPage() {
     const admin = createAdminClient();
     const { data: allSites } = await admin
       .from("sites")
-      .select("id, site_name, site_code, project_status, timezone, address, slack_channel_id, customer:customers(name)")
+      .select("id, site_name, site_code, project_status, timezone, address, customer:customers(name)")
       .eq("customer_id", customerId)
       .eq("status", "active")
       .order("site_name");
@@ -69,7 +68,6 @@ export default async function SitesPage() {
           project_status,
           timezone,
           address,
-          slack_channel_id,
           customer:customers(name)
         )
       `
