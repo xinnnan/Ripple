@@ -33,7 +33,7 @@ Ripple is a useful support-ticket prototype with meaningful Phase 1–4 work:
 - spare-parts and field-service skeletons
 - simple wall-clock SLA targets
 - email and AI integrations with graceful failure
-- 793 committed unit/contract tests, production HTTP smoke, and an opt-in
+- 823 committed unit/contract tests, production HTTP smoke, and an opt-in
   credentialed browser/API/RLS matrix
 
 It is not yet the operations platform described by PRD v1.1. The old
@@ -66,7 +66,7 @@ The correct approach is therefore:
 
 | Gate | Result through 2026-08-03 | Meaning |
 |---|---|---|
-| Unit tests | 793/793 passed | Scope, lifecycle and exhaustive ticket-transition guards, atomic ticket/customer/catalog/inventory/attachment creation and updates, attachment content and storage-key validation, direct-write privilege containment, durable public-rate-limit/share-view contracts, notification outbox leases/idempotency/retry contracts, context-safe transactional email rendering and conditional provider/public-origin readiness, tenant-safe site/user/customer/SLA/catalog/inventory administration, secure user provisioning and membership containment, canonical manager-wide active-site presentation, explicit authenticated customer ticket/comment/site/spare-part/field-service read projections and client-payload containment, spreadsheet-safe ticket CSV encoding, strict ticket page/API/export, customer-capable service/site and admin list/page filters, guarded PostgREST search construction, strict API and authenticated server-page UUID boundaries, non-broadening inventory preselection, exact audit pagination, missing-safe detail reads, contained code-only admin/customer/dashboard/ticket list/detail/create-option load failures, lifecycle-aligned site/team/dashboard/create selectors, unavailable-prerequisite form guards, retained-membership active-site hydration, empty-scope query suppression, relation-shape normalization, least-data admin catalog and ticket-child hydration, and allow-listed admin detail tabs, qualified-SQL-expression repair, visibility, auth recovery/redirects, public/responsive/admin UI contracts, deterministic site-timezone dashboard and Slack rendering with exact totals, Slack authentication/configuration/action filtering and direct AI-service invocation, readiness, CI policy, filters, SLA, fixture validation, migration/RPC contracts, spare-part, field-service, and team-access transaction containment, DATE handling, and audit coverage is green |
+| Unit tests | 823/823 passed | Scope, lifecycle and exhaustive ticket-transition guards, atomic ticket/customer/catalog/inventory/attachment creation and updates, attachment content and storage-key validation, direct-write privilege containment, durable public-rate-limit/share-view contracts, notification outbox leases/idempotency/retry contracts, context-safe transactional email rendering and conditional provider/public-origin readiness, tenant-safe site/user/customer/SLA/catalog/inventory administration, secure user provisioning and membership containment, identity-provider/profile failure classification across API authorization, tenant scope, and the authenticated shell, canonical manager-wide active-site presentation, explicit authenticated customer ticket/comment/site/spare-part/field-service read projections and client-payload containment, spreadsheet-safe ticket CSV encoding, strict ticket page/API/export, customer-capable service/site and admin list/page filters, guarded PostgREST search construction, strict API and authenticated server-page UUID boundaries, non-broadening inventory preselection, exact audit pagination, missing-safe detail reads, contained code-only admin/customer/dashboard/ticket list/detail/create-option load failures, lifecycle-aligned site/team/dashboard/create selectors, unavailable-prerequisite form guards, retained-membership active-site hydration, empty-scope query suppression, relation-shape normalization, least-data admin catalog and ticket-child hydration, and allow-listed admin detail tabs, qualified-SQL-expression repair, visibility, auth recovery/redirects, public/responsive/admin UI contracts, deterministic site-timezone dashboard and Slack rendering with exact totals, Slack authentication/configuration/action filtering and direct AI-service invocation, readiness, CI policy, filters, SLA, fixture validation, migration/RPC contracts, spare-part, field-service, and team-access transaction containment, DATE handling, and audit coverage is green |
 | Lint | Passed, no warnings | Direct ESLint CLI with zero-warning enforcement and generated-artifact ignores |
 | Production build | Passed on Next.js 15.5.22 | Environment-free build is reproducible |
 | Dependency audit | 0 vulnerabilities | Patched direct/transitive versions are lockfile-pinned and compatibility-tested |
@@ -682,6 +682,12 @@ Every implementation slice must:
     part-request, and field-service hydration uses explicit UI-minimum
     projections; customer part-request cards no longer retrieve cost. Thirteen
     behavioral contracts bring the suite to 793 and all gates are green.
+59. **P0-BI — closed in `2495cbd`:** Shared API authorization, tenant-scope,
+    and authenticated-layout reads now distinguish signed-out/rejected sessions,
+    inactive/missing profiles, and provider/database failure. Failures return
+    generic 503/recovery states with code/name/status-only logging; membership
+    hydration is error-aware and deduplicated. Thirty behavioral contracts
+    bring the suite to 823 and all gates are green.
 58. **Next local integrity work:** run protected positive/rollback probes when
     fixtures are available; otherwise contain ticket list/detail read failures
     and remove remaining ticket-event/AI wildcard hydration.

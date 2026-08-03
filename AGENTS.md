@@ -295,7 +295,7 @@ npm run dev
 - `npm run build` — production build
 - `npm run start` — production server
 - `npm run lint` — direct ESLint CLI across the repository; warnings fail the gate
-- `npm test` — Vitest unit/contract suite (793 tests)
+- `npm test` — Vitest unit/contract suite (823 tests)
 - `npm run test:e2e` — 40-check production HTTP smoke plus optional credentialed Playwright/API/RLS matrix; requires a successful build
 - `npm run test:e2e:credentialed` — real six-account/two-tenant matrix; set `RIPPLE_E2E_FIXTURES_FILE`
 - `npm run test:e2e:install-browser` — install the pinned Chromium runtime
@@ -1331,7 +1331,10 @@ resume work; this section remains the broader historical summary.
   scoped external sites, and short-circuited empty scopes, bringing the suite
   to 780 tests; then contained ticket list/detail read failures, removed
   remaining ticket-child wildcard hydration, and reduced external linked-
-  resource projections to UI-minimum fields, bringing the suite to 793 tests.
+  resource projections to UI-minimum fields, bringing the suite to 793 tests;
+  then distinguished normal rejected sessions, inactive identities, and true
+  provider/database failures across API auth helpers, tenant scope, and the
+  authenticated shell, bringing the suite to 823 tests.
 
 ### Known issues / open work
 | Priority | Item | Where | Notes |
@@ -1360,6 +1363,7 @@ resume work; this section remains the broader historical summary.
 | ✅ Closed | Customer sites/team read failure and retained-membership ambiguity | `src/app/customer-page-read-integrity.test.tsx`, `/sites`, `/team` | Commit `c336fb1` guards every profile/scoped/membership read, derives current site access through active tenant/site hydration, preserves manager organization scope, and normalizes customer relation shapes |
 | ✅ Closed | Dashboard false-zero and empty-state ambiguity | `src/app/dashboard-read-integrity.test.tsx`, `/dashboard` | Commit `1b59d66` guards all profile/list/count reads, lifecycle-scopes external sites, rehydrates retained memberships through current scope, and skips empty-scope ticket queries |
 | ✅ Closed | Ticket page false-empty/missing and child over-fetch ambiguity | `src/app/ticket-page-read-integrity.test.tsx`, `/tickets`, `/tickets/[ticketId]` | Commit `ce068a0` guards list/options/primary/related reads with code-only recovery, preserves real missing-ticket handling, and uses explicit role-aware UI-minimum child projections |
+| ✅ Closed | Server identity read-state ambiguity | `src/lib/supabase/auth-read.ts`, API auth helpers, `getUserScope()`, authenticated layout | Commit `2495cbd` preserves normal rejected-session and inactive-account behavior while mapping provider/database failures to generic 503/recovery with code/name/status-only diagnostics |
 | 🟡 Med | `/settings` is read-only integration status | `src/app/(auth)/settings/page.tsx` | Add notification preferences, user timezone, and theme controls |
 | ✅ Verified | Migration 046 durable public rate limits | `supabase/migrations/046_durable_public_rate_limits.sql` | Applied 2026-08-02; 77 live assertions covered grants, constraints, concurrency, reset/retention, bounded cleanup, real HTTP limits/lifecycle, and zero residue |
 | 🟡 Med | Exact site-code validation remains an existence oracle | `/api/sites/validate` | Responses are minimal and migration 046 enforces 20 checks/minute/IP across instances, but full anti-enumeration still requires CAPTCHA, an invitation/intake token, or authenticated submission |
@@ -1611,6 +1615,12 @@ resume work; this section remains the broader historical summary.
     customer part-request reads, minimizes linked field-service data, and
     parallelizes related reads. Thirteen behavioral contracts bring the suite
     to 793; all deterministic quality gates are green.
+57. **Distinguish server identity read failures.** Commit `2495cbd` centralizes
+    signed-out/rejected-session versus availability classification, applies it
+    to all three API authorization helpers, the shared tenant scope, and the
+    authenticated layout, and makes every profile/membership/site read error-
+    aware with safe diagnostics. Thirty behavioral contracts bring the suite
+    to 823; all deterministic quality gates are green.
 
 ### Open architectural questions
 - The RLS recursion bug surfaces a bigger question: do we keep `createAdminClient() + code filter` (the current pattern in `lib/supabase/scope.ts`) or move back to proper RLS once migration 019 + similar fixes are in place? The current pattern scales fine but has a lower safety margin for new queries.

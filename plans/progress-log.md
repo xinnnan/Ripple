@@ -8,10 +8,10 @@ meaningful change and before ending a work session. Newest entries go first.
 - **Branch:** `codex/prd-v1-1-gap-closure`
 - **Active phase:** Phase 0 — Containment and reproducible baseline
 - **Active work item:** run protected migrations 028–031 business probes when
-  the staging fixture becomes available; otherwise audit authentication scope
-  and shell reads so database failures cannot masquerade as logged-out,
-  inactive, or empty authorization states
-- **Last verified implementation commit:** `ce068a0` (`fix: contain ticket page read failures`)
+  the staging fixture becomes available; otherwise harden client profile and
+  site-option loading so authenticated provider failures cannot become stale
+  spinners, raw errors, guest fallback, or empty creation forms
+- **Last verified implementation commit:** `2495cbd` (`fix: distinguish identity read failures`)
 - **Uncommitted work:** none expected after the documentation checkpoint;
   verify with `git status` before resuming
 - **Deployment gate:** migrations 001–046 are confirmed applied. Migration 044
@@ -64,10 +64,11 @@ meaningful change and before ending a work session. Newest entries go first.
   dedicated staging mailbox.
 - **Exact next local step:** check whether the protected credential fixture is
   available and, if so, run the migration 028–031 business probes plus the new
-  malformed-body HTTP checks. If it remains unavailable, harden
-  `getUserScope()` and the authenticated shell/profile read paths so provider
-  failures remain distinct from absent or inactive identities. Configure
-  `CRON_SECRET` separately before production worker activation
+  malformed-body HTTP checks. If it remains unavailable, harden the browser
+  scope helpers, profile page, authenticated create-ticket modal, and signed-in
+  public-submit enrichment so provider failures remain visible and never
+  downgrade an authenticated identity to guest behavior. Configure `CRON_SECRET`
+  separately before production worker activation
 - **Primary plan:** [`plans/prd-v1.1-gap-closure-plan.md`](./prd-v1.1-gap-closure-plan.md)
 
 ## Overall project status — 2026-08-03
@@ -77,7 +78,7 @@ meaningful change and before ending a work session. Newest entries go first.
 - Against the full PRD v1.1 capability map, 17 domains remain
   **Partial** or **Unsafe/Partial** and seven remain **Absent**. No full PRD
   capability domain is yet honestly complete end to end.
-- The local deterministic baseline is green at 793 unit/contract tests, 40
+- The local deterministic baseline is green at 823 unit/contract tests, 40
   production HTTP smoke checks, a production build, zero-warning lint, and
   zero known dependency vulnerabilities.
 - Phase 0 cannot be declared exited until the protected six-account/two-tenant
@@ -89,6 +90,58 @@ meaningful change and before ending a work session. Newest entries go first.
   queues/routing, business-calendar SLA clocks, remote support, appointments,
   assets/entitlements, search/knowledge, i18n, versioned external APIs, and
   production SRE/recovery evidence.
+
+## Session record — 2026-08-03 (P0-BI / server identity read integrity)
+
+### Objective
+
+Distinguish normal signed-out, rejected-session, inactive-account, and
+identity-provider/database failure states across the shared API authorization,
+tenant scope, and authenticated-shell boundaries.
+
+### Finding and implementation
+
+- `requireAdmin()`, `requireInternal()`, and `getAuthUser()` ignored both
+  identity-provider and profile-query errors, converting outages into 401/403.
+- `getUserScope()` ignored profile, manager-site, membership, and active-site
+  errors, converting them into logged-out or empty authorization scopes.
+- The authenticated layout redirected profile/database failures to the
+  inactive-account login path.
+- A shared classifier now keeps missing, expired, revoked, and otherwise
+  rejected sessions on the normal unauthenticated path while mapping real
+  provider/data failures to generic 503 or recovery errors.
+- Diagnostics include only stable code/name/status metadata. Provider messages,
+  SQL details, credentials, and caller data are excluded.
+- Profile reads are missing-safe; missing/inactive profiles retain the existing
+  forbidden behavior. Customer membership IDs are deduplicated before current
+  active-site hydration.
+- Thirty behavioral contracts across authorization helpers, the tenant-scope
+  resolver, and the real authenticated layout bring the suite to 823 tests
+  across 102 files.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| `npm ci` | Passed from the lockfile earlier in this continuous session; 0 install-time vulnerabilities |
+| `npm test` | Passed; 102 files, 823 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build and type check |
+| `npm run test:e2e` | Passed; all 40 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+
+### Commit
+
+- Hash: `2495cbd`
+- Message: `fix: distinguish identity read failures`
+
+### Next
+
+Run protected probes when their fixture is available. Otherwise harden browser
+scope/profile reads and the two ticket-creation entry points so authenticated
+provider failures cannot become silent empty options, indefinite loading, raw
+database messages, or guest fallback.
 
 ## Session record — 2026-08-03 (P0-BH / ticket page read integrity)
 
