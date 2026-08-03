@@ -8,10 +8,10 @@ meaningful change and before ending a work session. Newest entries go first.
 - **Branch:** `codex/prd-v1-1-gap-closure`
 - **Active phase:** Phase 0 — Containment and reproducible baseline
 - **Active work item:** run protected migrations 028–031 business probes when
-  the staging fixture becomes available; otherwise harden client profile and
-  site-option loading so authenticated provider failures cannot become stale
-  spinners, raw errors, guest fallback, or empty creation forms
-- **Last verified implementation commit:** `2495cbd` (`fix: distinguish identity read failures`)
+  the staging fixture becomes available; otherwise audit the remaining browser
+  Supabase reads, beginning with settings and authenticated write forms, so
+  provider/database failures cannot become false empty or success states
+- **Last verified implementation commit:** `10a1547` (`fix: harden browser account loading`)
 - **Uncommitted work:** none expected after the documentation checkpoint;
   verify with `git status` before resuming
 - **Deployment gate:** migrations 001–046 are confirmed applied. Migration 044
@@ -61,14 +61,16 @@ meaningful change and before ending a work session. Newest entries go first.
   Inter is applied, all recent rows remain available, horizontal overflow is
   absent, and the browser logged zero warnings/errors. Password-based login passed;
   recovery-email delivery and one-time link consumption still require a
-  dedicated staging mailbox.
+  dedicated staging mailbox. The public `/submit` account-detection path was
+  reverified at 1280×720 and 390×844 after P0-BJ: the guest form retains its
+  stable heading, labeled controls, Inter, clean console, and no horizontal
+  overflow. No ticket was submitted; protected signed-in profile/site-option
+  visual coverage still depends on the credentialed fixture.
 - **Exact next local step:** check whether the protected credential fixture is
   available and, if so, run the migration 028–031 business probes plus the new
-  malformed-body HTTP checks. If it remains unavailable, harden the browser
-  scope helpers, profile page, authenticated create-ticket modal, and signed-in
-  public-submit enrichment so provider failures remain visible and never
-  downgrade an authenticated identity to guest behavior. Configure `CRON_SECRET`
-  separately before production worker activation
+  malformed-body HTTP checks. If it remains unavailable, inventory remaining
+  browser Supabase reads and harden the next coherent settings/write-form slice.
+  Configure `CRON_SECRET` separately before production worker activation
 - **Primary plan:** [`plans/prd-v1.1-gap-closure-plan.md`](./prd-v1.1-gap-closure-plan.md)
 
 ## Overall project status — 2026-08-03
@@ -78,7 +80,7 @@ meaningful change and before ending a work session. Newest entries go first.
 - Against the full PRD v1.1 capability map, 17 domains remain
   **Partial** or **Unsafe/Partial** and seven remain **Absent**. No full PRD
   capability domain is yet honestly complete end to end.
-- The local deterministic baseline is green at 823 unit/contract tests, 40
+- The local deterministic baseline is green at 845 unit/contract tests, 40
   production HTTP smoke checks, a production build, zero-warning lint, and
   zero known dependency vulnerabilities.
 - Phase 0 cannot be declared exited until the protected six-account/two-tenant
@@ -90,6 +92,68 @@ meaningful change and before ending a work session. Newest entries go first.
   queues/routing, business-calendar SLA clocks, remote support, appointments,
   assets/entitlements, search/knowledge, i18n, versioned external APIs, and
   production SRE/recovery evidence.
+
+## Session record — 2026-08-03 (P0-BJ / browser account loading integrity)
+
+### Objective
+
+Prevent browser-side identity, profile, and site-option failures from becoming
+indefinite loading, raw provider errors, empty authenticated creation forms, or
+an unsafe signed-in-to-guest downgrade.
+
+### Finding and implementation
+
+- Both shared browser scope helpers ignored authentication, profile, and site
+  query errors, returning an empty site set for real availability failures.
+- The profile page could remain on its loading spinner when no session existed,
+  exposed raw provider messages during profile/password changes, and lacked a
+  bounded normalization contract for self-service fields.
+- The authenticated ticket modal silently treated failed site loading as no
+  sites and still allowed submission attempts.
+- Public intake caught every signed-in enrichment failure and continued as a
+  guest, potentially exposing the wrong site-entry contract and attribution.
+- Browser scope now preserves normal rejected-session and inactive-account
+  behavior while throwing generic availability failures with code-only logs.
+- Profile loading always settles into content or retry/sign-in recovery;
+  self-service name/phone writes are normalized and bounded, and password/
+  profile provider detail is no longer exposed.
+- Both ticket-entry surfaces distinguish loading, unavailable, legitimate
+  no-site, signed-in, and guest states; required site selection disables
+  submission when prerequisites are unavailable.
+- The modal has dialog semantics, bound labels, responsive grids, and an
+  accessible close control. Profile and public intake retain Inter and mobile
+  fit.
+- Twenty-two new behavioral contracts bring the suite to 845 tests across 105
+  files.
+- In-app browser QA passed for guest `/submit` at 1280×720 and 390×844 with a
+  clean console and no horizontal overflow. No ticket was submitted. Protected
+  signed-in visual coverage remains gated by the missing staging fixture.
+- The first complete gate caught that the temporary account-check screen had
+  removed the stable server-rendered route heading. The heading contract was
+  restored and the full gate was rerun from the beginning.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| `npm ci` | Passed from the lockfile earlier in this continuous session; 0 install-time vulnerabilities |
+| `npm test` | Passed; 105 files, 845 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build and type check |
+| `npm run test:e2e` | Passed; all 40 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+
+### Commit
+
+- Hash: `10a1547`
+- Message: `fix: harden browser account loading`
+
+### Next
+
+Run protected probes when their fixture is available. Otherwise inventory the
+remaining browser Supabase reads and harden the next coherent settings/write-
+form slice without broadening feature scope.
 
 ## Session record — 2026-08-03 (P0-BI / server identity read integrity)
 
