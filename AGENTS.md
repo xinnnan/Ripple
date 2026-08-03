@@ -295,7 +295,7 @@ npm run dev
 - `npm run build` — production build
 - `npm run start` — production server
 - `npm run lint` — direct ESLint CLI across the repository; warnings fail the gate
-- `npm test` — Vitest unit/contract suite (860 tests)
+- `npm test` — Vitest unit/contract suite (866 tests)
 - `npm run test:e2e` — 40-check production HTTP smoke plus optional credentialed Playwright/API/RLS matrix; requires a successful build
 - `npm run test:e2e:credentialed` — real six-account/two-tenant matrix; set `RIPPLE_E2E_FIXTURES_FILE`
 - `npm run test:e2e:install-browser` — install the pinned Chromium runtime
@@ -1223,6 +1223,23 @@ revocation, local-only cleanup, and total cleanup failure. Every auth promise
 must settle loading in `finally`, while UI errors remain independent of raw
 provider messages.
 
+### React transition pending does not cover the preceding HTTP mutation
+Found 2026-08-03 in bulk archive/deactivation actions. The components disabled
+their controls with `useTransition().pending`, but called `startTransition`
+only after `fetch` succeeded. The entire mutation window therefore remained
+interactive and could issue duplicate lifecycle commands. A separate status
+action silently ignored non-2xx responses.
+
+Commit `76091a3` tracks request settlement separately, combines it with refresh
+transition state, disables selection and confirmation for the complete window,
+and guards JSON/network failures. Failed batch selections remain intact for an
+exact retry; successful and partial outcomes stay distinct.
+
+**Lesson:** UI concurrency state must begin before the side effect it protects.
+Treat request, response parsing, local reconciliation, and refresh as one busy
+window. Preserve the exact operator selection on total failure, type-check error
+bodies, and never let a rejected domain transition look like a successful no-op.
+
 ---
 
 ## 10. Current State & Roadmap
@@ -1377,7 +1394,9 @@ resume work; this section remains the broader historical summary.
   ticket entry when signed-in site prerequisites are unavailable, bringing the
   suite to 845 tests; then hardened sign-in, recovery, callback, password-change,
   and sign-out settlement with explicit partial session-cleanup outcomes,
-  bringing the suite to 860 tests.
+  bringing the suite to 860 tests; then closed duplicate-submit and silent-
+  failure windows in bulk lifecycle and spare-part status actions, bringing the
+  suite to 866 tests.
 
 ### Known issues / open work
 | Priority | Item | Where | Notes |
@@ -1409,6 +1428,7 @@ resume work; this section remains the broader historical summary.
 | ✅ Closed | Server identity read-state ambiguity | `src/lib/supabase/auth-read.ts`, API auth helpers, `getUserScope()`, authenticated layout | Commit `2495cbd` preserves normal rejected-session and inactive-account behavior while mapping provider/database failures to generic 503/recovery with code/name/status-only diagnostics |
 | ✅ Closed | Browser account/site loading ambiguity | `src/lib/supabase/scope.client.ts`, `/profile`, authenticated ticket modal, `/submit` | Commit `10a1547` distinguishes guest/rejected-session, inactive, unavailable, and legitimate-empty site states; adds settled recovery, bounded profile writes, and prerequisite submission guards |
 | ✅ Closed | Authentication/recovery false completion | `/login`, `/forgot-password`, `/reset-password`, auth callback/logout, `src/lib/auth/session-cleanup.ts` | Commit `e887eec` settles provider failures, separates rejected from unavailable recovery links, and reports global/local/failed session cleanup truthfully after password mutation |
+| ✅ Closed | Lifecycle action duplicate/silent failure | customer/site bulk archive, user bulk deactivation, spare-part request actions | Commit `76091a3` covers the complete request/refresh busy window, keeps failed selections retryable, guards JSON/network errors, and surfaces rejected status transitions |
 | 🟡 Med | `/settings` is read-only integration status | `src/app/(auth)/settings/page.tsx` | Add notification preferences, user timezone, and theme controls |
 | ✅ Verified | Migration 046 durable public rate limits | `supabase/migrations/046_durable_public_rate_limits.sql` | Applied 2026-08-02; 77 live assertions covered grants, constraints, concurrency, reset/retention, bounded cleanup, real HTTP limits/lifecycle, and zero residue |
 | 🟡 Med | Exact site-code validation remains an existence oracle | `/api/sites/validate` | Responses are minimal and migration 046 enforces 20 checks/minute/IP across instances, but full anti-enumeration still requires CAPTCHA, an invitation/intake token, or authenticated submission |
@@ -1679,6 +1699,11 @@ resume work; this section remains the broader historical summary.
     from provider unavailability, and centralizes global-to-local session
     cleanup for password reset and logout. Fifteen new contracts bring the
     suite to 860; all deterministic quality gates are green.
+60. **Settle lifecycle action failures.** Commit `76091a3` adds request-level
+    busy state to customer/site bulk archive and user bulk deactivation, keeps
+    selections stable on failure, guards response parsing/network rejection,
+    and makes spare-part status errors visible. Six contracts bring the suite
+    to 866; all deterministic quality gates are green.
 
 ### Open architectural questions
 - The RLS recursion bug surfaces a bigger question: do we keep `createAdminClient() + code filter` (the current pattern in `lib/supabase/scope.ts`) or move back to proper RLS once migration 019 + similar fixes are in place? The current pattern scales fine but has a lower safety margin for new queries.

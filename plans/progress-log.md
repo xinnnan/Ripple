@@ -8,10 +8,10 @@ meaningful change and before ending a work session. Newest entries go first.
 - **Branch:** `codex/prd-v1-1-gap-closure`
 - **Active phase:** Phase 0 — Containment and reproducible baseline
 - **Active work item:** run protected migrations 028–031 business probes when
-  the staging fixture becomes available; otherwise audit authenticated fetch-
-  based mutation forms and integration/status UX for false success, raw error,
-  or unresolved loading behavior
-- **Last verified implementation commit:** `e887eec` (`fix: harden authentication recovery states`)
+  the staging fixture becomes available; otherwise continue the authenticated
+  fetch-form audit, replacing unguarded JSON parsing/raw exception display and
+  reviewing field-service/Slack action UX
+- **Last verified implementation commit:** `76091a3` (`fix: settle lifecycle action failures`)
 - **Uncommitted work:** none expected after the documentation checkpoint;
   verify with `git status` before resuming
 - **Deployment gate:** migrations 001–046 are confirmed applied. Migration 044
@@ -69,8 +69,8 @@ meaningful change and before ending a work session. Newest entries go first.
 - **Exact next local step:** check whether the protected credential fixture is
   available and, if so, run the migration 028–031 business probes plus the new
   malformed-body HTTP checks. If it remains unavailable, audit fetch-based
-  authenticated mutation forms and integration/status UX for false success,
-  unresolved loading, or raw backend detail. Configure `CRON_SECRET` separately
+  authenticated forms for unguarded JSON parsing or raw exception display,
+  then review field-service/Slack actions. Configure `CRON_SECRET` separately
   before production worker activation
 - **Primary plan:** [`plans/prd-v1.1-gap-closure-plan.md`](./prd-v1.1-gap-closure-plan.md)
 
@@ -81,7 +81,7 @@ meaningful change and before ending a work session. Newest entries go first.
 - Against the full PRD v1.1 capability map, 17 domains remain
   **Partial** or **Unsafe/Partial** and seven remain **Absent**. No full PRD
   capability domain is yet honestly complete end to end.
-- The local deterministic baseline is green at 860 unit/contract tests, 40
+- The local deterministic baseline is green at 866 unit/contract tests, 40
   production HTTP smoke checks, a production build, zero-warning lint, and
   zero known dependency vulnerabilities.
 - Phase 0 cannot be declared exited until the protected six-account/two-tenant
@@ -93,6 +93,60 @@ meaningful change and before ending a work session. Newest entries go first.
   queues/routing, business-calendar SLA clocks, remote support, appointments,
   assets/entitlements, search/knowledge, i18n, versioned external APIs, and
   production SRE/recovery evidence.
+
+## Session record — 2026-08-03 (P0-BL / lifecycle action settlement)
+
+### Objective
+
+Prevent duplicate lifecycle requests and silent mutation failures in the admin
+customer/site archive, user deactivation, and spare-part request status UIs.
+
+### Finding and implementation
+
+- Customer/site bulk archive and user bulk deactivation relied only on React
+  transition state, which starts after the HTTP request. Confirmation buttons,
+  selection controls, and batch actions therefore remained active while the
+  mutation was in flight and could submit the same lifecycle command twice.
+- Their fetch and JSON parsing paths had no catch/finally. Network failures or
+  non-JSON error responses could reject without an operator-visible outcome.
+- Spare-part request status actions ignored every non-2xx response and had no
+  error state, so rejected transitions looked like successful no-ops.
+- All three surfaces now track the complete request-plus-refresh lifecycle,
+  expose `aria-busy`, disable confirmation and selection during mutation, and
+  restore controls in `finally`.
+- Bulk selections and confirmation remain intact after total failure for an
+  exact retry; successful requests clear them, while partial command outcomes
+  retain explicit refresh/retry guidance.
+- JSON error bodies are guarded and type-checked. Network/non-JSON failures use
+  stable generic messages, and every failure is exposed through an alert.
+- Spare-part status changes now show progress, returned transition errors, and
+  generic network failure instead of silently doing nothing.
+- Six new real-source contracts bring the suite to 866 tests across 108 files.
+- No lifecycle mutation was executed during local testing; protected positive,
+  partial, and rollback behavior remains part of the staging fixture gate.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| `npm ci` | Passed from the lockfile earlier in this continuous session; 0 install-time vulnerabilities |
+| `npm test` | Passed; 108 files, 866 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build and type check |
+| `npm run test:e2e` | Passed; all 40 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+
+### Commit
+
+- Hash: `76091a3`
+- Message: `fix: settle lifecycle action failures`
+
+### Next
+
+Run protected probes when their fixture is available. Otherwise continue the
+authenticated fetch-form audit, replacing unguarded JSON/error handling and
+reviewing field-service and Slack action UX.
 
 ## Session record — 2026-08-03 (P0-BK / authentication recovery integrity)
 
