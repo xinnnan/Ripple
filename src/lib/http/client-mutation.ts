@@ -32,6 +32,19 @@ export async function assertClientMutationResponse(
   );
 }
 
+/** Read JSON after applying the same bounded non-2xx error contract. */
+export async function readClientJsonResponse(
+  response: Response,
+  fallback: string
+): Promise<unknown> {
+  await assertClientMutationResponse(response, fallback);
+  try {
+    return await response.json();
+  } catch {
+    throw new ExpectedClientMutationError(fallback);
+  }
+}
+
 /** Expose allow-listed API errors; contain network/runtime exception details. */
 export function clientMutationErrorMessage(
   error: unknown,

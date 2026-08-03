@@ -3,6 +3,7 @@ import {
   assertClientMutationResponse,
   clientMutationErrorMessage,
   ExpectedClientMutationError,
+  readClientJsonResponse,
 } from "./client-mutation";
 
 describe("client mutation response containment", () => {
@@ -49,5 +50,22 @@ describe("client mutation response containment", () => {
         "Request unavailable"
       )
     ).toBe("Validation error");
+  });
+
+  it("reads a successful JSON response after checking status", async () => {
+    await expect(
+      readClientJsonResponse(Response.json({ ok: true }), "Read failed")
+    ).resolves.toEqual({ ok: true });
+  });
+
+  it("uses the safe fallback for malformed successful JSON", async () => {
+    await expect(
+      readClientJsonResponse(
+        new Response("not json", { status: 200 }),
+        "Response unavailable"
+      )
+    ).rejects.toEqual(
+      new ExpectedClientMutationError("Response unavailable")
+    );
   });
 });
