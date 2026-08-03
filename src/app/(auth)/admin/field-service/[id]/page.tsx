@@ -3,6 +3,8 @@ import { FSO_STATUS_LABELS, FSO_STATUS_COLORS, SERVICE_TYPE_LABELS, FSO_PRIORITY
 import { formatDateOnly } from "@/lib/utils";
 import Link from "next/link";
 import { FieldServiceActions } from "./field-service-actions";
+import { parseUuidRouteId } from "@/lib/request-identifiers";
+import { notFound } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
@@ -36,7 +38,8 @@ function getField<T>(val: T | T[] | null): T | null {
 }
 
 export default async function FieldServiceDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;
+  const id = parseUuidRouteId((await params).id);
+  if (!id) notFound();
   const supabase = createAdminClient();
 
   const { data: order } = await supabase

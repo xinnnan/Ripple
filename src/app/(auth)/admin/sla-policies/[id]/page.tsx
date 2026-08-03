@@ -2,6 +2,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { SLAPolicyForm } from "../sla-policy-form";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { parseUuidRouteId } from "@/lib/request-identifiers";
 
 export const dynamic = "force-dynamic";
 
@@ -10,7 +11,8 @@ export default async function EditSLAPolicyPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const { id } = await params;
+  const id = parseUuidRouteId((await params).id);
+  if (!id) notFound();
   const supabase = createAdminClient();
 
   const { data: policy } = await supabase

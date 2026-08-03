@@ -1,10 +1,11 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import type { UserRole } from "@/types/ticket";
 import { isCustomerManager, ROLE_LABELS } from "@/lib/roles";
 import { EditTeamMemberForm } from "./edit-team-member-form";
+import { parseUuidRouteId } from "@/lib/request-identifiers";
 
 export const dynamic = "force-dynamic";
 
@@ -13,7 +14,7 @@ export default async function EditTeamMemberPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const { id } = await params;
+  const rawId = (await params).id;
   const supabase = await createClient();
 
   const {
@@ -35,6 +36,9 @@ export default async function EditTeamMemberPage({
   if (!role || !isCustomerManager(role) || !customerId) {
     redirect("/dashboard");
   }
+
+  const id = parseUuidRouteId(rawId);
+  if (!id) notFound();
 
   const admin = createAdminClient();
 

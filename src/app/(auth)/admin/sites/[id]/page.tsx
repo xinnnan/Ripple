@@ -12,6 +12,8 @@ import { EditSiteForm } from "./edit-site-form";
 import { DetailTabs } from "@/components/detail-tabs";
 import { getCurrentTab } from "@/components/detail-tabs-helpers";
 import { TableEmpty } from "@/components/empty-state";
+import { parseUuidRouteId } from "@/lib/request-identifiers";
+import { notFound } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
@@ -21,7 +23,8 @@ interface Props {
 }
 
 export default async function AdminSiteDetailPage({ params, searchParams }: Props) {
-  const { id } = await params;
+  const id = parseUuidRouteId((await params).id);
+  if (!id) notFound();
   const { tab } = await searchParams;
   const activeTab = getCurrentTab({ tab }, "overview");
 

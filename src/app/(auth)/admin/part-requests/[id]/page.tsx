@@ -2,6 +2,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { SPR_STATUS_LABELS, SPR_STATUS_COLORS, SPR_PRIORITY_LABELS } from "@/types/spare-parts";
 import Link from "next/link";
 import { PartRequestActions } from "./part-request-actions";
+import { parseUuidRouteId } from "@/lib/request-identifiers";
+import { notFound } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
@@ -39,7 +41,8 @@ function getField<T>(val: T | T[] | null): T | null {
 }
 
 export default async function PartRequestDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;
+  const id = parseUuidRouteId((await params).id);
+  if (!id) notFound();
   const supabase = createAdminClient();
 
   const { data: request } = await supabase

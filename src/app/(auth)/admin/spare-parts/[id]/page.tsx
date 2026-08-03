@@ -3,11 +3,13 @@ import { SparePartForm } from "../spare-part-form";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { SparePart } from "@/types/spare-parts";
+import { parseUuidRouteId } from "@/lib/request-identifiers";
 
 export const dynamic = "force-dynamic";
 
 export default async function EditSparePartPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;
+  const id = parseUuidRouteId((await params).id);
+  if (!id) notFound();
   const supabase = createAdminClient();
 
   const { data: part } = await supabase
