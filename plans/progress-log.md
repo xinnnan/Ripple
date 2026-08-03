@@ -8,9 +8,9 @@ meaningful change and before ending a work session. Newest entries go first.
 - **Branch:** `codex/prd-v1-1-gap-closure`
 - **Active phase:** Phase 0 — Containment and reproducible baseline
 - **Active work item:** run protected migrations 028–031 business probes when
-  the staging fixture becomes available; otherwise contain profile and scoped-
-  data read failures on the authenticated `/sites` and `/team` pages
-- **Last verified implementation commit:** `0b15ef9` (`fix: harden admin creation options`)
+  the staging fixture becomes available; otherwise contain dashboard profile,
+  count, recent-ticket, site, team, and membership read failures
+- **Last verified implementation commit:** `c336fb1` (`fix: contain customer page read failures`)
 - **Uncommitted work:** none expected after the documentation checkpoint;
   verify with `git status` before resuming
 - **Deployment gate:** migrations 001–046 are confirmed applied. Migration 044
@@ -63,10 +63,10 @@ meaningful change and before ending a work session. Newest entries go first.
   dedicated staging mailbox.
 - **Exact next local step:** check whether the protected credential fixture is
   available and, if so, run the migration 028–031 business probes plus the new
-  malformed-body HTTP checks. If it remains unavailable, contain the
-  authenticated `/sites` and `/team` profile, scoped-list, and membership read
-  failures so they cannot render false empty or unauthorized states. Configure
-  `CRON_SECRET` separately before production worker activation
+  malformed-body HTTP checks. If it remains unavailable, contain every
+  internal, customer-manager, and customer dashboard read so failures cannot
+  render false zero metrics or empty activity states. Configure `CRON_SECRET`
+  separately before production worker activation
 - **Primary plan:** [`plans/prd-v1.1-gap-closure-plan.md`](./prd-v1.1-gap-closure-plan.md)
 
 ## Overall project status — 2026-08-03
@@ -76,7 +76,7 @@ meaningful change and before ending a work session. Newest entries go first.
 - Against the full PRD v1.1 capability map, 17 domains remain
   **Partial** or **Unsafe/Partial** and seven remain **Absent**. No full PRD
   capability domain is yet honestly complete end to end.
-- The local deterministic baseline is green at 758 unit/contract tests, 40
+- The local deterministic baseline is green at 769 unit/contract tests, 40
   production HTTP smoke checks, a production build, zero-warning lint, and
   zero known dependency vulnerabilities.
 - Phase 0 cannot be declared exited until the protected six-account/two-tenant
@@ -88,6 +88,54 @@ meaningful change and before ending a work session. Newest entries go first.
   queues/routing, business-calendar SLA clocks, remote support, appointments,
   assets/entitlements, search/knowledge, i18n, versioned external APIs, and
   production SRE/recovery evidence.
+
+## Session record — 2026-08-03 (P0-BF / customer page read integrity)
+
+### Objective
+
+Prevent authenticated site and team pages from treating profile, tenant, or
+membership database failures as legitimate empty or unauthorized states.
+
+### Finding and implementation
+
+- `/sites` and `/team` ignored cookie-profile failures. Manager site reads,
+  team roster/site reads, and membership hydration also discarded errors.
+- Regular `/sites` presentation hydrated retained memberships directly and
+  could therefore encounter archived/missing relations instead of explicitly
+  deriving current access.
+- Both pages now use the shared code-only failure boundary for every read.
+- `/sites` first loads only the caller's membership IDs, then hydrates those IDs
+  through active sites under active/trial customers. Managers retain their
+  organization-wide scope under the same lifecycle predicate.
+- `/team` preserves its exact customer scope, applies the same active tenant/site
+  predicate, strips the join-only customer relation before client props, and
+  guards the roster, site, and membership reads.
+- Customer-name rendering now accepts both Supabase object and array relation
+  shapes. Eleven real-page contracts bring the suite to 769 tests across 97
+  files.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| `npm ci` | Passed from the lockfile earlier in this continuous session; 0 install-time vulnerabilities |
+| `npm test` | Passed; 97 files, 769 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build and type check |
+| `npm run test:e2e` | Passed; all 40 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+
+### Commit
+
+- Hash: `c336fb1`
+- Message: `fix: contain customer page read failures`
+
+### Next
+
+Run protected probes when their fixture is available. Otherwise apply code-only
+failure handling across all three dashboard variants so database failures do
+not become zero counts, missing sites, or empty recent-ticket activity.
 
 ## Session record — 2026-08-03 (P0-BE / admin creation option integrity)
 

@@ -295,7 +295,7 @@ npm run dev
 - `npm run build` — production build
 - `npm run start` — production server
 - `npm run lint` — direct ESLint CLI across the repository; warnings fail the gate
-- `npm test` — Vitest unit/contract suite (758 tests)
+- `npm test` — Vitest unit/contract suite (769 tests)
 - `npm run test:e2e` — 40-check production HTTP smoke plus optional credentialed Playwright/API/RLS matrix; requires a successful build
 - `npm run test:e2e:credentialed` — real six-account/two-tenant matrix; set `RIPPLE_E2E_FIXTURES_FILE`
 - `npm run test:e2e:install-browser` — install the pinned Chromium runtime
@@ -1324,7 +1324,10 @@ resume work; this section remains the broader historical summary.
   pages, removed a redundant site read, and constrained catalog hydration,
   bringing the suite to 752 tests; then aligned part-request and field-service
   creation options with transactional lifecycle/assignee rules and disabled
-  forms with missing prerequisites, bringing the suite to 758 tests.
+  forms with missing prerequisites, bringing the suite to 758 tests; then made
+  customer sites/team reads failure-aware and derived current customer access
+  from retained memberships plus active tenant/site hydration, bringing the
+  suite to 769 tests.
 
 ### Known issues / open work
 | Priority | Item | Where | Notes |
@@ -1350,6 +1353,7 @@ resume work; this section remains the broader historical summary.
 | ✅ Closed | Admin inventory site-prefilter broadening | `src/lib/admin-list-filters.ts`, `/admin/inventory` | Commit `31ef0ab` validates the one optional UUID before service-role access and renders empty clearable states for malformed or unavailable sites instead of all-site inventory |
 | ✅ Closed | Admin list-page database failure ambiguity | `src/app/admin-list-page-read-integrity.test.tsx`, admin customer/site/user/catalog/SLA/service list pages | Commit `0516fb5` gives all eight list pages and four profile reads code-only generic recovery, removes the redundant customer-site query, and replaces catalog wildcard hydration with an explicit projection |
 | ✅ Closed | Admin creation-option failure and lifecycle mismatch | `src/app/admin-create-page-read-integrity.test.tsx`, part-request and field-service create pages | Commit `0b15ef9` applies code-only read recovery, active tenant/site/catalog/engineer filters matching atomic commands, concurrent option loading, and unavailable-prerequisite form guards |
+| ✅ Closed | Customer sites/team read failure and retained-membership ambiguity | `src/app/customer-page-read-integrity.test.tsx`, `/sites`, `/team` | Commit `c336fb1` guards every profile/scoped/membership read, derives current site access through active tenant/site hydration, preserves manager organization scope, and normalizes customer relation shapes |
 | 🟡 Med | `/settings` is read-only integration status | `src/app/(auth)/settings/page.tsx` | Add notification preferences, user timezone, and theme controls |
 | ✅ Verified | Migration 046 durable public rate limits | `supabase/migrations/046_durable_public_rate_limits.sql` | Applied 2026-08-02; 77 live assertions covered grants, constraints, concurrency, reset/retention, bounded cleanup, real HTTP limits/lifecycle, and zero residue |
 | 🟡 Med | Exact site-code validation remains an existence oracle | `/api/sites/validate` | Responses are minimal and migration 046 enforces 20 checks/minute/IP across instances, but full anti-enumeration still requires CAPTCHA, an invitation/intake token, or authenticated submission |
@@ -1583,6 +1587,12 @@ resume work; this section remains the broader historical summary.
     rule, and disables creation with clear guidance when required references do
     not exist. Six tests bring the suite to 758; all deterministic quality
     gates are green.
+54. **Contain customer page read failures.** Commit `c336fb1` applies code-only
+    recovery across authenticated site/team profile and scoped data reads,
+    filters retained customer memberships through current active tenant/site
+    rows, preserves manager/team organization scope, and normalizes customer
+    relation shapes. Eleven tests bring the suite to 769; all deterministic
+    quality gates are green.
 
 ### Open architectural questions
 - The RLS recursion bug surfaces a bigger question: do we keep `createAdminClient() + code filter` (the current pattern in `lib/supabase/scope.ts`) or move back to proper RLS once migration 019 + similar fixes are in place? The current pattern scales fine but has a lower safety margin for new queries.
