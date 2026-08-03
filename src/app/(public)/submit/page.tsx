@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -16,6 +16,10 @@ import { PublicSiteFooter } from "@/components/public-site-footer";
 import { PublicSiteHeader } from "@/components/public-site-header";
 import { SITE_CODE_MAX_LENGTH } from "@/lib/sites/site-code";
 import { getCurrentSites } from "@/lib/supabase/scope.client";
+import {
+  isUnauthenticatedAuthError,
+  logIdentityReadFailure,
+} from "@/lib/supabase/auth-read";
 
 interface FormData {
   site_code: string;
@@ -97,6 +101,8 @@ export default function SubmitTicketPage() {
     attachmentWarning?: string;
   } | null>(null);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [authChecking, setAuthChecking] = useState(true);
+  const [accountLoadError, setAccountLoadError] = useState<string | null>(null);
   const [userSites, setUserSites] = useState<UserSite[]>([]);
   const [selectedSiteId, setSelectedSiteId] = useState("");
   const [siteCodeValid, setSiteCodeValid] = useState<boolean | null>(null);
@@ -104,45 +110,75 @@ export default function SubmitTicketPage() {
   const [validatedSiteName, setValidatedSiteName] = useState("");
   const [siteCodeError, setSiteCodeError] = useState("");
 
-  useEffect(() => {
-    async function checkAuth() {
-      try {
-        const supabase = createClient();
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
-          setIsLoggedIn(true);
-          // Pre-fill user info
-          const { data: profile } = await supabase
-            .from("users")
-            .select("full_name, email, phone")
-            .eq("id", user.id)
-            .single();
-          if (profile) {
-            setFormData((prev) => ({
-              ...prev,
-              submitter_name: profile.full_name || "",
-              submitter_email: profile.email || "",
-              submitter_phone: profile.phone || "",
-            }));
-          }
-          // Use the shared RLS-scoped site contract. Customer managers receive
-          // every active site in their organization; customer users receive
-          // only active sites assigned through site_members.
-          const sites = await getCurrentSites();
-          setUserSites(
-            sites.map((site) => ({
-              site_id: site.id,
-              site_code: site.site_code,
-              site_name: site.site_name,
-            }))
-          );
-        }
-      } catch {
-        // Not logged in, continue as guest
+  const checkAuth = useCallback(async () => {
+    setAuthChecking(true);
+    setAccountLoadError(null);
+    setIsLoggedIn(false);
+    setUserSites([]);
+    setSelectedSiteId("");
+    try {
+      const supabase = createClient();
+      const authResult = await supabase.auth.getUser();
+      const user = authResult.data.user;
+      if (authResult.error && !isUnauthenticatedAuthError(authResult.error)) {
+        logIdentityReadFailure("public-submit/auth", authResult.error);
+        setAccountLoadError(
+          "We could not determine your account status. Please retry before submitting."
+        );
+        return;
       }
+      if (!user) return;
+
+      setIsLoggedIn(true);
+      const profileResult = await supabase
+        .from("users")
+        .select("full_name, email, phone, status")
+        .eq("id", user.id)
+        .maybeSingle();
+      if (profileResult.error) {
+        logIdentityReadFailure("public-submit/profile", profileResult.error);
+        setAccountLoadError(
+          "Your account details are temporarily unavailable. Please retry."
+        );
+        return;
+      }
+      if (!profileResult.data || profileResult.data.status !== "active") {
+        setAccountLoadError("This signed-in account is not available.");
+        return;
+      }
+
+      const profile = profileResult.data;
+      setFormData((prev) => ({
+        ...prev,
+        submitter_name: profile.full_name || "",
+        submitter_email: profile.email || "",
+        submitter_phone: profile.phone || "",
+      }));
+
+      // Use the shared RLS-scoped site contract. Customer managers receive
+      // every active site in their organization; customer users receive only
+      // active sites assigned through site_members.
+      const sites = await getCurrentSites();
+      setUserSites(
+        sites.map((site) => ({
+          site_id: site.id,
+          site_code: site.site_code,
+          site_name: site.site_name,
+        }))
+      );
+    } catch (error) {
+      logIdentityReadFailure("public-submit/context", error);
+      setAccountLoadError(
+        "Your account details are temporarily unavailable. Please retry."
+      );
+    } finally {
+      setAuthChecking(false);
     }
-    checkAuth();
   }, []);
+
+  useEffect(() => {
+    void checkAuth();
+  }, [checkAuth]);
 
   const handleChange = (
     e: React.ChangeEvent<
@@ -381,6 +417,55 @@ export default function SubmitTicketPage() {
     );
   }
 
+  if (authChecking || accountLoadError) {
+    return (
+      <div className="min-h-screen bg-slate-50">
+        <PublicSiteHeader current="submit" />
+        <main className="mx-auto flex max-w-xl items-center px-6 py-16 sm:py-24">
+          <section
+            aria-busy={authChecking}
+            className="w-full rounded-3xl border border-slate-200 bg-white p-7 shadow-xl shadow-slate-900/5 sm:p-10"
+          >
+            <p className="text-sm font-bold uppercase tracking-[0.18em] text-primary">
+              Support intake
+            </p>
+            <h1 className="mt-3 text-2xl font-semibold text-slate-950">
+              Submit a Support Request
+            </h1>
+            <p className="mt-3 text-sm font-semibold text-slate-800">
+              {authChecking ? "Checking your account" : "Account check failed"}
+            </p>
+            <p className="mt-2 text-sm leading-6 text-slate-600">
+              {authChecking
+                ? "Please wait while we determine whether to load your assigned sites or the guest intake form."
+                : accountLoadError}
+            </p>
+            {!authChecking && (
+              <div className="mt-6 flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  onClick={() => void checkAuth()}
+                  className="rounded-xl bg-primary px-5 py-3 text-sm font-bold text-white hover:bg-primary/90"
+                >
+                  Try again
+                </button>
+                <form action="/auth/logout" method="post">
+                  <button
+                    type="submit"
+                    className="rounded-xl border border-slate-300 px-5 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                  >
+                    Sign out
+                  </button>
+                </form>
+              </div>
+            )}
+          </section>
+        </main>
+        <PublicSiteFooter />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-50">
       <PublicSiteHeader current="submit" />
@@ -438,21 +523,27 @@ export default function SubmitTicketPage() {
                 >
                   Site Code *
                 </label>
-                {isLoggedIn && userSites.length > 0 ? (
+                {isLoggedIn ? (
                   <select
                     id="site-code"
                     value={selectedSiteId}
                     onChange={(e) => {
                       setSelectedSiteId(e.target.value);
                       const site = userSites.find((s) => s.site_id === e.target.value);
-                      if (site) {
-                        setFormData((prev) => ({ ...prev, site_code: site.site_code }));
-                      }
+                      setFormData((prev) => ({
+                        ...prev,
+                        site_code: site?.site_code || "",
+                      }));
                     }}
+                    disabled={userSites.length === 0}
                     required
                     className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                   >
-                    <option value="">Select a site...</option>
+                    <option value="">
+                      {userSites.length === 0
+                        ? "No active sites available"
+                        : "Select a site..."}
+                    </option>
                     {userSites.map((site) => (
                       <option key={site.site_id} value={site.site_id}>
                         {site.site_name} ({site.site_code})
@@ -512,6 +603,12 @@ export default function SubmitTicketPage() {
                       ) : null}
                     </div>
                   </div>
+                )}
+                {isLoggedIn && userSites.length === 0 && (
+                  <p className="mt-1 text-xs text-amber-700">
+                    No active sites are assigned to this account. Contact your
+                    customer administrator or DropletAI support before submitting.
+                  </p>
                 )}
               </div>
               <div>
@@ -782,7 +879,11 @@ export default function SubmitTicketPage() {
           <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center">
             <button
               type="submit"
-              disabled={isSubmitting || (!isLoggedIn && siteCodeValidating)}
+              disabled={
+                isSubmitting ||
+                (!isLoggedIn && siteCodeValidating) ||
+                (isLoggedIn && userSites.length === 0)
+              }
               className="flex-1 rounded-lg bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground shadow-sm hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isSubmitting

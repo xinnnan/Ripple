@@ -35,14 +35,20 @@ export function CreateTicketModal({ open, onClose, onCreated }: CreateTicketModa
   const [area, setArea] = useState("");
   const [description, setDescription] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [loadingSites, setLoadingSites] = useState(false);
+  const [siteLoadError, setSiteLoadError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
   useEffect(() => {
-    if (open) loadSites();
+    if (open) void loadSites();
   }, [open]);
 
   async function loadSites() {
+    setLoadingSites(true);
+    setSiteLoadError(null);
+    setSelectedSiteId("");
+    setUserSites([]);
     try {
       const sites = await getCurrentSites();
       setUserSites(
@@ -54,7 +60,11 @@ export function CreateTicketModal({ open, onClose, onCreated }: CreateTicketModa
         }))
       );
     } catch {
-      // Not logged in or scope lookup failed
+      setSiteLoadError(
+        "Site options are temporarily unavailable. Please retry."
+      );
+    } finally {
+      setLoadingSites(false);
     }
   }
 
@@ -122,14 +132,19 @@ export function CreateTicketModal({ open, onClose, onCreated }: CreateTicketModa
   const selectedSite = userSites.find((s) => s.site_id === selectedSiteId);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-3 sm:p-4" onClick={onClose}>
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="create-ticket-title"
         className="bg-background rounded-xl border border-border shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between p-6 border-b border-border">
-          <h2 className="text-lg font-semibold text-foreground">Submit New Ticket</h2>
+          <h2 id="create-ticket-title" className="text-lg font-semibold text-foreground">Submit New Ticket</h2>
           <button
+            type="button"
+            aria-label="Close ticket form"
             onClick={() => { resetForm(); onClose(); }}
             className="text-muted-foreground hover:text-foreground transition-colors"
           >
@@ -152,23 +167,44 @@ export function CreateTicketModal({ open, onClose, onCreated }: CreateTicketModa
         ) : (
           <form onSubmit={handleSubmit} className="p-6 space-y-4">
             {error && (
-              <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
                 {error}
+              </div>
+            )}
+
+            {siteLoadError && (
+              <div role="alert" className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                <p>{siteLoadError}</p>
+                <button
+                  type="button"
+                  onClick={() => void loadSites()}
+                  className="mt-2 font-semibold text-primary hover:text-primary/80"
+                >
+                  Retry site loading
+                </button>
               </div>
             )}
 
             {/* Site Selection */}
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1">
+              <label htmlFor="ticket-site" className="block text-sm font-medium text-foreground mb-1">
                 Site *
               </label>
               <select
+                id="ticket-site"
                 value={selectedSiteId}
                 onChange={(e) => setSelectedSiteId(e.target.value)}
+                disabled={loadingSites || Boolean(siteLoadError) || userSites.length === 0}
                 required
                 className="w-full rounded-lg border border-border px-3 py-2 text-sm text-foreground bg-background focus:outline-none focus:ring-2 focus:ring-primary/20"
               >
-                <option value="">Select a site...</option>
+                <option value="">
+                  {loadingSites
+                    ? "Loading sites..."
+                    : userSites.length === 0
+                      ? "No active sites available"
+                      : "Select a site..."}
+                </option>
                 {userSites.map((site) => (
                   <option key={site.site_id} value={site.site_id}>
                     {site.site_name} ({site.site_code}){site.customer_name ? ` — ${site.customer_name}` : ""}
@@ -180,14 +216,21 @@ export function CreateTicketModal({ open, onClose, onCreated }: CreateTicketModa
                   Customer: {selectedSite.customer_name} | Site: {selectedSite.site_code}
                 </p>
               )}
+              {!loadingSites && !siteLoadError && userSites.length === 0 && (
+                <p className="mt-1 text-xs text-amber-700">
+                  No active sites are assigned to your account. Contact your
+                  customer administrator or DropletAI support.
+                </p>
+              )}
             </div>
 
             {/* Title */}
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1">
+              <label htmlFor="ticket-title" className="block text-sm font-medium text-foreground mb-1">
                 Issue Title *
               </label>
               <input
+                id="ticket-title"
                 type="text"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
@@ -198,10 +241,11 @@ export function CreateTicketModal({ open, onClose, onCreated }: CreateTicketModa
             </div>
 
             {/* Type / Severity / Impact */}
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1">Type *</label>
+                <label htmlFor="ticket-type" className="block text-sm font-medium text-foreground mb-1">Type *</label>
                 <select
+                  id="ticket-type"
                   value={requestType}
                   onChange={(e) => setRequestType(e.target.value as RequestType)}
                   required
@@ -214,8 +258,9 @@ export function CreateTicketModal({ open, onClose, onCreated }: CreateTicketModa
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1">Severity *</label>
+                <label htmlFor="ticket-severity" className="block text-sm font-medium text-foreground mb-1">Severity *</label>
                 <select
+                  id="ticket-severity"
                   value={severity}
                   onChange={(e) => setSeverity(e.target.value as Severity)}
                   required
@@ -228,8 +273,9 @@ export function CreateTicketModal({ open, onClose, onCreated }: CreateTicketModa
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1">Impact *</label>
+                <label htmlFor="ticket-impact" className="block text-sm font-medium text-foreground mb-1">Impact *</label>
                 <select
+                  id="ticket-impact"
                   value={impact}
                   onChange={(e) => setImpact(e.target.value as Impact)}
                   required
@@ -244,10 +290,11 @@ export function CreateTicketModal({ open, onClose, onCreated }: CreateTicketModa
             </div>
 
             {/* Asset / Area */}
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1">Equipment / Asset</label>
+                <label htmlFor="ticket-asset" className="block text-sm font-medium text-foreground mb-1">Equipment / Asset</label>
                 <input
+                  id="ticket-asset"
                   type="text"
                   value={assetId}
                   onChange={(e) => setAssetId(e.target.value)}
@@ -256,8 +303,9 @@ export function CreateTicketModal({ open, onClose, onCreated }: CreateTicketModa
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1">Area / Process</label>
+                <label htmlFor="ticket-area" className="block text-sm font-medium text-foreground mb-1">Area / Process</label>
                 <input
+                  id="ticket-area"
                   type="text"
                   value={area}
                   onChange={(e) => setArea(e.target.value)}
@@ -269,10 +317,11 @@ export function CreateTicketModal({ open, onClose, onCreated }: CreateTicketModa
 
             {/* Description */}
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1">
+              <label htmlFor="ticket-description" className="block text-sm font-medium text-foreground mb-1">
                 Description *
               </label>
               <textarea
+                id="ticket-description"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 required
@@ -293,7 +342,12 @@ export function CreateTicketModal({ open, onClose, onCreated }: CreateTicketModa
               </button>
               <button
                 type="submit"
-                disabled={submitting}
+                disabled={
+                  submitting ||
+                  loadingSites ||
+                  Boolean(siteLoadError) ||
+                  userSites.length === 0
+                }
                 className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
               >
                 {submitting ? "Submitting..." : "Submit Ticket"}
