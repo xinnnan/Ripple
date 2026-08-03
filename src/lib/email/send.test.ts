@@ -1,7 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   buildTicketConfirmationEmail,
   buildTicketResolvedEmail,
+  sendTicketConfirmation,
 } from "./send";
 
 function ticketLink(html: string): URL {
@@ -11,6 +12,16 @@ function ticketLink(html: string): URL {
 }
 
 describe("transactional email rendering", () => {
+  beforeEach(() => {
+    vi.stubEnv("NODE_ENV", "test");
+    vi.stubEnv("NEXT_PUBLIC_APP_URL", "http://localhost:3000");
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+  });
+
   it("escapes confirmation fields and keeps hostile link values inside their URL components", () => {
     const ticketNo = 'RPL-\"><img src=x onerror=alert(1)>';
     const secureToken = 'token\"&?=<script>alert(1)</script>';
@@ -87,5 +98,43 @@ describe("transactional email rendering", () => {
 
     expect(email.subject).not.toMatch(/[\u0000-\u001f\u007f]/);
     expect(email.subject).toBe("[RPL- -7] Support Ticket Created — Line stopped");
+  });
+
+  it("refuses to render a production email with a non-public origin", () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("NEXT_PUBLIC_APP_URL", "http://localhost:3000");
+
+    expect(() =>
+      buildTicketResolvedEmail({
+        to: "operator@example.com",
+        ticketNo: "RPL-000042",
+        secureToken: "safe-token",
+        title: "Sorter stopped",
+        resolutionSummary: "Controller restarted",
+      })
+    ).toThrow(
+      "NEXT_PUBLIC_APP_URL must be a public HTTPS origin in production"
+    );
+  });
+
+  it("contains invalid provider configuration without throwing", async () => {
+    vi.stubEnv("RESEND_API_KEY", "re_your-resend-key");
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    await expect(
+      sendTicketConfirmation({
+        to: "operator@example.com",
+        ticketNo: "RPL-000042",
+        secureToken: "safe-token",
+        title: "Sorter stopped",
+        customerName: "Customer",
+        siteName: "Site",
+      })
+    ).resolves.toEqual({
+      sent: false,
+      reason: "send_failed",
+      error: "RESEND_API_KEY is not configured correctly",
+    });
+    expect(consoleError).toHaveBeenCalledOnce();
   });
 });

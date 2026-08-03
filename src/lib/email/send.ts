@@ -14,15 +14,19 @@
 // needs to change.
 
 import { Resend } from "resend";
-
-const FROM_EMAIL = process.env.EMAIL_FROM || "support@dropletai.services";
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+import { resolvePublicAppOrigin } from "@/lib/config/public-app-url";
+import {
+  isResendApiKeyConfigured,
+  resolveEmailFromAddress,
+} from "@/lib/email/config";
 
 let _resend: Resend | null = null;
-function getResend(): Resend | null {
+function getResend(): Resend {
   if (_resend) return _resend;
   const key = process.env.RESEND_API_KEY;
-  if (!key) return null;
+  if (!isResendApiKeyConfigured(key)) {
+    throw new Error("RESEND_API_KEY is not configured correctly");
+  }
   _resend = new Resend(key);
   return _resend;
 }
@@ -98,17 +102,17 @@ export function buildTicketConfirmationEmail(
 export async function sendTicketConfirmation(
   params: TicketConfirmationParams
 ): Promise<SendResult> {
-  const resend = getResend();
-  if (!resend) {
+  if (!process.env.RESEND_API_KEY?.trim()) {
     console.warn("[email] RESEND_API_KEY not set — skipping confirmation");
     return { sent: false, reason: "no_api_key" };
   }
 
   try {
+    const resend = getResend();
     const email = buildTicketConfirmationEmail(params);
     const { data, error } = await resend.emails.send(
       {
-        from: `Ripple Support <${FROM_EMAIL}>`,
+        from: `Ripple Support <${resolveEmailFromAddress()}>`,
         to: params.to,
         subject: email.subject,
         html: email.html,
@@ -187,17 +191,17 @@ export function buildTicketResolvedEmail(
 export async function sendTicketResolved(
   params: TicketResolvedParams
 ): Promise<SendResult> {
-  const resend = getResend();
-  if (!resend) {
+  if (!process.env.RESEND_API_KEY?.trim()) {
     console.warn("[email] RESEND_API_KEY not set — skipping resolution");
     return { sent: false, reason: "no_api_key" };
   }
 
   try {
+    const resend = getResend();
     const email = buildTicketResolvedEmail(params);
     const { data, error } = await resend.emails.send(
       {
-        from: `Ripple Support <${FROM_EMAIL}>`,
+        from: `Ripple Support <${resolveEmailFromAddress()}>`,
         to: params.to,
         subject: email.subject,
         html: email.html,
@@ -225,11 +229,8 @@ export async function sendTicketResolved(
 function buildTicketUrl(ticketNo: string, secureToken: string): string {
   const url = new URL(
     `/t/${encodeURIComponent(ticketNo)}`,
-    APP_URL.endsWith("/") ? APP_URL : `${APP_URL}/`
+    `${resolvePublicAppOrigin()}/`
   );
-  if (url.protocol !== "https:" && url.protocol !== "http:") {
-    throw new Error("NEXT_PUBLIC_APP_URL must use HTTP or HTTPS");
-  }
   url.searchParams.set("token", secureToken);
   return url.toString();
 }

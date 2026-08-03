@@ -26,6 +26,7 @@ const server = spawn(
       // deterministic even if the developer shell has real credentials.
       SLACK_BOT_TOKEN: "",
       SLACK_SIGNING_SECRET: "",
+      RESEND_API_KEY: "",
       NEXT_PUBLIC_APP_URL: baseUrl,
     },
     stdio: ["ignore", "pipe", "pipe"],
@@ -203,7 +204,12 @@ async function expectLogoutRedirect() {
   process.stdout.write("PASS same-origin logout redirect\n");
 }
 
-async function expectHealth(path, expectedStatus, expectedBodyStatus) {
+async function expectHealth(
+  path,
+  expectedStatus,
+  expectedBodyStatus,
+  expectedChecks = {}
+) {
   const response = await fetch(`${baseUrl}${path}`, {
     signal: AbortSignal.timeout(5000),
   });
@@ -211,6 +217,9 @@ async function expectHealth(path, expectedStatus, expectedBodyStatus) {
   if (
     response.status !== expectedStatus ||
     body.status !== expectedBodyStatus ||
+    Object.entries(expectedChecks).some(
+      ([name, value]) => body.checks?.[name] !== value
+    ) ||
     response.headers.get("cache-control") !== "no-store"
   ) {
     throw new Error(
@@ -436,7 +445,9 @@ try {
   await expectLoginRedirect("/admin/users");
   await expectLogoutRedirect();
   await expectHealth("/api/health/live", 200, "live");
-  await expectHealth("/api/health/ready", 503, "not_ready");
+  await expectHealth("/api/health/ready", 503, "not_ready", {
+    email: "disabled",
+  });
   await expectOutboxConfigurationDenial();
   await expectSlackConfigurationDenial(
     "/api/slack/command/ticket",

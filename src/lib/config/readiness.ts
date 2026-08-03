@@ -2,12 +2,22 @@ import {
   getSlackConfigurationStatus,
   type SlackEnvironment,
 } from "@/lib/slack/config";
+import { isPublicAppOriginConfigured } from "@/lib/config/public-app-url";
+import {
+  DEFAULT_FROM_EMAIL,
+  isEmailAddressConfigured,
+  isResendApiKeyConfigured,
+} from "@/lib/email/config";
 
 export type ReadinessEnvironment = SlackEnvironment & {
   NEXT_PUBLIC_SUPABASE_URL?: string;
   NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY?: string;
   SUPABASE_SECRET_KEY?: string;
   CRON_SECRET?: string;
+  RESEND_API_KEY?: string;
+  EMAIL_FROM?: string;
+  NEXT_PUBLIC_APP_URL?: string;
+  NODE_ENV?: string;
 };
 
 function isSupabaseUrlConfigured(value: string | undefined): boolean {
@@ -37,6 +47,17 @@ function isKeyConfigured(
   );
 }
 
+function getEmailReadiness(env: ReadinessEnvironment) {
+  const apiKey = env.RESEND_API_KEY?.trim();
+  if (!apiKey) return "disabled" as const;
+
+  const ready =
+    isResendApiKeyConfigured(apiKey) &&
+    isEmailAddressConfigured(env.EMAIL_FROM || DEFAULT_FROM_EMAIL) &&
+    isPublicAppOriginConfigured(env.NEXT_PUBLIC_APP_URL, env.NODE_ENV);
+  return ready ? ("ready" as const) : ("not_ready" as const);
+}
+
 export function getConfigurationReadiness(
   env: ReadinessEnvironment = process.env as ReadinessEnvironment
 ) {
@@ -53,13 +74,15 @@ export function getConfigurationReadiness(
     typeof env.CRON_SECRET === "string" &&
     env.CRON_SECRET.trim().length >= 24 &&
     !/placeholder|your[-_]|replace|change[-_ ]?me/i.test(env.CRON_SECRET);
+  const email = getEmailReadiness(env);
 
   return {
-    ready: database && slack && outbox,
+    ready: database && slack && outbox && email !== "not_ready",
     checks: {
       database: database ? "ready" : "not_ready",
       slack: slack ? "ready" : "not_ready",
       outbox: outbox ? "ready" : "not_ready",
+      email,
     },
   } as const;
 }

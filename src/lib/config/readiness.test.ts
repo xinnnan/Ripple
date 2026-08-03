@@ -54,6 +54,7 @@ describe("configuration readiness", () => {
         database: "ready",
         slack: "ready",
         outbox: "ready",
+        email: "disabled",
       },
     });
   });
@@ -69,6 +70,7 @@ describe("configuration readiness", () => {
         database: "ready",
         slack: "not_ready",
         outbox: "ready",
+        email: "disabled",
       },
     });
     expect(JSON.stringify(result)).not.toContain("xoxb-real-token");
@@ -101,5 +103,76 @@ describe("configuration readiness", () => {
     });
     expect(result.ready).toBe(false);
     expect(result.checks.outbox).toBe("not_ready");
+  });
+
+  it("requires a safe sender and public HTTPS origin when email is enabled", () => {
+    const result = getConfigurationReadiness({
+      ...readyEnvironment,
+      NODE_ENV: "production",
+      RESEND_API_KEY: "re_live_1234567890",
+      EMAIL_FROM: "support@dropletai.services",
+      NEXT_PUBLIC_APP_URL: "https://support.dropletai.services",
+    });
+
+    expect(result.ready).toBe(true);
+    expect(result.checks.email).toBe("ready");
+    expect(JSON.stringify(result)).not.toContain("re_live_1234567890");
+  });
+
+  it.each([
+    {
+      label: "placeholder API key",
+      override: { RESEND_API_KEY: "re_your-resend-key" },
+    },
+    {
+      label: "invalid sender",
+      override: { EMAIL_FROM: "Ripple Support <support@example.com>" },
+    },
+    {
+      label: "sender header injection",
+      override: { EMAIL_FROM: "support@example.com\r\nBcc:evil@example.com" },
+    },
+    {
+      label: "malformed sender domain",
+      override: { EMAIL_FROM: "support@example.com:443" },
+    },
+    {
+      label: "cleartext production origin",
+      override: { NEXT_PUBLIC_APP_URL: "http://support.dropletai.services" },
+    },
+    {
+      label: "localhost production origin",
+      override: { NEXT_PUBLIC_APP_URL: "https://localhost:3000" },
+    },
+    {
+      label: "non-origin application URL",
+      override: {
+        NEXT_PUBLIC_APP_URL: "https://support.dropletai.services/app",
+      },
+    },
+  ])("fails enabled email readiness for $label", ({ override }) => {
+    const result = getConfigurationReadiness({
+      ...readyEnvironment,
+      NODE_ENV: "production",
+      RESEND_API_KEY: "re_live_1234567890",
+      EMAIL_FROM: "support@dropletai.services",
+      NEXT_PUBLIC_APP_URL: "https://support.dropletai.services",
+      ...override,
+    });
+
+    expect(result.ready).toBe(false);
+    expect(result.checks.email).toBe("not_ready");
+  });
+
+  it("allows an enabled localhost email loop only outside production", () => {
+    const result = getConfigurationReadiness({
+      ...readyEnvironment,
+      NODE_ENV: "development",
+      RESEND_API_KEY: "re_test_1234567890",
+      NEXT_PUBLIC_APP_URL: "http://localhost:3000",
+    });
+
+    expect(result.ready).toBe(true);
+    expect(result.checks.email).toBe("ready");
   });
 });
