@@ -1,4 +1,5 @@
 import { createAdminClient } from "@/lib/supabase/admin";
+import { assertPageQueriesSucceeded } from "@/lib/server-page-query";
 import { CreateFieldServiceForm } from "./create-field-service-form";
 
 export const dynamic = "force-dynamic";
@@ -6,18 +7,29 @@ export const dynamic = "force-dynamic";
 export default async function CreateFieldServicePage() {
   const supabase = createAdminClient();
 
-  const { data: sites } = await supabase
-    .from("sites")
-    .select("id, site_name, site_code, customer:customers(name)")
-    .eq("status", "active")
-    .order("site_name");
-
-  const { data: engineers } = await supabase
-    .from("users")
-    .select("id, full_name, email, role")
-    .in("role", ["engineer"])
-    .eq("status", "active")
-    .order("full_name");
+  const [sitesResult, engineersResult] = await Promise.all([
+    supabase
+      .from("sites")
+      .select(
+        "id, site_name, site_code, customer:customers!inner(name)"
+      )
+      .eq("status", "active")
+      .in("customer.status", ["active", "trial"])
+      .order("site_name"),
+    supabase
+      .from("users")
+      .select("id, full_name, email, role")
+      .eq("role", "engineer")
+      .eq("status", "active")
+      .order("full_name"),
+  ]);
+  assertPageQueriesSucceeded(
+    "admin/field-service-create-options",
+    sitesResult,
+    engineersResult
+  );
+  const sites = sitesResult.data;
+  const engineers = engineersResult.data;
 
   return (
     <div className="p-8">

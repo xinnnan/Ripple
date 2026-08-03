@@ -52,6 +52,9 @@ export function CreatePartRequestForm({ sites, parts }: CreatePartRequestFormPro
   ]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const hasSites = sites.length > 0;
+  const hasParts = parts.length > 0;
+  const canCreate = hasSites && hasParts;
 
   function addItem() {
     setItems([...items, { spare_part_id: "", quantity: 1, unit_price: 0, notes: "" }]);
@@ -81,6 +84,12 @@ export function CreatePartRequestForm({ sites, parts }: CreatePartRequestFormPro
     e.preventDefault();
     setLoading(true);
     setError(null);
+
+    if (!canCreate) {
+      setError("An active site and spare part are required before creating a request");
+      setLoading(false);
+      return;
+    }
 
     const validItems = items.filter((item) => item.spare_part_id && item.quantity > 0);
     if (!siteId) {
@@ -134,6 +143,19 @@ export function CreatePartRequestForm({ sites, parts }: CreatePartRequestFormPro
         </div>
       )}
 
+      {!canCreate && (
+        <div
+          role="status"
+          className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"
+        >
+          {!hasSites && !hasParts
+            ? "No active service sites or spare parts are available. Add or reactivate them before creating a request."
+            : !hasSites
+              ? "No active service sites are available. Add or reactivate a site under an active customer first."
+              : "No active spare parts are available. Add or reactivate a catalog part first."}
+        </div>
+      )}
+
       <div className="grid grid-cols-2 gap-4">
         <div>
           <label className="block text-sm font-medium text-foreground mb-1.5">Site *</label>
@@ -141,6 +163,7 @@ export function CreatePartRequestForm({ sites, parts }: CreatePartRequestFormPro
             value={siteId}
             onChange={(e) => setSiteId(e.target.value)}
             required
+            disabled={!hasSites}
             className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
           >
             <option value="">Select site...</option>
@@ -173,7 +196,8 @@ export function CreatePartRequestForm({ sites, parts }: CreatePartRequestFormPro
           <button
             type="button"
             onClick={addItem}
-            className="text-xs font-medium text-primary hover:text-primary/80"
+            disabled={!hasParts}
+            className="text-xs font-medium text-primary hover:text-primary/80 disabled:cursor-not-allowed disabled:opacity-50"
           >
             + Add Item
           </button>
@@ -187,6 +211,7 @@ export function CreatePartRequestForm({ sites, parts }: CreatePartRequestFormPro
                   value={item.spare_part_id}
                   onChange={(e) => updateItem(index, "spare_part_id", e.target.value)}
                   required
+                  disabled={!hasParts}
                   className="w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
                 >
                   <option value="">Select part...</option>
@@ -246,7 +271,7 @@ export function CreatePartRequestForm({ sites, parts }: CreatePartRequestFormPro
       <div className="flex gap-3 pt-4">
         <button
           type="submit"
-          disabled={loading}
+          disabled={loading || !canCreate}
           className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
         >
           {loading ? "Creating..." : "Create Request"}

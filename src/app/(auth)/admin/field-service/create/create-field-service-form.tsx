@@ -48,6 +48,7 @@ export function CreateFieldServiceForm({ sites, engineers }: CreateFieldServiceF
   const [selectedEngineers, setSelectedEngineers] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const hasSites = sites.length > 0;
 
   function toggleEngineer(engineerId: string) {
     setSelectedEngineers((prev) =>
@@ -61,6 +62,12 @@ export function CreateFieldServiceForm({ sites, engineers }: CreateFieldServiceF
     e.preventDefault();
     setLoading(true);
     setError(null);
+
+    if (!hasSites) {
+      setError("An active service site is required before creating an order");
+      setLoading(false);
+      return;
+    }
 
     if (!siteId) {
       setError("Please select a site");
@@ -112,6 +119,16 @@ export function CreateFieldServiceForm({ sites, engineers }: CreateFieldServiceF
         </div>
       )}
 
+      {!hasSites && (
+        <div
+          role="status"
+          className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"
+        >
+          No active service sites are available. Add or reactivate a site under
+          an active customer before creating an order.
+        </div>
+      )}
+
       <div>
         <label className="block text-sm font-medium text-foreground mb-1.5">Title *</label>
         <input
@@ -131,6 +148,7 @@ export function CreateFieldServiceForm({ sites, engineers }: CreateFieldServiceF
             value={siteId}
             onChange={(e) => setSiteId(e.target.value)}
             required
+            disabled={!hasSites}
             className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
           >
             <option value="">Select site...</option>
@@ -255,7 +273,7 @@ export function CreateFieldServiceForm({ sites, engineers }: CreateFieldServiceF
       <div className="flex gap-3 pt-4">
         <button
           type="submit"
-          disabled={loading}
+          disabled={loading || !hasSites}
           className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
         >
           {loading ? "Creating..." : "Create Service Order"}
