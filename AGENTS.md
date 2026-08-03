@@ -295,7 +295,7 @@ npm run dev
 - `npm run build` — production build
 - `npm run start` — production server
 - `npm run lint` — direct ESLint CLI across the repository; warnings fail the gate
-- `npm test` — Vitest unit/contract suite (906 tests)
+- `npm test` — Vitest unit/contract suite (915 tests)
 - `npm run test:e2e` — 40-check production HTTP smoke plus optional credentialed Playwright/API/RLS matrix; requires a successful build
 - `npm run test:e2e:credentialed` — real six-account/two-tenant matrix; set `RIPPLE_E2E_FIXTURES_FILE`
 - `npm run test:e2e:install-browser` — install the pinned Chromium runtime
@@ -1300,6 +1300,22 @@ error. Never `filter()` invalid user work out of a business command, never use
 array indexes as keys for removable rows, and do not use truthiness where zero
 is a valid domain value.
 
+### A committed command must not look failed because response hydration failed
+Found 2026-08-03 in site creation. The atomic database command could commit a
+new site and audit evidence, then a separate detail lookup could fail. Returning
+500 for that lookup told clients the mutation failed and made a retry capable
+of creating a duplicate or producing a misleading uniqueness conflict.
+
+Commit `e15dea6` preserves committed success with a private/no-store 201,
+returns the durable ID plus a bounded refresh warning, and limits hydration
+diagnostics to an error code. The customer/site forms also replace timed full
+reloads with route refresh transitions and remain locked through settlement.
+
+**Lesson:** once an atomic business command commits, later presentation
+hydration is not allowed to reverse its HTTP success semantics. Return the
+durable identity, disclose that detail refresh is degraded, and let clients
+reconcile without replaying the write.
+
 ---
 
 ## 10. Current State & Roadmap
@@ -1462,7 +1478,10 @@ resume work; this section remains the broader historical summary.
   structured confirmation and hardened Slack channel discovery/linking,
   bringing the suite to 899 tests; then aligned field-service and spare-part
   request creation with their server contracts and total row normalization,
-  bringing the suite to 906 tests.
+  bringing the suite to 906 tests; then aligned customer/site create/edit forms
+  with canonical identifiers, lifecycle/ownership rules, bounded error
+  handling, and complete refresh locking while preserving committed site-create
+  success through hydration failure, bringing the suite to 915 tests.
 
 ### Known issues / open work
 | Priority | Item | Where | Notes |
@@ -1498,6 +1517,7 @@ resume work; this section remains the broader historical summary.
 | ✅ Closed | Identity-form raw error and duplicate-submit exposure | admin user and customer team create/edit forms, `src/lib/http/client-mutation.ts` | Commit `ec9cd65` admits only bounded expected API errors, contains runtime/network detail, locks the complete mutation surface, guards handlers, and keeps inactive identities read-only |
 | ✅ Closed | Field-service/Slack action ambiguity | field-service detail actions, Slack channel-link page/API | Commit `7ff594d` replaces prompts/immediate destructive actions with bounded confirmation, extends busy state through refresh/navigation, and makes channel discovery paginated, private, bounded, and failure-contained |
 | ✅ Closed | Service creation form coercion/silent-row loss | field-service and spare-part request creation forms | Commit `a3ed0dd` applies total row validation, stable keys, zero-safe prices, exact bounds/date checks, accessible labels/errors, responsive layout, and request-plus-navigation locking |
+| ✅ Closed | Customer/site form and post-commit hydration ambiguity | customer/site create/edit forms, `POST /api/sites` | Commit `e15dea6` applies canonical normalization/bounds, accessible responsive locking, archived/ownership guards, prerequisite messaging, and committed-success 201 semantics when site detail hydration is degraded |
 | 🟡 Med | `/settings` is read-only integration status | `src/app/(auth)/settings/page.tsx` | Add notification preferences, user timezone, and theme controls |
 | ✅ Verified | Migration 046 durable public rate limits | `supabase/migrations/046_durable_public_rate_limits.sql` | Applied 2026-08-02; 77 live assertions covered grants, constraints, concurrency, reset/retention, bounded cleanup, real HTTP limits/lifecycle, and zero residue |
 | 🟡 Med | Exact site-code validation remains an existence oracle | `/api/sites/validate` | Responses are minimal and migration 046 enforces 20 checks/minute/IP across instances, but full anti-enumeration still requires CAPTCHA, an invitation/intake token, or authenticated submission |
@@ -1795,6 +1815,13 @@ resume work; this section remains the broader historical summary.
     visible row without silent filtering, reject duplicates, preserve zero
     prices, expose item notes, and mirror the 100-item/quantity/price/text server
     bounds. Seven contracts bring the suite to 906; all deterministic quality
+    gates are green.
+64. **Harden customer and site forms.** Commit `e15dea6` contains returned and
+    runtime failures, normalizes customer/domain/site inputs against server
+    bounds, keeps all controls locked through route refresh, and preserves
+    archived/immutable ownership rules. Site creation now requires an active
+    customer and returns committed 201 semantics if only response hydration
+    fails. Nine contracts bring the suite to 915; all deterministic quality
     gates are green.
 
 ### Open architectural questions

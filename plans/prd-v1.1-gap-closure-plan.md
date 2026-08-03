@@ -736,6 +736,15 @@ Every implementation slice must:
     quantity/price precision, 100-row limits, item notes, zero prices, and null
     prices match the atomic command contract. Seven contracts bring the suite
     to 906 and all gates are green.
-66. **Next local integrity work:** run protected positive/rollback probes when
-    fixtures are available; otherwise harden customer/site create and edit
-    forms, then ticket creation/detail mutation surfaces.
+66. **P0-BP — closed in `e15dea6`:** Customer/site create and edit now contain
+    raw failures, normalize and bound identity fields, lock the complete
+    HTTP/refresh window, bind controls, and use responsive mobile layouts.
+    Customer creation requires valid hostname input; site creation requires an
+    active customer and canonical site code; archived customer/site records
+    remain read-only and site ownership remains immutable. A committed site
+    creation whose detail hydration fails now returns a private/no-store 201
+    with its durable ID instead of inviting a duplicate retry. Nine contracts
+    bring the suite to 915 and all gates are green.
+67. **Next local integrity work:** run protected positive/rollback probes when
+    fixtures are available; otherwise harden ticket creation/detail mutation
+    surfaces.

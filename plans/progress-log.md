@@ -9,8 +9,8 @@ meaningful change and before ending a work session. Newest entries go first.
 - **Active phase:** Phase 0 — Containment and reproducible baseline
 - **Active work item:** run protected migrations 028–031 business probes when
   the staging fixture becomes available; otherwise continue the remaining
-  customer/site/ticket authenticated mutation-form audit
-- **Last verified implementation commit:** `a3ed0dd` (`fix: harden service creation forms`)
+  ticket creation/detail authenticated mutation-form audit
+- **Last verified implementation commit:** `e15dea6` (`fix: harden customer site forms`)
 - **Uncommitted work:** none expected after the documentation checkpoint;
   verify with `git status` before resuming
 - **Deployment gate:** migrations 001–046 are confirmed applied. Migration 044
@@ -67,9 +67,9 @@ meaningful change and before ending a work session. Newest entries go first.
   visual coverage still depends on the credentialed fixture.
 - **Exact next local step:** check whether the protected credential fixture is
   available and, if so, run the migration 028–031 business probes plus the new
-  malformed-body HTTP checks. If it remains unavailable, harden customer/site
-  create/edit forms, then ticket creation/detail mutation surfaces. Configure
-  `CRON_SECRET` separately before production worker activation
+  malformed-body HTTP checks. If it remains unavailable, harden ticket
+  creation/detail mutation surfaces. Configure `CRON_SECRET` separately before
+  production worker activation
 - **Primary plan:** [`plans/prd-v1.1-gap-closure-plan.md`](./prd-v1.1-gap-closure-plan.md)
 
 ## Overall project status — 2026-08-03
@@ -79,7 +79,7 @@ meaningful change and before ending a work session. Newest entries go first.
 - Against the full PRD v1.1 capability map, 17 domains remain
   **Partial** or **Unsafe/Partial** and seven remain **Absent**. No full PRD
   capability domain is yet honestly complete end to end.
-- The local deterministic baseline is green at 906 unit/contract tests, 40
+- The local deterministic baseline is green at 915 unit/contract tests, 40
   production HTTP smoke checks, a production build, zero-warning lint, and
   zero known dependency vulnerabilities.
 - Phase 0 cannot be declared exited until the protected six-account/two-tenant
@@ -91,6 +91,57 @@ meaningful change and before ending a work session. Newest entries go first.
   queues/routing, business-calendar SLA clocks, remote support, appointments,
   assets/entitlements, search/knowledge, i18n, versioned external APIs, and
   production SRE/recovery evidence.
+
+## Session record — 2026-08-03 (P0-BP / customer and site form integrity)
+
+### Objective
+
+Align customer/site create and edit UX with the atomic command contracts while
+preventing raw failures, duplicate retries, invalid identifiers, and edits to
+archived or tenant-ownership state.
+
+### Finding and implementation
+
+- All four forms assumed failed responses were JSON, exposed arbitrary thrown
+  messages, and disabled only submit during the HTTP request. Create flows then
+  released their lock before a one-second full-page reload, leaving a duplicate
+  mutation window after a successful commit.
+- Customer create/edit now trims names, normalizes domains, applies the
+  server's hostname and length contract before I/O, uses bounded expected API
+  errors, contains runtime/network detail, and stays locked through route
+  refresh. Archived customers also reject programmatic submission.
+- Site create/edit now share the canonical site-code normalizer/validator,
+  mirror site-name/code/address bounds, bind every control, collapse grids on
+  mobile, and keep all controls locked through refresh. Creation is unavailable
+  without an active customer; editing keeps customer ownership immutable and
+  archived sites read-only.
+- The atomic site-create command could commit successfully and then return 500
+  if response hydration failed, encouraging clients to retry and possibly
+  create a duplicate. It now returns a private/no-store 201 with the committed
+  ID and a bounded warning, while logging only the provider error code.
+- Five route tests and four real-source form contracts bring the suite to 915
+  tests across 115 files. No live customer or site was created or changed.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| `npm test` | Passed; 115 files, 915 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build and type check |
+| `npm run test:e2e` | Passed; all 40 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+
+### Commit
+
+- Hash: `e15dea6`
+- Message: `fix: harden customer site forms`
+
+### Next
+
+Run protected probes when their fixture is available. Otherwise harden ticket
+creation and detail mutation surfaces.
 
 ## Session record — 2026-08-03 (P0-BO / service creation form integrity)
 
