@@ -2,6 +2,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { FSO_STATUS_LABELS, FSO_STATUS_COLORS, SERVICE_TYPE_LABELS, FSO_PRIORITY_LABELS } from "@/types/spare-parts";
 import { formatDateOnly } from "@/lib/utils";
 import Link from "next/link";
+import { assertPageQueriesSucceeded } from "@/lib/server-page-query";
 
 export const dynamic = "force-dynamic";
 
@@ -44,7 +45,7 @@ function getEngineerNames(engineers: FieldServiceRow["engineers"]): string {
 export default async function FieldServicePage() {
   const supabase = createAdminClient();
 
-  const { data: orders } = await supabase
+  const ordersResult = await supabase
     .from("field_service_orders")
     .select(`
       id, order_no, title, service_type, status, priority,
@@ -54,6 +55,8 @@ export default async function FieldServicePage() {
       engineers:field_service_engineers(engineer_id, role, engineer:users(id, full_name))
     `)
     .order("created_at", { ascending: false });
+  assertPageQueriesSucceeded("admin/field-service-list", ordersResult);
+  const orders = ordersResult.data;
 
   const typedOrders = (orders || []) as unknown as FieldServiceRow[];
 

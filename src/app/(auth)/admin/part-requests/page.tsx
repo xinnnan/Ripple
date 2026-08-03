@@ -1,6 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { SPR_STATUS_LABELS, SPR_STATUS_COLORS, SPR_PRIORITY_LABELS } from "@/types/spare-parts";
 import Link from "next/link";
+import { assertPageQueriesSucceeded } from "@/lib/server-page-query";
 
 export const dynamic = "force-dynamic";
 
@@ -32,7 +33,7 @@ function getTicketNo(ticket: PartRequestRow["ticket"]): string | null {
 export default async function PartRequestsPage() {
   const supabase = createAdminClient();
 
-  const { data: requests } = await supabase
+  const requestsResult = await supabase
     .from("spare_part_requests")
     .select(`
       id, request_no, status, priority, total_cost, created_at,
@@ -42,6 +43,8 @@ export default async function PartRequestsPage() {
       items:spare_part_request_items(quantity)
     `)
     .order("created_at", { ascending: false });
+  assertPageQueriesSucceeded("admin/part-request-list", requestsResult);
+  const requests = requestsResult.data;
 
   const typedRequests = (requests || []) as unknown as PartRequestRow[];
 

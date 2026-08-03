@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import Link from "next/link";
+import { assertPageQueriesSucceeded } from "@/lib/server-page-query";
 
 export const dynamic = "force-dynamic";
 
@@ -44,13 +45,15 @@ function PolicySummaryCell({ p, field }: { p: SLAPolicyRow; field: "response" | 
 
 export default async function AdminSLAPoliciesPage() {
   const supabase = createAdminClient();
-  const { data: policies } = await supabase
+  const policiesResult = await supabase
     .from("sla_policies")
     .select(
       "id, name, customer_id, is_default, p1_response_minutes, p1_resolution_minutes, p2_response_minutes, p2_resolution_minutes, p3_response_minutes, p3_resolution_minutes, p4_response_minutes, p4_resolution_minutes, customer:customers(id, name)"
     )
     .order("is_default", { ascending: false })
     .order("name");
+  assertPageQueriesSucceeded("admin/sla-policy-list", policiesResult);
+  const policies = policiesResult.data;
 
   const typedPolicies = (policies || []) as unknown as SLAPolicyRow[];
 

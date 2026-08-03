@@ -5,6 +5,7 @@ import type { UserRole } from "@/types/ticket";
 import { CreateCustomerForm } from "../customers/create-customer-form";
 import { ADMIN_ROLES } from "@/lib/roles";
 import { CustomersSitesCards } from "./customers-sites-cards";
+import { assertPageQueriesSucceeded } from "@/lib/server-page-query";
 
 export const dynamic = "force-dynamic";
 
@@ -17,11 +18,16 @@ export default async function CustomersSitesPage() {
 
   if (!authUser) redirect("/login");
 
-  const { data: userProfile } = await supabase
+  const profileResult = await supabase
     .from("users")
     .select("role")
     .eq("id", authUser.id)
-    .single();
+    .maybeSingle();
+  assertPageQueriesSucceeded(
+    "admin/customer-site-list-profile",
+    profileResult
+  );
+  const userProfile = profileResult.data;
 
   const role = userProfile?.role as UserRole | undefined;
   if (!role || !ADMIN_ROLES.includes(role)) {
@@ -30,27 +36,15 @@ export default async function CustomersSitesPage() {
 
   const admin = createAdminClient();
 
-  const [customersRes, sitesRes] = await Promise.all([
-    admin
-      .from("customers")
-      .select("id, name, domain, status, sites(id, site_name, site_code, project_status, status)")
-      .order("name"),
-    admin
-      .from("sites")
-      .select("id, site_name, site_code, project_status, slack_channel_id, customer:customers(id, name), site_members(user_id)")
-      .order("site_name"),
-  ]);
+  const customersResult = await admin
+    .from("customers")
+    .select(
+      "id, name, domain, status, sites(id, site_name, site_code, project_status, status)"
+    )
+    .order("name");
+  assertPageQueriesSucceeded("admin/customer-site-list", customersResult);
 
-  // Use the customer-embedded sites for the lifecycle UI (the card layout)
-  // so the site checkboxes are nested under their
-  // customer. The flat `sitesRes` is still useful for the create-site
-  // form's options, but the archive UI only needs the
-  // customer-grouped data.
-  const customers = customersRes.data || [];
-  const customerOptions = customers.map((c: { id: string; name: string }) => ({
-    id: c.id,
-    name: c.name,
-  }));
+  const customers = customersResult.data || [];
 
   return (
     <div className="p-8">
@@ -65,11 +59,6 @@ export default async function CustomersSitesPage() {
       </div>
 
       <CustomersSitesCards customers={customers as any} />
-
-      {/* `sitesRes` retained for any future flat-site list; today the
-          card view already covers everything. */}
-      {/* @ts-ignore unused */}
-      <div className="hidden">{JSON.stringify(sitesRes.data?.length || 0)}</div>
     </div>
   );
 }

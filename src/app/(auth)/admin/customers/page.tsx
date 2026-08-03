@@ -5,6 +5,7 @@ import Link from "next/link";
 import type { UserRole } from "@/types/ticket";
 import { CreateCustomerForm } from "./create-customer-form";
 import { ADMIN_ROLES } from "@/lib/roles";
+import { assertPageQueriesSucceeded } from "@/lib/server-page-query";
 
 export const dynamic = "force-dynamic";
 
@@ -17,11 +18,13 @@ export default async function AdminCustomersPage() {
 
   if (!authUser) redirect("/login");
 
-  const { data: userProfile } = await supabase
+  const profileResult = await supabase
     .from("users")
     .select("role")
     .eq("id", authUser.id)
-    .single();
+    .maybeSingle();
+  assertPageQueriesSucceeded("admin/customer-list-profile", profileResult);
+  const userProfile = profileResult.data;
 
   const role = userProfile?.role as UserRole | undefined;
   if (!role || !ADMIN_ROLES.includes(role)) {
@@ -30,7 +33,7 @@ export default async function AdminCustomersPage() {
 
   const admin = createAdminClient();
 
-  const { data: customers } = await admin
+  const customersResult = await admin
     .from("customers")
     .select(
       `
@@ -40,6 +43,8 @@ export default async function AdminCustomersPage() {
     )
     .order("name")
     .limit(100);
+  assertPageQueriesSucceeded("admin/customer-list", customersResult);
+  const customers = customersResult.data;
 
   interface CustomerRow {
     id: string;
