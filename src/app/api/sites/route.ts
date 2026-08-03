@@ -135,11 +135,31 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (error) {
-      console.error("Created site lookup failed:", error);
-      return NextResponse.json({ error: "Failed to load created site" }, { status: 500 });
+      // The atomic command has already committed. Preserve success semantics so
+      // callers do not retry the mutation and create a duplicate site merely
+      // because response hydration failed.
+      console.error("POST /api/sites hydration failed:", {
+        code: error.code,
+      });
+      return NextResponse.json(
+        {
+          site: { id: siteId },
+          warning: "Site created; detail refresh is temporarily unavailable",
+        },
+        {
+          status: 201,
+          headers: { "Cache-Control": "private, no-store" },
+        }
+      );
     }
 
-    return NextResponse.json({ site }, { status: 201 });
+    return NextResponse.json(
+      { site },
+      {
+        status: 201,
+        headers: { "Cache-Control": "private, no-store" },
+      }
+    );
   } catch (error) {
     if (error instanceof z.ZodError) {
       return NextResponse.json(
@@ -163,8 +183,11 @@ export async function POST(request: NextRequest) {
       if (error.code === "42501") {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
       }
+      console.error("create_admin_site_atomic RPC failed:", {
+        code: error.code,
+      });
     }
-    console.error("Create site error:", error);
+    console.error("POST /api/sites failed");
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
