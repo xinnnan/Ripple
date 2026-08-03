@@ -5,6 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  Boxes,
   Building2,
   ClipboardList,
   Clock3,
@@ -54,6 +55,7 @@ const adminItems: NavItem[] = [
   },
   { href: "/admin/users", label: "Users", icon: Users },
   { href: "/admin/spare-parts", label: "Spare Parts", icon: Package },
+  { href: "/admin/inventory", label: "Inventory", icon: Boxes },
   {
     href: "/admin/part-requests",
     label: "Part Requests",

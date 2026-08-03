@@ -7,16 +7,18 @@ meaningful change and before ending a work session. Newest entries go first.
 
 - **Branch:** `codex/prd-v1-1-gap-closure`
 - **Active phase:** Phase 0 — Containment and reproducible baseline
-- **Active work item:** apply/probe migration 042, configure the production
-  outbox worker secret, then move per-site inventory administration onto an
-  atomic command
-- **Last verified implementation commit:** `de54e20` (`fix: repair spare-part migration parser`), following `737d2a8` (`fix: make spare-part catalog administration atomic`)
+- **Active work item:** audit malformed request handling and remaining
+  public/authenticated mutation abuse boundaries
+- **Last verified implementation commit:** `09259ee` (`fix: harden public token boundaries`)
 - **Uncommitted work:** none expected after the documentation checkpoint;
   verify with `git status` before resuming
-- **Deployment gate:** migrations 001–041 are confirmed applied; migration 042
-  must be applied before deploying atomic spare-parts catalog administration.
-  Production `CRON_SECRET` remains unset in this workspace. Protected positive
-  business probes for migrations 028–040 still require staging fixtures
+- **Deployment gate:** migrations 001–046 are confirmed applied. Migration 044
+  passed a 130-assertion disposable live matrix with zero residue. Migration
+  045 passed a 110-assertion live matrix with zero residue. Migration 046
+  passed a 77-assertion live matrix with zero residue. Production
+  `CRON_SECRET` remains unset in this workspace.
+  Protected positive business probes for migrations 028–037 still require
+  staging fixtures
 - **External validation gate:** populate the gitignored credential fixture with six
   dedicated staging accounts, two tenants, a decommissioned site/ticket, and
   real internal artifact IDs; then run
@@ -41,17 +43,436 @@ meaningful change and before ending a work session. Newest entries go first.
   table overflow, and zero console errors. Spare-parts list/create/edit was
   reviewed at 1280×900 and 390×844 with every control labeled, local table
   overflow, lifecycle guidance, bounded-model validation, and zero console
-  errors. Password-based login passed;
+  errors. Inventory list/create/edit and the site inventory tab were reviewed
+  at 1280×900 and 390×844 with bound labels, site-prefilter persistence,
+  immutable edit identity, threshold/duplicate validation, local table
+  scrolling, Inter, and zero console errors. The public ticket form and its
+  exact attachment accept/help contract were reviewed at 1280×720 and 390×844
+  with Inter and no horizontal overflow. Public site-code invalid/unavailable
+  states, bounded input, stale-request cancellation, checking-button state,
+  Inter, and no-overflow behavior were reverified at 1280 and 390×844 with
+  zero reproducible console warnings/errors. Password-based login passed;
   recovery-email delivery and one-time link consumption still require a
   dedicated staging mailbox.
-- **Exact next local step:** after the user applies migration 042, verify both
-  service-role-only catalog commands. Prove normalized create, case-folded
-  duplicate rejection, exact multi-field/no-op patch, price/shape constraints,
-  missing/non-admin/anonymous rollback, create/update serialization, audit
-  attribution, and zero residue. Then convert per-site inventory create/update
-  to migration 043. Configure `CRON_SECRET` separately before production
+- **Exact next local step:** start with malformed JSON on public ticket
+  creation, inventory sibling routes for the same generic-500 behavior, add
+  stable caller-error contracts without weakening auth/rate-limit ordering,
+  and run the full gate. Configure `CRON_SECRET` separately before production
   worker activation
 - **Primary plan:** [`plans/prd-v1.1-gap-closure-plan.md`](./prd-v1.1-gap-closure-plan.md)
+
+## Session record — 2026-08-02 (P0-AK / public token-boundary hardening)
+
+### Objective
+
+Extend the deployed distributed limiter to every existing unauthenticated
+token/upload surface and minimize service-role reads on the public ticket
+share page.
+
+### Finding and implementation
+
+- Guest `/api/upload` and `/t/[ticketId]` retained only process-local counters,
+  so serverless cold starts and parallel instances reopened their abuse
+  windows.
+- The public page fetched `tickets.*` plus all raw event values, filtered event
+  types after retrieval, treated database errors as invalid links, and did not
+  require active site plus active/trial customer lifecycle.
+- Commit `09259ee` gives upload and view distinct opaque migration-046 buckets,
+  preserves the local L1 guard, returns non-cacheable 429/`Retry-After` for
+  guest uploads, and fails both boundaries closed when the distributed command
+  is unavailable. Authenticated uploads do not share the anonymous bucket.
+- The public share query now selects only rendered customer-safe fields, uses
+  tenant lifecycle inner filters, retrieves customer-visible comments and
+  attachments, and selects only allow-listed event type/new-value/time facts in
+  SQL. Child/query failures produce a generic unavailable state.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| `npm ci` | Passed; locked install, 0 install-time vulnerabilities |
+| `npm test` | Passed; 65 files, 449 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build |
+| `npm run test:e2e` | Passed; all 40 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| Live matrix | Passed; 22 assertions covered safe public rendering, four internal-sentinel exclusions, active/trial/inactive/decommissioned lifecycle, view/upload throttling, durable pre-body consumption, `Retry-After`, non-cacheable responses, and zero ticket/site/customer/bucket residue |
+| Browser QA | Passed at 1280×720: real safe ticket content, transition after 30 reloads to the retry state, self-hosted Inter, no horizontal overflow, and zero console errors on both inspected tabs |
+
+### Next
+
+Audit malformed JSON handling across mutation routes. `POST /api/tickets`
+currently catches JSON syntax failure as a generic 500 even though malformed
+caller input should return a stable 400; preserve auth and rate-limit ordering
+while correcting this class.
+
+## Session record — 2026-08-02 (P0-AJ / migration 046 live verification)
+
+### Objective
+
+Prove the deployed distributed public-intake limiter through real service,
+anonymous, authenticated, database-concurrency, retention, and HTTP paths
+without leaving probe state.
+
+### Live verification
+
+- Confirmed the service role can use the table/command while anonymous and a
+  disposable active authenticated user cannot read or mutate the table or
+  invoke the command directly.
+- Confirmed malformed/non-lowercase keys, zero/oversized limits and windows,
+  malformed stored keys, and negative counts are rejected.
+- Sequential consumption allowed exactly three requests, denied excess, and
+  capped durable state at `limit + 1`. Twenty-five concurrent calls against a
+  limit of ten produced exactly ten allows, fifteen denials, and a bounded
+  count of eleven.
+- A one-second window denied immediate excess, then reset with a later expiry.
+  One command removed exactly 100 ancient rows, retained a one-hour-expired
+  row, and a later command removed the remaining five ancient rows.
+- A disposable active site/customer returned only name/code with `no-store`;
+  inactive customer and decommissioned site states were hidden, while trial
+  customer access remained valid. Malformed codes created no distributed row.
+- Pre-seeded distributed buckets forced real validator and anonymous ticket
+  submission HTTP 429 responses with bounded `Retry-After`; a fresh ticket
+  bucket still reached normal validation.
+- All 77 assertions passed. Cleanup proved zero disposable bucket, site,
+  customer, public-profile, and Auth-identity residue.
+
+### Rollout and next
+
+1. Migration 046 and `19574c9` are deployment-ready for the tested boundary.
+2. Extend the same distributed fail-closed pattern to guest attachment upload
+   and the public secure-token ticket page, which still rely on the local map.
+3. Preserve the exact-code-oracle risk until CAPTCHA, intake tokens, or
+   authenticated-only validation is product-approved.
+
+## Session record — 2026-08-01 (P0-AI / public support-intake containment)
+
+### Objective
+
+Contain the public site-code lookup surface and replace process-local-only
+throttling at open intake boundaries without claiming an IP limit proves site
+membership.
+
+### Finding and implementation
+
+- `GET /api/sites/validate` accepted unbounded input, exposed site/customer
+  UUIDs and customer metadata, treated database errors as unknown codes,
+  checked only site lifecycle, and had no rate limit.
+- Anonymous ticket submission used a process-local counter that resets across
+  serverless instances/cold starts. Ticket code/site-ID resolution could also
+  accept an active site under an inactive customer until the atomic command
+  rejected it later.
+- Commit `19574c9` adds pending migration 046: an opaque SHA-256 bucket table
+  and service-role-only atomic consume command with bounded keys/limits/windows/
+  counts, indexed expiry, bounded cleanup, and public table/RPC denial.
+- Both site validation and anonymous ticket submission keep the fast local
+  guard and fail closed through the distributed command. Valid site responses
+  now expose only display name/code, never cache, and require an active site
+  under an active or trial customer. Ticket resolution shares that contract.
+- The public form uses the shared 50-character code contract, uppercases input,
+  distinguishes invalid/throttled/unavailable states, aborts stale debounced
+  requests, and prevents submission while a check is in flight.
+- Exact valid/invalid feedback remains an existence oracle. The durable
+  20/minute/IP limit contains bulk probing; CAPTCHA, invitation/intake proof,
+  or authentication remains required for full anti-enumeration.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| `npm ci` | Passed; locked install, 0 install-time vulnerabilities |
+| `npm test` | Passed; 63 files, 440 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build |
+| `npm run test:e2e` | Passed; all 39 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+| Browser QA | Passed at 1280 and 390×844: Inter, no horizontal overflow, uppercase/bounded input, accessible invalid feedback, recovery after checking, and zero reproducible console warnings/errors |
+
+### Rollout and next
+
+1. Apply migration 046 before deploying `19574c9`.
+2. Live-probe concurrent consumption, reset/retention, input bounds, public
+   table/RPC denial, real HTTP 429 + `Retry-After`, lifecycle filtering, and
+   zero residue.
+3. Preserve the exact-code-oracle risk until CAPTCHA, intake tokens, or
+   authenticated-only validation is product-approved.
+
+## Session record — 2026-08-01 (P0-AH / migration 045 live verification)
+
+### Objective
+
+Prove the deployed direct-write boundary against real anonymous,
+authenticated, and server-command paths without leaving test data behind.
+
+### Live verification
+
+- A disposable live matrix passed 110 assertions. Authenticated direct DELETE
+  was denied on all 22 command-owned tables; representative anonymous DML,
+  the exact engineer cross-tenant membership insert, and the exact admin SLA
+  insert were denied without residue.
+- Safe `full_name`/`phone` self-service remained functional. Protected role
+  updates plus direct user insert/delete were denied and preserved state.
+- Anonymous/authenticated access to all five number-minting RPC endpoints was
+  denied; the migration contract separately verifies sequence revocation.
+- A real local browser admin login and authenticated HTTP APIs successfully
+  added/removed membership and created/deleted an SLA policy. Read scope
+  appeared/disappeared as expected and each command produced exact joined/
+  left/created/deleted audit evidence.
+- Cleanup confirmed zero disposable profiles, memberships, policies, sites,
+  customers, or audits.
+
+### Decision and next step
+
+- Migration 045 is deployed and its release gate is closed.
+- Next, contain the public site-code lookup surface with minimal responses,
+  aligned tenant lifecycle, and a durable distributed rate limit.
+
+## Session record — 2026-08-01 (P0-AG / direct application-write boundary)
+
+### Objective
+
+Live-verify migration 044 after application, then inspect the next
+authorization-root boundary for paths that bypass transactional validation and
+audit evidence.
+
+### Migration 044 live verification
+
+- The attachment command passed a disposable 130-assertion live matrix. It
+  covered deployed function shape and grants; admin, engineer,
+  customer-manager, customer, and secure-token guest success; null guest
+  attribution; exact one-event cardinality; cross-tenant, unassigned, inactive,
+  lifecycle, internal-visibility, metadata, path, MIME, size, input-shape, and
+  direct-command denial; duplicate/concurrent serialization; and parallel
+  unique writes.
+- A real guest HTTP PDF upload created the Storage object, null-attributed
+  metadata, and exactly one timeline event. A MIME-spoofed upload was rejected
+  before Storage/metadata, and a decommissioned-ticket failure rolled back the
+  database command and compensated the uploaded object.
+- Cleanup confirmed zero disposable Auth profiles, tickets, attachments,
+  events, sites, customers, or Storage objects.
+
+### Finding and implementation
+
+- Migration 035's atomic site-membership commands coexisted with a legacy
+  authenticated `FOR ALL` policy. A disposable live probe proved an active
+  engineer could directly add a tenant-A customer to a tenant-B site through
+  PostgREST. Migration 041 had the same seam for direct admin SLA-policy
+  writes. Neither bypass created audit evidence.
+- Commit `0085db6` adds migration
+  `045_restrict_direct_application_writes.sql`. It drops the three remaining
+  legacy business-write policies and revokes insert/update/delete/truncate,
+  references, and trigger privileges from public API roles on every
+  application-owned table. It also revokes direct access to all five current
+  and legacy number sequences.
+- Self-service profile editing remains explicitly limited to `full_name`,
+  `phone`, and `avatar_url`; Auth/provisioning and all business writes remain
+  behind server routes and service-role commands.
+- The protected credentialed matrix now performs random-ID, non-mutating direct
+  DELETE probes against `site_members` and `sla_policies`; both must fail with
+  permission denial. Five new contracts bring the suite to 409 tests.
+
+### Quality verification
+
+| Gate | Result |
+|---|---|
+| `npm ci` | Passed; locked install, 0 install-time vulnerabilities |
+| `npm test` | Passed; 57 files, 409 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build |
+| `npm run test:e2e` | Passed; all 38 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+| Live migration 044 matrix | Passed; 130 assertions and zero residue |
+| Historical direct-write reproduction | Passed; both bypasses reproduced without audit, then all disposable data was removed |
+
+### Rollout and next
+
+1. Apply migration 045 before deploying `0085db6`.
+2. Run a disposable live matrix across direct DML/control denial, the exact
+   engineer membership/admin SLA regressions, safe self-profile continuity,
+   protected profile fields, service-role command continuity, sequence grants,
+   and zero residue.
+3. Configure `CRON_SECRET`, activate hosted quality/staging protections, and
+   run the credentialed tenant matrix when its secret fixture is provisioned.
+4. Continue the next highest-risk best-effort write domain after migration 045
+   is live-verified.
+
+## Session record — 2026-08-01 (P0-AF / hardened ticket attachment intake)
+
+### Objective
+
+Live-verify migration 043 after application, then close the highest-risk
+remaining direct-write gap in ticket attachments without pretending that
+content validation is a complete malware-scanning file service.
+
+### Migration 043 live verification
+
+- Both inventory commands passed a disposable 72-assertion live matrix.
+  Coverage included initial and existing upsert, exact create/update audit,
+  no-op timestamp/audit preservation, increase-only restock timestamps,
+  decrease behavior, multi-field PATCH, missing/unknown/invalid inputs,
+  threshold/location/quantity constraints, inactive part/site/customer guards,
+  non-admin and direct anonymous/authenticated denial, concurrent PATCH/upsert
+  serialization, unique-row preservation, attribution, rollback, and cleanup.
+- A final residue query confirmed zero disposable inventory, part, site,
+  customer, Auth-profile, or audit artifacts.
+- A read-only attachment audit found eight rows and zero unsafe/padded names,
+  unsupported types, invalid sizes/paths, duplicate storage keys, invalid
+  visibility, missing tickets, retired sites, or inactive customers.
+
+### Finding and implementation
+
+- `/api/upload` trusted browser MIME/extension, used ticket-only object keys,
+  wrote attachment metadata and timeline rows independently, and could return
+  success or leave an untracked object after a metadata failure. Secure-token
+  guests were incorrectly attributed to the ticket creator, and an inactive
+  authenticated session could fall through to guest-token authorization.
+- Commit `03499f9` adds migration
+  `044_atomic_ticket_attachment_metadata.sql`, database shape constraints, a
+  unique storage-path index, and a service-role-only command that rechecks
+  active ticket/site/customer and uploader scope under locks before committing
+  metadata plus one `attachment_added` event atomically.
+- The route now validates safe names, 1-byte–50MB bounds, declared types, and
+  actual signatures/text/container structure for JPEG/PNG/GIF/WebP, MP4/MOV,
+  PDF, UTF-8 text/log/CSV, XLSX, and XLS. It canonicalizes MIME, rejects XLSX
+  VBA content, and derives environment/customer/ticket-bound object keys.
+- Attribution comes only from the active session; token guests remain null.
+  External users cannot request internal visibility. Confirmed database
+  rollback triggers object removal; ambiguous transport/commit outcomes keep
+  the object to avoid a committed metadata row pointing at deleted content and
+  return a reconciliation error.
+- The public and authenticated UIs no longer submit caller-controlled
+  attribution and advertise only the exact supported types. The credentialed
+  matrix now asserts external/internal attachment UI separation. The default
+  run skipped that matrix because `RIPPLE_E2E_FIXTURES_FILE` remains unset.
+- Twenty-five new unit/contract checks bring the suite to 404 tests. One
+  invalid-form upload probe brings production HTTP smoke to 38 checks.
+
+### Browser and quality verification
+
+- In-app browser QA passed the public form at 1280×720 and 390×844. It verified
+  the exact file `accept` contract, multiple selection, visible help copy,
+  self-hosted Inter, and no horizontal overflow. Protected navigation still
+  redirects to `/login?next=%2Ftickets` without credentials.
+- The 390px full-page capture produced a stitching artifact, so layout truth
+  was confirmed from the normal viewport and measured DOM geometry: the page
+  remained 390px wide with a 342px content column and stacked workflow steps.
+
+| Gate | Result |
+|---|---|
+| `npm ci` | Passed; locked install, 0 install-time vulnerabilities |
+| `npm test` | Passed; 56 files, 404 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build |
+| `npm run test:e2e` | Passed; all 38 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+| Manual browser E2E | Passed at desktop/mobile sizes; protected positive UI remains fixture-gated |
+| Immediate pre-commit `npm run test:e2e` | Passed before `03499f9` with the same 38 checks and explicit protected-fixture skip |
+
+### Rollout and next
+
+1. Apply migration 044 before deploying `03499f9`; the new upload route
+   intentionally depends on `create_ticket_attachment_atomic`.
+2. Run a disposable live matrix for metadata/path/role/lifecycle/grant/event
+   atomicity, duplicate/concurrent behavior, attribution, rollback, and zero
+   residue. Then exercise one real supported object upload and one spoofed
+   upload, verify compensation, and delete every test object and row.
+3. Add malware scanning/quarantine, checksums, retention, and a durable
+   ambiguous-outcome reconciliation queue as later file-service milestones.
+4. Configure `CRON_SECRET`, activate hosted quality/staging protections, and
+   run the credentialed tenant matrix when its secret fixture is provisioned.
+
+## Session record — 2026-08-01 (P0-AE / atomic per-site inventory administration)
+
+### Objective
+
+Live-verify migration 042 after application, then close the per-site inventory
+write/audit gap with an independently deployable atomic command boundary and a
+complete admin workflow.
+
+### Migration 042 live verification
+
+- The corrected migration was present and both catalog commands passed a
+  disposable 57-assertion live matrix: normalized create/persistence, exact
+  create audit, case-folded duplicate rejection, missing/unknown/negative
+  validation, non-admin denial, exact multi-field patch/audits, no-op
+  timestamp/audit preservation, invalid/missing patch, collision rollback,
+  serialized competing patch/create, direct authenticated/anonymous RPC
+  denial, database constraints, attribution, and zero catalog residue.
+- The first disposable Auth creation used privileged role metadata and was
+  rejected by migration 039, confirming that signup escalation
+  remains closed. The successful run used safe bootstrap metadata and finalized
+  authorization through the service path.
+- Supabase Admin Auth deletion removed the disposable Auth identities but left
+  two mirrored `public.users` rows during cleanup. Those test-only profiles
+  were explicitly deleted and a final query confirmed zero catalog/profile
+  residue. This was an Auth/profile cleanup behavior, not a catalog transaction
+  failure.
+- A live read-only inventory audit found eight rows and zero negative quantities
+  or bounds, inverted thresholds, quantities above maximum, oversized/padded
+  locations, inactive parts, retired sites, or inactive customers.
+
+### Finding and implementation
+
+- Inventory POST/PATCH previously changed stock before best-effort audit,
+  accepted only application-level threshold relationships, and stamped
+  `last_restocked_at` for reductions as well as true replenishment.
+- Commit `20a8439` adds migration
+  `043_atomic_admin_spare_part_inventory_commands.sql`. Service-role-only
+  upsert/PATCH commands share one advisory lock, recheck an active admin, lock
+  active part/site/customer parents, enforce exact JSON and bounded integer/
+  location shape, preserve no-op state, and commit exact changed-field audit
+  evidence with stock. Initial positive stock and later increases alone update
+  the restock timestamp.
+- Database constraints enforce nonnegative quantity/min/max, ordered bounds,
+  `quantity <= max_quantity`, and normalized locations. Strict Zod contracts,
+  typed result parsing, stable SQLSTATE mappings, and explicit response
+  projections replace direct route writes and provider-detail leakage.
+- Added `/admin/inventory` with site filtering, stock totals, low-stock status,
+  labeled create/edit controls, immutable part/site identity during edits, and
+  duplicate/threshold validation. The site inventory tab links into the new
+  workspace with its site filter already selected.
+- Twelve migration/contract/wrapper/UI tests and seven route tests bring the
+  suite to 379 tests. Two unauthenticated inventory mutation probes bring the
+  production HTTP smoke to 37 checks.
+
+### Browser and quality verification
+
+- In-app browser E2E passed the inventory workspace and site inventory tab at
+  1280×900 and 390×844. It verified Inter, active navigation, labels, one-column
+  mobile controls, duplicate/over-maximum alerts, immutable edit selectors,
+  persisted site prefilter, and zero browser console errors.
+- The first populated mobile pass found page-level overflow caused by an
+  absolutely positioned `sr-only` Actions header inside the wide table. Moving
+  the header into visible normal flow kept the document at 390 px while the
+  table scrolled locally at 900 px. The site tab likewise remained page-contained
+  with a local 660 px table.
+- The disposable browser admin was deleted from Auth and the mirrored profile
+  was explicitly checked/cleaned; zero test profile residue remained.
+
+| Gate | Result |
+|---|---|
+| `npm ci` | Passed; locked install, 0 install-time vulnerabilities |
+| `npm test` | Passed; 53 files, 379 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build including `/admin/inventory` |
+| `npm run test:e2e` | Passed; all 37 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+| Immediate pre-commit `npm run test:e2e` | Passed before `20a8439` with the same 37 checks and explicit protected-fixture skip |
+
+### Rollout and next
+
+1. Apply migration 043 before deploying `20a8439`; the new routes intentionally
+   depend on its RPCs. The migration is additive and can remain if application
+   rollback is required; roll back application code first.
+2. Run disposable positive/no-op/rollback/privilege/concurrency/exact-audit
+   probes for both inventory commands and confirm increase-only restock
+   semantics plus zero residue.
+3. Run the protected credentialed matrix when its staging fixture is available
+   and configure `CRON_SECRET` separately for production worker activation.
 
 ## Session record — 2026-08-01 (P0-AD / atomic spare-parts catalog administration)
 

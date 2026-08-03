@@ -12,11 +12,26 @@ import {
   createTicketCore,
   resolveSiteByCode,
 } from "@/lib/tickets/create";
+import {
+  SITE_CODE_MAX_LENGTH,
+  SITE_CODE_PATTERN,
+} from "@/lib/sites/site-code";
+import {
+  buildRateLimitBucketKey,
+  consumeDistributedRateLimit,
+  getRetryAfterSeconds,
+} from "@/lib/distributed-rate-limit";
 
 const createTicketSchema = z.object({
   customer_id: z.string().uuid().optional(),
   site_id: z.string().uuid().optional(),
-  site_code: z.string().trim().min(1).max(100).optional(),
+  site_code: z
+    .string()
+    .trim()
+    .min(1)
+    .max(SITE_CODE_MAX_LENGTH)
+    .regex(SITE_CODE_PATTERN)
+    .optional(),
   title: z.string().trim().min(1).max(200),
   description: z.string().trim().min(1).max(20_000),
   request_type: z.enum([
@@ -65,14 +80,12 @@ export async function POST(request: NextRequest) {
     }
     const auth = "error" in authResult ? null : authResult;
     const isAuthed = auth !== null;
+    const supabase = createAdminClient();
 
-    // Rate-limit unauthed submissions. Authed users go through
-    // the full RBAC path; their volume is bounded by the org
-    // size. The submit form is open to anyone with a browser, so
-    // we cap at 10 / minute / IP. (Catches accidental double-
-    // clicks + naive bot scripts; NOT a CAPTCHA substitute. See
-    // AGENTS.md "Known issues" for the path to a hardened
-    // solution.)
+    // Rate-limit unauthed submissions. The process-local counter is a cheap
+    // first layer; migration 046's atomic command enforces the same boundary
+    // across serverless instances and cold starts. This is still not a CAPTCHA
+    // or proof that the caller belongs to the submitted site.
     if (!isAuthed) {
       const ip = getClientIp(request.headers);
       const rl = rateLimit({
@@ -91,14 +104,42 @@ export async function POST(request: NextRequest) {
           }
         );
       }
+
+      try {
+        const distributedLimit = await consumeDistributedRateLimit({
+          supabase,
+          bucketKey: buildRateLimitBucketKey("ticket-submit", ip),
+          limit: 10,
+          windowSeconds: 60,
+        });
+        if (!distributedLimit.allowed) {
+          return NextResponse.json(
+            { error: "Too many submissions. Please try again in a minute." },
+            {
+              status: 429,
+              headers: {
+                "Retry-After": String(
+                  getRetryAfterSeconds(distributedLimit.resetAt)
+                ),
+              },
+            }
+          );
+        }
+      } catch (error) {
+        console.error("POST /api/tickets rate limit unavailable:", {
+          name: error instanceof Error ? error.name : "UnknownError",
+        });
+        return NextResponse.json(
+          { error: "Ticket submission is temporarily unavailable" },
+          { status: 503 }
+        );
+      }
     }
 
     const body = await request.json();
     const data = createTicketSchema.parse(body);
 
     const createdBy = auth?.userId ?? null;
-
-    const supabase = createAdminClient();
 
     // Resolve site: prefer explicit ids, fall back to site_code lookup.
     let siteId = data.site_id;
@@ -123,9 +164,10 @@ export async function POST(request: NextRequest) {
     // supplied customer_id independently from its site_id.
     const { data: siteRow, error: siteErr } = await supabase
       .from("sites")
-      .select("customer_id")
+      .select("customer_id, customer:customers!inner(status)")
       .eq("id", siteId)
       .eq("status", "active")
+      .in("customer.status", ["active", "trial"])
       .maybeSingle();
     if (siteErr) {
       console.error("POST /api/tickets site lookup failed:", siteErr);

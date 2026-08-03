@@ -120,6 +120,53 @@ async function expectUnauthorizedMutation(path, method, body) {
   );
 }
 
+async function expectGuestUploadLimiterFailClosed() {
+  const form = new FormData();
+  form.set(
+    "file",
+    new Blob(["%PDF-1.7"], { type: "application/pdf" }),
+    "evidence.pdf"
+  );
+  form.set("ticket_id", "11111111-1111-4111-8111-111111111111");
+  form.set("visibility", "not-a-visibility");
+  const response = await fetch(`${baseUrl}/api/upload`, {
+    method: "POST",
+    body: form,
+    signal: AbortSignal.timeout(5000),
+  });
+  const body = await response.json();
+  if (
+    response.status !== 503 ||
+    body.error !== "Attachment upload is temporarily unavailable" ||
+    response.headers.get("cache-control") !== "no-store"
+  ) {
+    throw new Error(
+      `/api/upload expected fail-closed limiter 503, received ` +
+        `${response.status} ${JSON.stringify(body)}`
+    );
+  }
+  process.stdout.write("PASS guest upload limiter configuration denial\n");
+}
+
+async function expectInvalidSiteCodeContained() {
+  const response = await fetch(
+    `${baseUrl}/api/sites/validate?site_code=${encodeURIComponent("invalid site")}`,
+    { signal: AbortSignal.timeout(5000) }
+  );
+  const body = await response.json();
+  if (
+    response.status !== 200 ||
+    response.headers.get("cache-control") !== "no-store" ||
+    JSON.stringify(body) !== JSON.stringify({ valid: false })
+  ) {
+    throw new Error(
+      `/api/sites/validate expected minimal invalid response, received ` +
+        `${response.status} ${JSON.stringify(body)}`
+    );
+  }
+  process.stdout.write("PASS malformed site code contained before lookup\n");
+}
+
 async function expectLoginRedirect(path) {
   const response = await fetch(`${baseUrl}${path}`, {
     redirect: "manual",
@@ -220,6 +267,7 @@ try {
   await expectPage("/login", "Welcome back.");
   await expectPage("/forgot-password", "Reset your password.");
   await expectPage("/submit", "Submit a Support Request");
+  await expectPage("/t/RPL-000000", "Access Denied");
   await expectHardDeleteDisabled(
     "/api/admin/customers/bulk-delete",
     "/api/admin/customers/bulk-archive"
@@ -370,6 +418,21 @@ try {
     "PATCH",
     { part_name: "Unauthorized part" }
   );
+  await expectUnauthorizedMutation(
+    "/api/admin/inventory",
+    "POST",
+    {
+      spare_part_id: "11111111-1111-4111-8111-111111111111",
+      site_id: "22222222-2222-4222-8222-222222222222",
+    }
+  );
+  await expectUnauthorizedMutation(
+    "/api/admin/inventory/11111111-1111-4111-8111-111111111111",
+    "PATCH",
+    { quantity: 1 }
+  );
+  await expectGuestUploadLimiterFailClosed();
+  await expectInvalidSiteCodeContained();
   await expectLoginRedirect("/admin/users");
   await expectLogoutRedirect();
   await expectHealth("/api/health/live", 200, "live");

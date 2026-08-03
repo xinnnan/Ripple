@@ -1,17 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
-import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAdmin } from "@/lib/supabase/auth-helpers";
-import { logAudit } from "@/lib/audit";
+import {
+  inventoryIdSchema,
+  inventoryPatchRequestSchema,
+} from "@/lib/spare-parts/inventory-contracts";
+import {
+  AdminInventoryMutationError,
+  applyAdminInventoryPatch,
+} from "@/lib/spare-parts/inventory-mutations";
 
 export const dynamic = "force-dynamic";
-
-const inventoryPatchSchema = z.object({
-  quantity: z.number().int().nonnegative().optional(),
-  min_quantity: z.number().int().nonnegative().optional(),
-  max_quantity: z.number().int().nonnegative().nullable().optional(),
-  location: z.string().trim().max(200).nullable().optional(),
-});
 
 // PATCH /api/admin/inventory/[id] — Update inventory quantity / thresholds
 export async function PATCH(
@@ -24,6 +23,12 @@ export async function PATCH(
   }
 
   const { id } = await params;
+  if (!inventoryIdSchema.safeParse(id).success) {
+    return NextResponse.json(
+      { error: "Invalid inventory id" },
+      { status: 400 }
+    );
+  }
 
   let body: unknown;
   try {
@@ -32,80 +37,57 @@ export async function PATCH(
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const parsed = inventoryPatchSchema.safeParse(body);
+  const parsed = inventoryPatchRequestSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(
       { error: "Validation error", details: parsed.error.errors },
       { status: 400 }
     );
   }
-  const data = parsed.data;
-
-  const supabase = createAdminClient();
-
-  const before = await supabase
-    .from("spare_part_inventory")
-    .select("quantity, min_quantity, max_quantity, location, spare_part_id, site_id")
-    .eq("id", id)
-    .maybeSingle();
-  if (before.error) {
-    console.error("PATCH /api/admin/inventory/[id] before fetch failed:", before.error);
-    return NextResponse.json({ error: "Failed to load inventory record" }, { status: 500 });
-  }
-  if (!before.data) {
-    return NextResponse.json({ error: "Inventory record not found" }, { status: 404 });
-  }
-
-  const updateFields: Record<string, unknown> = { updated_at: new Date().toISOString() };
-  for (const [k, v] of Object.entries(data)) {
-    updateFields[k] = v;
-  }
-  // quantity changes are a "restock" event
-  if (data.quantity !== undefined) {
-    updateFields.last_restocked_at = new Date().toISOString();
-  }
-
-  let row;
   try {
-    const result = await supabase
-      .from("spare_part_inventory")
-      .update(updateFields)
-      .eq("id", id)
-      .select(`
-        *,
-        spare_part:spare_parts(*),
-        site:sites(id, site_name, site_code)
-      `)
-      .single();
-    if (result.error) throw result.error;
-    row = result.data;
-  } catch (e) {
-    console.error("PATCH /api/admin/inventory/[id] update failed:", e);
+    const inventory = await applyAdminInventoryPatch({
+      supabase: createAdminClient(),
+      actorId: auth.userId,
+      inventoryId: id,
+      patch: parsed.data,
+    });
+    return NextResponse.json({ data: inventory });
+  } catch (error) {
+    if (error instanceof AdminInventoryMutationError) {
+      if (error.code === "P0002") {
+        return NextResponse.json(
+          { error: "Inventory record not found" },
+          { status: 404 }
+        );
+      }
+      if (error.code === "42501") {
+        return NextResponse.json(
+          { error: "Forbidden: Active admin access required" },
+          { status: 403 }
+        );
+      }
+      if (error.code === "55000") {
+        return NextResponse.json(
+          { error: "Inventory requires an active part and editable site" },
+          { status: 409 }
+        );
+      }
+      if (
+        ["22003", "22023", "22P02", "23503", "23514"].includes(
+          error.code ?? ""
+        )
+      ) {
+        return NextResponse.json(
+          { error: "Invalid inventory update" },
+          { status: 400 }
+        );
+      }
+    }
+
+    console.error("PATCH /api/admin/inventory/[id] command failed:", error);
     return NextResponse.json(
       { error: "Failed to update inventory record" },
       { status: 500 }
     );
   }
-
-  for (const [field, newVal] of Object.entries(data)) {
-    const oldVal = (before.data as Record<string, unknown>)[field];
-    if (oldVal === newVal) continue;
-    await logAudit({
-      actorId: auth.userId,
-      actorEmail: auth.email,
-      actorRole: auth.role,
-      entityType: "spare_part",
-      entityId: before.data.spare_part_id,
-      action: "updated",
-      fieldName: `inventory.${field}`,
-      oldValue: oldVal == null ? null : String(oldVal),
-      newValue: newVal == null ? null : String(newVal),
-      metadata: {
-        inventory_id: id,
-        site_id: before.data.site_id,
-      },
-    });
-  }
-
-  return NextResponse.json({ data: row });
 }

@@ -3,11 +3,9 @@
 // Why in-memory? Vercel's Edge runtime + Next.js Route Handlers
 // run on serverless functions; the function instance can be
 // recycled between requests, which means the counter can be reset.
-// For our threat model (a bot spamming the public submit form or
-// the AI endpoint) this is fine — the worst case is a determined
-// attacker gets a fresh window every cold-start, which is still
-// vastly better than no limit. If we ever need strict limits, swap
-// this for a Redis / Upstash counter (~30 lines).
+// Use this as a cheap first layer. Public security boundaries that must hold
+// across serverless instances pair it with `consumeDistributedRateLimit()`;
+// this map alone is not a durable enforcement boundary.
 //
 // Usage:
 //   const rl = rateLimit({ key: `submit:${ip}`, limit: 5, windowMs: 60_000 });

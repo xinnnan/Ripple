@@ -36,6 +36,12 @@ A Slack-native support portal for DropletAI Services. Centralises customer suppo
   pricing, lifecycle edits, and exact audit evidence share guarded database
   commands; part numbers are unique across letter case and the shared admin
   form is accessible and responsive.
+- **Atomic Site Inventory Administration** — Stock, reorder thresholds,
+  increase-only restock facts, active-parent validation, and exact audit
+  evidence share guarded commands and a responsive admin workspace.
+- **Hardened Ticket Attachments** — Supported files are checked against their
+  actual content, stored under environment/tenant/ticket-bound keys, and their
+  metadata plus timeline evidence share one guarded database transaction.
 - **Site Channel Model** — Each customer site has a dedicated Slack support channel, mapped via `slack_channels`.
 
 ## Tech Stack
@@ -43,14 +49,14 @@ A Slack-native support portal for DropletAI Services. Centralises customer suppo
 | Layer | Tool |
 |-------|------|
 | Frontend | Next.js 15.5.22 (App Router) + React 19 + TypeScript + Tailwind CSS v4 + self-hosted Inter |
-| Database | Supabase Postgres (42 migrations, see `supabase/migrations/`) |
+| Database | Supabase Postgres (46 migrations, see `supabase/migrations/`) |
 | Auth | Supabase Auth (email + password + recovery) + new `sb_publishable_` / `sb_secret_` key format |
 | Storage | Supabase Storage — bucket `ripple-attachments`, **50 MB cap per file** |
 | Slack | `@slack/bolt` + `@slack/web-api` (runs inside Next.js API routes, no separate process) |
 | AI | **MiniMax AI** (OpenAI-compatible) — was OpenAI → Zhipu → MiniMax. **See "AI provider" section below.** |
 | Email | Resend (transactional: ticket confirmation, resolution notice) |
 | Validation | Zod (all API request bodies) |
-| Testing | Vitest (360 unit/contract tests) + 35-check production HTTP smoke + credentialed Playwright/API/RLS matrix |
+| Testing | Vitest (449 unit/contract tests) + 40-check production HTTP smoke + credentialed Playwright/API/RLS matrix |
 | Hosting | Vercel (serverless API routes) |
 
 ## Phases
@@ -85,7 +91,7 @@ cp .env.local.example .env.local
 
 ### Run database migrations
 
-Apply the SQL files in `supabase/migrations/` **in order** (001 → 042) via the Supabase SQL editor or `supabase db push`:
+Apply the SQL files in `supabase/migrations/` **in order** (001 → 046) via the Supabase SQL editor or `supabase db push`:
 
 ```
 001_create_customers.sql
@@ -130,22 +136,39 @@ Apply the SQL files in `supabase/migrations/` **in order** (001 → 042) via the
 040_atomic_admin_customer_commands.sql
 041_atomic_admin_sla_policy_commands.sql
 042_atomic_admin_spare_part_commands.sql
+043_atomic_admin_spare_part_inventory_commands.sql
+044_atomic_ticket_attachment_metadata.sql
+045_restrict_direct_application_writes.sql
+046_durable_public_rate_limits.sql
 ```
 
 Later migrations replace policies/functions and should be applied once in
 order. Migration `017` also performs role data updates and must not be re-run
-blindly. Migrations 001–041 are confirmed applied as of 2026-08-01. Migration
-041 passed a 35-assertion disposable live matrix covering create, normalized
-multi-field/no-op patch, protected and referenced deletion, validation,
-privilege, reference races, exact audit attribution, rollback, and zero
-residue. Apply the complete corrected migration 042 from `de54e20` before
-deploying the catalog changes from `737d2a8`; it makes spare-part catalog
-create/update and audit one transaction, normalizes catalog identity, enforces
-case-insensitive part-number uniqueness and safe data shape, and keeps no-op
-edits from touching timestamps or audit history. An earlier migration 042
-version failed with `42601` inside the PATCH no-op comparison; its surrounding
-transaction aborted, so retry the full file rather than only the repaired
-function fragment.
+blindly. Migrations 001–046 are confirmed applied as of 2026-08-02. Migration
+043 passed a disposable 72-assertion live matrix covering create/existing
+upsert, positive/no-op PATCH, stock and location constraints, active-parent and
+privilege guards, direct-command grants, concurrent serialization, exact audit
+attribution, increase-only restock facts, rollback, and zero residue. Migration
+044 passed a 130-assertion live matrix spanning roles, lifecycle,
+shape, attribution, event atomicity, concurrency, Storage compensation, real
+guest HTTP upload, spoof rejection, and zero residue. Migration 045 passed a
+110-assertion live matrix covering direct authenticated DELETE denial across
+all 22 command-owned tables, representative anonymous denial, exact historical
+membership/SLA exploit closure, safe-profile continuity, protected-profile
+denial, five minting-RPC denials, real admin-command continuity, exact audit
+evidence, scope changes, and zero residue. Malware scanning, quarantine,
+checksums, and retention policy remain future file-service work. Migration 046
+passed a 77-assertion live matrix covering service/public grants, input and
+table constraints, sequential and concurrent limits, bounded cleanup,
+window reset/retention, real validator/submission throttling and lifecycle
+behavior, and zero residue. Exact site-code validation remains an existence oracle, so
+full anti-enumeration still requires CAPTCHA, an invitation/intake token, or
+authenticated submission.
+
+Guest attachment upload and the public share-token ticket page also use
+separate distributed buckets. The share view is lifecycle-scoped and reads an
+explicit customer-safe ticket projection plus customer-visible child records;
+raw event old values and non-public event types are not retrieved.
 
 ### Enable pgvector (for AI features)
 
@@ -208,8 +231,8 @@ protected CI should set `RIPPLE_E2E_REQUIRE_CREDENTIALS=1` so it fails closed.
 
 ### GitHub Actions
 
-`.github/workflows/ci.yml` runs the locked install, 360 unit/contract tests,
-lint, production build, 35-check HTTP E2E, and dependency audit for pull
+`.github/workflows/ci.yml` runs the locked install, 449 unit/contract tests,
+lint, production build, 40-check HTTP E2E, and dependency audit for pull
 requests and pushes to `main`. GitHub-owned actions are pinned to full commit
 SHAs and the workflow has read-only repository permissions.
 
@@ -269,6 +292,7 @@ src/
 │   │       ├── customers/
 │   │       ├── customers-sites/
 │   │       ├── field-service/
+│   │       ├── inventory/
 │   │       ├── part-requests/
 │   │       ├── sites/
 │   │       ├── spare-parts/
@@ -287,6 +311,7 @@ src/
 │   ├── field-service/           # DATE contracts + atomic mutation wrappers
 │   ├── site-members/            # tenant-contained atomic access wrappers
 │   ├── sites/                   # tenant-safe atomic site wrappers
+│   ├── spare-parts/             # atomic catalog/inventory contracts + wrappers
 │   ├── team/                    # team contracts + atomic set-diff wrapper
 │   ├── tickets/                 # lifecycle + durable notification outbox
 │   ├── users/                   # atomic admin-user mutation wrapper
@@ -297,7 +322,7 @@ src/
 │   ├── ticket.ts                # ⭐ all ticket domain enums + labels
 │   └── spare-parts.ts
 └── middleware.ts                # ⭐ route guard + session refresh
-supabase/migrations/             # 001-042
+supabase/migrations/             # 001-046
 plans/                           # Architecture + phase planning docs
 AGENTS.md                        # ⭐ project context, lessons learned, roadmap
 ```
@@ -308,7 +333,7 @@ AGENTS.md                        # ⭐ project context, lessons learned, roadmap
 - Ticket detail → `app/(auth)/tickets/[ticketId]/page.tsx` + `ticket-actions-panel.tsx`
 - Slack actions → `lib/slack/handlers/actions.ts` + `app/api/slack/interactive/route.ts`
 - AI assist → `app/api/ai/suggest/route.ts` + `lib/ai/suggest.ts`
-- DB schema → `supabase/migrations/001_*.sql` … `042_atomic_admin_spare_part_commands.sql`
+- DB schema → `supabase/migrations/001_*.sql` … `046_durable_public_rate_limits.sql`
 
 ## Ticket Lifecycle
 

@@ -82,6 +82,19 @@ describe("credentialed role matrix fixture", () => {
     expect(() => validateCredentialedFixtures(fixture)).toThrow("use HTTPS");
   });
 
+  it("accepts tenant-bound attachment keys and rejects the wrong ticket", () => {
+    const fixture = validFixture();
+    fixture.resources.internalArtifacts.internalAttachmentPath =
+      "attachments/staging/11111111-1111-4111-8111-111111111111/11111111-1111-4111-8111-111111111113/internal-proof.txt";
+    expect(() => validateCredentialedFixtures(fixture)).not.toThrow();
+
+    fixture.resources.internalArtifacts.internalAttachmentPath =
+      "attachments/staging/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222223/internal-proof.txt";
+    expect(() => validateCredentialedFixtures(fixture)).toThrow(
+      "tenant A ticket's attachment prefix"
+    );
+  });
+
   it("skips explicitly when no fixture is configured", async () => {
     await expect(loadCredentialedFixtures({})).resolves.toBeNull();
   });
