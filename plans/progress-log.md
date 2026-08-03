@@ -8,9 +8,9 @@ meaningful change and before ending a work session. Newest entries go first.
 - **Branch:** `codex/prd-v1-1-gap-closure`
 - **Active phase:** Phase 0 — Containment and reproducible baseline
 - **Active work item:** run protected migrations 028–031 business probes when
-  the staging fixture becomes available; otherwise contain option-loading
-  failures on the admin part-request and field-service creation pages
-- **Last verified implementation commit:** `0516fb5` (`fix: surface admin list read failures`)
+  the staging fixture becomes available; otherwise contain profile and scoped-
+  data read failures on the authenticated `/sites` and `/team` pages
+- **Last verified implementation commit:** `0b15ef9` (`fix: harden admin creation options`)
 - **Uncommitted work:** none expected after the documentation checkpoint;
   verify with `git status` before resuming
 - **Deployment gate:** migrations 001–046 are confirmed applied. Migration 044
@@ -63,10 +63,10 @@ meaningful change and before ending a work session. Newest entries go first.
   dedicated staging mailbox.
 - **Exact next local step:** check whether the protected credential fixture is
   available and, if so, run the migration 028–031 business probes plus the new
-  malformed-body HTTP checks. If it remains unavailable, audit and contain the
-  admin part-request and field-service creation-page option loaders so database
-  failures cannot render misleading empty selectors. Configure `CRON_SECRET`
-  separately before production worker activation
+  malformed-body HTTP checks. If it remains unavailable, contain the
+  authenticated `/sites` and `/team` profile, scoped-list, and membership read
+  failures so they cannot render false empty or unauthorized states. Configure
+  `CRON_SECRET` separately before production worker activation
 - **Primary plan:** [`plans/prd-v1.1-gap-closure-plan.md`](./prd-v1.1-gap-closure-plan.md)
 
 ## Overall project status — 2026-08-03
@@ -76,7 +76,7 @@ meaningful change and before ending a work session. Newest entries go first.
 - Against the full PRD v1.1 capability map, 17 domains remain
   **Partial** or **Unsafe/Partial** and seven remain **Absent**. No full PRD
   capability domain is yet honestly complete end to end.
-- The local deterministic baseline is green at 752 unit/contract tests, 40
+- The local deterministic baseline is green at 758 unit/contract tests, 40
   production HTTP smoke checks, a production build, zero-warning lint, and
   zero known dependency vulnerabilities.
 - Phase 0 cannot be declared exited until the protected six-account/two-tenant
@@ -88,6 +88,53 @@ meaningful change and before ending a work session. Newest entries go first.
   queues/routing, business-calendar SLA clocks, remote support, appointments,
   assets/entitlements, search/knowledge, i18n, versioned external APIs, and
   production SRE/recovery evidence.
+
+## Session record — 2026-08-03 (P0-BE / admin creation option integrity)
+
+### Objective
+
+Align part-request and field-service creation selectors with their transactional
+command rules and distinguish loader failures from genuinely unavailable data.
+
+### Finding and implementation
+
+- Both pages discarded option-query errors and rendered empty selectors during
+  database failures.
+- Their site queries accepted active sites under inactive customers even though
+  migrations 029 and 030 reject those commands.
+- Both pages now load options concurrently, use shared code-only generic failure
+  recovery, and restrict sites to active rows under active or trial customers.
+- The field-service engineer selector now exactly requests active `engineer`
+  accounts, matching the atomic command's assignee rule.
+- A part request cannot be submitted without both an eligible site and active
+  catalog part; a field-service order cannot be submitted without an eligible
+  site. Both forms explain the missing prerequisite instead of presenting an
+  apparently actionable empty selector.
+- Six contracts cover failures, lifecycle/role filters, and unavailable-data UI
+  guards. The suite is now 758 tests across 96 files.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| `npm ci` | Passed from the lockfile earlier in this continuous session; 0 install-time vulnerabilities |
+| `npm test` | Passed; 96 files, 758 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build and type check |
+| `npm run test:e2e` | Passed; all 40 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+
+### Commit
+
+- Hash: `0b15ef9`
+- Message: `fix: harden admin creation options`
+
+### Next
+
+Run protected probes when their fixture is available. Otherwise contain
+database/profile failures on the customer-facing `/sites` and `/team` pages,
+including manager service-role reads and membership hydration.
 
 ## Session record — 2026-08-03 (P0-BD / admin list read integrity)
 
