@@ -295,7 +295,7 @@ npm run dev
 - `npm run build` — production build
 - `npm run start` — production server
 - `npm run lint` — direct ESLint CLI across the repository; warnings fail the gate
-- `npm test` — Vitest unit/contract suite (886 tests)
+- `npm test` — Vitest unit/contract suite (899 tests)
 - `npm run test:e2e` — 40-check production HTTP smoke plus optional credentialed Playwright/API/RLS matrix; requires a successful build
 - `npm run test:e2e:credentialed` — real six-account/two-tenant matrix; set `RIPPLE_E2E_FIXTURES_FILE`
 - `npm run test:e2e:install-browser` — install the pinned Chromium runtime
@@ -1260,6 +1260,25 @@ classes. Only expose a bounded, deliberately shaped API message; contain all
 other exception detail. A disabled submit button is not a complete concurrency
 or authorization guard—also guard the handler and every mutable control.
 
+### Operational transitions need structured, recoverable UI
+Found 2026-08-03 in field-service completion/cancellation and Slack channel
+linking. Completion used sequential browser prompts, cancellation and unlinking
+were immediate, and the pages cleared request state before route
+refresh/navigation settled. Slack channel discovery also returned only one page
+and logged raw provider failures.
+
+Commit `7ff594d` replaces prompts with a labeled, bounded completion form and
+adds explicit cancellation/unlink confirmation. Request and navigation/refresh
+transitions share one busy window, failures use the client mutation boundary,
+and success/error states are accessible. Slack discovery now validates
+configuration, paginates with a hard cap, deduplicates/sorts results, declares
+truncation, disables caching, and logs only provider codes.
+
+**Lesson:** operational state changes should be reviewable before submission
+and retryable after failure. Native prompts cannot provide field guidance,
+length limits, preserved context, or accessible grouped errors. Keep controls
+locked until both the mutation and its resulting navigation/refresh settle.
+
 ---
 
 ## 10. Current State & Roadmap
@@ -1418,7 +1437,9 @@ resume work; this section remains the broader historical summary.
   failure windows in bulk lifecycle and spare-part status actions, bringing the
   suite to 866 tests; then centralized bounded client mutation errors and
   hardened admin/team identity create/edit form settlement, bringing the suite
-  to 886 tests.
+  to 886 tests; then replaced prompt/immediate service transitions with
+  structured confirmation and hardened Slack channel discovery/linking,
+  bringing the suite to 899 tests.
 
 ### Known issues / open work
 | Priority | Item | Where | Notes |
@@ -1452,6 +1473,7 @@ resume work; this section remains the broader historical summary.
 | ✅ Closed | Authentication/recovery false completion | `/login`, `/forgot-password`, `/reset-password`, auth callback/logout, `src/lib/auth/session-cleanup.ts` | Commit `e887eec` settles provider failures, separates rejected from unavailable recovery links, and reports global/local/failed session cleanup truthfully after password mutation |
 | ✅ Closed | Lifecycle action duplicate/silent failure | customer/site bulk archive, user bulk deactivation, spare-part request actions | Commit `76091a3` covers the complete request/refresh busy window, keeps failed selections retryable, guards JSON/network errors, and surfaces rejected status transitions |
 | ✅ Closed | Identity-form raw error and duplicate-submit exposure | admin user and customer team create/edit forms, `src/lib/http/client-mutation.ts` | Commit `ec9cd65` admits only bounded expected API errors, contains runtime/network detail, locks the complete mutation surface, guards handlers, and keeps inactive identities read-only |
+| ✅ Closed | Field-service/Slack action ambiguity | field-service detail actions, Slack channel-link page/API | Commit `7ff594d` replaces prompts/immediate destructive actions with bounded confirmation, extends busy state through refresh/navigation, and makes channel discovery paginated, private, bounded, and failure-contained |
 | 🟡 Med | `/settings` is read-only integration status | `src/app/(auth)/settings/page.tsx` | Add notification preferences, user timezone, and theme controls |
 | ✅ Verified | Migration 046 durable public rate limits | `supabase/migrations/046_durable_public_rate_limits.sql` | Applied 2026-08-02; 77 live assertions covered grants, constraints, concurrency, reset/retention, bounded cleanup, real HTTP limits/lifecycle, and zero residue |
 | 🟡 Med | Exact site-code validation remains an existence oracle | `/api/sites/validate` | Responses are minimal and migration 046 enforces 20 checks/minute/IP across instances, but full anti-enumeration still requires CAPTCHA, an invitation/intake token, or authenticated submission |
@@ -1734,6 +1756,14 @@ resume work; this section remains the broader historical summary.
     controls through settlement, expose accessible outcomes, and keep inactive
     records read-only. Twenty contracts bring the suite to 886; all
     deterministic quality gates are green.
+62. **Harden service action workflows.** Commit `7ff594d` replaces blocking
+    completion prompts with a bounded labeled form, confirms cancellation and
+    Slack unlinking, extends duplicate-action protection through route
+    transitions, and contains returned/runtime failures. Slack channel
+    discovery now validates bot configuration, paginates with a ten-page cap,
+    deduplicates/sorts, declares truncation, sends private/no-store responses,
+    and logs only provider codes. Thirteen contracts bring the suite to 899;
+    all deterministic quality gates are green.
 
 ### Open architectural questions
 - The RLS recursion bug surfaces a bigger question: do we keep `createAdminClient() + code filter` (the current pattern in `lib/supabase/scope.ts`) or move back to proper RLS once migration 019 + similar fixes are in place? The current pattern scales fine but has a lower safety margin for new queries.

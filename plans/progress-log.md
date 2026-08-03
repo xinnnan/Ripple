@@ -9,8 +9,8 @@ meaningful change and before ending a work session. Newest entries go first.
 - **Active phase:** Phase 0 — Containment and reproducible baseline
 - **Active work item:** run protected migrations 028–031 business probes when
   the staging fixture becomes available; otherwise continue the remaining
-  authenticated fetch-form audit and review field-service/Slack action UX
-- **Last verified implementation commit:** `ec9cd65` (`fix: contain identity form failures`)
+  authenticated create/edit fetch-form audit
+- **Last verified implementation commit:** `7ff594d` (`fix: harden service action workflows`)
 - **Uncommitted work:** none expected after the documentation checkpoint;
   verify with `git status` before resuming
 - **Deployment gate:** migrations 001–046 are confirmed applied. Migration 044
@@ -68,9 +68,9 @@ meaningful change and before ending a work session. Newest entries go first.
 - **Exact next local step:** check whether the protected credential fixture is
   available and, if so, run the migration 028–031 business probes plus the new
   malformed-body HTTP checks. If it remains unavailable, harden field-service
-  action settlement and the Slack channel-link UI, then continue the remaining
-  authenticated fetch-form audit. Configure `CRON_SECRET` separately before
-  production worker activation
+  and part-request creation forms, then continue customer/site/ticket mutation
+  surfaces. Configure `CRON_SECRET` separately before production worker
+  activation
 - **Primary plan:** [`plans/prd-v1.1-gap-closure-plan.md`](./prd-v1.1-gap-closure-plan.md)
 
 ## Overall project status — 2026-08-03
@@ -80,7 +80,7 @@ meaningful change and before ending a work session. Newest entries go first.
 - Against the full PRD v1.1 capability map, 17 domains remain
   **Partial** or **Unsafe/Partial** and seven remain **Absent**. No full PRD
   capability domain is yet honestly complete end to end.
-- The local deterministic baseline is green at 886 unit/contract tests, 40
+- The local deterministic baseline is green at 899 unit/contract tests, 40
   production HTTP smoke checks, a production build, zero-warning lint, and
   zero known dependency vulnerabilities.
 - Phase 0 cannot be declared exited until the protected six-account/two-tenant
@@ -92,6 +92,61 @@ meaningful change and before ending a work session. Newest entries go first.
   queues/routing, business-calendar SLA clocks, remote support, appointments,
   assets/entitlements, search/knowledge, i18n, versioned external APIs, and
   production SRE/recovery evidence.
+
+## Session record — 2026-08-03 (P0-BN / service action workflow integrity)
+
+### Objective
+
+Make field-service status transitions and Slack channel linking reviewable,
+bounded, failure-contained, and protected from duplicate requests through the
+complete refresh/navigation lifecycle.
+
+### Finding and implementation
+
+- Service completion used two blocking browser prompts. It offered no bound
+  report guidance or durable correction state, while cancellation ran
+  immediately from one click.
+- Completion is now an inline labeled form with exact hours precision/range and
+  a 20,000-character report bound. Cancellation has an explicit consequence
+  statement and confirm/keep choice.
+- Field-service status responses now use the shared bounded mutation boundary,
+  contain unexpected runtime/network detail, announce success/error accessibly,
+  and guard duplicate actions through both HTTP and route refresh settlement.
+- Slack linking/unlinking now uses the same response boundary and complete
+  request/navigation busy window. Unlinking requires confirmation and explains
+  that new ticket posting will stop.
+- Slack channel loading is abortable and retryable, validates the complete
+  response shape, and never turns a malformed/provider response into a false
+  empty list. Controls are explicitly labeled and responsive.
+- The admin channel API now validates non-placeholder bot configuration,
+  retrieves/deduplicates/sorts up to ten 200-channel pages, reports truncation,
+  returns private/no-store data, and logs only the provider error code.
+- Thirteen new unit/route/source contracts bring the suite to 899 tests across
+  112 files.
+- No live field-service or Slack link mutation was executed. Positive and
+  rollback behavior remains behind the protected staging fixture gate.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| `npm test` | Passed; 112 files, 899 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build and type check |
+| `npm run test:e2e` | Passed; all 40 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+
+### Commit
+
+- Hash: `7ff594d`
+- Message: `fix: harden service action workflows`
+
+### Next
+
+Run protected probes when their fixture is available. Otherwise harden the
+field-service and part-request creation forms, then continue the remaining
+customer/site/ticket mutation surfaces.
 
 ## Session record — 2026-08-03 (P0-BM / identity form mutation integrity)
 

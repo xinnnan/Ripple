@@ -718,6 +718,15 @@ Every implementation slice must:
     fieldset, legend, label, and pressed-state semantics cover the identity and
     site-assignment surfaces. Twenty contracts bring the suite to 886 and all
     gates are green.
-64. **Next local integrity work:** run protected positive/rollback probes when
-    fixtures are available; otherwise harden field-service action and Slack
-    channel-link mutation UX, then continue the authenticated fetch-form audit.
+64. **P0-BN — closed in `7ff594d`:** Field-service completion/cancellation and
+    Slack link/unlink actions now use structured bounded forms or explicit
+    confirmation instead of blocking prompts or immediate destructive changes.
+    The shared error boundary, accessible outcomes, and HTTP-plus-transition
+    busy window prevent raw failures and duplicate actions. Slack discovery is
+    abortable/retryable and validates its response; the admin API validates bot
+    configuration, retrieves/deduplicates/sorts up to 2,000 channels, declares
+    truncation, disables caching, and contains provider logs. Thirteen contracts
+    bring the suite to 899 and all gates are green.
+65. **Next local integrity work:** run protected positive/rollback probes when
+    fixtures are available; otherwise harden field-service and part-request
+    creation, then continue customer/site/ticket mutation surfaces.
