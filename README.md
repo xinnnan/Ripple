@@ -18,6 +18,9 @@ A Slack-native support portal for DropletAI Services. Centralises customer suppo
 - **Replay-Safe Ticket Comments** — Web and Slack comment retries use durable
   request receipts; customer-visible Slack replies enter the notification
   outbox in the same transaction as the comment and SLA evidence.
+- **Replay-Safe Service Creation** — Spare-part requests and field-service
+  orders retain one browser attempt key; exact concurrent retries return the
+  first resource and altered key reuse fails closed.
 - **Role-Based Access** — 4 roles (admin / engineer / customer_manager / customer) consolidated in `017_consolidate_roles.sql`.
 - **Tenant-Contained Site Access** — Admin membership add/remove commands lock,
   validate, and audit customer/site authorization atomically.
@@ -52,14 +55,14 @@ A Slack-native support portal for DropletAI Services. Centralises customer suppo
 | Layer | Tool |
 |-------|------|
 | Frontend | Next.js 15.5.22 (App Router) + React 19 + TypeScript + Tailwind CSS v4 + self-hosted Inter |
-| Database | Supabase Postgres (48 migrations, see `supabase/migrations/`) |
+| Database | Supabase Postgres (49 migrations, see `supabase/migrations/`) |
 | Auth | Supabase Auth (email + password + recovery) + new `sb_publishable_` / `sb_secret_` key format |
 | Storage | Supabase Storage — bucket `ripple-attachments`, **50 MB cap per file** |
 | Slack | `@slack/bolt` + `@slack/web-api` (runs inside Next.js API routes, no separate process) |
 | AI | **MiniMax AI** (OpenAI-compatible) — was OpenAI → Zhipu → MiniMax. **See "AI provider" section below.** |
 | Email | Resend (transactional: ticket confirmation, resolution notice) |
 | Validation | Zod (all API request bodies) |
-| Testing | Vitest (972 unit/contract tests) + 40-check production HTTP smoke + credentialed Playwright/API/RLS matrix |
+| Testing | Vitest (996 unit/contract tests) + 40-check production HTTP smoke + credentialed Playwright/API/RLS matrix |
 | Hosting | Vercel (serverless API routes) |
 
 ## Phases
@@ -94,7 +97,7 @@ cp .env.local.example .env.local
 
 ### Run database migrations
 
-Apply the SQL files in `supabase/migrations/` **in order** (001 → 048) via the Supabase SQL editor or `supabase db push`:
+Apply the SQL files in `supabase/migrations/` **in order** (001 → 049) via the Supabase SQL editor or `supabase db push`:
 
 ```
 001_create_customers.sql
@@ -145,12 +148,14 @@ Apply the SQL files in `supabase/migrations/` **in order** (001 → 048) via the
 046_durable_public_rate_limits.sql
 047_idempotent_ticket_creation.sql
 048_idempotent_ticket_comments.sql
+049_idempotent_service_resource_creation.sql
 ```
 
 Later migrations replace policies/functions and should be applied once in
 order. Migration `017` also performs role data updates and must not be re-run
 blindly. Migrations 001–048 are confirmed applied as of 2026-08-09. Migration
-048 passed a 69-assertion live matrix covering exact replay, 12-way
+049 is the current migration-first deployment gate; apply and live-verify it
+before deploying commit `3fa981d`. Migration 048 passed a 69-assertion live matrix covering exact replay, 12-way
 concurrency, altered-input rejection, effect and Slack-outbox cardinality,
 First Response semantics, anonymous/authenticated privilege denial, and zero
 database/Auth residue. Migration 047 passed a 42-assertion live matrix covering first create, exact replay,

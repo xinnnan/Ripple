@@ -7,12 +7,13 @@ meaningful change and before ending a work session. Newest entries go first.
 
 - **Branch:** `codex/prd-v1-1-gap-closure`
 - **Active phase:** Phase 0 — Containment and reproducible baseline
-- **Active work item:** resume the remaining mutation-surface audit and select
-  the highest-risk command before feature work
-- **Last verified implementation commit:** `904fee0` (`fix: make ticket comments replay safe`)
+- **Active work item:** apply and live-verify migration 049's replay-safe
+  spare-part request and field-service order creation boundary
+- **Last verified implementation commit:** `3fa981d` (`fix: make service creation replay safe`)
 - **Uncommitted work:** none expected after the documentation checkpoint;
-  verify with `git status` before resuming
-- **Deployment gate:** migrations 001–048 are confirmed applied. Migration 044
+  verify with `git status` before live verification
+- **Deployment gate:** migrations 001–048 are confirmed applied; migration 049
+  awaits application and live verification. Migration 044
   passed a 130-assertion disposable live matrix with zero residue. Migration
   045 passed a 110-assertion live matrix with zero residue. Migration 046
   passed a 77-assertion live matrix with zero residue. Migration 047 passed a
@@ -71,21 +72,21 @@ meaningful change and before ending a work session. Newest entries go first.
   Inter, expanded/collapsed accessibility state, no horizontal overflow, and
   zero console warnings/errors. A disposable engineer identity was fully
   removed with zero profile/audit residue, and no AI provider request was made.
-- **Exact next local step:** inventory the remaining mutation surfaces, select
-  the highest-risk unaudited command, and close it with contract tests before
-  feature work. Configure `CRON_SECRET` separately before production worker
-  activation
+- **Exact next local step:** after the user applies migration 049, run a
+  disposable exact-replay, altered-reuse, concurrency, cardinality, privilege,
+  constraint, and zero-residue matrix for both creation commands. Configure
+  `CRON_SECRET` separately before production worker activation
 - **Primary plan:** [`plans/prd-v1.1-gap-closure-plan.md`](./prd-v1.1-gap-closure-plan.md)
 
 ## Overall project status — 2026-08-09
 
 - Ripple has a meaningful Phase 1–4 support-platform foundation, and Phase 0
-  containment is substantially implemented through migration 048. Migrations
-  001–048 are deployed and live-verified at their current rollout gates.
+  containment is substantially implemented through migration 049. Migrations
+  001–048 are deployed and live-verified; migration 049 is the active gate.
 - Against the full PRD v1.1 capability map, 17 domains remain
   **Partial** or **Unsafe/Partial** and seven remain **Absent**. No full PRD
   capability domain is yet honestly complete end to end.
-- The local deterministic baseline is green at 972 unit/contract tests, 40
+- The local deterministic baseline is green at 996 unit/contract tests, 40
   production HTTP smoke checks, a production build, zero-warning lint, and
   zero known dependency vulnerabilities.
 - Phase 0 cannot be declared exited until the protected six-account/two-tenant
@@ -97,6 +98,61 @@ meaningful change and before ending a work session. Newest entries go first.
   queues/routing, business-calendar SLA clocks, remote support, appointments,
   assets/entitlements, search/knowledge, i18n, versioned external APIs, and
   production SRE/recovery evidence.
+
+## Session record — 2026-08-09 (P0-BU / replay-safe service creation)
+
+### Objective
+
+Prevent duplicate procurement requests and service dispatches when an internal
+browser or API client retries after the atomic command committed but its HTTP
+response was lost.
+
+### Finding and implementation
+
+- Migrations 029 and 030 already commit each resource, its line items or
+  engineer assignments, sequence number, and audit evidence atomically. They
+  had no caller-stable replay identity, so an ambiguous response followed by a
+  retry could still commit a second complete business command.
+- Commit `3fa981d` adds migration 049 with forced-RLS, service-only replay
+  ledgers and transaction-scoped advisory locks for spare-part request and
+  field-service order creation. Exact input returns the first durable resource
+  ID; the same key with a changed actor, header, item, or assignment fails with
+  SQLSTATE `22023`. Immutable normalized request snapshots preserve replay
+  comparison even if the created operational resource is edited later.
+- Both internal create forms retain an opaque key only while their normalized
+  request body is unchanged. Both APIs validate and echo caller keys, generate
+  keys for legacy callers, map altered reuse to stable 409 responses, keep
+  successful/conflict responses private/no-store, preserve committed success
+  through hydration failure, and emit only bounded code/name diagnostics.
+- The shared opaque-key contract now serves ticket and operational workflows.
+  Spare-part and field-service root/child schemas reject unknown fields instead
+  of silently stripping caller-controlled attribution or future fields.
+- Twenty-four new/expanded migration, wrapper, API, schema, and browser-attempt
+  contracts bring the suite to 996 tests across 130 files.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| Focused replay-safety matrix | Passed; 66 selected checks |
+| `npm ci` | Passed from the lockfile; 0 vulnerabilities reported by install |
+| `npm test` | Passed; 130 files, 996 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build and type check |
+| `npm run test:e2e` | Passed; all 40 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+
+### Commit
+
+- Hash: `3fa981d`
+- Message: `fix: make service creation replay safe`
+
+### Next
+
+Apply migration 049, then run the disposable replay/concurrency/cardinality/
+privilege/constraint/cleanup matrix for both commands before deploying the
+application commit.
 
 ## Session record — 2026-08-09 (migration 048 live verification)
 

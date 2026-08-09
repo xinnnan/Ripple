@@ -18,8 +18,8 @@ This file is the **single source of truth for project context** — read it befo
 
 **Status** — Phase 1–4 foundation is present; PRD v1.1 gap closure and security
 containment are active on `codex/prd-v1-1-gap-closure`. Migrations 001–048 are
-deployed and live-verified at their current rollout gates. `main` is live on
-Vercel.
+deployed and live-verified; migration 049 is the current migration-first
+deployment gate. `main` is live on Vercel.
 
 ---
 
@@ -106,7 +106,7 @@ Vercel.
 │   │   ├── ticket.ts                    # ⭐ All domain enums + labels
 │   │   └── spare-parts.ts               # ⭐ Spare parts + field service enums
 │   └── middleware.ts                    # ⭐ Route guard + session refresh
-├── supabase/migrations/                 # 001–048, apply in order
+├── supabase/migrations/                 # 001–049, apply in order
 ├── plans/                               # Architecture + phase planning docs
 │   ├── architecture.md
 │   ├── phase2-customer-auth-and-user-management.md
@@ -125,7 +125,7 @@ Vercel.
 - Ticket detail UI → `src/app/(auth)/tickets/[ticketId]/page.tsx` (server) + `ticket-actions-panel.tsx` (client)
 - Slack ticket creation → `src/app/api/slack/command/ticket/route.ts` + `src/lib/slack/blocks/ticket-form.ts`
 - AI assist → `src/app/api/ai/suggest/route.ts` + `src/lib/ai/suggest.ts`
-- DB schema → `supabase/migrations/001_*.sql` … `048_idempotent_ticket_comments.sql`
+- DB schema → `supabase/migrations/001_*.sql` … `049_idempotent_service_resource_creation.sql`
 
 ---
 
@@ -163,8 +163,9 @@ const isInternal = role ? INTERNAL_ROLES.includes(role) : email ? isInternalEmai
 
 ## 5. Database Schema (Supabase)
 
-48 migrations, to be applied in order. Migrations 001–048 are confirmed
-applied as of 2026-08-09. Key tables:
+49 migrations, to be applied in order. Migrations 001–048 are confirmed
+applied as of 2026-08-09; migration 049 awaits application and live
+verification. Key tables:
 
 | Table | Purpose | Notes |
 |---|---|---|
@@ -175,6 +176,7 @@ applied as of 2026-08-09. Key tables:
 | `tickets` | Core ticket entity | `ticket_no` (RPL-XXXXXX), `secure_token` (32-byte hex), `severity` (P1–P4), 8-state `status`, response/resolution due/achieved/breached timestamps; migration 027 column-limits direct authenticated SELECT |
 | `ticket_creation_requests` | Service-only ticket-create replay ledger | Migration 047 serializes source/request keys, returns the first durable receipt for exact retries, and rejects altered reuse; its 42-assertion replay/concurrency/privilege live matrix is green |
 | `ticket_comment_requests` | Service-only ticket-comment replay ledger | Migration 048 serializes source/request keys, returns the first durable comment for exact retries, rejects altered reuse, and transactionally binds customer-visible comments to one Slack-reply outbox event; its 69-assertion replay/concurrency/cardinality/privilege live matrix is green |
+| `spare_part_request_creation_requests` / `field_service_order_creation_requests` | Service-only operational-create replay ledgers | Migration 049 serializes one request key per spare-part request or field-service order, stores an immutable normalized request snapshot, returns the first resource for exact retries, and rejects altered reuse; application and live verification are pending |
 | `ticket_comments` | Discussion, `visibility: customer\|internal` | `is_automated`; only human internal-authored customer-visible messages satisfy First Response |
 | `ticket_attachments` | File refs (storage_path) | Bucket `ripple-attachments`, 50MB cap; direct authenticated bucket access is removed by migration 027 and app routes mediate objects. Migration 044 adds bounded metadata/path constraints and atomic metadata plus timeline creation; its 130-assertion live matrix is green |
 | `ticket_events` | Audit log | `actor_id`, `event_type`, `old_value`/`new_value` |
@@ -288,7 +290,7 @@ if ("error" in auth) return NextResponse.json({ error: auth.error }, { status: a
 npm install
 cp .env.local.example .env.local   # fill in real values
 # Run migrations in Supabase SQL editor (or `supabase db push` if using CLI):
-#   001 → 048 in order
+#   001 → 049 in order
 # Enable pgvector: CREATE EXTENSION IF NOT EXISTS vector;
 npm run dev
 ```
@@ -298,7 +300,7 @@ npm run dev
 - `npm run build` — production build
 - `npm run start` — production server
 - `npm run lint` — direct ESLint CLI across the repository; warnings fail the gate
-- `npm test` — Vitest unit/contract suite (972 tests)
+- `npm test` — Vitest unit/contract suite (996 tests)
 - `npm run test:e2e` — 40-check production HTTP smoke plus optional credentialed Playwright/API/RLS matrix; requires a successful build
 - `npm run test:e2e:credentialed` — real six-account/two-tenant matrix; set `RIPPLE_E2E_FIXTURES_FILE`
 - `npm run test:e2e:install-browser` — install the pinned Chromium runtime
@@ -1376,6 +1378,24 @@ post-commit hydration for an outbox-owned projection.
 its durable delivery intent in the same transaction as the mutation. Do not let
 optional response hydration reverse committed success or bypass the outbox.
 
+### Operational create commands need replay identity too
+Found 2026-08-09 in spare-part request and field-service order creation.
+Migrations 029 and 030 correctly committed each resource, its children, number,
+and audit evidence atomically, but a lost HTTP response followed by a retry
+could still create a second procurement request or dispatch.
+
+Commit `3fa981d` adds migration 049's two service-only replay ledgers and
+transaction-scoped key serialization around the existing commands. Browser
+forms retain one opaque key while normalized input is unchanged, APIs validate
+and echo caller keys (or generate one for legacy callers), exact retries return
+the first resource, and altered reuse returns a stable conflict. The creation
+schemas now reject unknown root and child fields instead of silently stripping
+them. Migration 049 still requires application and live verification.
+
+**Lesson:** financial and dispatch mutations need the same caller-to-receipt
+idempotency contract as tickets. Transaction atomicity prevents partial state;
+only stable attempt identity prevents a complete command from being repeated.
+
 ### Dependency audit state can change without a lockfile change
 Found 2026-08-08 while running the required gate after migration 047's live
 verification. A fresh `npm ci` installed the same dependency graph but the
@@ -1606,7 +1626,10 @@ resume work; this section remains the broader historical summary.
   replay-safe, moved customer-visible Slack replies into the comment
   transaction's durable outbox, removed false-failure post-commit hydration,
   and bounded Slack modal submission fields, bringing the suite to 972 tests;
-  then live-verified migration 048 with 69 assertions and zero residue.
+  then live-verified migration 048 with 69 assertions and zero residue; then
+  made spare-part request and field-service order creation replay-safe with
+  migration 049, stable browser attempt keys, strict payloads, and private
+  durable receipts, bringing the suite to 996 tests.
 
 ### Known issues / open work
 | Priority | Item | Where | Notes |
@@ -1647,6 +1670,7 @@ resume work; this section remains the broader historical summary.
 | ✅ Verified | Replay-safe ticket creation | migration 047, web ticket forms, Slack modal submission | Commit `dc5f588` adds stable attempt keys, serialized exact replay, changed-input rejection, and durable transaction receipts; the applied command passed 42 live assertions covering 12-way concurrency, exact effects, privilege denial, and zero residue |
 | ✅ Closed | Ripple Assist serverless quota and provider-data boundary | `src/lib/ai/`, `/api/ai/suggest`, Slack assist submission, ticket detail | Commit `fe2aa45` adds a durable per-actor quota shared by web/Slack, explicit bounded provider projections, untrusted-context containment, bounded provider execution/diagnostics, visible degraded persistence, and overflow-free responsive rendering |
 | ✅ Verified | Migration 048 replay-safe ticket comments | `supabase/migrations/048_idempotent_ticket_comments.sql` | Applied 2026-08-09; 69 live assertions covered exact replay, 12-way concurrency, altered reuse, exact comment/event/audit/outbox/SLA cardinality, internal-note isolation, anonymous/authenticated denial, and zero database/Auth residue |
+| 🟡 Apply | Migration 049 replay-safe service creation | `supabase/migrations/049_idempotent_service_resource_creation.sql` | Commit `3fa981d` adds service-only replay ledgers and wrappers for spare-part requests and field-service orders; apply the migration, then run concurrency/cardinality/privilege/cleanup verification before deploying the application commit |
 | 🟡 Med | `/settings` is read-only integration status | `src/app/(auth)/settings/page.tsx` | Add notification preferences, user timezone, and theme controls |
 | ✅ Verified | Migration 046 durable public rate limits | `supabase/migrations/046_durable_public_rate_limits.sql` | Applied 2026-08-02; 77 live assertions covered grants, constraints, concurrency, reset/retention, bounded cleanup, real HTTP limits/lifecycle, and zero residue |
 | 🟡 Med | Exact site-code validation remains an existence oracle | `/api/sites/validate` | Responses are minimal and migration 046 enforces 20 checks/minute/IP across instances, but full anti-enumeration still requires CAPTCHA, an invitation/intake token, or authenticated submission |
@@ -1676,9 +1700,9 @@ resume work; this section remains the broader historical summary.
 4. **Run migration 031 team-access transaction probes.** The command is live;
    protected same/cross-tenant, role-preservation, explicit-clear, and rollback
    fixtures remain unavailable.
-5. **Run the required credentialed staging matrix.** Migrations 027–048 are
-   applied; the secret six-account/two-tenant fixture is the remaining
-   database/external gate.
+5. **Apply and verify migration 049, then run the required credentialed staging
+   matrix.** Migrations 027–048 are applied; migration 049 and the secret
+   six-account/two-tenant fixture are the remaining database/external gates.
 6. **Apply migration 019** ✅ done (2026-07-14).
 7. **Migrate `next lint` and add protected CI quality gates.** ✅ code done
    (`4ceacd0`); hosted activation remains.
@@ -1987,6 +2011,16 @@ resume work; this section remains the broader historical summary.
     Migration 048 is applied and passed a 69-assertion live matrix covering
     exact replay, 12-way concurrency, altered reuse, exact business/outbox/SLA
     cardinality, internal-note isolation, privilege denial, and zero residue.
+69. **Make operational creation replay-safe.** Commit `3fa981d` adds migration
+    049's service-only replay ledgers and transaction-scoped wrappers around
+    the existing atomic spare-part request and field-service order commands.
+    Exact retries return the first durable resource; actor or payload changes
+    under the same key fail closed. Browser forms retain keys only while their
+    normalized request is unchanged, legacy API clients receive generated and
+    echoed keys, successful and conflict responses are private/no-store, and
+    root/child request objects reject unknown fields. Twenty-four contracts
+    bring the suite to 996; the fresh-install test/lint/build/40-check E2E/audit
+    gate is green. Migration 049 application and live verification are pending.
 
 ### Open architectural questions
 - The RLS recursion bug surfaces a bigger question: do we keep `createAdminClient() + code filter` (the current pattern in `lib/supabase/scope.ts`) or move back to proper RLS once migration 019 + similar fixes are in place? The current pattern scales fine but has a lower safety margin for new queries.
@@ -2008,7 +2042,7 @@ npm audit
 ```
 
 **Apply a new migration:**
-1. Create `supabase/migrations/049_xxx.sql` (next number)
+1. Create `supabase/migrations/050_xxx.sql` (next number)
 2. Test locally: `supabase db reset` (drops + re-applies all)
 3. Apply to prod via Supabase SQL editor
 4. Document in this file's §5 + §10
