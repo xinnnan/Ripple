@@ -7,12 +7,14 @@ meaningful change and before ending a work session. Newest entries go first.
 
 - **Branch:** `codex/prd-v1-1-gap-closure`
 - **Active phase:** Phase 0 — Containment and reproducible baseline
-- **Active work item:** resume the remaining mutation-surface audit after
-  hardening the paid Ripple Assist boundary
-- **Last verified implementation commit:** `fe2aa45` (`fix: harden ripple assist boundary`)
+- **Active work item:** apply and live-verify migration 048 before deploying
+  replay-safe ticket comments and durable Slack replies
+- **Last verified implementation commit:** `904fee0` (`fix: make ticket comments replay safe`)
 - **Uncommitted work:** none expected after the documentation checkpoint;
   verify with `git status` before resuming
-- **Deployment gate:** migrations 001–047 are confirmed applied. Migration 044
+- **Deployment gate:** migrations 001–047 are confirmed applied. Migration 048
+  awaits application and live replay/concurrency/privilege verification; do not
+  deploy application commit `904fee0` first. Migration 044
   passed a 130-assertion disposable live matrix with zero residue. Migration
   045 passed a 110-assertion live matrix with zero residue. Migration 046
   passed a 77-assertion live matrix with zero residue. Migration 047 passed a
@@ -69,21 +71,22 @@ meaningful change and before ending a work session. Newest entries go first.
   Inter, expanded/collapsed accessibility state, no horizontal overflow, and
   zero console warnings/errors. A disposable engineer identity was fully
   removed with zero profile/audit residue, and no AI provider request was made.
-- **Exact next local step:** inventory the remaining mutation surfaces, select
-  the highest-risk unaudited command, and close it with contract tests before
-  continuing feature work. Configure `CRON_SECRET` separately before production
-  worker activation
+- **Exact next local step:** after migration 048 is confirmed applied, run its
+  disposable exact-replay, changed-input, concurrent-delivery, outbox
+  cardinality, privilege-denial, and zero-residue matrix. Then resume the
+  remaining mutation audit. Configure `CRON_SECRET` separately before
+  production worker activation
 - **Primary plan:** [`plans/prd-v1.1-gap-closure-plan.md`](./prd-v1.1-gap-closure-plan.md)
 
 ## Overall project status — 2026-08-08
 
 - Ripple has a meaningful Phase 1–4 support-platform foundation, and Phase 0
-  containment is substantially implemented through migrations 001–047;
-  replay-safe ticket creation is deployed and live-verified.
+  containment is substantially implemented through migration 048. Migrations
+  001–047 are deployed; migration 048 is the current deployment gate.
 - Against the full PRD v1.1 capability map, 17 domains remain
   **Partial** or **Unsafe/Partial** and seven remain **Absent**. No full PRD
   capability domain is yet honestly complete end to end.
-- The local deterministic baseline is green at 956 unit/contract tests, 40
+- The local deterministic baseline is green at 972 unit/contract tests, 40
   production HTTP smoke checks, a production build, zero-warning lint, and
   zero known dependency vulnerabilities.
 - Phase 0 cannot be declared exited until the protected six-account/two-tenant
@@ -95,6 +98,65 @@ meaningful change and before ending a work session. Newest entries go first.
   queues/routing, business-calendar SLA clocks, remote support, appointments,
   assets/entitlements, search/knowledge, i18n, versioned external APIs, and
   production SRE/recovery evidence.
+
+## Session record — 2026-08-08 (P0-BT / replay-safe ticket comments)
+
+### Objective
+
+Prevent duplicate comments and First Response evidence after ambiguous web or
+Slack delivery, and move Slack customer-update replies onto the same durable
+outbox seam as the rest of the ticket workflow.
+
+### Finding and implementation
+
+- Migration 026 made one comment invocation atomic but had no caller-stable
+  request identity. A lost HTTP response or Slack view retry could create a
+  second comment, timeline event, audit row, and potentially misleading SLA
+  evidence.
+- Migration 048 adds a service-only `ticket_comment_requests` ledger and
+  row-serialized `record_ticket_comment_idempotent_atomic(jsonb)` wrapper.
+  Exact retries return the first comment, altered reuse fails closed, and the
+  original migration 026 command remains available for migration-first rollout.
+- Every customer-visible comment now enqueues one
+  `ticket.slack_comment_reply` event in the same transaction as the comment,
+  replay receipt, timeline, audit, and SLA milestone. Internal comments do not
+  enqueue customer-channel work; the worker rejects malformed payloads before
+  provider I/O.
+- Web comments retain an opaque attempt key while normalized body/visibility is
+  unchanged, echo it in private/no-store responses, and immediately drain the
+  durable event best-effort. Slack customer updates derive the key from the
+  signed submitted view ID and no longer perform a one-off thread post.
+- Slack ticket actions no longer run a post-commit ticket hydration query that
+  could make a committed command look failed. Ticket, resolution, and customer
+  update modal inputs are bounded at the Block Kit surface and revalidated on
+  submission with field-specific errors.
+- Sixteen new/expanded migration, wrapper, HTTP, client-attempt, outbox, Slack
+  behavior, form, and timezone-ownership contracts bring the suite to 972
+  tests across 127 files.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| Focused comment/Slack matrix | Passed; 43 selected checks |
+| `npm ci` | Passed from the lockfile; 0 vulnerabilities reported by install |
+| `npm test` | Passed; 127 files, 972 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build and type check |
+| `npm run test:e2e` | Passed; all 40 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+| Migration 048 live matrix | Pending application; no production comment/provider mutation was attempted |
+
+### Commit
+
+- Hash: `904fee0`
+- Message: `fix: make ticket comments replay safe`
+
+### Next
+
+Apply migration 048 before deploying `904fee0`, then run the disposable replay,
+changed-input, concurrency, exact-cardinality, privilege, and cleanup matrix.
 
 ## Session record — 2026-08-08 (P0-BS / Ripple Assist boundary)
 

@@ -17,8 +17,9 @@ This file is the **single source of truth for project context** — read it befo
 - **External users** (customers): customer admins (manage their org's team + sites) + regular customers (submit + view their tickets)
 
 **Status** — Phase 1–4 foundation is present; PRD v1.1 gap closure and security
-containment are active on `codex/prd-v1-1-gap-closure`. `main` is live on
-Vercel.
+containment are active on `codex/prd-v1-1-gap-closure`. Migrations 001–047 are
+deployed; migration 048 is the current migration-first deployment gate. `main`
+is live on Vercel.
 
 ---
 
@@ -105,7 +106,7 @@ Vercel.
 │   │   ├── ticket.ts                    # ⭐ All domain enums + labels
 │   │   └── spare-parts.ts               # ⭐ Spare parts + field service enums
 │   └── middleware.ts                    # ⭐ Route guard + session refresh
-├── supabase/migrations/                 # 001–047, apply in order
+├── supabase/migrations/                 # 001–048, apply in order
 ├── plans/                               # Architecture + phase planning docs
 │   ├── architecture.md
 │   ├── phase2-customer-auth-and-user-management.md
@@ -124,7 +125,7 @@ Vercel.
 - Ticket detail UI → `src/app/(auth)/tickets/[ticketId]/page.tsx` (server) + `ticket-actions-panel.tsx` (client)
 - Slack ticket creation → `src/app/api/slack/command/ticket/route.ts` + `src/lib/slack/blocks/ticket-form.ts`
 - AI assist → `src/app/api/ai/suggest/route.ts` + `src/lib/ai/suggest.ts`
-- DB schema → `supabase/migrations/001_*.sql` … `047_idempotent_ticket_creation.sql`
+- DB schema → `supabase/migrations/001_*.sql` … `048_idempotent_ticket_comments.sql`
 
 ---
 
@@ -162,8 +163,9 @@ const isInternal = role ? INTERNAL_ROLES.includes(role) : email ? isInternalEmai
 
 ## 5. Database Schema (Supabase)
 
-47 migrations, to be applied in order. Migrations 001–047 are confirmed
-applied as of 2026-08-08. Key tables:
+48 migrations, to be applied in order. Migrations 001–047 are confirmed
+applied as of 2026-08-08; migration 048 awaits application and live
+verification. Key tables:
 
 | Table | Purpose | Notes |
 |---|---|---|
@@ -173,12 +175,13 @@ applied as of 2026-08-08. Key tables:
 | `site_members` | User ↔ Site (M:N) | Customers join via this; customer_manager bypasses. Migration 035 adds tenant-contained, transactionally audited admin add/remove commands. Migration 045 removes the legacy direct authenticated write path; its 110-assertion live matrix is green |
 | `tickets` | Core ticket entity | `ticket_no` (RPL-XXXXXX), `secure_token` (32-byte hex), `severity` (P1–P4), 8-state `status`, response/resolution due/achieved/breached timestamps; migration 027 column-limits direct authenticated SELECT |
 | `ticket_creation_requests` | Service-only ticket-create replay ledger | Migration 047 serializes source/request keys, returns the first durable receipt for exact retries, and rejects altered reuse; its 42-assertion replay/concurrency/privilege live matrix is green |
+| `ticket_comment_requests` | Service-only ticket-comment replay ledger | Migration 048 serializes source/request keys, returns the first durable comment for exact retries, rejects altered reuse, and transactionally binds customer-visible comments to one Slack-reply outbox event; application and live verification are pending |
 | `ticket_comments` | Discussion, `visibility: customer\|internal` | `is_automated`; only human internal-authored customer-visible messages satisfy First Response |
 | `ticket_attachments` | File refs (storage_path) | Bucket `ripple-attachments`, 50MB cap; direct authenticated bucket access is removed by migration 027 and app routes mediate objects. Migration 044 adds bounded metadata/path constraints and atomic metadata plus timeline creation; its 130-assertion live matrix is green |
 | `ticket_events` | Audit log | `actor_id`, `event_type`, `old_value`/`new_value` |
 | `ai_suggestions` | Ripple Assist outputs | `model_name`, `confidence_level`, accept/dismiss feedback |
 | `slack_channels` / `slack_messages` | Site ↔ Slack channel map, message tracking | |
-| `integration_outbox` | Durable external delivery | Unique event keys, bounded leases, exponential backoff, delivery evidence, dead-letter retention |
+| `integration_outbox` | Durable external delivery | Unique event keys, bounded leases, exponential backoff, delivery evidence, and dead-letter retention for ticket notifications and customer-visible Slack comment replies |
 | `request_rate_limits` | Opaque distributed boundary counters | Migration 046 adds service-role-only atomic consumption, bounded inputs/counts, indexed expiry, and opportunistic retention; site validation, anonymous ticket creation, guest attachment upload, public ticket view, and paid Ripple Assist actor quotas use distinct buckets, and the migration's 77-assertion live matrix is green |
 | `sla_policies` | Default/customer SLA targets | Migration 041 derives scope shape, orders response/resolution targets, serializes create/update/delete, protects default/referenced rows, and commits exact audit evidence atomically; its 35-assertion live matrix is green. Migration 045 removes the legacy direct admin write path; its 110-assertion live matrix is green |
 | `spare_parts` / `spare_part_inventory` / `spare_part_requests` / `spare_part_request_items` | Phase 3 catalog + per-site stock + request workflow | `request_no` SPR-XXXX; migration 042 makes catalog create/update transactionally audited with normalized case-folded identity, bounded shape, nonnegative price, and no-op preservation. Migration 043 adds guarded atomic stock upsert/PATCH, ordered quantity bounds, active-parent checks, exact audit evidence, and increase-only restock timestamps; its 72-assertion live matrix is green |
@@ -286,7 +289,7 @@ if ("error" in auth) return NextResponse.json({ error: auth.error }, { status: a
 npm install
 cp .env.local.example .env.local   # fill in real values
 # Run migrations in Supabase SQL editor (or `supabase db push` if using CLI):
-#   001 → 047 in order
+#   001 → 048 in order
 # Enable pgvector: CREATE EXTENSION IF NOT EXISTS vector;
 npm run dev
 ```
@@ -296,7 +299,7 @@ npm run dev
 - `npm run build` — production build
 - `npm run start` — production server
 - `npm run lint` — direct ESLint CLI across the repository; warnings fail the gate
-- `npm test` — Vitest unit/contract suite (956 tests)
+- `npm test` — Vitest unit/contract suite (972 tests)
 - `npm run test:e2e` — 40-check production HTTP smoke plus optional credentialed Playwright/API/RLS matrix; requires a successful build
 - `npm run test:e2e:credentialed` — real six-account/two-tenant matrix; set `RIPPLE_E2E_FIXTURES_FILE`
 - `npm run test:e2e:install-browser` — install the pinned Chromium runtime
@@ -1338,6 +1341,40 @@ commands. Every externally retryable create path needs a stable caller attempt
 key, exact-input collision detection, concurrent serialization, and a durable
 receipt returned by the committing transaction.
 
+### Atomic comment commands still need replay identity
+Found 2026-08-08 in web comments and Slack customer updates. Migration 026
+correctly committed a comment, timeline, audit, and First Response milestone in
+one transaction, but a lost HTTP response or repeated Slack view submission
+could invoke that atomic command again and create a second set of evidence.
+
+Commit `904fee0` adds migration 048's service-only comment-request ledger and
+source/key serialization. Browser callers retain an opaque key while the
+normalized comment attempt is unchanged, Slack binds the key to the signed
+submitted view, exact retries return the first comment, and changed-input key
+reuse fails closed. The migration remains a deployment prerequisite until it is
+applied and live-verified.
+
+**Lesson:** every externally retryable mutation needs a caller-stable attempt
+identity, including writes beneath an already atomic command. Idempotency is a
+property of the complete request-to-receipt boundary, not only create routes.
+
+### Customer-visible cross-system delivery belongs in the committing transaction
+Found 2026-08-08 in the Slack customer-update action. The handler committed the
+ticket comment and then posted the Slack reply directly. A process failure
+between those operations could lose the reply; retrying could instead duplicate
+the comment and First Response evidence. It also performed post-commit ticket
+hydration that could make a committed command appear to have failed.
+
+Migration 048 transactionally enqueues one `ticket.slack_comment_reply` event
+beside each customer-visible comment. Internal comments enqueue nothing. The
+outbox worker validates bounded payloads before provider I/O and uses the
+existing idempotent Slack thread-record seam; action handlers no longer perform
+post-commit hydration for an outbox-owned projection.
+
+**Lesson:** if an external side effect is part of the business outcome, record
+its durable delivery intent in the same transaction as the mutation. Do not let
+optional response hydration reverse committed success or bypass the outbox.
+
 ### Dependency audit state can change without a lockfile change
 Found 2026-08-08 while running the required gate after migration 047's live
 verification. A fresh `npm ci` installed the same dependency graph but the
@@ -1564,7 +1601,10 @@ resume work; this section remains the broader historical summary.
   hardened the shared Ripple Assist boundary with durable per-actor quotas,
   least-data bounded provider context, prompt-injection containment, stable
   failure/persistence semantics, and responsive ticket-detail rendering,
-  bringing the suite to 956 tests.
+  bringing the suite to 956 tests; then made web and Slack ticket comments
+  replay-safe, moved customer-visible Slack replies into the comment
+  transaction's durable outbox, removed false-failure post-commit hydration,
+  and bounded Slack modal submission fields, bringing the suite to 972 tests.
 
 ### Known issues / open work
 | Priority | Item | Where | Notes |
@@ -1604,6 +1644,7 @@ resume work; this section remains the broader historical summary.
 | ✅ Closed | Ticket mutation raw failure, duplicate-action, and hydration ambiguity | public/authenticated ticket creation, ticket detail actions, ticket PATCH/comments | Commit `6075296` centralizes bounded input/file contracts, locks request plus refresh settlement, validates safe response shapes, preserves committed success through hydration failure, and immediately drains the durable ticket outbox |
 | ✅ Verified | Replay-safe ticket creation | migration 047, web ticket forms, Slack modal submission | Commit `dc5f588` adds stable attempt keys, serialized exact replay, changed-input rejection, and durable transaction receipts; the applied command passed 42 live assertions covering 12-way concurrency, exact effects, privilege denial, and zero residue |
 | ✅ Closed | Ripple Assist serverless quota and provider-data boundary | `src/lib/ai/`, `/api/ai/suggest`, Slack assist submission, ticket detail | Commit `fe2aa45` adds a durable per-actor quota shared by web/Slack, explicit bounded provider projections, untrusted-context containment, bounded provider execution/diagnostics, visible degraded persistence, and overflow-free responsive rendering |
+| 🟡 Apply | Migration 048 replay-safe ticket comments | `supabase/migrations/048_idempotent_ticket_comments.sql` | Commit `904fee0` adds the service-only replay ledger and atomic Slack-reply outbox intent; apply the migration before deploying its callers, then run the disposable replay/concurrency/cardinality/privilege/cleanup matrix |
 | 🟡 Med | `/settings` is read-only integration status | `src/app/(auth)/settings/page.tsx` | Add notification preferences, user timezone, and theme controls |
 | ✅ Verified | Migration 046 durable public rate limits | `supabase/migrations/046_durable_public_rate_limits.sql` | Applied 2026-08-02; 77 live assertions covered grants, constraints, concurrency, reset/retention, bounded cleanup, real HTTP limits/lifecycle, and zero residue |
 | 🟡 Med | Exact site-code validation remains an existence oracle | `/api/sites/validate` | Responses are minimal and migration 046 enforces 20 checks/minute/IP across instances, but full anti-enumeration still requires CAPTCHA, an invitation/intake token, or authenticated submission |
@@ -1932,6 +1973,16 @@ resume work; this section remains the broader historical summary.
     and fixes responsive ticket-detail overflow found in browser E2E. Twelve
     contracts bring the suite to 956; all deterministic quality gates are
     green.
+68. **Make ticket comments replay-safe.** Commit `904fee0` adds migration 048's
+    service-only source/key ledger around the existing atomic comment command.
+    Exact web/Slack retries return the first comment, altered reuse fails
+    closed, browser keys persist only for an unchanged attempt, and signed Slack
+    view IDs supply stable identity. Customer-visible comments enqueue exactly
+    one durable Slack reply beside their comment, timeline, audit, and SLA
+    evidence; internal notes enqueue none. Slack modal fields are bounded and
+    post-commit hydration no longer creates false failures. Sixteen contracts
+    bring the suite to 972; all deterministic quality gates are green.
+    Migration 048 awaits application and live verification.
 
 ### Open architectural questions
 - The RLS recursion bug surfaces a bigger question: do we keep `createAdminClient() + code filter` (the current pattern in `lib/supabase/scope.ts`) or move back to proper RLS once migration 019 + similar fixes are in place? The current pattern scales fine but has a lower safety margin for new queries.
@@ -1953,7 +2004,7 @@ npm audit
 ```
 
 **Apply a new migration:**
-1. Create `supabase/migrations/048_xxx.sql` (next number)
+1. Create `supabase/migrations/049_xxx.sql` (next number)
 2. Test locally: `supabase db reset` (drops + re-applies all)
 3. Apply to prod via Supabase SQL editor
 4. Document in this file's §5 + §10
