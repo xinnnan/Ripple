@@ -18,6 +18,7 @@ export function AIAssistButton({ ticketId }: AIAssistButtonProps) {
     suggestion_type: string;
     model_name: string;
     confidence_level: string;
+    persistenceWarning: boolean;
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showPanel, setShowPanel] = useState(false);
@@ -64,6 +65,9 @@ export function AIAssistButton({ ticketId }: AIAssistButtonProps) {
         suggestion_type: data.suggestion_type,
         model_name: data.model_name,
         confidence_level: data.confidence_level,
+        persistenceWarning:
+          "_persistence_warning" in data &&
+          data._persistence_warning === true,
       });
     } catch (err) {
       setError(
@@ -78,14 +82,14 @@ export function AIAssistButton({ ticketId }: AIAssistButtonProps) {
   }
 
   return (
-    <div>
+    <div className="w-full min-w-0 lg:w-auto lg:max-w-lg">
       <button
         type="button"
         onClick={() => setShowPanel(!showPanel)}
         aria-expanded={showPanel}
         aria-controls="ripple-assist-panel"
         disabled={loading}
-        className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors flex items-center gap-2"
+        className="flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700 lg:w-auto"
       >
         <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 0 0-2.456 2.456ZM16.894 20.567 16.5 21.75l-.394-1.183a2.25 2.25 0 0 0-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 0 0 1.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 0 0 1.423 1.423l1.183.394-1.183.394a2.25 2.25 0 0 0-1.423 1.423Z" />
@@ -97,7 +101,7 @@ export function AIAssistButton({ ticketId }: AIAssistButtonProps) {
         <div
           id="ripple-assist-panel"
           aria-busy={loading}
-          className="mt-4 rounded-xl border border-blue-200 bg-blue-50 p-6"
+          className="mt-4 w-full min-w-0 rounded-xl border border-blue-200 bg-blue-50 p-4 sm:p-6 lg:w-[32rem] lg:max-w-[calc(100vw-4rem)]"
         >
           <h3 className="text-sm font-semibold text-blue-800 mb-4">
             🤖 Ripple Assist — AI Suggestions
@@ -143,6 +147,15 @@ export function AIAssistButton({ ticketId }: AIAssistButtonProps) {
 
           {result && (
             <div className="border border-blue-200 rounded-lg p-4 bg-white">
+              {result.persistenceWarning && (
+                <p
+                  role="status"
+                  className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800"
+                >
+                  This result could not be saved to ticket history. Copy it
+                  before leaving this page.
+                </p>
+              )}
               <div className="flex items-center gap-2 mb-2">
                 <span className="text-xs font-medium text-blue-700">
                   {result.suggestion_type}

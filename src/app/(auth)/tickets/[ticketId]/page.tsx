@@ -238,7 +238,7 @@ export default async function TicketDetailPage({ params }: Props) {
   }
 
   return (
-    <div className="p-8">
+    <div className="min-w-0 p-4 sm:p-8">
       <div className="mb-6">
         <Link href="/tickets" className="text-sm text-muted-foreground hover:text-foreground">
           ← Back to tickets
@@ -246,9 +246,9 @@ export default async function TicketDetailPage({ params }: Props) {
       </div>
 
       {/* Header */}
-      <div className="flex items-start justify-between mb-8">
-        <div>
-          <div className="flex items-center gap-3 mb-2">
+      <div className="mb-8 flex min-w-0 flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="min-w-0">
+          <div className="mb-2 flex flex-wrap items-center gap-3">
             <span className="text-lg font-mono text-muted-foreground">{ticket.ticket_no}</span>
             <span className={`status-${ticket.status} inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium`}>
               {STATUS_LABELS[ticket.status as keyof typeof STATUS_LABELS]}
@@ -257,14 +257,14 @@ export default async function TicketDetailPage({ params }: Props) {
               {ticket.severity}
             </span>
           </div>
-          <h1 className="text-2xl font-bold text-foreground">{ticket.title}</h1>
+          <h1 className="break-words text-2xl font-bold text-foreground">{ticket.title}</h1>
         </div>
         {isInternal && <AIAssistButton ticketId={ticket.id} />}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
         {/* Main content */}
-        <div className="lg:col-span-3 space-y-6">
+        <div className="space-y-6 xl:col-span-2">
           {/* Description */}
           <div className="rounded-xl border border-border p-6">
             <h2 className="text-sm font-semibold text-foreground mb-3">Description</h2>
@@ -360,7 +360,7 @@ export default async function TicketDetailPage({ params }: Props) {
               <div className="space-y-4">
                 {aiSuggestions.map((sug: { id: string; suggestion_type: string; output_text: string; confidence_level: string; model_name: string; created_at: string }) => (
                   <div key={sug.id} className="border border-blue-200 rounded-lg p-4 bg-white">
-                    <div className="flex items-center gap-2 mb-2">
+                    <div className="mb-2 flex flex-wrap items-center gap-2">
                       <span className="text-xs font-medium text-blue-700">{sug.suggestion_type}</span>
                       <span className="text-xs text-muted-foreground">via {sug.model_name}</span>
                       <span className="text-xs text-muted-foreground">{formatDate(sug.created_at, userTimezone)}</span>

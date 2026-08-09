@@ -13,10 +13,12 @@ import {
 } from "@/lib/tickets/mutations";
 import { dispatchTicketOutboxBestEffort } from "@/lib/tickets/outbox";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { requestAiSuggestion } from "@/lib/ai/service";
 import {
   AiSuggestionRateLimitError,
-  requestAiSuggestion,
-} from "@/lib/ai/service";
+  AiSuggestionTicketNotFoundError,
+  AiSuggestionUnavailableError,
+} from "@/lib/ai/errors";
 import { isSuggestionType } from "@/lib/ai/suggest";
 import { buildSlackTicketIdempotencyKey } from "@/lib/tickets/idempotency";
 
@@ -548,13 +550,18 @@ export async function handleViewSubmission(
         await client.chat.postEphemeral({
           channel: metadata.channel_id,
           user: payload.user.id,
-          text: `🤖 *Ripple Assist — ${taskType}*\n\n${data.output_text || "No suggestion generated."}\n\n_Confidence: ${data.confidence_level || "unknown"} | Model: ${data.model_name || "unknown"}_`,
+          text: `🤖 *Ripple Assist — ${taskType}*\n\n${data.output_text || "No suggestion generated."}\n\n_Confidence: ${data.confidence_level || "unknown"} | Model: ${data.model_name || "unknown"}_${data._persistence_warning ? "\n\n⚠️ This result could not be saved to ticket history. Copy it before closing Slack." : ""}`,
         });
       } catch (error) {
-        console.error("AI suggestion failed:", error);
+        console.error("AI suggestion failed:", {
+          name: error instanceof Error ? error.name : "UnknownError",
+        });
         const text =
           error instanceof AiSuggestionRateLimitError
             ? `⏳ ${error.message}`
+            : error instanceof AiSuggestionTicketNotFoundError ||
+              error instanceof AiSuggestionUnavailableError
+            ? `❌ ${error.message}`
             : "❌ Ripple Assist failed to generate a suggestion. Please try again.";
         try {
           await client.chat.postEphemeral({

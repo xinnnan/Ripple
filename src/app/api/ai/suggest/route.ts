@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { SUGGESTION_TYPES } from "@/lib/ai/suggest";
+import { requestAiSuggestion } from "@/lib/ai/service";
 import {
   AiSuggestionRateLimitError,
-  requestAiSuggestion,
-} from "@/lib/ai/service";
+  AiSuggestionTicketNotFoundError,
+  AiSuggestionUnavailableError,
+} from "@/lib/ai/errors";
 import { getAuthUser } from "@/lib/supabase/auth-helpers";
 import { z } from "zod";
 
@@ -17,13 +19,22 @@ const suggestSchema = z.object({
   // ticket_events.actor_id fix in ccaaad5.)
 });
 
+function aiJson(
+  body: unknown,
+  init: { status?: number; headers?: HeadersInit } = {}
+) {
+  const response = NextResponse.json(body, init);
+  response.headers.set("Cache-Control", "private, no-store");
+  return response;
+}
+
 export async function POST(request: NextRequest) {
   try {
     // Auth required. The AI endpoint hits a paid provider, so
     // anonymous calls should fail fast with 401, not 500.
     const auth = await getAuthUser();
     if ("error" in auth) {
-      return NextResponse.json({ error: auth.error }, { status: auth.status });
+      return aiJson({ error: auth.error }, { status: auth.status });
     }
     // Internal-only. The AI suggestions panel on the ticket page
     // is only rendered for internal users, and the ai_suggestions
@@ -33,7 +44,7 @@ export async function POST(request: NextRequest) {
     // for the rationale: troubleshooting + customer-reply drafts
     // are engineer-only material.)
     if (!auth.isInternal) {
-      return NextResponse.json(
+      return aiJson(
         { error: "Forbidden: AI suggestions are internal-only" },
         { status: 403 }
       );
@@ -43,7 +54,7 @@ export async function POST(request: NextRequest) {
     try {
       body = await request.json();
     } catch {
-      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+      return aiJson({ error: "Invalid JSON body" }, { status: 400 });
     }
     const data = suggestSchema.parse(body);
 
@@ -53,10 +64,10 @@ export async function POST(request: NextRequest) {
       actorId: auth.userId,
     });
 
-    return NextResponse.json(result);
+    return aiJson(result);
   } catch (error) {
     if (error instanceof AiSuggestionRateLimitError) {
-      return NextResponse.json(
+      return aiJson(
         { error: error.message },
         {
           status: 429,
@@ -64,14 +75,22 @@ export async function POST(request: NextRequest) {
         }
       );
     }
+    if (error instanceof AiSuggestionTicketNotFoundError) {
+      return aiJson({ error: error.message }, { status: 404 });
+    }
+    if (error instanceof AiSuggestionUnavailableError) {
+      return aiJson({ error: error.message }, { status: 503 });
+    }
     if (error instanceof z.ZodError) {
-      return NextResponse.json(
+      return aiJson(
         { error: "Validation error", details: error.errors },
         { status: 400 }
       );
     }
-    console.error("AI suggestion error:", error);
-    return NextResponse.json(
+    console.error("AI suggestion failed:", {
+      name: error instanceof Error ? error.name : "UnknownError",
+    });
+    return aiJson(
       { error: "Failed to generate suggestion" },
       { status: 500 }
     );
