@@ -25,6 +25,13 @@ export class InvalidTicketTransitionError extends Error {
   }
 }
 
+export class InvalidTicketCommentReplayError extends Error {
+  constructor() {
+    super("This comment request key was already used for different content.");
+    this.name = "InvalidTicketCommentReplayError";
+  }
+}
+
 function safeTransitionMessage(databaseMessage: string): string {
   if (databaseMessage.startsWith("Invalid ticket status transition:")) {
     return databaseMessage;
@@ -83,8 +90,9 @@ export async function applyTicketPatchWithSla(args: {
 }
 
 /**
- * Record a comment through the database command that atomically writes the
- * comment, timeline/audit rows, and any first-response milestone change.
+ * Record or exactly replay a comment through migration 048's wrapper. The
+ * command atomically writes the comment, replay receipt, timeline/audit rows,
+ * any first-response milestone change, and the customer-visible Slack event.
  */
 export async function recordTicketCommentWithSla(args: {
   supabase: SupabaseClient;
@@ -94,23 +102,31 @@ export async function recordTicketCommentWithSla(args: {
   visibility: CommentVisibility;
   source: TicketCommentSource;
   isAutomated?: boolean;
+  idempotencyKey: string;
 }): Promise<string> {
   const { data, error } = await args.supabase.rpc(
-    "record_ticket_comment_with_sla",
+    "record_ticket_comment_idempotent_atomic",
     {
-      p_ticket_id: args.ticketId,
-      p_actor_id: args.actorId,
-      p_body: args.body,
-      p_visibility: args.visibility,
-      p_source: args.source,
-      p_is_automated: args.isAutomated ?? false,
+      p_input: {
+        ticket_id: args.ticketId,
+        actor_id: args.actorId,
+        body: args.body,
+        visibility: args.visibility,
+        source: args.source,
+        is_automated: args.isAutomated ?? false,
+        idempotency_key: args.idempotencyKey,
+      },
     }
   );
 
   if (error || typeof data !== "string") {
-    throw new Error(
-      `Atomic ticket comment failed: ${error?.message ?? "invalid RPC response"}`
-    );
+    if (
+      error?.code === "22023" &&
+      error.message.includes("Comment idempotency key")
+    ) {
+      throw new InvalidTicketCommentReplayError();
+    }
+    throw new Error("Atomic ticket comment failed");
   }
 
   return data;

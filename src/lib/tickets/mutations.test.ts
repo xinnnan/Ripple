@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   applyTicketPatchWithSla,
+  InvalidTicketCommentReplayError,
   InvalidTicketTransitionError,
   recordTicketCommentWithSla,
 } from "./mutations";
@@ -57,17 +58,44 @@ describe("ticket mutation RPC contracts", () => {
         body: "Human customer update",
         visibility: "customer",
         source: "web",
+        idempotencyKey: "web:comment:attempt-1234",
       })
     ).resolves.toBe(COMMENT_ID);
 
-    expect(rpc).toHaveBeenCalledWith("record_ticket_comment_with_sla", {
-      p_ticket_id: TICKET_ID,
-      p_actor_id: ACTOR_ID,
-      p_body: "Human customer update",
-      p_visibility: "customer",
-      p_source: "web",
-      p_is_automated: false,
+    expect(rpc).toHaveBeenCalledWith("record_ticket_comment_idempotent_atomic", {
+      p_input: {
+        ticket_id: TICKET_ID,
+        actor_id: ACTOR_ID,
+        body: "Human customer update",
+        visibility: "customer",
+        source: "web",
+        is_automated: false,
+        idempotency_key: "web:comment:attempt-1234",
+      },
     });
+  });
+
+  it("maps altered request-key reuse to a stable replay conflict", async () => {
+    const { client } = clientWithRpc({
+      data: null,
+      error: {
+        code: "22023",
+        message:
+          "Comment idempotency key was already used for different input",
+      },
+    });
+
+    await expect(
+      recordTicketCommentWithSla({
+        supabase: client,
+        ticketId: TICKET_ID,
+        actorId: ACTOR_ID,
+        body: "Changed update",
+        visibility: "customer",
+        source: "web",
+        idempotencyKey: "web:comment:attempt-1234",
+      })
+    ).rejects.toBeInstanceOf(InvalidTicketCommentReplayError);
   });
 
   it("fails closed when the database command does not return an id", async () => {

@@ -1,4 +1,7 @@
 import type { KnownBlock, Block } from "@slack/web-api";
+import { TICKET_SUMMARY_MAX_LENGTH } from "@/lib/tickets/input-contract";
+
+const SLACK_PLAIN_TEXT_INPUT_MAX_LENGTH = 3_000;
 
 export function buildResolveModal(ticketNo: string): {
   type: "modal";
@@ -34,6 +37,10 @@ export function buildResolveModal(ticketNo: string): {
           type: "plain_text_input",
           action_id: "customer_summary",
           multiline: true,
+          max_length: Math.min(
+            TICKET_SUMMARY_MAX_LENGTH,
+            SLACK_PLAIN_TEXT_INPUT_MAX_LENGTH
+          ),
           placeholder: {
             type: "plain_text",
             text: "Clear summary of what was done and the outcome for the customer...",
@@ -99,6 +106,10 @@ export function buildResolveModal(ticketNo: string): {
           type: "plain_text_input",
           action_id: "internal_notes",
           multiline: true,
+          max_length: Math.min(
+            TICKET_SUMMARY_MAX_LENGTH,
+            SLACK_PLAIN_TEXT_INPUT_MAX_LENGTH
+          ),
           placeholder: {
             type: "plain_text",
             text: "Internal technical analysis (not visible to customer)...",

@@ -7,10 +7,7 @@ const slackMaster = readFileSync(
 );
 const outboxWorker = readFileSync("src/lib/tickets/outbox.ts", "utf8");
 const ticketCreation = readFileSync("src/lib/tickets/create.ts", "utf8");
-const slackActions = readFileSync(
-  "src/lib/slack/handlers/actions.ts",
-  "utf8"
-);
+const slackActions = readFileSync("src/lib/slack/handlers/actions.ts", "utf8");
 const ticketDetail = readFileSync(
   "src/app/(auth)/tickets/[ticketId]/page.tsx",
   "utf8"
@@ -24,7 +21,8 @@ describe("resource-owned operational timezone contracts", () => {
     expect(outboxWorker).toContain(fullSiteProjection);
     expect(ticketCreation).not.toContain('.from("tickets")');
     expect(ticketCreation).toContain("dispatchTicketOutboxBestEffort");
-    expect(slackActions).toContain("site:sites(site_name, site_code, timezone)");
+    expect(slackActions).not.toContain("site:sites(");
+    expect(slackActions).toContain("dispatchTicketOutboxBestEffort");
     expect(slackMaster).toContain("resolveSiteTimezone(site)");
     expect(slackMaster).not.toContain("America/New_York");
     expect(slackMaster).not.toContain("} ET");

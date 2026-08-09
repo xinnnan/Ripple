@@ -1,4 +1,11 @@
 import type { KnownBlock, Block } from "@slack/web-api";
+import {
+  TICKET_CONTEXT_MAX_LENGTH,
+  TICKET_DESCRIPTION_MAX_LENGTH,
+  TICKET_TITLE_MAX_LENGTH,
+} from "@/lib/tickets/input-contract";
+
+const SLACK_PLAIN_TEXT_INPUT_MAX_LENGTH = 3_000;
 
 export function buildTicketFormModal(): {
   type: "modal";
@@ -23,6 +30,7 @@ export function buildTicketFormModal(): {
         element: {
           type: "plain_text_input",
           action_id: "title",
+          max_length: TICKET_TITLE_MAX_LENGTH,
           placeholder: {
             type: "plain_text",
             text: "e.g. AMR-03 not completing delivery mission",
@@ -170,6 +178,10 @@ export function buildTicketFormModal(): {
           type: "plain_text_input",
           action_id: "description",
           multiline: true,
+          max_length: Math.min(
+            TICKET_DESCRIPTION_MAX_LENGTH,
+            SLACK_PLAIN_TEXT_INPUT_MAX_LENGTH
+          ),
           placeholder: {
             type: "plain_text",
             text: "Describe the issue in detail...",
@@ -187,6 +199,7 @@ export function buildTicketFormModal(): {
         element: {
           type: "plain_text_input",
           action_id: "asset_id",
+          max_length: TICKET_CONTEXT_MAX_LENGTH,
           placeholder: {
             type: "plain_text",
             text: "e.g. AMR-03, Charger-01, RCS",
@@ -204,6 +217,7 @@ export function buildTicketFormModal(): {
         element: {
           type: "plain_text_input",
           action_id: "area",
+          max_length: TICKET_CONTEXT_MAX_LENGTH,
           placeholder: {
             type: "plain_text",
             text: "e.g. Receiving, Line-side, Dock, Sorting",

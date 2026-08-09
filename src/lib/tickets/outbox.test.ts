@@ -12,7 +12,8 @@ const EVENT_ID = "11111111-1111-4111-8111-111111111111";
 const TICKET_ID = "22222222-2222-4222-8222-222222222222";
 
 function event(
-  eventType: IntegrationOutboxEvent["event_type"]
+  eventType: IntegrationOutboxEvent["event_type"],
+  payload: Record<string, unknown> = {}
 ): IntegrationOutboxEvent {
   return {
     id: EVENT_ID,
@@ -20,7 +21,7 @@ function event(
     aggregate_id: TICKET_ID,
     event_type: eventType,
     idempotency_key: `ticket:${TICKET_ID}:${eventType}`,
-    payload: {},
+    payload,
     status: "processing",
     attempts: 1,
     max_attempts: 5,
@@ -209,6 +210,55 @@ describe("ticket notification outbox delivery", () => {
         deliveryKey: EVENT_ID,
       }
     );
+  });
+
+  it("delivers a durable customer-visible comment reply with the event id", async () => {
+    const deps = dependencies();
+    const slackOptions: SyncOptions = {
+      channelId: "C123",
+      messageTs: "123.456",
+    };
+
+    await expect(
+      deliverTicketOutboxEvent(
+        event("ticket.slack_comment_reply", {
+          comment_id: "77777777-7777-4777-8777-777777777777",
+          message_text: "💬 Customer Update\n\nDiagnostics are complete.",
+        }),
+        ticket(),
+        slackOptions,
+        deps
+      )
+    ).resolves.toMatchObject({ delivered: true });
+
+    expect(deps.postMasterThreadReply).toHaveBeenCalledWith(
+      ticket(),
+      "💬 Customer Update\n\nDiagnostics are complete.",
+      { ...slackOptions, deliveryKey: EVENT_ID }
+    );
+  });
+
+  it("dead-letters malformed comment delivery payloads before Slack I/O", async () => {
+    const deps = dependencies();
+
+    await expect(
+      deliverTicketOutboxEvent(
+        event("ticket.slack_comment_reply", { message_text: "" }),
+        ticket(),
+        {},
+        deps
+      )
+    ).resolves.toEqual({
+      delivered: false,
+      retryable: false,
+      error: "Slack comment delivery payload is invalid",
+      result: {
+        provider: "slack",
+        outcome: "failed",
+        reason: "invalid_payload",
+      },
+    });
+    expect(deps.postMasterThreadReply).not.toHaveBeenCalled();
   });
 
   it("uses Resend's idempotency key for resolution email retries", async () => {

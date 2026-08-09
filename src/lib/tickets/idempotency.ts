@@ -28,3 +28,11 @@ export function buildSlackTicketIdempotencyKey(viewId: string): string {
   if (!key) throw new Error("Invalid Slack view identifier");
   return key;
 }
+
+export function buildSlackTicketCommentIdempotencyKey(
+  viewId: string
+): string {
+  const key = normalizeTicketIdempotencyKey(`slack:comment-view:${viewId}`);
+  if (!key) throw new Error("Invalid Slack comment view identifier");
+  return key;
+}

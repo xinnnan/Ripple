@@ -18,6 +18,7 @@ export const TICKET_OUTBOX_EVENT_TYPES = [
   "ticket.slack_master_create",
   "ticket.email_confirmation",
   "ticket.slack_master_sync",
+  "ticket.slack_comment_reply",
   "ticket.slack_resolution_reply",
   "ticket.email_resolution",
 ] as const;
@@ -195,6 +196,32 @@ export async function deliverTicketOutboxEvent(
           deliveryKey: event.id,
         })
       );
+
+    case "ticket.slack_comment_reply": {
+      const messageText = event.payload.message_text;
+      if (
+        typeof messageText !== "string" ||
+        messageText.length < 1 ||
+        messageText.length > 12_000
+      ) {
+        return {
+          delivered: false,
+          retryable: false,
+          error: "Slack comment delivery payload is invalid",
+          result: {
+            provider: "slack",
+            outcome: "failed",
+            reason: "invalid_payload",
+          },
+        };
+      }
+      return slackDecision(
+        await dependencies.postMasterThreadReply(ticket, messageText, {
+          ...slackOptions,
+          deliveryKey: event.id,
+        })
+      );
+    }
 
     case "ticket.slack_resolution_reply": {
       const summary =

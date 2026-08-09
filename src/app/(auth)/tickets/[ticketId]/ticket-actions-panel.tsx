@@ -24,6 +24,10 @@ import {
   TICKET_SUMMARY_MAX_LENGTH,
 } from "@/lib/tickets/input-contract";
 import {
+  generateTicketIdempotencyKey,
+  TICKET_IDEMPOTENCY_KEY_HEADER,
+} from "@/lib/tickets/idempotency";
+import {
   MAX_ATTACHMENT_BYTES,
   MAX_ATTACHMENT_FILE_NAME_LENGTH,
 } from "@/lib/files/attachment-contract";
@@ -582,6 +586,10 @@ function CommentForm({
   const router = useRouter();
   const [refreshing, startRefresh] = useTransition();
   const busy = submitting || refreshing;
+  const commentAttemptRef = useRef<{
+    fingerprint: string;
+    key: string;
+  } | null>(null);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -590,15 +598,26 @@ function CommentForm({
     setSubmitting(true);
     setMessage(null);
     try {
+      const requestBody = JSON.stringify({
+        body: normalizedBody,
+        visibility,
+      });
+      if (commentAttemptRef.current?.fingerprint !== requestBody) {
+        commentAttemptRef.current = {
+          fingerprint: requestBody,
+          key: generateTicketIdempotencyKey(),
+        };
+      }
       const res = await fetch(`/api/tickets/${ticketId}/comments`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          body: normalizedBody,
-          visibility,
-        }),
+        headers: {
+          "Content-Type": "application/json",
+          [TICKET_IDEMPOTENCY_KEY_HEADER]: commentAttemptRef.current.key,
+        },
+        body: requestBody,
       });
       await assertClientMutationResponse(res, "Failed to add comment");
+      commentAttemptRef.current = null;
       setBody("");
       setMessage({ type: "success", text: "Comment added" });
       startRefresh(() => router.refresh());

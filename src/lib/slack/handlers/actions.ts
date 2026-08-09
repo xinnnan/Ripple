@@ -4,7 +4,12 @@ import { buildResolveModal } from "../blocks/resolve-modal";
 import { buildAskRippleAssistModal } from "../blocks/ai-modal";
 import { createTicketCore, resolveSiteBySlackChannel } from "@/lib/tickets/create";
 import { INTERNAL_ROLES } from "@/lib/roles";
-import type { Ticket } from "@/types/ticket";
+import {
+  IMPACT_LABELS,
+  REQUEST_TYPE_LABELS,
+  SEVERITY_LABELS,
+  type Ticket,
+} from "@/types/ticket";
 import {
   applyTicketPatchWithSla,
   InvalidTicketTransitionError,
@@ -20,7 +25,17 @@ import {
   AiSuggestionUnavailableError,
 } from "@/lib/ai/errors";
 import { isSuggestionType } from "@/lib/ai/suggest";
-import { buildSlackTicketIdempotencyKey } from "@/lib/tickets/idempotency";
+import {
+  buildSlackTicketCommentIdempotencyKey,
+  buildSlackTicketIdempotencyKey,
+} from "@/lib/tickets/idempotency";
+import {
+  TICKET_COMMENT_MAX_LENGTH,
+  TICKET_CONTEXT_MAX_LENGTH,
+  TICKET_DESCRIPTION_MAX_LENGTH,
+  TICKET_SUMMARY_MAX_LENGTH,
+  TICKET_TITLE_MAX_LENGTH,
+} from "@/lib/tickets/input-contract";
 
 interface ActionPayload {
   actions: { action_id: string; value?: string; selected_option?: { value: string } }[];
@@ -30,13 +45,6 @@ interface ActionPayload {
   trigger_id: string;
   response_url: string;
 }
-
-const SLACK_TICKET_SELECT = `
-  *,
-  customer:customers(name),
-  site:sites(site_name, site_code, timezone),
-  owner:users!tickets_owner_id_fkey(full_name)
-`;
 
 async function applySlackTicketPatch(args: {
   supabase: SupabaseClient;
@@ -58,9 +66,7 @@ async function applySlackTicketPatch(args: {
     .maybeSingle();
 
   if (lookupError || !currentTicket) {
-    throw new Error(
-      `Slack ticket lookup failed: ${lookupError?.message ?? "ticket not found"}`
-    );
+    throw new Error("Slack ticket lookup failed");
   }
 
   const patch =
@@ -76,24 +82,13 @@ async function applySlackTicketPatch(args: {
     source: "slack",
   });
 
-  const { data: ticket, error } = await args.supabase
-    .from("tickets")
-    .select(SLACK_TICKET_SELECT)
-    .eq("id", currentTicket.id)
-    .single();
-
-  if (error || !ticket) {
-    throw new Error(
-      `Slack ticket refresh failed: ${error?.message ?? "ticket not found"}`
-    );
-  }
-
+  // The database command has committed at this point. Do not turn a later
+  // presentation hydration read into a false Slack failure/retry. The outbox
+  // worker loads the authoritative ticket projection for delivery.
   await dispatchTicketOutboxBestEffort({
     aggregateId: currentTicket.id,
     slackOptions: args.slackOptions,
   });
-
-  return ticket;
 }
 
 export async function handleBlockAction(
@@ -212,6 +207,7 @@ export async function handleBlockAction(
                   type: "plain_text_input",
                   action_id: "update_text",
                   multiline: true,
+                  max_length: Math.min(TICKET_COMMENT_MAX_LENGTH, 3_000),
                   placeholder: {
                     type: "plain_text",
                     text: "Type your customer-visible update...",
@@ -331,13 +327,47 @@ export async function handleViewSubmission(
   switch (callbackId) {
     case "ticket_form_submit": {
       // Extract form values
-      const title = state.title_block?.title?.value || "";
-      const requestType = state.request_type_block?.request_type?.selected_option?.value || "incident";
-      const severity = state.severity_block?.severity?.selected_option?.value || "P3";
-      const impact = state.impact_block?.impact?.selected_option?.value || "no_impact";
-      const description = state.description_block?.description?.value || "";
-      const assetId = state.asset_block?.asset_id?.value || "";
-      const area = state.area_block?.area?.value || "";
+      const title = (state.title_block?.title?.value || "").trim();
+      const requestType =
+        state.request_type_block?.request_type?.selected_option?.value || "";
+      const severity =
+        state.severity_block?.severity?.selected_option?.value || "";
+      const impact =
+        state.impact_block?.impact?.selected_option?.value || "";
+      const description = (
+        state.description_block?.description?.value || ""
+      ).trim();
+      const assetId = (state.asset_block?.asset_id?.value || "").trim();
+      const area = (state.area_block?.area?.value || "").trim();
+      const errors: Record<string, string> = {};
+
+      if (!title || title.length > TICKET_TITLE_MAX_LENGTH) {
+        errors.title_block = `Enter a title between 1 and ${TICKET_TITLE_MAX_LENGTH} characters.`;
+      }
+      if (!(requestType in REQUEST_TYPE_LABELS)) {
+        errors.request_type_block = "Select a supported request type.";
+      }
+      if (!(severity in SEVERITY_LABELS)) {
+        errors.severity_block = "Select a supported severity.";
+      }
+      if (!(impact in IMPACT_LABELS)) {
+        errors.impact_block = "Select a supported production impact.";
+      }
+      if (
+        !description ||
+        description.length > TICKET_DESCRIPTION_MAX_LENGTH
+      ) {
+        errors.description_block = `Enter a description between 1 and ${TICKET_DESCRIPTION_MAX_LENGTH.toLocaleString()} characters.`;
+      }
+      if (assetId.length > TICKET_CONTEXT_MAX_LENGTH) {
+        errors.asset_block = `Asset context cannot exceed ${TICKET_CONTEXT_MAX_LENGTH} characters.`;
+      }
+      if (area.length > TICKET_CONTEXT_MAX_LENGTH) {
+        errors.area_block = `Area context cannot exceed ${TICKET_CONTEXT_MAX_LENGTH} characters.`;
+      }
+      if (Object.keys(errors).length > 0) {
+        return { response_action: "errors", errors };
+      }
 
       // Determine site: prefer metadata from the modal's private_metadata
       // (set when the modal was opened in a known-bound channel), fall
@@ -418,6 +448,26 @@ export async function handleViewSubmission(
       const followUp = state.follow_up_block?.follow_up?.selected_option?.value || "no";
       const internalNotes = state.internal_notes_block?.internal_notes?.value || "";
 
+      if (
+        !customerSummary.trim() ||
+        customerSummary.length > TICKET_SUMMARY_MAX_LENGTH
+      ) {
+        return {
+          response_action: "errors",
+          errors: {
+            customer_summary_block: `Enter a resolution summary between 1 and ${TICKET_SUMMARY_MAX_LENGTH.toLocaleString()} characters.`,
+          },
+        };
+      }
+      if (internalNotes.length > TICKET_SUMMARY_MAX_LENGTH) {
+        return {
+          response_action: "errors",
+          errors: {
+            internal_notes_block: `Internal notes cannot exceed ${TICKET_SUMMARY_MAX_LENGTH.toLocaleString()} characters.`,
+          },
+        };
+      }
+
       // The same row-locked command used by the web PATCH path records the
       // actual resolution time, compares it to resolve_due_at, and commits
       // the ticket + milestone + timeline + audit rows together.
@@ -428,10 +478,10 @@ export async function handleViewSubmission(
           actorId: internalUser!.id,
           patch: {
             status: "resolved",
-            customer_visible_summary: customerSummary,
+            customer_visible_summary: customerSummary.trim(),
             root_cause_category: rootCause,
             follow_up_needed: followUp === "yes",
-            internal_summary: internalNotes || null,
+            internal_summary: internalNotes.trim() || null,
           },
           slackOptions: {
             channelId: metadata.channel_id,
@@ -453,8 +503,19 @@ export async function handleViewSubmission(
     }
 
     case "customer_update_submit": {
-      const updateText = state.update_text_block?.update_text?.value || "";
+      const updateText = (
+        state.update_text_block?.update_text?.value || ""
+      ).trim();
       const ticketNo = metadata.ticket_no;
+
+      if (!updateText || updateText.length > TICKET_COMMENT_MAX_LENGTH) {
+        return {
+          response_action: "errors",
+          errors: {
+            update_text_block: `Enter a customer update between 1 and ${TICKET_COMMENT_MAX_LENGTH.toLocaleString()} characters.`,
+          },
+        };
+      }
 
       const { data: ticket, error: lookupError } = await supabase
         .from("tickets")
@@ -463,11 +524,7 @@ export async function handleViewSubmission(
         .single();
 
       if (lookupError || !ticket) {
-        throw new Error(
-          `Slack customer-update lookup failed: ${
-            lookupError?.message ?? "ticket not found"
-          }`
-        );
+        throw new Error("Slack customer-update lookup failed");
       }
 
       if (ticket) {
@@ -479,24 +536,19 @@ export async function handleViewSubmission(
           visibility: "customer",
           source: "slack",
           isAutomated: false,
+          idempotencyKey: buildSlackTicketCommentIdempotencyKey(
+            payload.view.id
+          ),
         });
 
-        // Post in thread. Best-effort: a Slack API failure must
-        // not lose the comment we just wrote to the DB.
-        if (metadata.channel_id && metadata.message_ts) {
-          try {
-            await client.chat.postMessage({
-              channel: metadata.channel_id,
-              thread_ts: metadata.message_ts,
-              text: `💬 *Customer Update:*\n${updateText}`,
-            });
-          } catch (e) {
-            console.warn(
-              "[slack/handlers] customer_update thread post failed (non-fatal):",
-              e instanceof Error ? e.message : e
-            );
-          }
-        }
+        await dispatchTicketOutboxBestEffort({
+          aggregateId: ticket.id,
+          slackOptions: {
+            channelId: metadata.channel_id,
+            messageTs: metadata.message_ts,
+            client,
+          },
+        });
       }
 
       return { response_action: "clear" };
