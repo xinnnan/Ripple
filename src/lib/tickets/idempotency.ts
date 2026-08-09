@@ -1,26 +1,23 @@
-export const TICKET_IDEMPOTENCY_KEY_HEADER = "Idempotency-Key";
-export const TICKET_IDEMPOTENCY_KEY_MIN_LENGTH = 16;
-export const TICKET_IDEMPOTENCY_KEY_MAX_LENGTH = 200;
+import {
+  generateIdempotencyKey,
+  IDEMPOTENCY_KEY_HEADER,
+  IDEMPOTENCY_KEY_MAX_LENGTH,
+  IDEMPOTENCY_KEY_MIN_LENGTH,
+  normalizeIdempotencyKey,
+} from "@/lib/idempotency";
 
-const TICKET_IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9][A-Za-z0-9:_-]*$/;
+export const TICKET_IDEMPOTENCY_KEY_HEADER = IDEMPOTENCY_KEY_HEADER;
+export const TICKET_IDEMPOTENCY_KEY_MIN_LENGTH = IDEMPOTENCY_KEY_MIN_LENGTH;
+export const TICKET_IDEMPOTENCY_KEY_MAX_LENGTH = IDEMPOTENCY_KEY_MAX_LENGTH;
 
 export function normalizeTicketIdempotencyKey(
   value: string | null | undefined
 ): string | null {
-  if (typeof value !== "string") return null;
-  const normalized = value.trim();
-  if (
-    normalized.length < TICKET_IDEMPOTENCY_KEY_MIN_LENGTH ||
-    normalized.length > TICKET_IDEMPOTENCY_KEY_MAX_LENGTH ||
-    !TICKET_IDEMPOTENCY_KEY_PATTERN.test(normalized)
-  ) {
-    return null;
-  }
-  return normalized;
+  return normalizeIdempotencyKey(value);
 }
 
 export function generateTicketIdempotencyKey(): string {
-  return crypto.randomUUID();
+  return generateIdempotencyKey();
 }
 
 export function buildSlackTicketIdempotencyKey(viewId: string): string {

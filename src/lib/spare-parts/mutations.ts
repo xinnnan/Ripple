@@ -38,6 +38,16 @@ export class SparePartRequestMutationError extends Error {
   }
 }
 
+export class InvalidSparePartRequestReplayError extends SparePartRequestMutationError {
+  constructor() {
+    super(
+      "This spare-part request key was already used for different content.",
+      "22023"
+    );
+    this.name = "InvalidSparePartRequestReplayError";
+  }
+}
+
 /**
  * Apply request-header and line-item changes through one row-locked database
  * command. Migration 028 owns parent containment, quantity bounds, and audit
@@ -73,24 +83,35 @@ export async function applySparePartRequestPatch(args: {
 /**
  * Create a request, all of its items, and its audit entry in one database
  * transaction. Migration 029 owns tenant containment, catalog validation,
- * price calculation, sequence allocation, and active-actor attribution.
+ * price calculation, sequence allocation, and active-actor attribution;
+ * migration 049 adds caller-key serialization and an exact-replay receipt.
  */
 export async function createSparePartRequestAtomic(args: {
   supabase: SupabaseClient;
   actorId: string;
   input: SparePartRequestCreateInput;
   items: SparePartRequestCreateItem[];
+  idempotencyKey: string;
 }): Promise<string> {
   const { data, error } = await args.supabase.rpc(
-    "create_spare_part_request_atomic",
+    "create_spare_part_request_idempotent_atomic",
     {
       p_actor_id: args.actorId,
       p_input: args.input,
       p_items: args.items,
+      p_idempotency_key: args.idempotencyKey,
     }
   );
 
   if (error || typeof data !== "string") {
+    if (
+      error?.code === "22023" &&
+      error.message?.includes(
+        "Spare part request idempotency key was already used"
+      )
+    ) {
+      throw new InvalidSparePartRequestReplayError();
+    }
     throw new SparePartRequestMutationError(
       "Atomic spare part request creation failed",
       error?.code

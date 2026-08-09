@@ -58,10 +58,12 @@ const hoursSchema = z
   .multipleOf(0.1)
   .max(9_999.9);
 
-const engineerSchema = z.object({
-  engineer_id: z.string().uuid(),
-  role: z.enum(FIELD_SERVICE_ENGINEER_ROLES).default("engineer"),
-});
+const engineerSchema = z
+  .object({
+    engineer_id: z.string().uuid(),
+    role: z.enum(FIELD_SERVICE_ENGINEER_ROLES).default("engineer"),
+  })
+  .strict();
 
 function rejectDuplicateEngineers(
   value: { engineers?: Array<{ engineer_id: string }> },
@@ -113,6 +115,7 @@ export const createFieldServiceOrderSchema = z
     travel_from: z.string().trim().max(200).nullable().optional(),
     engineers: z.array(engineerSchema).max(20).default([]),
   })
+  .strict()
   .superRefine((value, context) => {
     rejectDuplicateEngineers(value, context);
     rejectReversedDates(value, context);
@@ -135,6 +138,7 @@ export const updateFieldServiceOrderSchema = z
     completion_notes: z.string().trim().max(2000).nullable().optional(),
     engineers: z.array(engineerSchema).max(20).optional(),
   })
+  .strict()
   .superRefine((value, context) => {
     rejectDuplicateEngineers(value, context);
     rejectReversedDates(value, context);

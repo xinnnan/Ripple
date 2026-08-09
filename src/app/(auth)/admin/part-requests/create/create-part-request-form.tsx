@@ -8,6 +8,10 @@ import {
   assertClientMutationResponse,
   clientMutationErrorMessage,
 } from "@/lib/http/client-mutation";
+import {
+  generateIdempotencyKey,
+  IDEMPOTENCY_KEY_HEADER,
+} from "@/lib/idempotency";
 
 const MAX_REQUEST_ITEMS = 100;
 const MAX_QUANTITY = 2_147_483_647;
@@ -65,6 +69,10 @@ export function CreatePartRequestForm({
   const searchParams = useSearchParams();
   const [navigating, startNavigation] = useTransition();
   const nextRowId = useRef(1);
+  const creationAttemptRef = useRef<{
+    fingerprint: string;
+    key: string;
+  } | null>(null);
   const ticketId = searchParams.get("ticket_id");
 
   const [siteId, setSiteId] = useState("");
@@ -193,18 +201,29 @@ export function CreatePartRequestForm({
       });
     }
 
+    const requestBody = JSON.stringify({
+      site_id: siteId,
+      ticket_id: ticketId || null,
+      priority,
+      notes: notes.trim() || null,
+      items: normalizedItems,
+    });
+    if (creationAttemptRef.current?.fingerprint !== requestBody) {
+      creationAttemptRef.current = {
+        fingerprint: requestBody,
+        key: generateIdempotencyKey(),
+      };
+    }
+
     setLoading(true);
     try {
       const response = await fetch("/api/spare-part-requests", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          site_id: siteId,
-          ticket_id: ticketId || null,
-          priority,
-          notes: notes.trim() || null,
-          items: normalizedItems,
-        }),
+        headers: {
+          "Content-Type": "application/json",
+          [IDEMPOTENCY_KEY_HEADER]: creationAttemptRef.current.key,
+        },
+        body: requestBody,
       });
       await assertClientMutationResponse(
         response,

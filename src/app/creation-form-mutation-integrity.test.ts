@@ -30,6 +30,11 @@ describe("service creation form mutation integrity", () => {
     expect(source).toContain("if (busy) return;");
     expect(source).toContain("aria-busy={busy}");
     expect(source).toContain('role="alert"');
+    expect(source).toContain("creationAttemptRef");
+    expect(source).toContain("fingerprint !== requestBody");
+    expect(source).toContain("generateIdempotencyKey()");
+    expect(source).toContain("IDEMPOTENCY_KEY_HEADER");
+    expect(source).toContain("body: requestBody");
     expect(source).not.toContain("await res.json()");
     expect(source).not.toContain("instanceof Error");
   });
