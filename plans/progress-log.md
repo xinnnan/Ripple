@@ -7,18 +7,18 @@ meaningful change and before ending a work session. Newest entries go first.
 
 - **Branch:** `codex/prd-v1-1-gap-closure`
 - **Active phase:** Phase 0 — Containment and reproducible baseline
-- **Active work item:** apply and live-verify migration 048 before deploying
-  replay-safe ticket comments and durable Slack replies
+- **Active work item:** resume the remaining mutation-surface audit and select
+  the highest-risk command before feature work
 - **Last verified implementation commit:** `904fee0` (`fix: make ticket comments replay safe`)
 - **Uncommitted work:** none expected after the documentation checkpoint;
   verify with `git status` before resuming
-- **Deployment gate:** migrations 001–047 are confirmed applied. Migration 048
-  awaits application and live replay/concurrency/privilege verification; do not
-  deploy application commit `904fee0` first. Migration 044
+- **Deployment gate:** migrations 001–048 are confirmed applied. Migration 044
   passed a 130-assertion disposable live matrix with zero residue. Migration
   045 passed a 110-assertion live matrix with zero residue. Migration 046
   passed a 77-assertion live matrix with zero residue. Migration 047 passed a
   42-assertion replay/concurrency/privilege live matrix with zero residue.
+  Migration 048 passed a 69-assertion replay/concurrency/cardinality/privilege
+  live matrix with zero database/Auth residue.
   Production `CRON_SECRET` remains unset in this workspace.
   Protected positive business probes for migrations 028–037 still require
   staging fixtures
@@ -71,18 +71,17 @@ meaningful change and before ending a work session. Newest entries go first.
   Inter, expanded/collapsed accessibility state, no horizontal overflow, and
   zero console warnings/errors. A disposable engineer identity was fully
   removed with zero profile/audit residue, and no AI provider request was made.
-- **Exact next local step:** after migration 048 is confirmed applied, run its
-  disposable exact-replay, changed-input, concurrent-delivery, outbox
-  cardinality, privilege-denial, and zero-residue matrix. Then resume the
-  remaining mutation audit. Configure `CRON_SECRET` separately before
-  production worker activation
+- **Exact next local step:** inventory the remaining mutation surfaces, select
+  the highest-risk unaudited command, and close it with contract tests before
+  feature work. Configure `CRON_SECRET` separately before production worker
+  activation
 - **Primary plan:** [`plans/prd-v1.1-gap-closure-plan.md`](./prd-v1.1-gap-closure-plan.md)
 
-## Overall project status — 2026-08-08
+## Overall project status — 2026-08-09
 
 - Ripple has a meaningful Phase 1–4 support-platform foundation, and Phase 0
   containment is substantially implemented through migration 048. Migrations
-  001–047 are deployed; migration 048 is the current deployment gate.
+  001–048 are deployed and live-verified at their current rollout gates.
 - Against the full PRD v1.1 capability map, 17 domains remain
   **Partial** or **Unsafe/Partial** and seven remain **Absent**. No full PRD
   capability domain is yet honestly complete end to end.
@@ -98,6 +97,45 @@ meaningful change and before ending a work session. Newest entries go first.
   queues/routing, business-calendar SLA clocks, remote support, appointments,
   assets/entitlements, search/knowledge, i18n, versioned external APIs, and
   production SRE/recovery evidence.
+
+## Session record — 2026-08-09 (migration 048 live verification)
+
+### Objective
+
+Verify the deployed replay-safe ticket-comment command and its durable Slack
+reply intent against the real Supabase boundary before resuming local work.
+
+### Evidence
+
+- A disposable active customer, site, engineer, ticket, and authenticated Auth
+  identity were created under a unique test prefix. The site deliberately had
+  no Slack channel, so no provider delivery could occur.
+- The service role reached the new ledger and RPC. Anonymous and authenticated
+  roles could neither read/write replay receipts nor execute the command.
+- Twelve concurrent exact submissions plus a later replay returned one comment
+  ID and committed exactly one comment, request receipt, audit row,
+  `comment_added` event, First Response event/timestamp, and
+  `ticket.slack_comment_reply` outbox row.
+- Changed-input key reuse failed with SQLSTATE `22023` without extra effects.
+  Unsupported fields and a missing ticket rolled back without receipts; the
+  outbox event-type and replay-key table constraints rejected invalid rows.
+- An exact internal-note replay produced one comment/audit/timeline record, no
+  customer-channel outbox row, and no duplicate First Response evidence.
+- The corrected matrix passed 69 assertions. Cleanup removed every disposable
+  replay receipt, outbox row, comment, event, audit row, ticket, public user,
+  site, customer, and Auth identity. A separate residue audit also confirmed
+  the interrupted first harness attempt left zero rows.
+
+### Result
+
+Migration 048 is applied and live-verified. Application commit `904fee0` is no
+longer blocked on its database prerequisite; production deployment remains a
+separate release action.
+
+### Next
+
+Resume the remaining mutation-surface audit and select the highest-risk
+unaudited command before feature work.
 
 ## Session record — 2026-08-08 (P0-BT / replay-safe ticket comments)
 
@@ -146,7 +184,7 @@ outbox seam as the rest of the ticket workflow.
 | `npm run test:e2e` | Passed; all 40 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
 | `npm audit` | Passed; 0 known vulnerabilities |
 | `git diff --check` | Passed |
-| Migration 048 live matrix | Pending application; no production comment/provider mutation was attempted |
+| Migration 048 live matrix | Passed 2026-08-09; 69 replay/concurrency/cardinality/privilege/cleanup assertions with zero database/Auth residue and no Slack provider target |
 
 ### Commit
 
@@ -155,8 +193,8 @@ outbox seam as the rest of the ticket workflow.
 
 ### Next
 
-Apply migration 048 before deploying `904fee0`, then run the disposable replay,
-changed-input, concurrency, exact-cardinality, privilege, and cleanup matrix.
+Resume the remaining mutation-surface audit; migration 048 is applied and its
+69-assertion live matrix is green.
 
 ## Session record — 2026-08-08 (P0-BS / Ripple Assist boundary)
 

@@ -149,9 +149,11 @@ Apply the SQL files in `supabase/migrations/` **in order** (001 → 048) via the
 
 Later migrations replace policies/functions and should be applied once in
 order. Migration `017` also performs role data updates and must not be re-run
-blindly. Migrations 001–047 are confirmed applied as of 2026-08-08. Migration
-048 awaits application and must precede deployment of its application callers.
-Migration 047 passed a 42-assertion live matrix covering first create, exact replay,
+blindly. Migrations 001–048 are confirmed applied as of 2026-08-09. Migration
+048 passed a 69-assertion live matrix covering exact replay, 12-way
+concurrency, altered-input rejection, effect and Slack-outbox cardinality,
+First Response semantics, anonymous/authenticated privilege denial, and zero
+database/Auth residue. Migration 047 passed a 42-assertion live matrix covering first create, exact replay,
 altered-key rejection, 12-way concurrency, exact effect cardinality,
 anonymous/authenticated privilege denial, and zero residue. Migration 043
 passed a disposable 72-assertion live matrix covering create/existing
