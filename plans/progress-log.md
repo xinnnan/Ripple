@@ -8,8 +8,8 @@ meaningful change and before ending a work session. Newest entries go first.
 - **Branch:** `codex/prd-v1-1-gap-closure`
 - **Active phase:** Phase 0 — Containment and reproducible baseline
 - **Active work item:** resume the remaining mutation-surface audit after
-  deploying and live-verifying replay-safe ticket creation
-- **Last verified implementation commit:** `dc5f588` (`fix: make ticket creation replay safe`)
+  hardening the paid Ripple Assist boundary
+- **Last verified implementation commit:** `fe2aa45` (`fix: harden ripple assist boundary`)
 - **Uncommitted work:** none expected after the documentation checkpoint;
   verify with `git status` before resuming
 - **Deployment gate:** migrations 001–047 are confirmed applied. Migration 044
@@ -64,7 +64,11 @@ meaningful change and before ending a work session. Newest entries go first.
   reverified at 1280×720 and 390×844 after P0-BJ: the guest form retains its
   stable heading, labeled controls, Inter, clean console, and no horizontal
   overflow. No ticket was submitted; protected signed-in profile/site-option
-  visual coverage still depends on the credentialed fixture.
+  visual coverage still depends on the credentialed fixture. The internal
+  ticket-detail Ripple Assist panel was reviewed at 1280×900 and 390×844 with
+  Inter, expanded/collapsed accessibility state, no horizontal overflow, and
+  zero console warnings/errors. A disposable engineer identity was fully
+  removed with zero profile/audit residue, and no AI provider request was made.
 - **Exact next local step:** inventory the remaining mutation surfaces, select
   the highest-risk unaudited command, and close it with contract tests before
   continuing feature work. Configure `CRON_SECRET` separately before production
@@ -79,7 +83,7 @@ meaningful change and before ending a work session. Newest entries go first.
 - Against the full PRD v1.1 capability map, 17 domains remain
   **Partial** or **Unsafe/Partial** and seven remain **Absent**. No full PRD
   capability domain is yet honestly complete end to end.
-- The local deterministic baseline is green at 944 unit/contract tests, 40
+- The local deterministic baseline is green at 956 unit/contract tests, 40
   production HTTP smoke checks, a production build, zero-warning lint, and
   zero known dependency vulnerabilities.
 - Phase 0 cannot be declared exited until the protected six-account/two-tenant
@@ -91,6 +95,68 @@ meaningful change and before ending a work session. Newest entries go first.
   queues/routing, business-calendar SLA clocks, remote support, appointments,
   assets/entitlements, search/knowledge, i18n, versioned external APIs, and
   production SRE/recovery evidence.
+
+## Session record — 2026-08-08 (P0-BS / Ripple Assist boundary)
+
+### Objective
+
+Close the highest-risk remaining paid-provider boundary before continuing the
+mutation-surface audit, including serverless quota enforcement, outbound data
+minimization, prompt-injection containment, failure semantics, and responsive
+ticket-detail behavior.
+
+### Finding and implementation
+
+- Web and signed Slack Ripple Assist shared an application service, but its
+  quota was process-local. Parallel Vercel instances could therefore exceed
+  the intended paid-call limit. Both entry points now share a fast local guard
+  plus migration 046's durable per-actor Supabase bucket and fail closed before
+  provider I/O if distributed enforcement is unavailable.
+- Provider context previously hydrated `tickets.*`, nested comments, and every
+  comment without a bound. The query now uses explicit least-data projections,
+  excludes secure tokens, submitter PII, and internal summary fields, and sends
+  at most the newest 20 bounded comments plus a bounded description.
+- Ticket content is now serialized as escaped JSON inside an explicit untrusted
+  data delimiter. The system policy rejects ticket-supplied instructions,
+  role/tool/policy overrides, prompt or credential disclosure, and internal
+  comment exposure in customer-facing drafts.
+- Provider execution now has a 30-second timeout, one retry, bounded output,
+  safe code/status-only diagnostics, and stable missing/unavailable HTTP
+  outcomes. A provider result whose audit-history insert fails remains a
+  successful result with an explicit web/Slack persistence warning, avoiding a
+  paid-call retry caused by false 500 semantics.
+- In-app browser review exposed mobile header/panel overflow and a 1280-pixel
+  sidebar form overflow. The ticket detail grid and panel now fit both 390×844
+  and 1280×900, retain Inter, expose the expanded/busy state, and produce no
+  console warnings/errors. No provider request was made during the review.
+- Twelve new/expanded service, route, prompt, provider-integrity, persistence,
+  and responsive-layout contracts bring the suite to 956 tests across 124
+  files.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| Focused Ripple Assist contracts | Passed; 22 selected checks |
+| In-app browser E2E | Passed at 1280×900 and 390×844; no overflow or console findings; disposable identity left zero residue |
+| `npm ci` | Passed from the lockfile; 0 vulnerabilities reported by install |
+| `npm test` | Passed; 124 files, 956 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build and type check |
+| `npm run test:e2e` | Passed; all 40 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+
+### Commit
+
+- Hash: `fe2aa45`
+- Message: `fix: harden ripple assist boundary`
+
+### Next
+
+Resume the remaining mutation-surface audit. Provider configuration, the
+protected six-account/two-tenant matrix, and production `CRON_SECRET` remain
+external gates.
 
 ## Session record — 2026-08-08 (P0-BR deployment / replay-safe creation)
 

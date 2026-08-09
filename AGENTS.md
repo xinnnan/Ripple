@@ -179,7 +179,7 @@ applied as of 2026-08-08. Key tables:
 | `ai_suggestions` | Ripple Assist outputs | `model_name`, `confidence_level`, accept/dismiss feedback |
 | `slack_channels` / `slack_messages` | Site ↔ Slack channel map, message tracking | |
 | `integration_outbox` | Durable external delivery | Unique event keys, bounded leases, exponential backoff, delivery evidence, dead-letter retention |
-| `request_rate_limits` | Opaque distributed public-boundary counters | Migration 046 adds service-role-only atomic consumption, bounded inputs/counts, indexed expiry, and opportunistic retention; site validation, anonymous ticket creation, guest attachment upload, and public ticket view now use distinct buckets, and the migration's 77-assertion live matrix is green |
+| `request_rate_limits` | Opaque distributed boundary counters | Migration 046 adds service-role-only atomic consumption, bounded inputs/counts, indexed expiry, and opportunistic retention; site validation, anonymous ticket creation, guest attachment upload, public ticket view, and paid Ripple Assist actor quotas use distinct buckets, and the migration's 77-assertion live matrix is green |
 | `sla_policies` | Default/customer SLA targets | Migration 041 derives scope shape, orders response/resolution targets, serializes create/update/delete, protects default/referenced rows, and commits exact audit evidence atomically; its 35-assertion live matrix is green. Migration 045 removes the legacy direct admin write path; its 110-assertion live matrix is green |
 | `spare_parts` / `spare_part_inventory` / `spare_part_requests` / `spare_part_request_items` | Phase 3 catalog + per-site stock + request workflow | `request_no` SPR-XXXX; migration 042 makes catalog create/update transactionally audited with normalized case-folded identity, bounded shape, nonnegative price, and no-op preservation. Migration 043 adds guarded atomic stock upsert/PATCH, ordered quantity bounds, active-parent checks, exact audit evidence, and increase-only restock timestamps; its 72-assertion live matrix is green |
 | `field_service_orders` / `field_service_engineers` | Phase 3 dispatch | `order_no` FSO-XXXX, M:N engineers |
@@ -296,7 +296,7 @@ npm run dev
 - `npm run build` — production build
 - `npm run start` — production server
 - `npm run lint` — direct ESLint CLI across the repository; warnings fail the gate
-- `npm test` — Vitest unit/contract suite (944 tests)
+- `npm test` — Vitest unit/contract suite (956 tests)
 - `npm run test:e2e` — 40-check production HTTP smoke plus optional credentialed Playwright/API/RLS matrix; requires a successful build
 - `npm run test:e2e:credentialed` — real six-account/two-tenant matrix; set `RIPPLE_E2E_FIXTURES_FILE`
 - `npm run test:e2e:install-browser` — install the pinned Chromium runtime
@@ -1352,6 +1352,41 @@ commit, inspect the actual transitive path, prefer the smallest compatible
 override, and rerun tests/build rather than assuming a metadata-only security
 update is behavior-free.
 
+### Paid provider quotas must survive serverless instance boundaries
+Found 2026-08-08 in Ripple Assist. Web and signed Slack requests shared one
+application service, but its quota lived only in process memory. A caller could
+exceed the intended paid-call allowance as Vercel routed requests across fresh
+or parallel instances.
+
+Commit `fe2aa45` retains the fast local guard and adds migration 046's durable,
+opaque, per-actor Supabase bucket before provider I/O. If distributed
+enforcement is unavailable, Ripple Assist fails closed with a stable temporary
+unavailable response instead of spending without an enforceable quota.
+
+**Lesson:** an in-memory limiter is only a latency optimization in a serverless
+deployment. Cost, abuse, and security limits must be enforced by a shared
+atomic store, must cover every entry point, and must fail closed before the
+protected side effect.
+
+### LLM context is an outbound data boundary
+Found 2026-08-08 in Ripple Assist. The provider path hydrated `tickets.*`,
+nested all comments, and interpolated untrusted ticket text directly into the
+prompt. Even if the model were reliable, that expanded the sensitive-data and
+prompt-injection surface unnecessarily.
+
+Commit `fe2aa45` uses explicit least-data ticket/comment projections, bounds
+description/comment/output sizes, keeps only the newest 20 comments, serializes
+escaped JSON inside an explicit untrusted-data delimiter, and adds system rules
+against ticket-supplied instructions and hidden-data disclosure. Provider
+timeouts/retries and diagnostics are bounded; post-provider history-write
+failure returns the usable result with an explicit warning instead of inviting
+a duplicate paid call.
+
+**Lesson:** provider context must be designed like an external API response:
+select only intentional fields before retrieval, bound every attacker-controlled
+dimension, delimit content as untrusted data, and keep post-side-effect
+persistence failures from misrepresenting the already-completed provider call.
+
 ---
 
 ## 10. Current State & Roadmap
@@ -1525,7 +1560,11 @@ resume work; this section remains the broader historical summary.
   exact-input collision rejection, and transaction-returned durable receipts,
   bringing the suite to 944 tests; then live-verified migration 047 with 42
   assertions and updated transitive `js-yaml`/`nanoid` overrides after new
-  advisories, restoring a zero-vulnerability locked dependency baseline.
+  advisories, restoring a zero-vulnerability locked dependency baseline; then
+  hardened the shared Ripple Assist boundary with durable per-actor quotas,
+  least-data bounded provider context, prompt-injection containment, stable
+  failure/persistence semantics, and responsive ticket-detail rendering,
+  bringing the suite to 956 tests.
 
 ### Known issues / open work
 | Priority | Item | Where | Notes |
@@ -1564,6 +1603,7 @@ resume work; this section remains the broader historical summary.
 | ✅ Closed | Customer/site form and post-commit hydration ambiguity | customer/site create/edit forms, `POST /api/sites` | Commit `e15dea6` applies canonical normalization/bounds, accessible responsive locking, archived/ownership guards, prerequisite messaging, and committed-success 201 semantics when site detail hydration is degraded |
 | ✅ Closed | Ticket mutation raw failure, duplicate-action, and hydration ambiguity | public/authenticated ticket creation, ticket detail actions, ticket PATCH/comments | Commit `6075296` centralizes bounded input/file contracts, locks request plus refresh settlement, validates safe response shapes, preserves committed success through hydration failure, and immediately drains the durable ticket outbox |
 | ✅ Verified | Replay-safe ticket creation | migration 047, web ticket forms, Slack modal submission | Commit `dc5f588` adds stable attempt keys, serialized exact replay, changed-input rejection, and durable transaction receipts; the applied command passed 42 live assertions covering 12-way concurrency, exact effects, privilege denial, and zero residue |
+| ✅ Closed | Ripple Assist serverless quota and provider-data boundary | `src/lib/ai/`, `/api/ai/suggest`, Slack assist submission, ticket detail | Commit `fe2aa45` adds a durable per-actor quota shared by web/Slack, explicit bounded provider projections, untrusted-context containment, bounded provider execution/diagnostics, visible degraded persistence, and overflow-free responsive rendering |
 | 🟡 Med | `/settings` is read-only integration status | `src/app/(auth)/settings/page.tsx` | Add notification preferences, user timezone, and theme controls |
 | ✅ Verified | Migration 046 durable public rate limits | `supabase/migrations/046_durable_public_rate_limits.sql` | Applied 2026-08-02; 77 live assertions covered grants, constraints, concurrency, reset/retention, bounded cleanup, real HTTP limits/lifecycle, and zero residue |
 | 🟡 Med | Exact site-code validation remains an existence oracle | `/api/sites/validate` | Responses are minimal and migration 046 enforces 20 checks/minute/IP across instances, but full anti-enumeration still requires CAPTCHA, an invitation/intake token, or authenticated submission |
@@ -1884,6 +1924,14 @@ resume work; this section remains the broader historical summary.
     hydration is removed. Fourteen contracts bring the suite to 944; all local
     deterministic gates are green. Migration 047 is applied and its
     42-assertion replay/concurrency/privilege matrix passed with zero residue.
+67. **Harden the Ripple Assist boundary.** Commit `fe2aa45` makes the paid-call
+    quota durable across serverless instances and shared across web/Slack,
+    limits provider input to explicit bounded ticket/comment fields, contains
+    ticket-supplied prompt instructions, bounds provider execution and
+    diagnostics, preserves successful results through degraded history writes,
+    and fixes responsive ticket-detail overflow found in browser E2E. Twelve
+    contracts bring the suite to 956; all deterministic quality gates are
+    green.
 
 ### Open architectural questions
 - The RLS recursion bug surfaces a bigger question: do we keep `createAdminClient() + code filter` (the current pattern in `lib/supabase/scope.ts`) or move back to proper RLS once migration 019 + similar fixes are in place? The current pattern scales fine but has a lower safety margin for new queries.
