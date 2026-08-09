@@ -64,14 +64,14 @@ The correct approach is therefore:
 
 ## 3. Current baseline
 
-| Gate | Result through 2026-08-03 | Meaning |
+| Gate | Result through 2026-08-08 | Meaning |
 |---|---|---|
 | Unit tests | 944/944 passed | Scope, lifecycle and exhaustive ticket-transition guards, atomic and replay-safe ticket/customer/catalog/inventory/attachment creation and updates, attachment content and storage-key validation, direct-write privilege containment, durable public-rate-limit/share-view contracts, notification outbox leases/idempotency/retry contracts, context-safe transactional email rendering and conditional provider/public-origin readiness, tenant-safe site/user/customer/SLA/catalog/inventory administration, secure user provisioning and membership containment, identity-provider/profile failure classification across API authorization, tenant scope, the authenticated shell, browser account/site enrichment, authentication/recovery settlement, and client lifecycle-action settlement, canonical manager-wide active-site presentation, explicit authenticated customer ticket/comment/site/spare-part/field-service read projections and client-payload containment, bounded profile self-service, spreadsheet-safe ticket CSV encoding, strict ticket page/API/export, customer-capable service/site and admin list/page filters, guarded PostgREST search construction, strict API and authenticated server-page UUID boundaries, non-broadening inventory preselection, exact audit pagination, missing-safe detail reads, contained code-only admin/customer/dashboard/ticket list/detail/create-option load failures, lifecycle-aligned site/team/dashboard/create selectors, unavailable-prerequisite form guards, retained-membership active-site hydration, empty-scope query suppression, relation-shape normalization, least-data admin catalog and ticket-child hydration, and allow-listed admin detail tabs, qualified-SQL-expression repair, visibility, auth recovery/redirects, public/responsive/admin UI contracts, deterministic site-timezone dashboard and Slack rendering with exact totals, Slack authentication/configuration/action filtering and direct AI-service invocation, readiness, CI policy, filters, SLA, fixture validation, migration/RPC contracts, spare-part, field-service, and team-access transaction containment, DATE handling, and audit coverage is green |
 | Lint | Passed, no warnings | Direct ESLint CLI with zero-warning enforcement and generated-artifact ignores |
 | Production build | Passed on Next.js 15.5.22 | Environment-free build is reproducible |
-| Dependency audit | 0 vulnerabilities | Patched direct/transitive versions are lockfile-pinned and compatibility-tested |
+| Dependency audit | 0 vulnerabilities | Patched direct/transitive versions are lockfile-pinned and compatibility-tested, including `js-yaml` 4.3.1 and `nanoid` 3.3.17 after their 2026-08-08 advisories entered the audit feed |
 | Worktree | Clean at baseline | Work started on `codex/prd-v1-1-gap-closure` |
-| Committed end-to-end tests | 40 production HTTP checks + credentialed Playwright/API/RLS matrix | Public/recovery/negative/configuration smoke always runs, including public share access denial, malformed site-code containment, fail-closed guest-upload/outbox-worker configuration, and site-membership/site/user/customer/SLA/catalog/inventory-write/provisioning denials. Migrations 001–046 are applied; migration 046 passed 77 live assertions, migration 047 awaits application and replay/concurrency probes, and the extended upload/share boundary passed a separate 22-assertion live matrix with zero residue. Protected positive request/field-service/team/site-access/site/user/customer/catalog/inventory/attachment-administration/provisioning/transition/outbox/create probes and the six-account two-tenant matrix await staging credentials/fixtures |
+| Committed end-to-end tests | 40 production HTTP checks + credentialed Playwright/API/RLS matrix | Public/recovery/negative/configuration smoke always runs, including public share access denial, malformed site-code containment, fail-closed guest-upload/outbox-worker configuration, and site-membership/site/user/customer/SLA/catalog/inventory-write/provisioning denials. Migrations 001–047 are applied; migration 046 passed 77 live assertions, migration 047 passed a 42-assertion replay/concurrency/privilege matrix, and the extended upload/share boundary passed a separate 22-assertion live matrix with zero residue. Protected positive request/field-service/team/site-access/site/user/customer/catalog/inventory/attachment-administration/provisioning/transition/outbox/create probes and the six-account two-tenant matrix await staging credentials/fixtures |
 | Hosted CI | Workflow committed in `4ceacd0`; first hosted run pending | Read-only, SHA-pinned quality job is reproducible; repository branch protection and the protected staging environment still require activation |
 
 ## 4. PRD capability gap map
@@ -753,14 +753,14 @@ Every implementation slice must:
     degraded response hydration; ticket PATCH also triggers the durable outbox
     fast drain. Fifteen contracts bring the suite to 930 and all gates are
     green.
-68. **P0-BR — implemented in `dc5f588`, deployment pending:** Migration 047
+68. **P0-BR — closed in `dc5f588` and deployed:** Migration 047
     adds a service-only source/request-key ledger and transaction-scoped replay
     serialization. Exact web/Slack retries return the original durable receipt;
     altered reuse fails, browser keys rotate after edits, Slack keys bind to the
     signed modal view, and legacy HTTP callers receive an echoed generated key.
     Fourteen contracts bring the suite to 944 and all local gates are green.
-69. **Next local integrity work:** apply migration 047 before deploying
-    `dc5f588`, then probe first create, exact replay, altered-key rejection,
-    concurrent duplicate delivery, audit/event/outbox cardinality, privilege
-    denial, and zero test residue. Resume the remaining mutation audit after
-    the live command is green.
+    The applied command passed 42 live assertions covering first create, exact
+    replay, altered-key rejection, 12-way concurrency, exact audit/event/outbox
+    cardinality, anonymous/authenticated privilege denial, and zero residue.
+69. **Next local integrity work:** resume the remaining mutation-surface audit,
+    selecting the highest-risk unaudited command before starting feature work.

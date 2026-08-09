@@ -2,7 +2,7 @@
 
 > DropletAI's Slack-native support portal. Lightweight ticket system, web portal, and AI-assisted troubleshooting for industrial automation deployments (AMR / AGV / conveyor / sortation / RCS / WCS).
 
-This file is the **single source of truth for project context** — read it before touching anything. It also serves as the lessons-learned notebook and progress tracker. Last updated 2026-08-03.
+This file is the **single source of truth for project context** — read it before touching anything. It also serves as the lessons-learned notebook and progress tracker. Last updated 2026-08-08.
 
 ---
 
@@ -162,8 +162,8 @@ const isInternal = role ? INTERNAL_ROLES.includes(role) : email ? isInternalEmai
 
 ## 5. Database Schema (Supabase)
 
-47 migrations, to be applied in order. Migrations 001–046 are confirmed
-applied as of 2026-08-02; migration 047 awaits application. Key tables:
+47 migrations, to be applied in order. Migrations 001–047 are confirmed
+applied as of 2026-08-08. Key tables:
 
 | Table | Purpose | Notes |
 |---|---|---|
@@ -172,7 +172,7 @@ applied as of 2026-08-02; migration 047 awaits application. Key tables:
 | `users` | All users (internal + external) | `role` (4 values, see §4), `customer_id`, `slack_user_id`; migration 038 makes same-family admin PATCH/deactivation serialized and transactionally audited. Migration 039 stops trusting signup role metadata and adds atomic admin/team provisioning finalizers |
 | `site_members` | User ↔ Site (M:N) | Customers join via this; customer_manager bypasses. Migration 035 adds tenant-contained, transactionally audited admin add/remove commands. Migration 045 removes the legacy direct authenticated write path; its 110-assertion live matrix is green |
 | `tickets` | Core ticket entity | `ticket_no` (RPL-XXXXXX), `secure_token` (32-byte hex), `severity` (P1–P4), 8-state `status`, response/resolution due/achieved/breached timestamps; migration 027 column-limits direct authenticated SELECT |
-| `ticket_creation_requests` | Service-only ticket-create replay ledger | Migration 047 serializes source/request keys, returns the first durable receipt for exact retries, and rejects altered reuse; awaits application |
+| `ticket_creation_requests` | Service-only ticket-create replay ledger | Migration 047 serializes source/request keys, returns the first durable receipt for exact retries, and rejects altered reuse; its 42-assertion replay/concurrency/privilege live matrix is green |
 | `ticket_comments` | Discussion, `visibility: customer\|internal` | `is_automated`; only human internal-authored customer-visible messages satisfy First Response |
 | `ticket_attachments` | File refs (storage_path) | Bucket `ripple-attachments`, 50MB cap; direct authenticated bucket access is removed by migration 027 and app routes mediate objects. Migration 044 adds bounded metadata/path constraints and atomic metadata plus timeline creation; its 130-assertion live matrix is green |
 | `ticket_events` | Audit log | `actor_id`, `event_type`, `old_value`/`new_value` |
@@ -1338,6 +1338,20 @@ commands. Every externally retryable create path needs a stable caller attempt
 key, exact-input collision detection, concurrent serialization, and a durable
 receipt returned by the committing transaction.
 
+### Dependency audit state can change without a lockfile change
+Found 2026-08-08 while running the required gate after migration 047's live
+verification. A fresh `npm ci` installed the same dependency graph but the
+current audit feed newly flagged `js-yaml` below 4.3.1 through ESLint and
+`nanoid` below 3.3.17 through PostCSS. Compatible root overrides pin the fixed
+versions, and a second locked install plus the full functional gate verifies
+the resolved graph.
+
+**Lesson:** a previously green audit is historical evidence, not a current
+guarantee. Run the audit after the locked install immediately before every
+commit, inspect the actual transitive path, prefer the smallest compatible
+override, and rerun tests/build rather than assuming a metadata-only security
+update is behavior-free.
+
 ---
 
 ## 10. Current State & Roadmap
@@ -1509,7 +1523,9 @@ resume work; this section remains the broader historical summary.
   committed-success hydration semantics, bringing the suite to 930 tests; then
   made web and Slack ticket creation replay-safe with source/key serialization,
   exact-input collision rejection, and transaction-returned durable receipts,
-  bringing the suite to 944 tests.
+  bringing the suite to 944 tests; then live-verified migration 047 with 42
+  assertions and updated transitive `js-yaml`/`nanoid` overrides after new
+  advisories, restoring a zero-vulnerability locked dependency baseline.
 
 ### Known issues / open work
 | Priority | Item | Where | Notes |
@@ -1547,7 +1563,7 @@ resume work; this section remains the broader historical summary.
 | ✅ Closed | Service creation form coercion/silent-row loss | field-service and spare-part request creation forms | Commit `a3ed0dd` applies total row validation, stable keys, zero-safe prices, exact bounds/date checks, accessible labels/errors, responsive layout, and request-plus-navigation locking |
 | ✅ Closed | Customer/site form and post-commit hydration ambiguity | customer/site create/edit forms, `POST /api/sites` | Commit `e15dea6` applies canonical normalization/bounds, accessible responsive locking, archived/ownership guards, prerequisite messaging, and committed-success 201 semantics when site detail hydration is degraded |
 | ✅ Closed | Ticket mutation raw failure, duplicate-action, and hydration ambiguity | public/authenticated ticket creation, ticket detail actions, ticket PATCH/comments | Commit `6075296` centralizes bounded input/file contracts, locks request plus refresh settlement, validates safe response shapes, preserves committed success through hydration failure, and immediately drains the durable ticket outbox |
-| 🟡 Apply | Replay-safe ticket creation | migration 047, web ticket forms, Slack modal submission | Commit `dc5f588` adds stable attempt keys, serialized exact replay, changed-input rejection, and durable transaction receipts; migration 047 must be applied and live-verified before application deployment |
+| ✅ Verified | Replay-safe ticket creation | migration 047, web ticket forms, Slack modal submission | Commit `dc5f588` adds stable attempt keys, serialized exact replay, changed-input rejection, and durable transaction receipts; the applied command passed 42 live assertions covering 12-way concurrency, exact effects, privilege denial, and zero residue |
 | 🟡 Med | `/settings` is read-only integration status | `src/app/(auth)/settings/page.tsx` | Add notification preferences, user timezone, and theme controls |
 | ✅ Verified | Migration 046 durable public rate limits | `supabase/migrations/046_durable_public_rate_limits.sql` | Applied 2026-08-02; 77 live assertions covered grants, constraints, concurrency, reset/retention, bounded cleanup, real HTTP limits/lifecycle, and zero residue |
 | 🟡 Med | Exact site-code validation remains an existence oracle | `/api/sites/validate` | Responses are minimal and migration 046 enforces 20 checks/minute/IP across instances, but full anti-enumeration still requires CAPTCHA, an invitation/intake token, or authenticated submission |
@@ -1577,7 +1593,7 @@ resume work; this section remains the broader historical summary.
 4. **Run migration 031 team-access transaction probes.** The command is live;
    protected same/cross-tenant, role-preservation, explicit-clear, and rollback
    fixtures remain unavailable.
-5. **Run the required credentialed staging matrix.** Migrations 027–046 are
+5. **Run the required credentialed staging matrix.** Migrations 027–047 are
    applied; the secret six-account/two-tenant fixture is the remaining
    database/external gate.
 6. **Apply migration 019** ✅ done (2026-07-14).
@@ -1866,7 +1882,8 @@ resume work; this section remains the broader historical summary.
     browser keys rotate only after edits, Slack keys bind to signed view IDs,
     legacy HTTP callers receive an echoed generated key, and post-commit ticket
     hydration is removed. Fourteen contracts bring the suite to 944; all local
-    deterministic gates are green and migration application/live probes remain.
+    deterministic gates are green. Migration 047 is applied and its
+    42-assertion replay/concurrency/privilege matrix passed with zero residue.
 
 ### Open architectural questions
 - The RLS recursion bug surfaces a bigger question: do we keep `createAdminClient() + code filter` (the current pattern in `lib/supabase/scope.ts`) or move back to proper RLS once migration 019 + similar fixes are in place? The current pattern scales fine but has a lower safety margin for new queries.

@@ -7,18 +7,17 @@ meaningful change and before ending a work session. Newest entries go first.
 
 - **Branch:** `codex/prd-v1-1-gap-closure`
 - **Active phase:** Phase 0 — Containment and reproducible baseline
-- **Active work item:** apply and live-verify migration 047's replay-safe ticket
-  creation command before deploying its application caller; then resume the
-  remaining mutation-surface audit
+- **Active work item:** resume the remaining mutation-surface audit after
+  deploying and live-verifying replay-safe ticket creation
 - **Last verified implementation commit:** `dc5f588` (`fix: make ticket creation replay safe`)
 - **Uncommitted work:** none expected after the documentation checkpoint;
   verify with `git status` before resuming
-- **Deployment gate:** migrations 001–046 are confirmed applied. Migration 047
-  awaits application and must precede deployment of `dc5f588`. Migration 044
+- **Deployment gate:** migrations 001–047 are confirmed applied. Migration 044
   passed a 130-assertion disposable live matrix with zero residue. Migration
   045 passed a 110-assertion live matrix with zero residue. Migration 046
-  passed a 77-assertion live matrix with zero residue. Production
-  `CRON_SECRET` remains unset in this workspace.
+  passed a 77-assertion live matrix with zero residue. Migration 047 passed a
+  42-assertion replay/concurrency/privilege live matrix with zero residue.
+  Production `CRON_SECRET` remains unset in this workspace.
   Protected positive business probes for migrations 028–037 still require
   staging fixtures
 - **External validation gate:** populate the gitignored credential fixture with six
@@ -66,18 +65,17 @@ meaningful change and before ending a work session. Newest entries go first.
   stable heading, labeled controls, Inter, clean console, and no horizontal
   overflow. No ticket was submitted; protected signed-in profile/site-option
   visual coverage still depends on the credentialed fixture.
-- **Exact next local step:** apply migration 047, then verify function/table
-  shape, service-only privileges, first create, exact replay, changed-input
-  rejection, concurrent replay cardinality, single audit/event/outbox effects,
-  cascade cleanup, and zero residue. Configure `CRON_SECRET` separately before
-  production worker activation
+- **Exact next local step:** inventory the remaining mutation surfaces, select
+  the highest-risk unaudited command, and close it with contract tests before
+  continuing feature work. Configure `CRON_SECRET` separately before production
+  worker activation
 - **Primary plan:** [`plans/prd-v1.1-gap-closure-plan.md`](./prd-v1.1-gap-closure-plan.md)
 
-## Overall project status — 2026-08-03
+## Overall project status — 2026-08-08
 
 - Ripple has a meaningful Phase 1–4 support-platform foundation, and Phase 0
-  containment is substantially implemented through migrations 001–046;
-  migration 047 is implemented locally and awaits application.
+  containment is substantially implemented through migrations 001–047;
+  replay-safe ticket creation is deployed and live-verified.
 - Against the full PRD v1.1 capability map, 17 domains remain
   **Partial** or **Unsafe/Partial** and seven remain **Absent**. No full PRD
   capability domain is yet honestly complete end to end.
@@ -93,6 +91,56 @@ meaningful change and before ending a work session. Newest entries go first.
   queues/routing, business-calendar SLA clocks, remote support, appointments,
   assets/entitlements, search/knowledge, i18n, versioned external APIs, and
   production SRE/recovery evidence.
+
+## Session record — 2026-08-08 (P0-BR deployment / replay-safe creation)
+
+### Objective
+
+Verify the applied migration 047 against the committed replay-safety contract
+before treating the web and Slack application callers as deployable.
+
+### Live verification
+
+- Confirmed the replay ledger projection and idempotent RPC are live through
+  the service role and that invalid object input reaches database validation.
+- Created a uniquely marked disposable guest-web ticket, replayed it with a
+  different volatile secure-token input, and received the first committed
+  ticket ID, number, and secure token.
+- Reuse of the same source/key with changed business input failed with the
+  expected validation code. Twelve concurrent deliveries under a second key
+  all returned one durable receipt.
+- Two request keys produced exactly two tickets, two ledger rows, two creation
+  events, two audit rows, and two pending Slack-master outbox rows. Replays did
+  not duplicate any effect.
+- Anonymous and disposable authenticated sessions were denied RPC execution
+  and replay-ledger reads/writes. The temporary Auth/profile identity was fully
+  deleted after the probe.
+- Ticket deletion cascaded through timeline and replay rows; explicit audit and
+  outbox cleanup left zero test residue. The matrix passed 42 assertions.
+- The required fresh `npm ci` then surfaced two newly disclosed transitive
+  advisories: `js-yaml` below 4.3.1 through ESLint and `nanoid` below 3.3.17
+  through PostCSS. Compatible root overrides now pin those fixed versions; a
+  second locked install, dependency-tree check, and audit returned zero known
+  vulnerabilities.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| Migration 047 live matrix | Passed; 42 assertions, including 12-way concurrency and zero residue |
+| `npm ci` | Passed from the updated lockfile; fixed transitive versions installed |
+| `npm test` | Passed; 121 files, 944 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build and type check |
+| `npm run test:e2e` | Passed; all 40 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities after `js-yaml` and `nanoid` overrides |
+| `git diff --check` | Passed |
+
+### Next
+
+Resume the remaining mutation-surface audit. Production outbox recovery still
+requires a configured `CRON_SECRET`, and the protected six-account/two-tenant
+matrix remains an external staging gate.
 
 ## Session record — 2026-08-03 (P0-BR / replay-safe ticket creation)
 
