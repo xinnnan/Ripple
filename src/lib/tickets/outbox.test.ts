@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import type { SyncOptions } from "@/lib/slack/sync";
+import type { SyncOptions, SyncResult } from "@/lib/slack/sync";
 import {
   deliverTicketOutboxEvent,
   type IntegrationOutboxEvent,
@@ -32,6 +32,7 @@ function event(
     dead_lettered_at: null,
     last_error: null,
     delivery_result: {},
+    provider_attempted_at: null,
     created_at: "2026-07-30T12:00:00.000Z",
     updated_at: "2026-07-30T12:00:00.000Z",
   };
@@ -74,8 +75,8 @@ function ticket(submitterEmail: string | null = "operator@example.com"):
 }
 
 function dependencies(overrides: Partial<{
-  master: { ok: boolean; reason?: "no_channel" | "slack_error"; error?: string };
-  thread: { ok: boolean; deduplicated?: boolean };
+  master: SyncResult;
+  thread: SyncResult;
 }> = {}) {
   return {
     postMasterMessage: vi.fn().mockResolvedValue({ ok: true }),
@@ -177,6 +178,91 @@ describe("ticket notification outbox delivery", () => {
       delivered: false,
       retryable: true,
       error: "rate_limited",
+    });
+  });
+
+  it("retains the provider-attempt time needed for a safe retry", async () => {
+    const deps = dependencies({
+      master: {
+        ok: false,
+        reason: "database_error",
+        error: "receipt unavailable",
+        providerAttemptedAt: "2026-07-30T12:01:00.000Z",
+      },
+    });
+
+    await expect(
+      deliverTicketOutboxEvent(
+        event("ticket.slack_master_sync"),
+        ticket(),
+        {},
+        deps
+      )
+    ).resolves.toEqual({
+      delivered: false,
+      retryable: true,
+      error: "receipt unavailable",
+      result: {
+        provider: "slack",
+        outcome: "failed",
+        reason: "database_error",
+        attempted_at: "2026-07-30T12:01:00.000Z",
+      },
+    });
+  });
+
+  it("reconciles a retried Slack post before sending again", async () => {
+    const deps = dependencies();
+    const retried = event("ticket.slack_master_create");
+    retried.attempts = 2;
+    retried.delivery_result = {
+      provider: "slack",
+      outcome: "failed",
+      attempted_at: "2026-07-30T12:01:00.000Z",
+    };
+
+    await deliverTicketOutboxEvent(retried, ticket(), {}, deps);
+
+    expect(deps.postMasterMessage).toHaveBeenCalledWith(ticket(), {
+      deliveryKey: EVENT_ID,
+      reconcileDelivery: true,
+      reconcileFrom: "2026-07-30T12:01:00.000Z",
+    });
+  });
+
+  it("prefers the durable lease checkpoint for retry reconciliation", async () => {
+    const deps = dependencies();
+    const retried = event("ticket.slack_comment_reply", {
+      message_text: "Diagnostics are complete.",
+    });
+    retried.attempts = 2;
+    retried.provider_attempted_at = "2026-07-30T12:02:00.000Z";
+    retried.delivery_result = {
+      attempted_at: "2026-07-30T12:01:00.000Z",
+    };
+
+    await deliverTicketOutboxEvent(retried, ticket(), {}, deps);
+
+    expect(deps.postMasterThreadReply).toHaveBeenCalledWith(
+      ticket(),
+      "Diagnostics are complete.",
+      {
+        deliveryKey: EVENT_ID,
+        reconcileDelivery: true,
+        reconcileFrom: "2026-07-30T12:02:00.000Z",
+      }
+    );
+  });
+
+  it("retries directly when no prior attempt crossed the provider boundary", async () => {
+    const deps = dependencies();
+    const retried = event("ticket.slack_master_create");
+    retried.attempts = 2;
+
+    await deliverTicketOutboxEvent(retried, ticket(), {}, deps);
+
+    expect(deps.postMasterMessage).toHaveBeenCalledWith(ticket(), {
+      deliveryKey: EVENT_ID,
     });
   });
 
@@ -351,5 +437,33 @@ describe("migration 033 durable outbox contract", () => {
     );
     expect(webRoute).not.toContain("notifyTicketMutation");
     expect(slackActions).not.toContain("notifyTicketMutation");
+  });
+});
+
+describe("migration 050 Slack attempt checkpoint contract", () => {
+  const migration = readFileSync(
+    resolve(
+      process.cwd(),
+      "supabase/migrations/050_durable_slack_provider_attempts.sql"
+    ),
+    "utf8"
+  );
+
+  it("persists the attempt boundary only under the active lease", () => {
+    expect(migration).toMatch(/\bBEGIN;[\s\S]+\bCOMMIT;/);
+    expect(migration).toContain("ADD COLUMN provider_attempted_at timestamptz");
+    expect(migration).toContain(
+      "CREATE OR REPLACE FUNCTION public.record_integration_outbox_provider_attempt"
+    );
+    expect(migration).toContain("AND event.status = 'processing'");
+    expect(migration).toContain("AND event.lock_token = p_lock_token");
+    expect(migration).toContain("RETURN v_recorded_at");
+  });
+
+  it("keeps the checkpoint command service-only", () => {
+    expect(migration).toContain(
+      ") FROM PUBLIC, anon, authenticated;"
+    );
+    expect(migration).toContain(") TO service_role;");
   });
 });

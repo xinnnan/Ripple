@@ -14,7 +14,8 @@ A Slack-native support portal for DropletAI Services. Centralises customer suppo
 - **Audit Log** — Cross-entity audit trail (`audit_logs` table) covering tickets, customers, sites, users, security events.
 - **Durable Ticket Notifications** — Transactional outbox, lease-based dispatch,
   exponential retry, dead-letter retention, and provider idempotency for ticket
-  creation/update/resolution notifications.
+  creation/update/resolution notifications. Ambiguous Slack posts reconcile
+  their outbox metadata before any retry can create a duplicate.
 - **Replay-Safe Ticket Comments** — Web and Slack comment retries use durable
   request receipts; customer-visible Slack replies enter the notification
   outbox in the same transaction as the comment and SLA evidence.
@@ -55,14 +56,14 @@ A Slack-native support portal for DropletAI Services. Centralises customer suppo
 | Layer | Tool |
 |-------|------|
 | Frontend | Next.js 15.5.22 (App Router) + React 19 + TypeScript + Tailwind CSS v4 + self-hosted Inter |
-| Database | Supabase Postgres (49 migrations, see `supabase/migrations/`) |
+| Database | Supabase Postgres (50 migrations, see `supabase/migrations/`) |
 | Auth | Supabase Auth (email + password + recovery) + new `sb_publishable_` / `sb_secret_` key format |
 | Storage | Supabase Storage — bucket `ripple-attachments`, **50 MB cap per file** |
 | Slack | `@slack/bolt` + `@slack/web-api` (runs inside Next.js API routes, no separate process) |
 | AI | **MiniMax AI** (OpenAI-compatible) — was OpenAI → Zhipu → MiniMax. **See "AI provider" section below.** |
 | Email | Resend (transactional: ticket confirmation, resolution notice) |
 | Validation | Zod (all API request bodies) |
-| Testing | Vitest (996 unit/contract tests) + 40-check production HTTP smoke + credentialed Playwright/API/RLS matrix |
+| Testing | Vitest (1,015 unit/contract tests) + 40-check production HTTP smoke + credentialed Playwright/API/RLS matrix |
 | Hosting | Vercel (serverless API routes) |
 
 ## Phases
@@ -97,7 +98,7 @@ cp .env.local.example .env.local
 
 ### Run database migrations
 
-Apply the SQL files in `supabase/migrations/` **in order** (001 → 049) via the Supabase SQL editor or `supabase db push`:
+Apply the SQL files in `supabase/migrations/` **in order** (001 → 050) via the Supabase SQL editor or `supabase db push`:
 
 ```
 001_create_customers.sql
@@ -149,12 +150,16 @@ Apply the SQL files in `supabase/migrations/` **in order** (001 → 049) via the
 047_idempotent_ticket_creation.sql
 048_idempotent_ticket_comments.sql
 049_idempotent_service_resource_creation.sql
+050_durable_slack_provider_attempts.sql
 ```
 
 Later migrations replace policies/functions and should be applied once in
 order. Migration `017` also performs role data updates and must not be re-run
 blindly. Migrations 001–049 are confirmed applied and live-verified as of
-2026-08-10. Migration 049 passed a 134-assertion live matrix covering exact
+2026-08-10. Migration 050 is the current migration-first deployment gate and
+must be applied before the corresponding application update. It adds the
+lease-owned Slack provider-attempt checkpoint used for ambiguous-delivery
+reconciliation. Migration 049 passed a 134-assertion live matrix covering exact
 replay, independent 12-way concurrency for spare-part request and field-service
 order creation, altered-input rejection, exact parent/child/audit/ledger
 cardinality, ledger constraints, anonymous/authenticated privilege denial, and
@@ -269,9 +274,14 @@ requests never receive this secret.
    - **Slash Commands**: `/ticket` → `https://your-domain.com/api/slack/command/ticket`
    - **Interactivity**: Request URL → `https://your-domain.com/api/slack/interactive`
    - **Event Subscriptions**: Request URL → `https://your-domain.com/api/slack/events`
-   - **Bot Token Scopes**: `commands`, `chat:write`, `chat:write.public`, `channels:read`, `users:read`, `files:read`
+   - **Bot Token Scopes**: `commands`, `chat:write`, `chat:write.public`, `channels:read`, `channels:history`, `groups:read`, `groups:history`, `metadata.message:read`, `users:read`, `files:read`
 3. Install the app to your workspace.
 4. Copy the Bot Token (`xoxb-…`) and Signing Secret to `.env.local`.
+
+The history and metadata scopes let an outbox retry find a Slack message whose
+provider call succeeded but whose local receipt was lost. Reinstall the app
+after adding scopes. If reconciliation cannot run, the retry fails closed and
+remains in the outbox instead of posting a possible duplicate.
 
 All three Slack ingress routes fail closed. Missing or template credentials
 return `503 SLACK_CONFIGURATION_ERROR`; requests with missing, stale, or invalid

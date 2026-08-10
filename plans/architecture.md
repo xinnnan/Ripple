@@ -406,7 +406,10 @@ commands          # /ticket slash command
 chat:write        # Post messages
 chat:write.public # Post to any channel
 channels:read     # Read channel info
+channels:history  # Reconcile ambiguous public-channel deliveries
 groups:read       # Read private channels
+groups:history    # Reconcile ambiguous private-channel deliveries
+metadata.message:read # Match outbox ids attached to sent messages
 users:read        # Read user profiles
 users.profile:read
 files:read        # Read shared files
