@@ -64,14 +64,14 @@ The correct approach is therefore:
 
 ## 3. Current baseline
 
-| Gate | Result through 2026-08-09 | Meaning |
+| Gate | Result through 2026-08-10 | Meaning |
 |---|---|---|
 | Unit tests | 996/996 passed | Scope, lifecycle and exhaustive ticket-transition guards, atomic and replay-safe ticket/comment/spare-part-request/field-service/customer/catalog/inventory/attachment creation and updates, durable customer-visible Slack comment delivery, attachment content and storage-key validation, direct-write privilege containment, durable public-rate-limit/share-view/paid-AI contracts, bounded least-data AI context and prompt-injection containment, notification outbox leases/idempotency/retry contracts, context-safe transactional email rendering and conditional provider/public-origin readiness, tenant-safe site/user/customer/SLA/catalog/inventory administration, secure user provisioning and membership containment, identity-provider/profile failure classification across API authorization, tenant scope, the authenticated shell, browser account/site enrichment, authentication/recovery settlement, and client lifecycle-action settlement, canonical manager-wide active-site presentation, explicit authenticated customer ticket/comment/site/spare-part/field-service read projections and client-payload containment, bounded profile self-service, spreadsheet-safe ticket CSV encoding, strict ticket page/API/export, customer-capable service/site and admin list/page filters, guarded PostgREST search construction, strict API and authenticated server-page UUID boundaries, non-broadening inventory preselection, exact audit pagination, missing-safe detail reads, contained code-only admin/customer/dashboard/ticket list/detail/create-option load failures, lifecycle-aligned site/team/dashboard/create selectors, unavailable-prerequisite form guards, retained-membership active-site hydration, empty-scope query suppression, relation-shape normalization, least-data admin catalog and ticket-child hydration, and allow-listed admin detail tabs, qualified-SQL-expression repair, visibility, auth recovery/redirects, public/responsive/admin UI contracts, deterministic site-timezone dashboard and Slack rendering with exact totals, Slack authentication/configuration/action filtering and direct AI-service invocation, readiness, CI policy, filters, SLA, fixture validation, migration/RPC contracts, spare-part, field-service, and team-access transaction containment, DATE handling, and audit coverage is green |
 | Lint | Passed, no warnings | Direct ESLint CLI with zero-warning enforcement and generated-artifact ignores |
 | Production build | Passed on Next.js 15.5.22 | Environment-free build is reproducible |
 | Dependency audit | 0 vulnerabilities | Patched direct/transitive versions are lockfile-pinned and compatibility-tested, including `js-yaml` 4.3.1 and `nanoid` 3.3.17 after their 2026-08-08 advisories entered the audit feed |
 | Worktree | Clean at baseline | Work started on `codex/prd-v1-1-gap-closure` |
-| Committed end-to-end tests | 40 production HTTP checks + credentialed Playwright/API/RLS matrix | Public/recovery/negative/configuration smoke always runs, including public share access denial, malformed site-code containment, fail-closed guest-upload/outbox-worker configuration, and site-membership/site/user/customer/SLA/catalog/inventory-write/provisioning denials. Migrations 001–048 are applied; migration 049 awaits application and live verification. Migration 046 passed 77 live assertions, migration 047 passed a 42-assertion replay/concurrency/privilege matrix, migration 048 passed a 69-assertion replay/concurrency/cardinality/privilege matrix, and the extended upload/share boundary passed a separate 22-assertion live matrix with zero residue. Protected positive request/field-service/team/site-access/site/user/customer/catalog/inventory/attachment-administration/provisioning/transition/outbox/create probes and the six-account two-tenant matrix await staging credentials/fixtures |
+| Committed end-to-end tests | 40 production HTTP checks + credentialed Playwright/API/RLS matrix | Public/recovery/negative/configuration smoke always runs, including public share access denial, malformed site-code containment, fail-closed guest-upload/outbox-worker configuration, and site-membership/site/user/customer/SLA/catalog/inventory-write/provisioning denials. Migrations 001–049 are applied and live-verified. Migration 046 passed 77 live assertions, migration 047 passed a 42-assertion replay/concurrency/privilege matrix, migration 048 passed a 69-assertion replay/concurrency/cardinality/privilege matrix, migration 049 passed a 134-assertion replay/concurrency/cardinality/constraint/privilege matrix, and the extended upload/share boundary passed a separate 22-assertion live matrix with zero residue. Protected positive request/field-service/team/site-access/site/user/customer/catalog/inventory/attachment-administration/provisioning/transition/outbox/create probes and the six-account two-tenant matrix await staging credentials/fixtures |
 | Hosted CI | Workflow committed in `4ceacd0`; first hosted run pending | Read-only, SHA-pinned quality job is reproducible; repository branch protection and the protected staging environment still require activation |
 
 ## 4. PRD capability gap map
@@ -91,9 +91,9 @@ has a release-blocking security or integrity problem.
 | Queues / Routing | Absent | No queue, membership, skill, region, workload, routing, or fallback models |
 | SLA / Business Calendar | Partial | First-response and late-resolution persistence are corrected in `b71b3d7`; atomic policy administration is deployed and passed a 35-assertion live matrix, while business calendars, independent clock rows, pause/resume, versioning, thresholds, and reopen cycles remain |
 | Remote Support | Absent | No diagnosis record, structured information request, remote access approval, or onsite handover |
-| Field Service / Work Orders | Partial | Atomic creation/update and migration 049's pending replay-safe create boundary are present; no readiness gate, visit lifecycle, checklist, evidence, mobile flow, or report versioning |
+| Field Service / Work Orders | Partial | Atomic creation/update and migration 049's deployed, live-verified replay-safe create boundary are present; no readiness gate, visit lifecycle, checklist, evidence, mobile flow, or report versioning |
 | Appointment / Dispatch | Absent | No appointment object, preferred windows, conflict checks, reminders, reschedule/no-show logic, or dispatch calendar engine |
-| Parts / RMA | Partial | Atomic request creation/update, catalog, and inventory commands are deployed/live-verified, and migration 049 adds a pending replay-safe request-create boundary; approval policy, reservations, consumption, and RMA remain |
+| Parts / RMA | Partial | Atomic request creation/update, catalog, inventory, and migration 049's replay-safe request-create boundary are deployed/live-verified; approval policy, reservations, consumption, and RMA remain |
 | Assets / Entitlements | Absent | Ticket `asset_id` is free text; no hierarchy, lifecycle, versions, contracts, or coverage decision |
 | Communication / Email | Partial | Confirmation and resolution email are outbox-backed, provider-idempotent, context-safe, and guarded by conditional provider/sender/public-origin readiness; recipient resolution, verified sender activation, versioned templates, preferences, localization, and a unified communication model remain |
 | File Service | Partial | `03499f9` plus deployed migration 044 add magic-byte/text/container checks, canonical MIME, environment/tenant/ticket-bound keys, null guest attribution, and atomic metadata/timeline handling; its 130-assertion live matrix is green. Malware scanning, quarantine, checksums, retention, and durable ambiguous-outcome reconciliation remain |
@@ -784,7 +784,7 @@ Every implementation slice must:
     event/audit/outbox/SLA cardinality, internal-note isolation, anonymous and
     authenticated denial, database constraints, and zero database/Auth
     residue. The disposable site had no Slack target, so no provider call ran.
-72. **P0-BU — closed locally in `3fa981d`:** Migration 049 adds service-only
+72. **P0-BU — closed in `3fa981d` and deployed:** Migration 049 adds service-only
     replay ledgers and transaction-scoped wrappers around atomic spare-part
     request and field-service order creation. Exact concurrent retries return
     the first resource; changed actor/input under the same key fails closed.
@@ -793,6 +793,11 @@ Every implementation slice must:
     strict root/child schemas reject unknown fields. Twenty-four contracts
     bring the suite to 996; the full fresh-install quality/E2E/audit gate is
     green.
-73. **Next deployment gate:** apply migration 049 and run its disposable
-    replay/concurrency/cardinality/privilege/cleanup matrix before deploying
-    application commit `3fa981d`.
+73. **Migration 049 live gate — closed 2026-08-10:** 134 assertions covered
+    exact replay, independent 12-way concurrency for both commands, altered
+    input rejection, exact parent/child/audit/ledger cardinality, invalid-key
+    and invalid-payload rollback, ledger constraints, anonymous/authenticated
+    denial, and zero database/Auth residue.
+74. **Next local audit:** resume the remaining mutation-surface inventory and
+    close the highest-risk ambiguous-response or direct-write boundary that is
+    still reachable without the protected staging fixture.

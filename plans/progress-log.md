@@ -7,19 +7,21 @@ meaningful change and before ending a work session. Newest entries go first.
 
 - **Branch:** `codex/prd-v1-1-gap-closure`
 - **Active phase:** Phase 0 — Containment and reproducible baseline
-- **Active work item:** apply and live-verify migration 049's replay-safe
-  spare-part request and field-service order creation boundary
+- **Active work item:** resume the remaining mutation-surface audit after
+  migration 049's replay-safe service creation boundary passed live verification
 - **Last verified implementation commit:** `3fa981d` (`fix: make service creation replay safe`)
-- **Uncommitted work:** none expected after the documentation checkpoint;
-  verify with `git status` before live verification
-- **Deployment gate:** migrations 001–048 are confirmed applied; migration 049
-  awaits application and live verification. Migration 044
+- **Uncommitted work:** documentation checkpoint recording migration 049 live
+  verification; verify with `git status` before committing
+- **Deployment gate:** migrations 001–049 are confirmed applied and
+  live-verified. Migration 044
   passed a 130-assertion disposable live matrix with zero residue. Migration
   045 passed a 110-assertion live matrix with zero residue. Migration 046
   passed a 77-assertion live matrix with zero residue. Migration 047 passed a
   42-assertion replay/concurrency/privilege live matrix with zero residue.
   Migration 048 passed a 69-assertion replay/concurrency/cardinality/privilege
-  live matrix with zero database/Auth residue.
+  live matrix with zero database/Auth residue. Migration 049 passed a
+  134-assertion replay/concurrency/cardinality/constraint/privilege live matrix
+  with zero database/Auth residue.
   Production `CRON_SECRET` remains unset in this workspace.
   Protected positive business probes for migrations 028–037 still require
   staging fixtures
@@ -72,17 +74,17 @@ meaningful change and before ending a work session. Newest entries go first.
   Inter, expanded/collapsed accessibility state, no horizontal overflow, and
   zero console warnings/errors. A disposable engineer identity was fully
   removed with zero profile/audit residue, and no AI provider request was made.
-- **Exact next local step:** after the user applies migration 049, run a
-  disposable exact-replay, altered-reuse, concurrency, cardinality, privilege,
-  constraint, and zero-residue matrix for both creation commands. Configure
-  `CRON_SECRET` separately before production worker activation
+- **Exact next local step:** rerun the remaining mutation-surface inventory and
+  close the highest-risk ambiguous-response or direct-write boundary that does
+  not require the protected staging fixture. Configure `CRON_SECRET`
+  separately before production worker activation
 - **Primary plan:** [`plans/prd-v1.1-gap-closure-plan.md`](./prd-v1.1-gap-closure-plan.md)
 
-## Overall project status — 2026-08-09
+## Overall project status — 2026-08-10
 
 - Ripple has a meaningful Phase 1–4 support-platform foundation, and Phase 0
   containment is substantially implemented through migration 049. Migrations
-  001–048 are deployed and live-verified; migration 049 is the active gate.
+  001–049 are deployed and live-verified.
 - Against the full PRD v1.1 capability map, 17 domains remain
   **Partial** or **Unsafe/Partial** and seven remain **Absent**. No full PRD
   capability domain is yet honestly complete end to end.
@@ -98,6 +100,55 @@ meaningful change and before ending a work session. Newest entries go first.
   queues/routing, business-calendar SLA clocks, remote support, appointments,
   assets/entitlements, search/knowledge, i18n, versioned external APIs, and
   production SRE/recovery evidence.
+
+## Session record — 2026-08-10 (migration 049 live verification)
+
+### Objective
+
+Verify the deployed replay-safe spare-part request and field-service order
+commands against the real Supabase role, concurrency, integrity, and cleanup
+boundaries before resuming the mutation-surface audit.
+
+### Evidence
+
+- A disposable active customer, active site, active spare part, and real
+  authenticated internal Auth/profile identity were created under a unique
+  `r049_…` namespace.
+- Each service-only wrapper received 12 concurrent identical submissions plus
+  a later exact replay. Every call returned the same durable resource ID, with
+  exactly one parent, one item or engineer assignment, one replay receipt, and
+  one correctly attributed audit row.
+- Reusing either key with changed input failed with SQLSTATE `22023`. Invalid
+  keys, empty request items, reversed service dates, malformed ledger keys, and
+  non-object ledger snapshots failed without partial business or receipt rows.
+- Anonymous and authenticated clients could neither read the forced-RLS replay
+  ledgers nor execute either wrapper; the service role retained the intended
+  access.
+- The final disposable matrix passed **134 assertions** and removed all
+  database/Auth fixtures. An earlier diagnostic stopped before retaining the
+  successful request ID for cleanup; a reserved-namespace residue audit found
+  one exact spare-part fixture, removed that exact row, and confirmed zero
+  remaining `r049_…` customer/site/part/request/order/user residue.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| Migration 049 live matrix | Passed; 134 concurrency/replay/cardinality/constraint/privilege/cleanup assertions |
+| `npm ci` | Passed from the lockfile; 0 vulnerabilities reported by install |
+| `npm test` | Passed; 130 files, 996 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build and type check |
+| `npm run test:e2e` | Passed; all 40 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+
+### Result
+
+Migrations 001–049 are now confirmed applied and live-verified. The next local
+step is to resume the remaining mutation-surface inventory and close the
+highest-risk ambiguous-response or direct-write boundary that does not require
+the protected staging fixture.
 
 ## Session record — 2026-08-09 (P0-BU / replay-safe service creation)
 
