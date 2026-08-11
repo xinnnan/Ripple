@@ -7,14 +7,12 @@ meaningful change and before ending a work session. Newest entries go first.
 
 - **Branch:** `codex/prd-v1-1-gap-closure`
 - **Active phase:** Phase 0 — Containment and reproducible baseline
-- **Active work item:** P0-BV ambiguous Slack-delivery reconciliation;
-  implementation and local gates are complete, with migration 050 deployment,
-  live verification, and Slack scope activation pending
-- **Last verified checkpoint commit:** `59c703c` (`docs: verify migration 049 rollout`)
-- **Uncommitted work:** migration 050, durable provider-attempt checkpointing,
-  Slack metadata reconciliation, fail-closed receipt/target reads, bounded
-  provider diagnostics, tests, and deployment documentation
-- **Deployment gate:** migrations 001–049 are confirmed applied and
+- **Active work item:** resume the remaining mutation-surface audit after
+  migration 050 and the Slack reconciliation scopes passed live verification
+- **Last verified implementation commit:** `1d5fefe` (`fix: reconcile ambiguous Slack deliveries`)
+- **Uncommitted work:** documentation checkpoint recording migration 050 and
+  Slack scope verification; verify with `git status` before committing
+- **Deployment gate:** migrations 001–050 are confirmed applied and
   live-verified. Migration 044
   passed a 130-assertion disposable live matrix with zero residue. Migration
   045 passed a 110-assertion live matrix with zero residue. Migration 046
@@ -24,8 +22,8 @@ meaningful change and before ending a work session. Newest entries go first.
   live matrix with zero database/Auth residue. Migration 049 passed a
   134-assertion replay/concurrency/cardinality/constraint/privilege live matrix
   with zero database/Auth residue.
-  Migration 050 is the current migration-first gate and has not yet been
-  applied or live-verified.
+  Migration 050 passed a 27-assertion lease/concurrency/settlement/privilege
+  live matrix with zero database/Auth residue.
   Production `CRON_SECRET` remains unset in this workspace.
   Protected positive business probes for migrations 028–037 still require
   staging fixtures
@@ -37,11 +35,11 @@ meaningful change and before ending a work session. Newest entries go first.
   protection; create a reviewer-protected `staging` environment with the
   `RIPPLE_E2E_FIXTURES_JSON` secret before manually enabling the credentialed
   matrix
-- **Slack deployment gate:** add `groups:history` and
-  `metadata.message:read` to the installed bot, reinstall the app, and then
-  verify the metadata reconciliation read path. A read-only live token audit
-  confirmed authentication and `channels:history`, but the other two required
-  scopes are not currently granted
+- **Slack deployment gate:** the reinstalled bot authenticated and exposed
+  `channels:history`, `groups:history`, and `metadata.message:read`. The live
+  database currently has zero linked Slack channels and zero recorded master
+  messages, so read-only history/thread reconciliation awaits the first real
+  target rather than posting a synthetic message to a customer channel
 - **Runtime verification debt:** when staging credentials become available,
   test request creation/fulfillment, field-service create/update, and team
   access positive/negative cases, including cross-site tickets, inactive
@@ -83,18 +81,17 @@ meaningful change and before ending a work session. Newest entries go first.
   Inter, expanded/collapsed accessibility state, no horizontal overflow, and
   zero console warnings/errors. A disposable engineer identity was fully
   removed with zero profile/audit residue, and no AI provider request was made.
-- **Exact next local step:** apply migration 050, live-verify its lease/RPC/
-  privilege behavior, activate the required Slack scopes, and verify the
-  read-only metadata reconciliation path. Then resume the remaining mutation-
-  surface inventory. Configure `CRON_SECRET` separately before production
-  worker activation
+- **Exact next local step:** resume the remaining mutation-surface inventory
+  and close the highest-risk direct-write or ambiguous-settlement boundary that
+  does not require the protected staging fixture. Configure `CRON_SECRET`
+  separately before production worker activation
 - **Primary plan:** [`plans/prd-v1.1-gap-closure-plan.md`](./prd-v1.1-gap-closure-plan.md)
 
 ## Overall project status — 2026-08-10
 
 - Ripple has a meaningful Phase 1–4 support-platform foundation, and Phase 0
-  containment is substantially implemented through migration 049. Migrations
-  001–049 are deployed and live-verified; migration 050 is pending.
+  containment is substantially implemented through migration 050. Migrations
+  001–050 are deployed and live-verified.
 - Against the full PRD v1.1 capability map, 17 domains remain
   **Partial** or **Unsafe/Partial** and seven remain **Absent**. No full PRD
   capability domain is yet honestly complete end to end.
@@ -110,6 +107,56 @@ meaningful change and before ending a work session. Newest entries go first.
   queues/routing, business-calendar SLA clocks, remote support, appointments,
   assets/entitlements, search/knowledge, i18n, versioned external APIs, and
   production SRE/recovery evidence.
+
+## Session record — 2026-08-11 (migration 050 and Slack scope verification)
+
+### Objective
+
+Verify the deployed Slack provider-attempt checkpoint and the reinstalled
+bot's reconciliation permissions before resuming the mutation-surface audit.
+
+### Evidence
+
+- A disposable outbox event and authenticated Auth/profile identity were
+  created under an exact `r050_…` namespace. The event was claimed through the
+  production lease RPC and began with no provider-attempt evidence.
+- A wrong lock token returned no checkpoint and left the row unchanged. The
+  valid lease wrote a server timestamp; 12 concurrent valid checkpoint calls
+  all settled successfully without changing the processing lease.
+- Anonymous and authenticated clients could neither read the protected outbox
+  row nor execute the checkpoint RPC. The service role retained the intended
+  access.
+- Delivery acknowledgement retained the provider-attempt timestamp while
+  clearing the lease. The settled/stale token could not checkpoint again.
+- The final live matrix passed **27 assertions** and removed the exact outbox,
+  public profile, and Auth fixtures with zero residue.
+- A secret-free Slack `auth.test` audit confirmed authentication and the
+  granted `channels:history`, `groups:history`, and
+  `metadata.message:read` scopes after reinstall.
+- The live database contains zero `slack_channels` rows and zero recorded
+  master messages. History/thread API behavior therefore remains pending a real
+  linked site channel; no synthetic message was posted to an external channel.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| Migration 050 live matrix | Passed; 27 lease/concurrency/settlement/privilege/cleanup assertions |
+| Slack authentication/scopes | Passed; all three reconciliation scopes granted |
+| `npm ci` | Passed from the lockfile; 0 vulnerabilities reported by install |
+| `npm test` | Passed; 132 files, 1,015 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build and type check |
+| `npm run test:e2e` | Passed; all 40 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+
+### Result
+
+Migrations 001–050 are deployed and live-verified, and Slack reconciliation
+permissions are active. Resume the remaining mutation-surface inventory. When
+the first real site channel/master is linked, run the read-only history/thread
+metadata probe before treating provider reconciliation as fully exercised.
 
 ## Session record — 2026-08-10 (P0-BV / ambiguous Slack delivery)
 

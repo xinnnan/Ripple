@@ -2,7 +2,7 @@
 
 > DropletAI's Slack-native support portal. Lightweight ticket system, web portal, and AI-assisted troubleshooting for industrial automation deployments (AMR / AGV / conveyor / sortation / RCS / WCS).
 
-This file is the **single source of truth for project context** — read it before touching anything. It also serves as the lessons-learned notebook and progress tracker. Last updated 2026-08-10.
+This file is the **single source of truth for project context** — read it before touching anything. It also serves as the lessons-learned notebook and progress tracker. Last updated 2026-08-11.
 
 ---
 
@@ -17,9 +17,8 @@ This file is the **single source of truth for project context** — read it befo
 - **External users** (customers): customer admins (manage their org's team + sites) + regular customers (submit + view their tickets)
 
 **Status** — Phase 1–4 foundation is present; PRD v1.1 gap closure and security
-containment are active on `codex/prd-v1-1-gap-closure`. Migrations 001–049 are
-deployed and live-verified; migration 050 is the current migration-first
-deployment gate. `main` is live on Vercel.
+containment are active on `codex/prd-v1-1-gap-closure`. Migrations 001–050 are
+deployed and live-verified. `main` is live on Vercel.
 
 ---
 
@@ -163,9 +162,8 @@ const isInternal = role ? INTERNAL_ROLES.includes(role) : email ? isInternalEmai
 
 ## 5. Database Schema (Supabase)
 
-50 migrations, to be applied in order. Migrations 001–049 are confirmed
-applied and live-verified as of 2026-08-10; migration 050 awaits application
-and live verification. Key tables:
+50 migrations, to be applied in order. Migrations 001–050 are confirmed
+applied and live-verified as of 2026-08-11. Key tables:
 
 | Table | Purpose | Notes |
 |---|---|---|
@@ -2049,16 +2047,19 @@ resume work; this section remains the broader historical summary.
     invalid keys/payloads, ledger constraints, and anonymous/authenticated
     access failed closed; parent, child, audit, and ledger cardinality stayed
     exact; and disposable database/Auth fixtures were fully removed.
-71. **Reconcile ambiguous Slack delivery.** Migration 050 and the outbox worker
+71. **Reconcile ambiguous Slack delivery — deployed/live-verified.** Migration
+    050 and the outbox worker
     now checkpoint the provider-write boundary under the active lease before
     posting a master card or thread reply. Slack posts carry the outbox ID as
     metadata; retries verify the metadata-read grant, inspect the bounded
     channel or thread window, reject truncated evidence, restore a missing
     local receipt, and only repost after absence is proven. Database receipt
     failures and provider errors use bounded diagnostics and fail closed. The
-    implementation adds nineteen contracts, bringing the suite to 1,015;
-    migration application, live lease/RPC verification, and Slack app scope
-    activation remain the deployment gates.
+    implementation adds nineteen contracts, bringing the suite to 1,015. The
+    migration passed 27 live lease/concurrency/settlement/privilege assertions
+    with zero residue, and the reinstalled bot exposes all required scopes.
+    Provider history/thread reads await the first real linked channel/master;
+    none currently exist in the live database.
 
 ### Open architectural questions
 - The RLS recursion bug surfaces a bigger question: do we keep `createAdminClient() + code filter` (the current pattern in `lib/supabase/scope.ts`) or move back to proper RLS once migration 019 + similar fixes are in place? The current pattern scales fine but has a lower safety margin for new queries.

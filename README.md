@@ -155,11 +155,12 @@ Apply the SQL files in `supabase/migrations/` **in order** (001 → 050) via the
 
 Later migrations replace policies/functions and should be applied once in
 order. Migration `017` also performs role data updates and must not be re-run
-blindly. Migrations 001–049 are confirmed applied and live-verified as of
-2026-08-10. Migration 050 is the current migration-first deployment gate and
-must be applied before the corresponding application update. It adds the
-lease-owned Slack provider-attempt checkpoint used for ambiguous-delivery
-reconciliation. Migration 049 passed a 134-assertion live matrix covering exact
+blindly. Migrations 001–050 are confirmed applied and live-verified as of
+2026-08-11. Migration 050 passed a 27-assertion live lease/concurrency/
+settlement/privilege matrix with zero database/Auth residue. The reinstalled
+Slack bot exposes every required reconciliation scope; history/thread reads
+await the first real linked channel/master message. Migration 049 passed a
+134-assertion live matrix covering exact
 replay, independent 12-way concurrency for spare-part request and field-service
 order creation, altered-input rejection, exact parent/child/audit/ledger
 cardinality, ledger constraints, anonymous/authenticated privilege denial, and
