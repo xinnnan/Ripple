@@ -20,6 +20,8 @@ import { dispatchTicketOutboxBestEffort } from "@/lib/tickets/outbox";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { requestAiSuggestion } from "@/lib/ai/service";
 import {
+  AiSuggestionInProgressError,
+  AiSuggestionOutcomeUnknownError,
   AiSuggestionRateLimitError,
   AiSuggestionTicketNotFoundError,
   AiSuggestionUnavailableError,
@@ -29,6 +31,7 @@ import {
   buildSlackTicketCommentIdempotencyKey,
   buildSlackTicketIdempotencyKey,
 } from "@/lib/tickets/idempotency";
+import { buildSlackAiSuggestionIdempotencyKey } from "@/lib/ai/idempotency";
 import {
   TICKET_COMMENT_MAX_LENGTH,
   TICKET_CONTEXT_MAX_LENGTH,
@@ -597,12 +600,16 @@ export async function handleViewSubmission(
           ticketId: ticket.id,
           suggestionType: taskType,
           actorId: internalUser!.id,
+          source: "slack",
+          idempotencyKey: buildSlackAiSuggestionIdempotencyKey(
+            payload.view.id
+          ),
         });
 
         await client.chat.postEphemeral({
           channel: metadata.channel_id,
           user: payload.user.id,
-          text: `🤖 *Ripple Assist — ${taskType}*\n\n${data.output_text || "No suggestion generated."}\n\n_Confidence: ${data.confidence_level || "unknown"} | Model: ${data.model_name || "unknown"}_${data._persistence_warning ? "\n\n⚠️ This result could not be saved to ticket history. Copy it before closing Slack." : ""}`,
+          text: `🤖 *Ripple Assist — ${taskType}*\n\n${data.output_text || "No suggestion generated."}\n\n_Confidence: ${data.confidence_level || "unknown"} | Model: ${data.model_name || "unknown"}_`,
         });
       } catch (error) {
         console.error("AI suggestion failed:", {
@@ -610,6 +617,9 @@ export async function handleViewSubmission(
         });
         const text =
           error instanceof AiSuggestionRateLimitError
+            ? `⏳ ${error.message}`
+            : error instanceof AiSuggestionInProgressError ||
+              error instanceof AiSuggestionOutcomeUnknownError
             ? `⏳ ${error.message}`
             : error instanceof AiSuggestionTicketNotFoundError ||
               error instanceof AiSuggestionUnavailableError

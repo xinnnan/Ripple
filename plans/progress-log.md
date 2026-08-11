@@ -7,11 +7,14 @@ meaningful change and before ending a work session. Newest entries go first.
 
 - **Branch:** `codex/prd-v1-1-gap-closure`
 - **Active phase:** Phase 0 — Containment and reproducible baseline
-- **Active work item:** resume the remaining mutation-surface audit after
-  migration 050 and the Slack reconciliation scopes passed live verification
-- **Last verified implementation commit:** `1d5fefe` (`fix: reconcile ambiguous Slack deliveries`)
-- **Uncommitted work:** documentation checkpoint recording migration 050 and
-  Slack scope verification; verify with `git status` before committing
+- **Active work item:** P0-BW replay-safe Ripple Assist provider boundary;
+  implementation and local contract gates are complete, with migration 051
+  application and live verification pending
+- **Last verified checkpoint commit:** `b152376` (`docs: verify migration 050 rollout`)
+- **Verified local slice awaiting deployment:** migration 051, service-only AI
+  request reservation/checkpoint/completion commands, stable browser/Slack
+  replay keys, fail-closed ambiguous-provider handling, tests, and deployment
+  documentation; inspect `git log -1` and `git status` when resuming
 - **Deployment gate:** migrations 001–050 are confirmed applied and
   live-verified. Migration 044
   passed a 130-assertion disposable live matrix with zero residue. Migration
@@ -24,6 +27,8 @@ meaningful change and before ending a work session. Newest entries go first.
   with zero database/Auth residue.
   Migration 050 passed a 27-assertion lease/concurrency/settlement/privilege
   live matrix with zero database/Auth residue.
+  Migration 051 is the current migration-first gate and has not yet been
+  applied or live-verified.
   Production `CRON_SECRET` remains unset in this workspace.
   Protected positive business probes for migrations 028–037 still require
   staging fixtures
@@ -81,21 +86,23 @@ meaningful change and before ending a work session. Newest entries go first.
   Inter, expanded/collapsed accessibility state, no horizontal overflow, and
   zero console warnings/errors. A disposable engineer identity was fully
   removed with zero profile/audit residue, and no AI provider request was made.
-- **Exact next local step:** resume the remaining mutation-surface inventory
-  and close the highest-risk direct-write or ambiguous-settlement boundary that
-  does not require the protected staging fixture. Configure `CRON_SECRET`
-  separately before production worker activation
+- **Exact next local step:** apply migration 051, live-verify exact replay,
+  altered-input rejection, independent/concurrent request behavior, provider
+  checkpoint settlement, atomic receipt cardinality, and public API-role
+  denial. Then close the static Settings integration-readiness UI gap.
+  Configure `CRON_SECRET` separately before production worker activation
 - **Primary plan:** [`plans/prd-v1.1-gap-closure-plan.md`](./prd-v1.1-gap-closure-plan.md)
 
-## Overall project status — 2026-08-10
+## Overall project status — 2026-08-11
 
 - Ripple has a meaningful Phase 1–4 support-platform foundation, and Phase 0
-  containment is substantially implemented through migration 050. Migrations
-  001–050 are deployed and live-verified.
+  containment is substantially implemented through migration 051. Migrations
+  001–050 are deployed/live-verified; migration 051 is implementation-complete
+  and awaits deployment/live verification.
 - Against the full PRD v1.1 capability map, 17 domains remain
   **Partial** or **Unsafe/Partial** and seven remain **Absent**. No full PRD
   capability domain is yet honestly complete end to end.
-- The local deterministic baseline is green at 1,015 unit/contract tests, 40
+- The local deterministic baseline is green at 1,045 unit/contract tests, 40
   production HTTP smoke checks, a production build, zero-warning lint, and
   zero known dependency vulnerabilities.
 - Phase 0 cannot be declared exited until the protected six-account/two-tenant
@@ -107,6 +114,60 @@ meaningful change and before ending a work session. Newest entries go first.
   queues/routing, business-calendar SLA clocks, remote support, appointments,
   assets/entitlements, search/knowledge, i18n, versioned external APIs, and
   production SRE/recovery evidence.
+
+## Session record — 2026-08-11 (P0-BW / replay-safe Ripple Assist)
+
+### Objective
+
+Close the remaining paid-provider direct-write boundary without requiring the
+protected six-account staging fixture.
+
+### Implementation
+
+- Added migration 051 with a forced-RLS, service-only
+  `ai_suggestion_requests` ledger keyed by source and bounded idempotency key.
+  Reservation validates an active internal actor and existing ticket, returns
+  the first durable result for exact retries, serializes concurrent reuse, and
+  rejects altered ticket/actor/task reuse.
+- Added narrow reservation cancellation that succeeds only before provider
+  evidence, a pre-I/O provider-attempt checkpoint, and atomic suggestion plus
+  request-receipt completion. A checkpointed request without a completed
+  receipt remains fail-closed because provider spend/completion cannot be
+  disproved safely.
+- Browser Ripple Assist now retains one UUID request key per task until a
+  validated result returns. Slack derives a stable request key from the signed
+  modal view ID. Exact completed retries bypass both quota consumption and
+  provider execution.
+- Moved `ai_suggestions` persistence out of the provider wrapper and behind
+  the atomic completion command. Rate-limit, context-load, and mock-only
+  failures release only safe pre-provider reservations; post-checkpoint or
+  post-provider receipt failures return explicit reconciliation guidance.
+- Disabled automatic SDK retries because the configured OpenAI-compatible
+  provider's idempotency semantics are unverified; the durable request ledger
+  is the only retry authority at this paid, non-idempotent boundary.
+- Extended the protected credentialed matrix with direct ledger-read and all
+  four AI-command privilege-denial probes.
+- Added 30 unit/migration/route/service contracts, bringing the deterministic
+  suite to 134 files and 1,045 tests.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| Focused AI/Slack contracts | Passed; 46 assertions before full-suite integration |
+| `npm test` | Passed; 134 files, 1,045 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build and type check |
+| `npm run test:e2e` | Passed; all 40 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+
+### Result
+
+P0-BW is implementation-complete and migration-first. Apply migration 051
+before deploying the application code, then run the disposable replay/
+concurrency/settlement/privilege matrix. No live AI provider request was made
+during implementation or testing.
 
 ## Session record — 2026-08-11 (migration 050 and Slack scope verification)
 

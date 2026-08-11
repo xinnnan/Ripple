@@ -10,6 +10,9 @@ A Slack-native support portal for DropletAI Services. Centralises customer suppo
 - **Account Recovery** — Non-enumerating email recovery and one-time password reset flow.
 - **Responsive Support Experience** — Detailed support guidance, supplied industrial automation visuals, self-hosted Inter, and a role-aware mobile application drawer.
 - **Ripple Assist (AI)** — Internal troubleshooting copilot. **Sprint 2: gracefully falls back to mock output if the AI provider key is invalid/missing** (does not block core ticket flow).
+- **Replay-Safe Ripple Assist** — Web and signed Slack requests retain stable
+  request keys, checkpoint before paid provider I/O, and atomically persist the
+  first durable suggestion receipt; ambiguous provider outcomes fail closed.
 - **Spare Parts + Field Service** — Phase 3 modules: catalog, per-site inventory, request workflow, dispatch.
 - **Audit Log** — Cross-entity audit trail (`audit_logs` table) covering tickets, customers, sites, users, security events.
 - **Durable Ticket Notifications** — Transactional outbox, lease-based dispatch,
@@ -56,14 +59,14 @@ A Slack-native support portal for DropletAI Services. Centralises customer suppo
 | Layer | Tool |
 |-------|------|
 | Frontend | Next.js 15.5.22 (App Router) + React 19 + TypeScript + Tailwind CSS v4 + self-hosted Inter |
-| Database | Supabase Postgres (50 migrations, see `supabase/migrations/`) |
+| Database | Supabase Postgres (51 migrations, see `supabase/migrations/`) |
 | Auth | Supabase Auth (email + password + recovery) + new `sb_publishable_` / `sb_secret_` key format |
 | Storage | Supabase Storage — bucket `ripple-attachments`, **50 MB cap per file** |
 | Slack | `@slack/bolt` + `@slack/web-api` (runs inside Next.js API routes, no separate process) |
 | AI | **MiniMax AI** (OpenAI-compatible) — was OpenAI → Zhipu → MiniMax. **See "AI provider" section below.** |
 | Email | Resend (transactional: ticket confirmation, resolution notice) |
 | Validation | Zod (all API request bodies) |
-| Testing | Vitest (1,015 unit/contract tests) + 40-check production HTTP smoke + credentialed Playwright/API/RLS matrix |
+| Testing | Vitest (1,045 unit/contract tests) + 40-check production HTTP smoke + credentialed Playwright/API/RLS matrix |
 | Hosting | Vercel (serverless API routes) |
 
 ## Phases
@@ -98,7 +101,7 @@ cp .env.local.example .env.local
 
 ### Run database migrations
 
-Apply the SQL files in `supabase/migrations/` **in order** (001 → 050) via the Supabase SQL editor or `supabase db push`:
+Apply the SQL files in `supabase/migrations/` **in order** (001 → 051) via the Supabase SQL editor or `supabase db push`:
 
 ```
 001_create_customers.sql
@@ -151,12 +154,17 @@ Apply the SQL files in `supabase/migrations/` **in order** (001 → 050) via the
 048_idempotent_ticket_comments.sql
 049_idempotent_service_resource_creation.sql
 050_durable_slack_provider_attempts.sql
+051_replay_safe_ai_suggestions.sql
 ```
 
 Later migrations replace policies/functions and should be applied once in
 order. Migration `017` also performs role data updates and must not be re-run
 blindly. Migrations 001–050 are confirmed applied and live-verified as of
-2026-08-11. Migration 050 passed a 27-assertion live lease/concurrency/
+2026-08-11. Migration 051 is the current migration-first deployment gate and
+must be applied before the corresponding application update. It adds the
+service-only Ripple Assist request ledger, pre-provider checkpoint, safe
+pre-provider cancellation, and atomic suggestion receipt. Migration 050 passed
+a 27-assertion live lease/concurrency/
 settlement/privilege matrix with zero database/Auth residue. The reinstalled
 Slack bot exposes every required reconciliation scope; history/thread reads
 await the first real linked channel/master message. Migration 049 passed a
@@ -298,7 +306,12 @@ MINIMAX_BASE_URL=https://api.minimax.chat/v1/
 MINIMAX_MODEL=M2.7-highspeed
 ```
 
-⚠️ **Caveat:** The domain `minimax.chat` is not a well-known public LLM endpoint. Sprint 2 verified the URL resolves and returns proper error responses, but the `MINIMAX_API_KEY` shipped in `.env` returns `401 invalid api key`. To avoid breaking the rest of the system, `src/lib/ai/suggest.ts` now **gracefully falls back to a mock response** when the key is missing or the provider returns auth errors. The response is marked with `confidence_level: "low"` and a `_mock: true` field in `metadata` so the UI can show "AI assist is offline" honestly.
+⚠️ **Caveat:** The domain `minimax.chat` is not a well-known public LLM endpoint. Sprint 2 verified the URL resolves and returns proper error responses, but the key configured at that time returned `401 invalid api key`. To avoid breaking the rest of the system, `src/lib/ai/suggest.ts` **gracefully falls back to a mock response** when the key is missing or the provider returns auth errors. The response is marked with `confidence_level: "low"` and `_mock: true` so the UI can show "AI assist is offline" honestly.
+
+`POST /api/ai/suggest` is internal-only and requires a bounded
+`Idempotency-Key` header. The browser retains that key across retries; signed
+Slack modal submissions derive the same identity from the view ID. Migration
+051 must be deployed before this application version.
 
 **To switch provider** (e.g. back to Zhipu, OpenAI, or another OpenAI-compatible service): change the three env vars above. No code change required — `suggest.ts` is provider-agnostic.
 
@@ -352,7 +365,7 @@ src/
 │   ├── ticket.ts                # ⭐ all ticket domain enums + labels
 │   └── spare-parts.ts
 └── middleware.ts                # ⭐ route guard + session refresh
-supabase/migrations/             # 001-046
+supabase/migrations/             # 001-051
 plans/                           # Architecture + phase planning docs
 AGENTS.md                        # ⭐ project context, lessons learned, roadmap
 ```
@@ -362,8 +375,8 @@ AGENTS.md                        # ⭐ project context, lessons learned, roadmap
 - Ticket creation → `app/api/tickets/route.ts` (POST), `lib/slack/handlers/actions.ts` (view_submission), `lib/slack/blocks/ticket-form.ts`
 - Ticket detail → `app/(auth)/tickets/[ticketId]/page.tsx` + `ticket-actions-panel.tsx`
 - Slack actions → `lib/slack/handlers/actions.ts` + `app/api/slack/interactive/route.ts`
-- AI assist → `app/api/ai/suggest/route.ts` + `lib/ai/suggest.ts`
-- DB schema → `supabase/migrations/001_*.sql` … `046_durable_public_rate_limits.sql`
+- AI assist → `app/api/ai/suggest/route.ts` + `lib/ai/service.ts` + `lib/ai/suggest.ts`
+- DB schema → `supabase/migrations/001_*.sql` … `051_replay_safe_ai_suggestions.sql`
 
 ## Ticket Lifecycle
 

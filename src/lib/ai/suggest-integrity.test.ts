@@ -17,6 +17,10 @@ const slackSource = readFileSync(
   resolve(process.cwd(), "src/lib/slack/handlers/actions.ts"),
   "utf8"
 );
+const serviceSource = readFileSync(
+  resolve(process.cwd(), "src/lib/ai/service.ts"),
+  "utf8"
+);
 
 describe("Ripple Assist provider and persistence integrity", () => {
   it("uses least-data context queries and bounded provider execution", () => {
@@ -25,16 +29,20 @@ describe("Ripple Assist provider and persistence integrity", () => {
     expect(suggestSource).toContain(".limit(AI_CONTEXT_COMMENT_LIMIT)");
     expect(suggestSource).not.toContain("\n      *,");
     expect(suggestSource).toContain("timeout: 30_000");
-    expect(suggestSource).toContain("maxRetries: 1");
+    expect(suggestSource).toContain("maxRetries: 0");
   });
 
-  it("contains diagnostic detail and makes degraded persistence visible", () => {
+  it("contains bounded diagnostics and keeps persistence behind the replay service", () => {
     expect(suggestSource).toContain("code: ticketError.code");
     expect(suggestSource).toContain("code: commentsError.code");
     expect(suggestSource).toContain("providerDiagnostic(e)");
-    expect(suggestSource).toContain("_persistence_warning: true");
-    expect(webSource).toContain("could not be saved to ticket history");
-    expect(slackSource).toContain("could not be saved to ticket history");
+    expect(suggestSource).not.toContain('.from("ai_suggestions").insert');
+    expect(suggestSource).toContain("beforeProviderAttempt");
+    expect(serviceSource).toContain("reserveRequest");
+    expect(serviceSource).toContain("checkpointProviderAttempt");
+    expect(serviceSource).toContain("completeRequest");
+    expect(webSource).toContain("IDEMPOTENCY_KEY_HEADER");
+    expect(slackSource).toContain("buildSlackAiSuggestionIdempotencyKey");
   });
 
   it("keeps the expanded browser panel inside narrow ticket layouts", () => {

@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import {
+  AiSuggestionInProgressError,
+  AiSuggestionOutcomeUnknownError,
   AiSuggestionRateLimitError,
   AiSuggestionTicketNotFoundError,
   AiSuggestionUnavailableError,
@@ -26,7 +28,10 @@ const TICKET_ID = "22222222-2222-4222-8222-222222222222";
 function request() {
   return new NextRequest("http://localhost/api/ai/suggest", {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: {
+      "content-type": "application/json",
+      "idempotency-key": "55555555-5555-4555-8555-555555555555",
+    },
     body: JSON.stringify({
       ticket_id: TICKET_ID,
       suggestion_type: "troubleshooting",
@@ -64,7 +69,28 @@ describe("AI suggestion HTTP boundary", () => {
       ticketId: TICKET_ID,
       suggestionType: "troubleshooting",
       actorId: USER_ID,
+      source: "web",
+      idempotencyKey: "55555555-5555-4555-8555-555555555555",
     });
+  });
+
+  it("requires a bounded idempotency key before service execution", async () => {
+    const response = await POST(
+      new NextRequest("http://localhost/api/ai/suggest", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          ticket_id: TICKET_ID,
+          suggestion_type: "summary",
+        }),
+      })
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: "A valid Idempotency-Key header is required",
+    });
+    expect(requestAiSuggestionMock).not.toHaveBeenCalled();
   });
 
   it("rejects external users before paid service execution", async () => {
@@ -115,5 +141,21 @@ describe("AI suggestion HTTP boundary", () => {
     expect(await unavailable.json()).toEqual({
       error: "Ripple Assist is temporarily unavailable. Please retry.",
     });
+  });
+
+  it.each([
+    [new AiSuggestionInProgressError(false), "AI_REQUEST_IN_PROGRESS"],
+    [new AiSuggestionInProgressError(true), "AI_PROVIDER_RECONCILING"],
+    [new AiSuggestionOutcomeUnknownError(), "AI_OUTCOME_UNKNOWN"],
+  ])("returns replay guidance for unsettled requests", async (error, code) => {
+    requestAiSuggestionMock.mockRejectedValueOnce(error);
+
+    const response = await POST(request());
+    const body = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(response.headers.get("retry-after")).toBe("5");
+    expect(body).toMatchObject({ code, error: error.message });
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
   });
 });

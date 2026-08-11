@@ -18,7 +18,8 @@ This file is the **single source of truth for project context** — read it befo
 
 **Status** — Phase 1–4 foundation is present; PRD v1.1 gap closure and security
 containment are active on `codex/prd-v1-1-gap-closure`. Migrations 001–050 are
-deployed and live-verified. `main` is live on Vercel.
+deployed and live-verified; migration 051 is the current migration-first
+deployment gate. `main` is live on Vercel.
 
 ---
 
@@ -81,7 +82,9 @@ deployed and live-verified. `main` is live on Vercel.
 │   │   │   └── handlers/                # action + view submission handlers
 │   │   ├── ai/
 │   │   │   ├── prompt.ts                # ⭐ System prompts (safety rules embedded)
-│   │   │   └── suggest.ts               # OpenAI-compatible client wrapper
+│   │   │   ├── suggest.ts               # OpenAI-compatible client wrapper
+│   │   │   ├── service.ts               # Paid-call quota/replay orchestration
+│   │   │   └── idempotency.ts           # Durable AI request receipt commands
 │   │   ├── tickets/
 │   │   │   └── outbox.ts                # ⭐ Durable ticket delivery worker
 │   │   ├── files/
@@ -105,7 +108,7 @@ deployed and live-verified. `main` is live on Vercel.
 │   │   ├── ticket.ts                    # ⭐ All domain enums + labels
 │   │   └── spare-parts.ts               # ⭐ Spare parts + field service enums
 │   └── middleware.ts                    # ⭐ Route guard + session refresh
-├── supabase/migrations/                 # 001–050, apply in order
+├── supabase/migrations/                 # 001–051, apply in order
 ├── plans/                               # Architecture + phase planning docs
 │   ├── architecture.md
 │   ├── phase2-customer-auth-and-user-management.md
@@ -123,8 +126,8 @@ deployed and live-verified. `main` is live on Vercel.
 - Ticket creation flow → `src/app/api/tickets/route.ts` (POST), `src/app/(public)/submit/page.tsx`, `src/app/(auth)/tickets/create-ticket-modal.tsx`
 - Ticket detail UI → `src/app/(auth)/tickets/[ticketId]/page.tsx` (server) + `ticket-actions-panel.tsx` (client)
 - Slack ticket creation → `src/app/api/slack/command/ticket/route.ts` + `src/lib/slack/blocks/ticket-form.ts`
-- AI assist → `src/app/api/ai/suggest/route.ts` + `src/lib/ai/suggest.ts`
-- DB schema → `supabase/migrations/001_*.sql` … `050_durable_slack_provider_attempts.sql`
+- AI assist → `src/app/api/ai/suggest/route.ts` + `src/lib/ai/service.ts` + `src/lib/ai/suggest.ts`
+- DB schema → `supabase/migrations/001_*.sql` … `051_replay_safe_ai_suggestions.sql`
 
 ---
 
@@ -162,8 +165,9 @@ const isInternal = role ? INTERNAL_ROLES.includes(role) : email ? isInternalEmai
 
 ## 5. Database Schema (Supabase)
 
-50 migrations, to be applied in order. Migrations 001–050 are confirmed
-applied and live-verified as of 2026-08-11. Key tables:
+51 migrations, to be applied in order. Migrations 001–050 are confirmed
+applied and live-verified as of 2026-08-11; migration 051 awaits application
+and live verification. Key tables:
 
 | Table | Purpose | Notes |
 |---|---|---|
@@ -178,7 +182,8 @@ applied and live-verified as of 2026-08-11. Key tables:
 | `ticket_comments` | Discussion, `visibility: customer\|internal` | `is_automated`; only human internal-authored customer-visible messages satisfy First Response |
 | `ticket_attachments` | File refs (storage_path) | Bucket `ripple-attachments`, 50MB cap; direct authenticated bucket access is removed by migration 027 and app routes mediate objects. Migration 044 adds bounded metadata/path constraints and atomic metadata plus timeline creation; its 130-assertion live matrix is green |
 | `ticket_events` | Audit log | `actor_id`, `event_type`, `old_value`/`new_value` |
-| `ai_suggestions` | Ripple Assist outputs | `model_name`, `confidence_level`, accept/dismiss feedback |
+| `ai_suggestions` | Ripple Assist outputs | `model_name`, `confidence_level`, accept/dismiss feedback; migration 051 moves creation behind an atomic completion receipt |
+| `ai_suggestion_requests` | Service-only paid-AI replay ledger | Migration 051 reserves one web/Slack request key, checkpoints before provider I/O, returns the first durable result for exact retries, rejects altered reuse, and leaves ambiguous provider outcomes fail-closed; deployment/live verification are pending |
 | `slack_channels` / `slack_messages` | Site ↔ Slack channel map, message tracking | |
 | `integration_outbox` | Durable external delivery | Unique event keys, bounded leases, exponential backoff, delivery evidence, and dead-letter retention for ticket notifications and customer-visible Slack comment replies. Migration 050 checkpoints the exact Slack provider-write boundary under the active lease; retries reconcile bounded message metadata and fail closed when metadata visibility, history access, or a complete result window cannot be proven |
 | `request_rate_limits` | Opaque distributed boundary counters | Migration 046 adds service-role-only atomic consumption, bounded inputs/counts, indexed expiry, and opportunistic retention; site validation, anonymous ticket creation, guest attachment upload, public ticket view, and paid Ripple Assist actor quotas use distinct buckets, and the migration's 77-assertion live matrix is green |
@@ -288,7 +293,7 @@ if ("error" in auth) return NextResponse.json({ error: auth.error }, { status: a
 npm install
 cp .env.local.example .env.local   # fill in real values
 # Run migrations in Supabase SQL editor (or `supabase db push` if using CLI):
-#   001 → 050 in order
+#   001 → 051 in order
 # Enable pgvector: CREATE EXTENSION IF NOT EXISTS vector;
 npm run dev
 ```
@@ -298,7 +303,7 @@ npm run dev
 - `npm run build` — production build
 - `npm run start` — production server
 - `npm run lint` — direct ESLint CLI across the repository; warnings fail the gate
-- `npm test` — Vitest unit/contract suite (1,015 tests)
+- `npm test` — Vitest unit/contract suite (1,045 tests)
 - `npm run test:e2e` — 40-check production HTTP smoke plus optional credentialed Playwright/API/RLS matrix; requires a successful build
 - `npm run test:e2e:credentialed` — real six-account/two-tenant matrix; set `RIPPLE_E2E_FIXTURES_FILE`
 - `npm run test:e2e:install-browser` — install the pinned Chromium runtime

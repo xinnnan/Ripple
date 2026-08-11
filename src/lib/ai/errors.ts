@@ -29,3 +29,26 @@ export class AiSuggestionTicketNotFoundError extends Error {
     this.name = "AiSuggestionTicketNotFoundError";
   }
 }
+
+export class AiSuggestionInProgressError extends Error {
+  readonly providerAttempted: boolean;
+
+  constructor(providerAttempted: boolean) {
+    super(
+      providerAttempted
+        ? "This Ripple Assist request crossed the provider boundary and its result is still being reconciled. Retry with the same request key; do not submit a duplicate automatically."
+        : "This Ripple Assist request is already in progress. Retry with the same request key shortly."
+    );
+    this.name = "AiSuggestionInProgressError";
+    this.providerAttempted = providerAttempted;
+  }
+}
+
+export class AiSuggestionOutcomeUnknownError extends Error {
+  constructor() {
+    super(
+      "Ripple Assist may have completed the provider request, but its durable receipt is not yet available. Retry with the same request key; do not submit a duplicate automatically."
+    );
+    this.name = "AiSuggestionOutcomeUnknownError";
+  }
+}

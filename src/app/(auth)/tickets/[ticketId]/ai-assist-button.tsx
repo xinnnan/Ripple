@@ -1,11 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   clientMutationErrorMessage,
   ExpectedClientMutationError,
   readClientJsonResponse,
 } from "@/lib/http/client-mutation";
+import {
+  generateIdempotencyKey,
+  IDEMPOTENCY_KEY_HEADER,
+} from "@/lib/idempotency";
 
 interface AIAssistButtonProps {
   ticketId: string;
@@ -18,10 +22,10 @@ export function AIAssistButton({ ticketId }: AIAssistButtonProps) {
     suggestion_type: string;
     model_name: string;
     confidence_level: string;
-    persistenceWarning: boolean;
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showPanel, setShowPanel] = useState(false);
+  const requestKeys = useRef(new Map<string, string>());
 
   async function requestSuggestion(type: string) {
     if (loading) return;
@@ -30,9 +34,16 @@ export function AIAssistButton({ ticketId }: AIAssistButtonProps) {
     setResult(null);
 
     try {
+      const requestIdentity = `${ticketId}:${type}`;
+      const idempotencyKey =
+        requestKeys.current.get(requestIdentity) ?? generateIdempotencyKey();
+      requestKeys.current.set(requestIdentity, idempotencyKey);
       const res = await fetch("/api/ai/suggest", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          [IDEMPOTENCY_KEY_HEADER]: idempotencyKey,
+        },
         body: JSON.stringify({
           ticket_id: ticketId,
           suggestion_type: type,
@@ -65,10 +76,8 @@ export function AIAssistButton({ ticketId }: AIAssistButtonProps) {
         suggestion_type: data.suggestion_type,
         model_name: data.model_name,
         confidence_level: data.confidence_level,
-        persistenceWarning:
-          "_persistence_warning" in data &&
-          data._persistence_warning === true,
       });
+      requestKeys.current.delete(requestIdentity);
     } catch (err) {
       setError(
         clientMutationErrorMessage(
@@ -147,15 +156,6 @@ export function AIAssistButton({ ticketId }: AIAssistButtonProps) {
 
           {result && (
             <div className="border border-blue-200 rounded-lg p-4 bg-white">
-              {result.persistenceWarning && (
-                <p
-                  role="status"
-                  className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800"
-                >
-                  This result could not be saved to ticket history. Copy it
-                  before leaving this page.
-                </p>
-              )}
               <div className="flex items-center gap-2 mb-2">
                 <span className="text-xs font-medium text-blue-700">
                   {result.suggestion_type}

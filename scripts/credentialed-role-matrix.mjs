@@ -795,6 +795,52 @@ async function runDirectRlsMatrix(fixture) {
       }),
       "admin direct rate-limit command denied"
     );
+    await expectDirectMutationDenied(
+      engineer
+        .from("ai_suggestion_requests")
+        .select("source")
+        .limit(1),
+      "engineer direct AI request-ledger read denied"
+    );
+    const deniedAiRequestKey = `credentialed-ai-${randomUUID()}`;
+    const deniedAiIdentity = {
+      p_source: "web",
+      p_idempotency_key: deniedAiRequestKey,
+      p_ticket_id: tenantA.activeTicketId,
+      p_actor_id: sessions.engineer.userId,
+      p_suggestion_type: "summary",
+    };
+    await expectDirectMutationDenied(
+      engineer.rpc("reserve_ai_suggestion_request", deniedAiIdentity),
+      "engineer direct AI request reservation denied"
+    );
+    await expectDirectMutationDenied(
+      engineer.rpc("cancel_ai_suggestion_request", deniedAiIdentity),
+      "engineer direct AI request cancellation denied"
+    );
+    await expectDirectMutationDenied(
+      engineer.rpc(
+        "checkpoint_ai_suggestion_provider_attempt",
+        deniedAiIdentity
+      ),
+      "engineer direct AI provider checkpoint denied"
+    );
+    await expectDirectMutationDenied(
+      engineer.rpc("complete_ai_suggestion_request_atomic", {
+        p_input: {
+          source: "web",
+          idempotency_key: deniedAiRequestKey,
+          ticket_id: tenantA.activeTicketId,
+          actor_id: sessions.engineer.userId,
+          suggestion_type: "summary",
+          model_name: "credentialed-denial-probe",
+          prompt_version: "v1",
+          output_text: "This row must never be created.",
+          confidence_level: "low",
+        },
+      }),
+      "engineer direct AI suggestion completion denied"
+    );
 
     await expectDirectTicket(
       customerA,

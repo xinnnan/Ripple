@@ -2,10 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { SUGGESTION_TYPES } from "@/lib/ai/suggest";
 import { requestAiSuggestion } from "@/lib/ai/service";
 import {
+  AiSuggestionInProgressError,
+  AiSuggestionOutcomeUnknownError,
   AiSuggestionRateLimitError,
   AiSuggestionTicketNotFoundError,
   AiSuggestionUnavailableError,
 } from "@/lib/ai/errors";
+import {
+  AI_SUGGESTION_IDEMPOTENCY_KEY_HEADER,
+  normalizeAiSuggestionIdempotencyKey,
+} from "@/lib/ai/idempotency";
 import { getAuthUser } from "@/lib/supabase/auth-helpers";
 import { z } from "zod";
 
@@ -57,11 +63,22 @@ export async function POST(request: NextRequest) {
       return aiJson({ error: "Invalid JSON body" }, { status: 400 });
     }
     const data = suggestSchema.parse(body);
+    const idempotencyKey = normalizeAiSuggestionIdempotencyKey(
+      request.headers.get(AI_SUGGESTION_IDEMPOTENCY_KEY_HEADER)
+    );
+    if (!idempotencyKey) {
+      return aiJson(
+        { error: "A valid Idempotency-Key header is required" },
+        { status: 400 }
+      );
+    }
 
     const result = await requestAiSuggestion({
       ticketId: data.ticket_id,
       suggestionType: data.suggestion_type,
       actorId: auth.userId,
+      source: "web",
+      idempotencyKey,
     });
 
     return aiJson(result);
@@ -72,6 +89,26 @@ export async function POST(request: NextRequest) {
         {
           status: 429,
           headers: { "Retry-After": String(error.retryAfterSeconds) },
+        }
+      );
+    }
+    if (
+      error instanceof AiSuggestionInProgressError ||
+      error instanceof AiSuggestionOutcomeUnknownError
+    ) {
+      return aiJson(
+        {
+          error: error.message,
+          code:
+            error instanceof AiSuggestionOutcomeUnknownError
+              ? "AI_OUTCOME_UNKNOWN"
+              : error.providerAttempted
+              ? "AI_PROVIDER_RECONCILING"
+              : "AI_REQUEST_IN_PROGRESS",
+        },
+        {
+          status: 409,
+          headers: { "Retry-After": "5" },
         }
       );
     }

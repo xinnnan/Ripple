@@ -5,8 +5,9 @@
 // (verified 2026-07-14: the configured MINIMAX_API_KEY returns
 // 401 invalid api key, see AGENTS.md §9). In that case we fall
 // back to a structured mock so the rest of the system keeps working —
-// engineers still get a row in the AI panel, the audit trail still
-// records the call, and the UI can mark it as "AI offline".
+// engineers still receive a clearly labelled offline result. Persistence and
+// replay settlement are owned by the application service so provider I/O is
+// checkpointed before the paid boundary and completed atomically afterward.
 //
 // The provider is pluggable: change MINIMAX_BASE_URL + MINIMAX_MODEL
 // in .env to switch (e.g. to OpenAI, Zhipu, or your own gateway).
@@ -52,7 +53,11 @@ function getAiClient(): OpenAI | null {
     apiKey: key,
     baseURL: process.env.MINIMAX_BASE_URL || "https://api.minimax.chat/v1/",
     timeout: 30_000,
-    maxRetries: 1,
+    // Provider idempotency has not been verified for the configured
+    // OpenAI-compatible gateway. Automatic SDK retries could repeat an
+    // ambiguously successful paid request inside one application attempt, so
+    // the durable request ledger is the only retry authority.
+    maxRetries: 0,
   });
   return aiClient;
 }
@@ -91,8 +96,10 @@ export interface SuggestionResult {
   _mock?: boolean;
   /** Reason for the mock fallback (no_key, auth_error, etc.). */
   _mock_reason?: "no_api_key" | "auth_error" | "provider_error";
-  /** The provider result is usable, but its history row could not be saved. */
-  _persistence_warning?: true;
+}
+
+export interface SuggestionGenerationOptions {
+  beforeProviderAttempt?: () => Promise<void>;
 }
 
 function firstRelationName(
@@ -140,7 +147,7 @@ function providerDiagnostic(error: unknown): Record<string, unknown> {
 export async function generateSuggestion(
   ticketId: string,
   suggestionType: SuggestionType,
-  userId: string
+  options: SuggestionGenerationOptions = {}
 ): Promise<SuggestionResult> {
   const supabase = createAdminClient();
 
@@ -224,6 +231,11 @@ export async function generateSuggestion(
   if (!client) {
     mockReason = "no_api_key";
   } else {
+    // Persist the request boundary before starting provider network I/O. A
+    // checkpoint failure must propagate; treating it as a provider error and
+    // falling back to a mock would erase the evidence needed to prevent a
+    // paid-call replay.
+    await options.beforeProviderAttempt?.();
     try {
       const completion = await client.chat.completions.create({
         model,
@@ -268,40 +280,13 @@ export async function generateSuggestion(
   }
   outputText = outputText.slice(0, AI_OUTPUT_MAX_LENGTH);
 
-  // ---------------------------------------------------------------------
-  // 3. Save the suggestion (real or mock) to ai_suggestions for audit.
-  //    Mock rows are tagged with model_name prefixed "mock:" so the
-  //    audit page can filter them.
-  // ---------------------------------------------------------------------
-  const suggestionRow = {
-    ticket_id: ticketId,
+  return {
+    id: null,
+    output_text: outputText,
+    confidence_level: confidence,
     suggestion_type: suggestionType,
     model_name: mockReason ? `mock:${mockReason}` : model,
-    prompt_version: "v1",
-    output_text: outputText,
-    confidence_level: confidence,
-    created_by: userId,
-  };
-
-  const { data: suggestion, error } = await supabase
-    .from("ai_suggestions")
-    .insert(suggestionRow)
-    .select()
-    .single();
-
-  if (error)
-    console.error("[ai] suggestion history write failed:", {
-      code: error.code,
-    });
-
-  return {
-    id: suggestion?.id ?? null,
-    output_text: outputText,
-    confidence_level: confidence,
-    suggestion_type: suggestionType,
-    model_name: suggestionRow.model_name,
     ...(mockReason ? { _mock: true, _mock_reason: mockReason } : {}),
-    ...(error ? { _persistence_warning: true } : {}),
   };
 }
 
