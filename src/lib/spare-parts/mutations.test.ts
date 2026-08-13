@@ -3,14 +3,19 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   applySparePartRequestPatch,
   createSparePartRequestAtomic,
+  InvalidSparePartRequestReplayError,
   SparePartRequestMutationError,
 } from "./mutations";
 
 const REQUEST_ID = "11111111-1111-4111-8111-111111111111";
 const ACTOR_ID = "22222222-2222-4222-8222-222222222222";
 const ITEM_ID = "33333333-3333-4333-8333-333333333333";
+const IDEMPOTENCY_KEY = "spare-request-attempt-1234";
 
-function clientWithRpc(result: { data: unknown; error: null | { code?: string } }) {
+function clientWithRpc(result: {
+  data: unknown;
+  error: null | { code?: string; message?: string };
+}) {
   const rpc = vi.fn().mockResolvedValue(result);
   return {
     client: { rpc } as unknown as SupabaseClient,
@@ -45,14 +50,19 @@ describe("spare part request mutation contract", () => {
         actorId: ACTOR_ID,
         input,
         items,
+        idempotencyKey: IDEMPOTENCY_KEY,
       })
     ).resolves.toBe(REQUEST_ID);
 
-    expect(rpc).toHaveBeenCalledWith("create_spare_part_request_atomic", {
-      p_actor_id: ACTOR_ID,
-      p_input: input,
-      p_items: items,
-    });
+    expect(rpc).toHaveBeenCalledWith(
+      "create_spare_part_request_idempotent_atomic",
+      {
+        p_actor_id: ACTOR_ID,
+        p_input: input,
+        p_items: items,
+        p_idempotency_key: IDEMPOTENCY_KEY,
+      }
+    );
   });
 
   it("preserves creation error codes without exposing database messages", async () => {
@@ -69,6 +79,7 @@ describe("spare part request mutation contract", () => {
         priority: "normal",
       },
       items: [{ spare_part_id: ITEM_ID, quantity: 1 }],
+      idempotencyKey: IDEMPOTENCY_KEY,
     });
 
     await expect(operation).rejects.toMatchObject({
@@ -76,6 +87,32 @@ describe("spare part request mutation contract", () => {
       message: "Atomic spare part request creation failed",
       code: "22023",
     } satisfies Partial<SparePartRequestMutationError>);
+  });
+
+  it("maps altered idempotency-key reuse to a stable conflict", async () => {
+    const { client } = clientWithRpc({
+      data: null,
+      error: {
+        code: "22023",
+        message:
+          "Spare part request idempotency key was already used for different input",
+      },
+    });
+
+    const operation = createSparePartRequestAtomic({
+      supabase: client,
+      actorId: ACTOR_ID,
+      input: {
+        site_id: "44444444-4444-4444-8444-444444444444",
+        priority: "normal",
+      },
+      items: [{ spare_part_id: ITEM_ID, quantity: 1 }],
+      idempotencyKey: IDEMPOTENCY_KEY,
+    });
+
+    await expect(operation).rejects.toEqual(
+      new InvalidSparePartRequestReplayError()
+    );
   });
 
   it("sends header and fulfillment changes to one atomic command", async () => {

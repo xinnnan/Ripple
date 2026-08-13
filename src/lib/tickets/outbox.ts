@@ -18,6 +18,7 @@ export const TICKET_OUTBOX_EVENT_TYPES = [
   "ticket.slack_master_create",
   "ticket.email_confirmation",
   "ticket.slack_master_sync",
+  "ticket.slack_comment_reply",
   "ticket.slack_resolution_reply",
   "ticket.email_resolution",
 ] as const;
@@ -42,6 +43,7 @@ export interface IntegrationOutboxEvent {
   dead_lettered_at: string | null;
   last_error: string | null;
   delivery_result: Record<string, unknown>;
+  provider_attempted_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -78,7 +80,10 @@ const defaultDeliveryDependencies: TicketOutboxDeliveryDependencies = {
   sendTicketResolved,
 };
 
-function slackDecision(result: SyncResult): OutboxDeliveryDecision {
+function slackDecision(
+  result: SyncResult,
+  previousResult: Record<string, unknown> = {}
+): OutboxDeliveryDecision {
   if (result.ok) {
     return {
       delivered: true,
@@ -102,6 +107,11 @@ function slackDecision(result: SyncResult): OutboxDeliveryDecision {
     };
   }
 
+  const previousAttemptedAt = previousResult.attempted_at;
+  const attemptedAt =
+    result.providerAttemptedAt ??
+    (typeof previousAttemptedAt === "string" ? previousAttemptedAt : null);
+
   return {
     delivered: false,
     retryable: true,
@@ -110,8 +120,44 @@ function slackDecision(result: SyncResult): OutboxDeliveryDecision {
       provider: "slack",
       outcome: "failed",
       reason: result.reason ?? "unknown",
+      ...(attemptedAt ? { attempted_at: attemptedAt } : {}),
     },
   };
+}
+
+function slackReconciliationOptions(
+  event: IntegrationOutboxEvent
+): Pick<SyncOptions, "reconcileDelivery" | "reconcileFrom"> {
+  if (event.attempts <= 1) return {};
+  const previousAttempt =
+    event.provider_attempted_at ?? event.delivery_result.attempted_at;
+  if (typeof previousAttempt !== "string") return {};
+  return {
+    reconcileDelivery: true,
+    reconcileFrom: previousAttempt,
+  };
+}
+
+async function recordProviderAttempt(
+  supabase: SupabaseClient,
+  event: IntegrationOutboxEvent
+): Promise<string> {
+  const { data, error } = await supabase.rpc(
+    "record_integration_outbox_provider_attempt",
+    {
+      p_event_id: event.id,
+      p_lock_token: event.lock_token,
+    }
+  );
+  if (
+    error ||
+    typeof data !== "string" ||
+    !Number.isFinite(Date.parse(data))
+  ) {
+    throw new Error("Outbox provider-attempt checkpoint failed");
+  }
+  event.provider_attempted_at = data;
+  return data;
 }
 
 function emailDecision(result: SendResult): OutboxDeliveryDecision {
@@ -155,7 +201,9 @@ export async function deliverTicketOutboxEvent(
         await dependencies.postMasterMessage(ticket, {
           ...slackOptions,
           deliveryKey: event.id,
-        })
+          ...slackReconciliationOptions(event),
+        }),
+        event.delivery_result
       );
 
     case "ticket.email_confirmation": {
@@ -193,8 +241,37 @@ export async function deliverTicketOutboxEvent(
         await dependencies.updateMasterMessage(ticket, {
           ...slackOptions,
           deliveryKey: event.id,
-        })
+        }),
+        event.delivery_result
       );
+
+    case "ticket.slack_comment_reply": {
+      const messageText = event.payload.message_text;
+      if (
+        typeof messageText !== "string" ||
+        messageText.length < 1 ||
+        messageText.length > 12_000
+      ) {
+        return {
+          delivered: false,
+          retryable: false,
+          error: "Slack comment delivery payload is invalid",
+          result: {
+            provider: "slack",
+            outcome: "failed",
+            reason: "invalid_payload",
+          },
+        };
+      }
+      return slackDecision(
+        await dependencies.postMasterThreadReply(ticket, messageText, {
+          ...slackOptions,
+          deliveryKey: event.id,
+          ...slackReconciliationOptions(event),
+        }),
+        event.delivery_result
+      );
+    }
 
     case "ticket.slack_resolution_reply": {
       const summary =
@@ -207,8 +284,10 @@ export async function deliverTicketOutboxEvent(
           {
             ...slackOptions,
             deliveryKey: event.id,
+            ...slackReconciliationOptions(event),
           }
-        )
+        ),
+        event.delivery_result
       );
     }
 
@@ -378,7 +457,10 @@ export async function dispatchTicketOutbox(args: {
       const decision = await deliverTicketOutboxEvent(
         event,
         ticket,
-        args.slackOptions
+        {
+          ...args.slackOptions,
+          beforeProviderAttempt: () => recordProviderAttempt(supabase, event),
+        }
       );
       if (decision.delivered) {
         await markDelivered(supabase, event, decision.result);

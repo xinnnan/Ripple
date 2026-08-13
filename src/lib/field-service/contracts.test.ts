@@ -74,6 +74,30 @@ describe("field service HTTP contracts", () => {
     expect(invalidRole.success).toBe(false);
   });
 
+  it("rejects unknown create, update, and assignment fields", () => {
+    expect(
+      createFieldServiceOrderSchema.safeParse({
+        site_id: SITE_ID,
+        service_type: "maintenance",
+        title: "Maintain AMRs",
+        requested_by: ENGINEER_ID,
+      }).success
+    ).toBe(false);
+    expect(
+      createFieldServiceOrderSchema.safeParse({
+        site_id: SITE_ID,
+        service_type: "maintenance",
+        title: "Maintain AMRs",
+        engineers: [
+          { engineer_id: ENGINEER_ID, role: "lead", actor_id: SITE_ID },
+        ],
+      }).success
+    ).toBe(false);
+    expect(
+      updateFieldServiceOrderSchema.safeParse({ owner_id: ENGINEER_ID }).success
+    ).toBe(false);
+  });
+
   it("allows a partial DATE patch while the database validates final ordering", () => {
     expect(
       updateFieldServiceOrderSchema.parse({

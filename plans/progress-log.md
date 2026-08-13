@@ -7,18 +7,30 @@ meaningful change and before ending a work session. Newest entries go first.
 
 - **Branch:** `codex/prd-v1-1-gap-closure`
 - **Active phase:** Phase 0 — Containment and reproducible baseline
-- **Active work item:** apply and live-verify migration 047's replay-safe ticket
-  creation command before deploying its application caller; then resume the
-  remaining mutation-surface audit
-- **Last verified implementation commit:** `dc5f588` (`fix: make ticket creation replay safe`)
-- **Uncommitted work:** none expected after the documentation checkpoint;
-  verify with `git status` before resuming
-- **Deployment gate:** migrations 001–046 are confirmed applied. Migration 047
-  awaits application and must precede deployment of `dc5f588`. Migration 044
+- **Active work item:** deploy and live-verify migration 052 after closing the
+  direct self-service profile-write and missing-audit boundary
+- **Last verified checkpoint commit:** `5333814` (`fix: show truthful system readiness`)
+- **Uncommitted work:** migration 052, strict authenticated profile API,
+  atomic mutation wrapper, responsive/accessibility profile UI, tests, and
+  records; inspect `git status` before committing
+- **Deployment gate:** migrations 001–051 are confirmed applied and
+  live-verified. Migration 044
   passed a 130-assertion disposable live matrix with zero residue. Migration
   045 passed a 110-assertion live matrix with zero residue. Migration 046
-  passed a 77-assertion live matrix with zero residue. Production
-  `CRON_SECRET` remains unset in this workspace.
+  passed a 77-assertion live matrix with zero residue. Migration 047 passed a
+  42-assertion replay/concurrency/privilege live matrix with zero residue.
+  Migration 048 passed a 69-assertion replay/concurrency/cardinality/privilege
+  live matrix with zero database/Auth residue. Migration 049 passed a
+  134-assertion replay/concurrency/cardinality/constraint/privilege live matrix
+  with zero database/Auth residue.
+  Migration 050 passed a 27-assertion lease/concurrency/settlement/privilege
+  live matrix with zero database/Auth residue.
+  Migration 051 passed a 57-assertion actor/ticket/replay/concurrency/
+  settlement/cardinality/privilege live matrix with zero database/Auth residue
+  and no AI provider request.
+  Migration 052 is implementation-complete and awaits application plus a
+  disposable live verification matrix before its application code deploys.
+  Production `CRON_SECRET` remains unset in this workspace.
   Protected positive business probes for migrations 028–037 still require
   staging fixtures
 - **External validation gate:** populate the gitignored credential fixture with six
@@ -29,6 +41,11 @@ meaningful change and before ending a work session. Newest entries go first.
   protection; create a reviewer-protected `staging` environment with the
   `RIPPLE_E2E_FIXTURES_JSON` secret before manually enabling the credentialed
   matrix
+- **Slack deployment gate:** the reinstalled bot authenticated and exposed
+  `channels:history`, `groups:history`, and `metadata.message:read`. The live
+  database currently has zero linked Slack channels and zero recorded master
+  messages, so read-only history/thread reconciliation awaits the first real
+  target rather than posting a synthetic message to a customer channel
 - **Runtime verification debt:** when staging credentials become available,
   test request creation/fulfillment, field-service create/update, and team
   access positive/negative cases, including cross-site tickets, inactive
@@ -65,23 +82,38 @@ meaningful change and before ending a work session. Newest entries go first.
   reverified at 1280×720 and 390×844 after P0-BJ: the guest form retains its
   stable heading, labeled controls, Inter, clean console, and no horizontal
   overflow. No ticket was submitted; protected signed-in profile/site-option
-  visual coverage still depends on the credentialed fixture.
-- **Exact next local step:** apply migration 047, then verify function/table
-  shape, service-only privileges, first create, exact replay, changed-input
-  rejection, concurrent replay cardinality, single audit/event/outbox effects,
-  cascade cleanup, and zero residue. Configure `CRON_SECRET` separately before
-  production worker activation
+  visual coverage still depends on the credentialed fixture. The internal
+  ticket-detail Ripple Assist panel was reviewed at 1280×900 and 390×844 with
+  Inter, expanded/collapsed accessibility state, no horizontal overflow, and
+  zero console warnings/errors. A disposable engineer identity was fully
+  removed with zero profile/audit residue, and no AI provider request was made.
+  The new internal System Status page was reviewed through a disposable real
+  account at 1280×900 and 390×844: database/Slack/outbox/email/AI status is
+  secret-safe, Inter is applied, there is no horizontal overflow, primary
+  controls meet a 44-pixel target, customer middleware denial/navigation
+  hiding is effective, and the console remained clean. The disposable Auth
+  identity and profile were fully removed.
+  The authenticated Profile page was also reviewed at 1280×900 and 390×844
+  through a disposable customer account: Inter, responsive fit, long-email
+  wrapping, 44-pixel controls, edit/cancel, password visibility, accessible
+  local validation, and zero console warnings/errors are green. No profile or
+  password mutation was sent while migration 052 remained pending, and the
+  disposable Auth/profile rows were fully removed.
+- **Exact next local step:** apply migration 052, then run its disposable live
+  command/audit/privilege/concurrency/rollback matrix before deploying the
+  dependent application code
 - **Primary plan:** [`plans/prd-v1.1-gap-closure-plan.md`](./prd-v1.1-gap-closure-plan.md)
 
-## Overall project status — 2026-08-03
+## Overall project status — 2026-08-12
 
 - Ripple has a meaningful Phase 1–4 support-platform foundation, and Phase 0
-  containment is substantially implemented through migrations 001–046;
-  migration 047 is implemented locally and awaits application.
+  containment is substantially implemented through migration 052. Migrations
+  001–051 are deployed and live-verified; migration 052 awaits application and
+  live verification.
 - Against the full PRD v1.1 capability map, 17 domains remain
   **Partial** or **Unsafe/Partial** and seven remain **Absent**. No full PRD
   capability domain is yet honestly complete end to end.
-- The local deterministic baseline is green at 944 unit/contract tests, 40
+- The local deterministic baseline is green at 1,084 unit/contract tests, 41
   production HTTP smoke checks, a production build, zero-warning lint, and
   zero known dependency vulnerabilities.
 - Phase 0 cannot be declared exited until the protected six-account/two-tenant
@@ -93,6 +125,653 @@ meaningful change and before ending a work session. Newest entries go first.
   queues/routing, business-calendar SLA clocks, remote support, appointments,
   assets/entitlements, search/knowledge, i18n, versioned external APIs, and
   production SRE/recovery evidence.
+
+## Session record — 2026-08-12 (P0-BY / atomic self-service profile)
+
+### Objective
+
+Close the remaining direct authenticated `users` write path and make supported
+self-service profile changes transactionally auditable without regressing the
+password flow or responsive Profile experience.
+
+### Implementation
+
+- Added migration 052 with a service-role-only `update_own_profile` command.
+  The command normalizes and bounds name/phone, locks and revalidates the active
+  actor row, preserves no-op timestamps/evidence, and commits one audit row per
+  changed field in the same transaction.
+- Removed the legacy self-update RLS policy and the authenticated
+  name/phone/avatar column grant. The product has no avatar-editing workflow,
+  so that unsupported write surface is no longer retained.
+- Added strict `PATCH /api/profile`, deriving actor identity solely from the
+  authenticated session and returning bounded private/no-store errors. The
+  shared RPC wrapper validates the minimal database receipt before returning it
+  to the browser.
+- Routed the Profile form through the new API and rebuilt both profile/password
+  sections with complete cross-form mutation locking, accessible live status,
+  password visibility/guidance, responsive stacking, long-identity wrapping,
+  and 44-pixel controls.
+- Added 19 route, wrapper, migration, direct-write, UI, and normalization
+  contracts. Production smoke now denies unauthenticated profile PATCH.
+- During SQL review, removed invalid schema qualification from `COALESCE` and
+  `NULLIF` and added a migration regression assertion for the migration-037
+  runtime failure class before deployment.
+
+### Browser verification
+
+- A disposable customer account exercised read-only desktop 1280×900 and
+  mobile 390×844 Profile flows. Edit/cancel, password visibility, mismatched-
+  password validation, Inter, no-overflow behavior, long-email wrapping, and
+  minimum control targets passed with zero console warnings/errors.
+- No profile or password write was sent because migration 052 is still the
+  migration-first gate. The disposable Auth identity and profile were fully
+  deleted with no retained test row.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| Focused profile/API/migration/boundary tests | Passed; 35 assertions |
+| `npm ci` | Passed from lockfile; install reported 0 vulnerabilities |
+| `npm test` | Passed; 140 files, 1,084 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build and type check |
+| `npm run test:e2e` | Passed; all 41 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+
+### Result
+
+P0-BY is implementation-complete and migration-first. Apply migration 052 and
+run its disposable command/audit/privilege/concurrency/rollback matrix before
+deploying the dependent application code.
+
+## Session record — 2026-08-12 (P0-BX / truthful system readiness)
+
+### Objective
+
+Replace the static Settings page's unconditional configured claims and fake
+masked credentials with a useful, secret-safe operational status surface.
+
+### Implementation
+
+- Made `/settings` an internal-only System Status surface at navigation,
+  middleware, and server-page authorization boundaries. Customer and customer-
+  manager callers are redirected before the page renders.
+- Reused the production readiness contract for database, Slack, durable outbox
+  recovery, and email; added bounded MiniMax key/base-URL/model validation as
+  an optional AI status without making AI a core traffic-admission dependency.
+- Removed all fake masked values and `.env.local` claims. The page now explains
+  what each shape check proves, what it does not prove, and never returns
+  environment values. Admin guidance links to site-channel management;
+  engineers receive credential-safe escalation guidance.
+- Rebuilt the page for responsive cards, semantic regions, keyboard focus, and
+  44-pixel primary actions. Raised the shared mobile header, navigation, and
+  sign-out targets to the same minimum.
+- Added 20 readiness, page, shell, and middleware contracts, bringing the
+  deterministic suite to 137 files and 1,065 tests. The production smoke now
+  fixes AI to a deterministic disabled state and asserts it explicitly.
+
+### Browser verification
+
+- A disposable real Supabase account was created as admin for the protected
+  page, then changed to customer to prove direct `/settings` denial and absence
+  of the System Status navigation item. Both Auth and profile rows were deleted
+  afterward.
+- Desktop 1280×900 and mobile 390×844 rendering use Inter, have no horizontal
+  overflow, preserve the complete status/card/guidance content, and expose
+  44-pixel primary/touch targets. The mobile dialog locks body scroll and keeps
+  all navigation targets at least 44 pixels. Browser console warnings/errors:
+  zero.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| Focused readiness/page/shell/middleware tests | Passed; 46 assertions |
+| `npm ci` | Passed from lockfile; install reported 0 vulnerabilities |
+| `npm test` | Passed; 137 files, 1,065 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build and type check |
+| `npm run test:e2e` | Passed; all 40 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+
+### Result
+
+P0-BX is closed without a migration or external provider request. Settings is
+now truthful and operationally useful for internal users; notification/user
+preferences remain a separate future capability.
+
+## Session record — 2026-08-12 (migration 051 live verification)
+
+### Objective
+
+Verify the deployed replay-safe Ripple Assist database boundary without making
+a paid AI provider request.
+
+### Evidence
+
+- A disposable unprivileged Auth/profile identity first proved that customer
+  actors cannot reserve AI work, then was elevated only inside the isolated
+  fixture to exercise the active-engineer command path against one existing
+  ticket foreign-key target.
+- Anonymous and authenticated API roles could neither read/insert the forced-
+  RLS ledger nor execute reservation, cancellation, checkpoint, or completion
+  commands directly.
+- Exact reservation replay returned the existing in-progress state; changed
+  task reuse failed. Twelve concurrent reservations created one ledger row and
+  returned one first reservation plus eleven existing-state receipts.
+- Pre-provider cancellation removed only its safe reservation and replayed as
+  a no-op. Altered checkpoint identity returned no timestamp; 12 concurrent
+  exact checkpoints retained one server timestamp; checkpointed work could not
+  be cancelled and returned the fail-closed provider-attempted state.
+- Twelve concurrent completions created exactly one suggestion and bound one
+  atomic receipt. Exact reserve/completion retries returned that receipt;
+  altered output and completion without reservation failed with no extra row.
+  Mock-only completion retained no false provider-attempt evidence.
+- The first verifier attempt stopped before ledger/suggestion creation because
+  the signup mirror returned a provisional rather than active customer. Its
+  Auth deletion exposed an orphaned public profile, which was removed by exact
+  `r051-*` scope; the corrected cleanup now deletes both identity layers.
+- The final matrix passed **57 assertions** with zero ledger, suggestion,
+  public-profile, or Auth residue. No MiniMax/provider request ran.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| Migration 051 live matrix | Passed; 57 actor/ticket/replay/concurrency/settlement/cardinality/privilege/cleanup assertions |
+| Provider execution | Not invoked; database boundary only |
+| `npm ci` | Passed from lockfile; install reported 0 vulnerabilities |
+| `npm test` | Passed; 134 files, 1,045 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build and type check |
+| `npm run test:e2e` | Passed; all 40 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+
+### Result
+
+Migrations 001–051 are deployed and live-verified. Proceed to the static
+Settings integration-readiness UI gap, while retaining the protected
+six-account/two-tenant matrix and production provider/worker configuration as
+separate external gates.
+
+## Session record — 2026-08-11 (P0-BW / replay-safe Ripple Assist)
+
+### Objective
+
+Close the remaining paid-provider direct-write boundary without requiring the
+protected six-account staging fixture.
+
+### Implementation
+
+- Added migration 051 with a forced-RLS, service-only
+  `ai_suggestion_requests` ledger keyed by source and bounded idempotency key.
+  Reservation validates an active internal actor and existing ticket, returns
+  the first durable result for exact retries, serializes concurrent reuse, and
+  rejects altered ticket/actor/task reuse.
+- Added narrow reservation cancellation that succeeds only before provider
+  evidence, a pre-I/O provider-attempt checkpoint, and atomic suggestion plus
+  request-receipt completion. A checkpointed request without a completed
+  receipt remains fail-closed because provider spend/completion cannot be
+  disproved safely.
+- Browser Ripple Assist now retains one UUID request key per task until a
+  validated result returns. Slack derives a stable request key from the signed
+  modal view ID. Exact completed retries bypass both quota consumption and
+  provider execution.
+- Moved `ai_suggestions` persistence out of the provider wrapper and behind
+  the atomic completion command. Rate-limit, context-load, and mock-only
+  failures release only safe pre-provider reservations; post-checkpoint or
+  post-provider receipt failures return explicit reconciliation guidance.
+- Disabled automatic SDK retries because the configured OpenAI-compatible
+  provider's idempotency semantics are unverified; the durable request ledger
+  is the only retry authority at this paid, non-idempotent boundary.
+- Extended the protected credentialed matrix with direct ledger-read and all
+  four AI-command privilege-denial probes.
+- Added 30 unit/migration/route/service contracts, bringing the deterministic
+  suite to 134 files and 1,045 tests.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| Focused AI/Slack contracts | Passed; 46 assertions before full-suite integration |
+| `npm test` | Passed; 134 files, 1,045 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build and type check |
+| `npm run test:e2e` | Passed; all 40 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+
+### Result
+
+P0-BW is implementation-complete and migration-first. Apply migration 051
+before deploying the application code, then run the disposable replay/
+concurrency/settlement/privilege matrix. No live AI provider request was made
+during implementation or testing.
+
+## Session record — 2026-08-11 (migration 050 and Slack scope verification)
+
+### Objective
+
+Verify the deployed Slack provider-attempt checkpoint and the reinstalled
+bot's reconciliation permissions before resuming the mutation-surface audit.
+
+### Evidence
+
+- A disposable outbox event and authenticated Auth/profile identity were
+  created under an exact `r050_…` namespace. The event was claimed through the
+  production lease RPC and began with no provider-attempt evidence.
+- A wrong lock token returned no checkpoint and left the row unchanged. The
+  valid lease wrote a server timestamp; 12 concurrent valid checkpoint calls
+  all settled successfully without changing the processing lease.
+- Anonymous and authenticated clients could neither read the protected outbox
+  row nor execute the checkpoint RPC. The service role retained the intended
+  access.
+- Delivery acknowledgement retained the provider-attempt timestamp while
+  clearing the lease. The settled/stale token could not checkpoint again.
+- The final live matrix passed **27 assertions** and removed the exact outbox,
+  public profile, and Auth fixtures with zero residue.
+- A secret-free Slack `auth.test` audit confirmed authentication and the
+  granted `channels:history`, `groups:history`, and
+  `metadata.message:read` scopes after reinstall.
+- The live database contains zero `slack_channels` rows and zero recorded
+  master messages. History/thread API behavior therefore remains pending a real
+  linked site channel; no synthetic message was posted to an external channel.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| Migration 050 live matrix | Passed; 27 lease/concurrency/settlement/privilege/cleanup assertions |
+| Slack authentication/scopes | Passed; all three reconciliation scopes granted |
+| `npm ci` | Passed from the lockfile; 0 vulnerabilities reported by install |
+| `npm test` | Passed; 132 files, 1,015 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build and type check |
+| `npm run test:e2e` | Passed; all 40 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+
+### Result
+
+Migrations 001–050 are deployed and live-verified, and Slack reconciliation
+permissions are active. Resume the remaining mutation-surface inventory. When
+the first real site channel/master is linked, run the read-only history/thread
+metadata probe before treating provider reconciliation as fully exercised.
+
+## Session record — 2026-08-10 (P0-BV / ambiguous Slack delivery)
+
+### Objective
+
+Prevent duplicate Slack master cards and customer-visible thread replies when
+Slack accepts a post but the worker loses the provider response, cannot persist
+the local receipt, or dies between provider and database settlement.
+
+### Finding and implementation
+
+- The outbox already provided at-least-once leases and local event identity,
+  but `chat.postMessage` success and `slack_messages` receipt persistence were
+  separate failure domains. A retry with no local receipt posted again.
+- Migration 050 adds a service-only, lease-bound RPC that commits the exact
+  provider-attempt timestamp before Slack I/O. A stale worker cannot update the
+  checkpoint, and failure to commit it prevents the provider call.
+- Master cards and thread replies carry the outbox event ID in Slack message
+  metadata. Ambiguous retries first verify `metadata.message:read`, query a
+  narrow channel or thread window, restore the local receipt when found, and
+  only repost after a complete lookup proves absence. Missing scopes, history
+  errors, truncated pagination, invalid windows, and database lookup failures
+  all fail closed.
+- Provider and database diagnostics are reduced to bounded codes and generic
+  messages. Local receipt insertion handles a concurrent unique-key winner as
+  a successful deduplicated settlement.
+- Nineteen focused contracts cover scope evidence, master/thread lookup,
+  provider failure, truncated windows, database failures, receipt recovery,
+  checkpoint ordering/failure, attempt-time retention, retry decisions, and
+  migration privilege/lease text. The suite reaches 1,015 tests across 132
+  files.
+- Slack's current official documentation confirms bot-token support for
+  `conversations.replies`, `include_all_metadata`, and response scope evidence.
+  A read-only audit of the configured token confirmed authentication and
+  `channels:history`; `groups:history` and `metadata.message:read` still require
+  app configuration plus reinstall before live reconciliation can run.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| Focused Slack/outbox matrix | Passed; 31 checks |
+| `npm ci` | Passed from the lockfile; 0 vulnerabilities reported by install |
+| `npm test` | Passed; 132 files, 1,015 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build and type check |
+| `npm run test:e2e` | Passed; all 40 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+
+### Result and next gate
+
+P0-BV is locally complete and migration-first. Apply migration 050 before the
+application update, then run the disposable lease/privilege matrix. Add
+`groups:history` and `metadata.message:read`, reinstall the Slack app, and
+perform the read-only provider reconciliation check before enabling the worker
+in production.
+
+## Session record — 2026-08-10 (migration 049 live verification)
+
+### Objective
+
+Verify the deployed replay-safe spare-part request and field-service order
+commands against the real Supabase role, concurrency, integrity, and cleanup
+boundaries before resuming the mutation-surface audit.
+
+### Evidence
+
+- A disposable active customer, active site, active spare part, and real
+  authenticated internal Auth/profile identity were created under a unique
+  `r049_…` namespace.
+- Each service-only wrapper received 12 concurrent identical submissions plus
+  a later exact replay. Every call returned the same durable resource ID, with
+  exactly one parent, one item or engineer assignment, one replay receipt, and
+  one correctly attributed audit row.
+- Reusing either key with changed input failed with SQLSTATE `22023`. Invalid
+  keys, empty request items, reversed service dates, malformed ledger keys, and
+  non-object ledger snapshots failed without partial business or receipt rows.
+- Anonymous and authenticated clients could neither read the forced-RLS replay
+  ledgers nor execute either wrapper; the service role retained the intended
+  access.
+- The final disposable matrix passed **134 assertions** and removed all
+  database/Auth fixtures. An earlier diagnostic stopped before retaining the
+  successful request ID for cleanup; a reserved-namespace residue audit found
+  one exact spare-part fixture, removed that exact row, and confirmed zero
+  remaining `r049_…` customer/site/part/request/order/user residue.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| Migration 049 live matrix | Passed; 134 concurrency/replay/cardinality/constraint/privilege/cleanup assertions |
+| `npm ci` | Passed from the lockfile; 0 vulnerabilities reported by install |
+| `npm test` | Passed; 130 files, 996 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build and type check |
+| `npm run test:e2e` | Passed; all 40 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+
+### Result
+
+Migrations 001–049 are now confirmed applied and live-verified. The next local
+step is to resume the remaining mutation-surface inventory and close the
+highest-risk ambiguous-response or direct-write boundary that does not require
+the protected staging fixture.
+
+## Session record — 2026-08-09 (P0-BU / replay-safe service creation)
+
+### Objective
+
+Prevent duplicate procurement requests and service dispatches when an internal
+browser or API client retries after the atomic command committed but its HTTP
+response was lost.
+
+### Finding and implementation
+
+- Migrations 029 and 030 already commit each resource, its line items or
+  engineer assignments, sequence number, and audit evidence atomically. They
+  had no caller-stable replay identity, so an ambiguous response followed by a
+  retry could still commit a second complete business command.
+- Commit `3fa981d` adds migration 049 with forced-RLS, service-only replay
+  ledgers and transaction-scoped advisory locks for spare-part request and
+  field-service order creation. Exact input returns the first durable resource
+  ID; the same key with a changed actor, header, item, or assignment fails with
+  SQLSTATE `22023`. Immutable normalized request snapshots preserve replay
+  comparison even if the created operational resource is edited later.
+- Both internal create forms retain an opaque key only while their normalized
+  request body is unchanged. Both APIs validate and echo caller keys, generate
+  keys for legacy callers, map altered reuse to stable 409 responses, keep
+  successful/conflict responses private/no-store, preserve committed success
+  through hydration failure, and emit only bounded code/name diagnostics.
+- The shared opaque-key contract now serves ticket and operational workflows.
+  Spare-part and field-service root/child schemas reject unknown fields instead
+  of silently stripping caller-controlled attribution or future fields.
+- Twenty-four new/expanded migration, wrapper, API, schema, and browser-attempt
+  contracts bring the suite to 996 tests across 130 files.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| Focused replay-safety matrix | Passed; 66 selected checks |
+| `npm ci` | Passed from the lockfile; 0 vulnerabilities reported by install |
+| `npm test` | Passed; 130 files, 996 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build and type check |
+| `npm run test:e2e` | Passed; all 40 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+
+### Commit
+
+- Hash: `3fa981d`
+- Message: `fix: make service creation replay safe`
+
+### Next
+
+Apply migration 049, then run the disposable replay/concurrency/cardinality/
+privilege/constraint/cleanup matrix for both commands before deploying the
+application commit.
+
+## Session record — 2026-08-09 (migration 048 live verification)
+
+### Objective
+
+Verify the deployed replay-safe ticket-comment command and its durable Slack
+reply intent against the real Supabase boundary before resuming local work.
+
+### Evidence
+
+- A disposable active customer, site, engineer, ticket, and authenticated Auth
+  identity were created under a unique test prefix. The site deliberately had
+  no Slack channel, so no provider delivery could occur.
+- The service role reached the new ledger and RPC. Anonymous and authenticated
+  roles could neither read/write replay receipts nor execute the command.
+- Twelve concurrent exact submissions plus a later replay returned one comment
+  ID and committed exactly one comment, request receipt, audit row,
+  `comment_added` event, First Response event/timestamp, and
+  `ticket.slack_comment_reply` outbox row.
+- Changed-input key reuse failed with SQLSTATE `22023` without extra effects.
+  Unsupported fields and a missing ticket rolled back without receipts; the
+  outbox event-type and replay-key table constraints rejected invalid rows.
+- An exact internal-note replay produced one comment/audit/timeline record, no
+  customer-channel outbox row, and no duplicate First Response evidence.
+- The corrected matrix passed 69 assertions. Cleanup removed every disposable
+  replay receipt, outbox row, comment, event, audit row, ticket, public user,
+  site, customer, and Auth identity. A separate residue audit also confirmed
+  the interrupted first harness attempt left zero rows.
+
+### Result
+
+Migration 048 is applied and live-verified. Application commit `904fee0` is no
+longer blocked on its database prerequisite; production deployment remains a
+separate release action.
+
+### Next
+
+Resume the remaining mutation-surface audit and select the highest-risk
+unaudited command before feature work.
+
+## Session record — 2026-08-08 (P0-BT / replay-safe ticket comments)
+
+### Objective
+
+Prevent duplicate comments and First Response evidence after ambiguous web or
+Slack delivery, and move Slack customer-update replies onto the same durable
+outbox seam as the rest of the ticket workflow.
+
+### Finding and implementation
+
+- Migration 026 made one comment invocation atomic but had no caller-stable
+  request identity. A lost HTTP response or Slack view retry could create a
+  second comment, timeline event, audit row, and potentially misleading SLA
+  evidence.
+- Migration 048 adds a service-only `ticket_comment_requests` ledger and
+  row-serialized `record_ticket_comment_idempotent_atomic(jsonb)` wrapper.
+  Exact retries return the first comment, altered reuse fails closed, and the
+  original migration 026 command remains available for migration-first rollout.
+- Every customer-visible comment now enqueues one
+  `ticket.slack_comment_reply` event in the same transaction as the comment,
+  replay receipt, timeline, audit, and SLA milestone. Internal comments do not
+  enqueue customer-channel work; the worker rejects malformed payloads before
+  provider I/O.
+- Web comments retain an opaque attempt key while normalized body/visibility is
+  unchanged, echo it in private/no-store responses, and immediately drain the
+  durable event best-effort. Slack customer updates derive the key from the
+  signed submitted view ID and no longer perform a one-off thread post.
+- Slack ticket actions no longer run a post-commit ticket hydration query that
+  could make a committed command look failed. Ticket, resolution, and customer
+  update modal inputs are bounded at the Block Kit surface and revalidated on
+  submission with field-specific errors.
+- Sixteen new/expanded migration, wrapper, HTTP, client-attempt, outbox, Slack
+  behavior, form, and timezone-ownership contracts bring the suite to 972
+  tests across 127 files.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| Focused comment/Slack matrix | Passed; 43 selected checks |
+| `npm ci` | Passed from the lockfile; 0 vulnerabilities reported by install |
+| `npm test` | Passed; 127 files, 972 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build and type check |
+| `npm run test:e2e` | Passed; all 40 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+| Migration 048 live matrix | Passed 2026-08-09; 69 replay/concurrency/cardinality/privilege/cleanup assertions with zero database/Auth residue and no Slack provider target |
+
+### Commit
+
+- Hash: `904fee0`
+- Message: `fix: make ticket comments replay safe`
+
+### Next
+
+Resume the remaining mutation-surface audit; migration 048 is applied and its
+69-assertion live matrix is green.
+
+## Session record — 2026-08-08 (P0-BS / Ripple Assist boundary)
+
+### Objective
+
+Close the highest-risk remaining paid-provider boundary before continuing the
+mutation-surface audit, including serverless quota enforcement, outbound data
+minimization, prompt-injection containment, failure semantics, and responsive
+ticket-detail behavior.
+
+### Finding and implementation
+
+- Web and signed Slack Ripple Assist shared an application service, but its
+  quota was process-local. Parallel Vercel instances could therefore exceed
+  the intended paid-call limit. Both entry points now share a fast local guard
+  plus migration 046's durable per-actor Supabase bucket and fail closed before
+  provider I/O if distributed enforcement is unavailable.
+- Provider context previously hydrated `tickets.*`, nested comments, and every
+  comment without a bound. The query now uses explicit least-data projections,
+  excludes secure tokens, submitter PII, and internal summary fields, and sends
+  at most the newest 20 bounded comments plus a bounded description.
+- Ticket content is now serialized as escaped JSON inside an explicit untrusted
+  data delimiter. The system policy rejects ticket-supplied instructions,
+  role/tool/policy overrides, prompt or credential disclosure, and internal
+  comment exposure in customer-facing drafts.
+- Provider execution now has a 30-second timeout, one retry, bounded output,
+  safe code/status-only diagnostics, and stable missing/unavailable HTTP
+  outcomes. A provider result whose audit-history insert fails remains a
+  successful result with an explicit web/Slack persistence warning, avoiding a
+  paid-call retry caused by false 500 semantics.
+- In-app browser review exposed mobile header/panel overflow and a 1280-pixel
+  sidebar form overflow. The ticket detail grid and panel now fit both 390×844
+  and 1280×900, retain Inter, expose the expanded/busy state, and produce no
+  console warnings/errors. No provider request was made during the review.
+- Twelve new/expanded service, route, prompt, provider-integrity, persistence,
+  and responsive-layout contracts bring the suite to 956 tests across 124
+  files.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| Focused Ripple Assist contracts | Passed; 22 selected checks |
+| In-app browser E2E | Passed at 1280×900 and 390×844; no overflow or console findings; disposable identity left zero residue |
+| `npm ci` | Passed from the lockfile; 0 vulnerabilities reported by install |
+| `npm test` | Passed; 124 files, 956 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build and type check |
+| `npm run test:e2e` | Passed; all 40 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+
+### Commit
+
+- Hash: `fe2aa45`
+- Message: `fix: harden ripple assist boundary`
+
+### Next
+
+Resume the remaining mutation-surface audit. Provider configuration, the
+protected six-account/two-tenant matrix, and production `CRON_SECRET` remain
+external gates.
+
+## Session record — 2026-08-08 (P0-BR deployment / replay-safe creation)
+
+### Objective
+
+Verify the applied migration 047 against the committed replay-safety contract
+before treating the web and Slack application callers as deployable.
+
+### Live verification
+
+- Confirmed the replay ledger projection and idempotent RPC are live through
+  the service role and that invalid object input reaches database validation.
+- Created a uniquely marked disposable guest-web ticket, replayed it with a
+  different volatile secure-token input, and received the first committed
+  ticket ID, number, and secure token.
+- Reuse of the same source/key with changed business input failed with the
+  expected validation code. Twelve concurrent deliveries under a second key
+  all returned one durable receipt.
+- Two request keys produced exactly two tickets, two ledger rows, two creation
+  events, two audit rows, and two pending Slack-master outbox rows. Replays did
+  not duplicate any effect.
+- Anonymous and disposable authenticated sessions were denied RPC execution
+  and replay-ledger reads/writes. The temporary Auth/profile identity was fully
+  deleted after the probe.
+- Ticket deletion cascaded through timeline and replay rows; explicit audit and
+  outbox cleanup left zero test residue. The matrix passed 42 assertions.
+- The required fresh `npm ci` then surfaced two newly disclosed transitive
+  advisories: `js-yaml` below 4.3.1 through ESLint and `nanoid` below 3.3.17
+  through PostCSS. Compatible root overrides now pin those fixed versions; a
+  second locked install, dependency-tree check, and audit returned zero known
+  vulnerabilities.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| Migration 047 live matrix | Passed; 42 assertions, including 12-way concurrency and zero residue |
+| `npm ci` | Passed from the updated lockfile; fixed transitive versions installed |
+| `npm test` | Passed; 121 files, 944 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build and type check |
+| `npm run test:e2e` | Passed; all 40 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities after `js-yaml` and `nanoid` overrides |
+| `git diff --check` | Passed |
+
+### Next
+
+Resume the remaining mutation-surface audit. Production outbox recovery still
+requires a configured `CRON_SECRET`, and the protected six-account/two-tenant
+matrix remains an external staging gate.
 
 ## Session record — 2026-08-03 (P0-BR / replay-safe ticket creation)
 

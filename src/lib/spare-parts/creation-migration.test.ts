@@ -89,7 +89,7 @@ describe("migration 029 spare-part request creation integrity", () => {
   it("requires at least one unique item at the HTTP boundary", () => {
     expect(route).toContain(".min(1)");
     expect(route).toContain("Duplicate spare parts are not allowed");
-    expect(route).toContain("{ status: 201 }");
+    expect(route).toContain("status: 201");
     expect(route).toContain(
       "Request created; detail refresh is temporarily unavailable"
     );

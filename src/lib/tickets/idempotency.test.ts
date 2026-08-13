@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildSlackTicketCommentIdempotencyKey,
   buildSlackTicketIdempotencyKey,
   generateTicketIdempotencyKey,
   normalizeTicketIdempotencyKey,
@@ -36,5 +37,11 @@ describe("ticket creation idempotency keys", () => {
     expect(() => buildSlackTicketIdempotencyKey("bad view id")).toThrow(
       "Invalid Slack view identifier"
     );
+    expect(
+      buildSlackTicketCommentIdempotencyKey("V0123456789ABCDEF")
+    ).toBe("slack:comment-view:V0123456789ABCDEF");
+    expect(() =>
+      buildSlackTicketCommentIdempotencyKey("bad view id")
+    ).toThrow("Invalid Slack comment view identifier");
   });
 });

@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import type { SyncOptions } from "@/lib/slack/sync";
+import type { SyncOptions, SyncResult } from "@/lib/slack/sync";
 import {
   deliverTicketOutboxEvent,
   type IntegrationOutboxEvent,
@@ -12,7 +12,8 @@ const EVENT_ID = "11111111-1111-4111-8111-111111111111";
 const TICKET_ID = "22222222-2222-4222-8222-222222222222";
 
 function event(
-  eventType: IntegrationOutboxEvent["event_type"]
+  eventType: IntegrationOutboxEvent["event_type"],
+  payload: Record<string, unknown> = {}
 ): IntegrationOutboxEvent {
   return {
     id: EVENT_ID,
@@ -20,7 +21,7 @@ function event(
     aggregate_id: TICKET_ID,
     event_type: eventType,
     idempotency_key: `ticket:${TICKET_ID}:${eventType}`,
-    payload: {},
+    payload,
     status: "processing",
     attempts: 1,
     max_attempts: 5,
@@ -31,6 +32,7 @@ function event(
     dead_lettered_at: null,
     last_error: null,
     delivery_result: {},
+    provider_attempted_at: null,
     created_at: "2026-07-30T12:00:00.000Z",
     updated_at: "2026-07-30T12:00:00.000Z",
   };
@@ -73,8 +75,8 @@ function ticket(submitterEmail: string | null = "operator@example.com"):
 }
 
 function dependencies(overrides: Partial<{
-  master: { ok: boolean; reason?: "no_channel" | "slack_error"; error?: string };
-  thread: { ok: boolean; deduplicated?: boolean };
+  master: SyncResult;
+  thread: SyncResult;
 }> = {}) {
   return {
     postMasterMessage: vi.fn().mockResolvedValue({ ok: true }),
@@ -179,6 +181,91 @@ describe("ticket notification outbox delivery", () => {
     });
   });
 
+  it("retains the provider-attempt time needed for a safe retry", async () => {
+    const deps = dependencies({
+      master: {
+        ok: false,
+        reason: "database_error",
+        error: "receipt unavailable",
+        providerAttemptedAt: "2026-07-30T12:01:00.000Z",
+      },
+    });
+
+    await expect(
+      deliverTicketOutboxEvent(
+        event("ticket.slack_master_sync"),
+        ticket(),
+        {},
+        deps
+      )
+    ).resolves.toEqual({
+      delivered: false,
+      retryable: true,
+      error: "receipt unavailable",
+      result: {
+        provider: "slack",
+        outcome: "failed",
+        reason: "database_error",
+        attempted_at: "2026-07-30T12:01:00.000Z",
+      },
+    });
+  });
+
+  it("reconciles a retried Slack post before sending again", async () => {
+    const deps = dependencies();
+    const retried = event("ticket.slack_master_create");
+    retried.attempts = 2;
+    retried.delivery_result = {
+      provider: "slack",
+      outcome: "failed",
+      attempted_at: "2026-07-30T12:01:00.000Z",
+    };
+
+    await deliverTicketOutboxEvent(retried, ticket(), {}, deps);
+
+    expect(deps.postMasterMessage).toHaveBeenCalledWith(ticket(), {
+      deliveryKey: EVENT_ID,
+      reconcileDelivery: true,
+      reconcileFrom: "2026-07-30T12:01:00.000Z",
+    });
+  });
+
+  it("prefers the durable lease checkpoint for retry reconciliation", async () => {
+    const deps = dependencies();
+    const retried = event("ticket.slack_comment_reply", {
+      message_text: "Diagnostics are complete.",
+    });
+    retried.attempts = 2;
+    retried.provider_attempted_at = "2026-07-30T12:02:00.000Z";
+    retried.delivery_result = {
+      attempted_at: "2026-07-30T12:01:00.000Z",
+    };
+
+    await deliverTicketOutboxEvent(retried, ticket(), {}, deps);
+
+    expect(deps.postMasterThreadReply).toHaveBeenCalledWith(
+      ticket(),
+      "Diagnostics are complete.",
+      {
+        deliveryKey: EVENT_ID,
+        reconcileDelivery: true,
+        reconcileFrom: "2026-07-30T12:02:00.000Z",
+      }
+    );
+  });
+
+  it("retries directly when no prior attempt crossed the provider boundary", async () => {
+    const deps = dependencies();
+    const retried = event("ticket.slack_master_create");
+    retried.attempts = 2;
+
+    await deliverTicketOutboxEvent(retried, ticket(), {}, deps);
+
+    expect(deps.postMasterMessage).toHaveBeenCalledWith(ticket(), {
+      deliveryKey: EVENT_ID,
+    });
+  });
+
   it("propagates the outbox id to an idempotent Slack resolution reply", async () => {
     const deps = dependencies({ thread: { ok: true, deduplicated: true } });
     const slackOptions: SyncOptions = {
@@ -209,6 +296,55 @@ describe("ticket notification outbox delivery", () => {
         deliveryKey: EVENT_ID,
       }
     );
+  });
+
+  it("delivers a durable customer-visible comment reply with the event id", async () => {
+    const deps = dependencies();
+    const slackOptions: SyncOptions = {
+      channelId: "C123",
+      messageTs: "123.456",
+    };
+
+    await expect(
+      deliverTicketOutboxEvent(
+        event("ticket.slack_comment_reply", {
+          comment_id: "77777777-7777-4777-8777-777777777777",
+          message_text: "💬 Customer Update\n\nDiagnostics are complete.",
+        }),
+        ticket(),
+        slackOptions,
+        deps
+      )
+    ).resolves.toMatchObject({ delivered: true });
+
+    expect(deps.postMasterThreadReply).toHaveBeenCalledWith(
+      ticket(),
+      "💬 Customer Update\n\nDiagnostics are complete.",
+      { ...slackOptions, deliveryKey: EVENT_ID }
+    );
+  });
+
+  it("dead-letters malformed comment delivery payloads before Slack I/O", async () => {
+    const deps = dependencies();
+
+    await expect(
+      deliverTicketOutboxEvent(
+        event("ticket.slack_comment_reply", { message_text: "" }),
+        ticket(),
+        {},
+        deps
+      )
+    ).resolves.toEqual({
+      delivered: false,
+      retryable: false,
+      error: "Slack comment delivery payload is invalid",
+      result: {
+        provider: "slack",
+        outcome: "failed",
+        reason: "invalid_payload",
+      },
+    });
+    expect(deps.postMasterThreadReply).not.toHaveBeenCalled();
   });
 
   it("uses Resend's idempotency key for resolution email retries", async () => {
@@ -301,5 +437,33 @@ describe("migration 033 durable outbox contract", () => {
     );
     expect(webRoute).not.toContain("notifyTicketMutation");
     expect(slackActions).not.toContain("notifyTicketMutation");
+  });
+});
+
+describe("migration 050 Slack attempt checkpoint contract", () => {
+  const migration = readFileSync(
+    resolve(
+      process.cwd(),
+      "supabase/migrations/050_durable_slack_provider_attempts.sql"
+    ),
+    "utf8"
+  );
+
+  it("persists the attempt boundary only under the active lease", () => {
+    expect(migration).toMatch(/\bBEGIN;[\s\S]+\bCOMMIT;/);
+    expect(migration).toContain("ADD COLUMN provider_attempted_at timestamptz");
+    expect(migration).toContain(
+      "CREATE OR REPLACE FUNCTION public.record_integration_outbox_provider_attempt"
+    );
+    expect(migration).toContain("AND event.status = 'processing'");
+    expect(migration).toContain("AND event.lock_token = p_lock_token");
+    expect(migration).toContain("RETURN v_recorded_at");
+  });
+
+  it("keeps the checkpoint command service-only", () => {
+    expect(migration).toContain(
+      ") FROM PUBLIC, anon, authenticated;"
+    );
+    expect(migration).toContain(") TO service_role;");
   });
 });

@@ -15,26 +15,47 @@ export class FieldServiceOrderMutationError extends Error {
   }
 }
 
+export class InvalidFieldServiceOrderReplayError extends FieldServiceOrderMutationError {
+  constructor() {
+    super(
+      "This field-service order key was already used for different content.",
+      "22023"
+    );
+    this.name = "InvalidFieldServiceOrderReplayError";
+  }
+}
+
 /**
  * Create an order, its complete engineer assignment set, and its audit entry
- * in one database transaction owned by migration 030.
+ * in one database transaction owned by migration 030. Migration 049 adds
+ * caller-key serialization and an exact-replay receipt around that command.
  */
 export async function createFieldServiceOrderAtomic(args: {
   supabase: SupabaseClient;
   actorId: string;
   input: FieldServiceOrderCreateInput;
   engineers: FieldServiceEngineerInput[];
+  idempotencyKey: string;
 }): Promise<string> {
   const { data, error } = await args.supabase.rpc(
-    "create_field_service_order_atomic",
+    "create_field_service_order_idempotent_atomic",
     {
       p_actor_id: args.actorId,
       p_input: args.input,
       p_engineers: args.engineers,
+      p_idempotency_key: args.idempotencyKey,
     }
   );
 
   if (error || typeof data !== "string") {
+    if (
+      error?.code === "22023" &&
+      error.message?.includes(
+        "Field service order idempotency key was already used"
+      )
+    ) {
+      throw new InvalidFieldServiceOrderReplayError();
+    }
     throw new FieldServiceOrderMutationError(
       "Atomic field service order creation failed",
       error?.code

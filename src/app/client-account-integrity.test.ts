@@ -31,6 +31,15 @@ describe("browser account and ticket-intake integrity", () => {
     expect(profilePage).toContain("PASSWORD_UPDATE_ERROR_MESSAGE");
   });
 
+  it("routes profile writes through the authenticated atomic API boundary", () => {
+    expect(profilePage).toContain('fetch("/api/profile"');
+    expect(profilePage).toContain("assertClientMutationResponse");
+    expect(profilePage).toContain("clientMutationErrorMessage");
+    expect(profilePage).not.toMatch(
+      /\.from\(["']users["']\)[\s\S]{0,160}\.update\(/
+    );
+  });
+
   it("binds and bounds profile controls consistently", () => {
     for (const id of [
       "profile-full-name",
@@ -44,6 +53,11 @@ describe("browser account and ticket-intake integrity", () => {
     expect(profilePage).toContain('placeholder="At least 12 characters"');
     expect(profilePage).toContain("maxLength={1024}");
     expect(profilePage).not.toContain('placeholder="At least 6 characters"');
+    expect(profilePage).toContain('aria-pressed={showPasswords}');
+    expect(profilePage).toContain("min-h-11");
+    expect(profilePage).toContain(
+      'role={passwordMessage.type === "error" ? "alert" : "status"}'
+    );
   });
 
   it("blocks authenticated modal submission when site options are unavailable", () => {

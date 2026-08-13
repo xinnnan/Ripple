@@ -6,6 +6,7 @@ import { createFieldServiceOrderSchema } from "@/lib/field-service/contracts";
 import {
   createFieldServiceOrderAtomic,
   FieldServiceOrderMutationError,
+  InvalidFieldServiceOrderReplayError,
 } from "@/lib/field-service/mutations";
 import { fieldServiceOrderForExternal } from "@/lib/resource-visibility";
 import { z } from "zod";
@@ -14,6 +15,11 @@ import {
   INTERNAL_FIELD_SERVICE_ORDER_SELECT,
 } from "@/lib/resource-projections";
 import { parseFieldServiceOrderListFilters } from "@/lib/resource-list-filters";
+import {
+  generateIdempotencyKey,
+  IDEMPOTENCY_KEY_HEADER,
+  normalizeIdempotencyKey,
+} from "@/lib/idempotency";
 
 export const dynamic = "force-dynamic";
 
@@ -109,6 +115,22 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
     }
     const data = createFieldServiceOrderSchema.parse(body);
+    const suppliedIdempotencyKey = request.headers.get(
+      IDEMPOTENCY_KEY_HEADER
+    );
+    const idempotencyKey =
+      suppliedIdempotencyKey === null
+        ? generateIdempotencyKey()
+        : normalizeIdempotencyKey(suppliedIdempotencyKey);
+    if (!idempotencyKey) {
+      return NextResponse.json(
+        { error: "Invalid Idempotency-Key header" },
+        {
+          status: 400,
+          headers: { "Cache-Control": "private, no-store" },
+        }
+      );
+    }
 
     const { engineers, ...input } = data;
     const admin = createAdminClient();
@@ -120,8 +142,21 @@ export async function POST(request: NextRequest) {
         actorId: auth.userId,
         input,
         engineers,
+        idempotencyKey,
       });
     } catch (error) {
+      if (error instanceof InvalidFieldServiceOrderReplayError) {
+        return NextResponse.json(
+          { error: error.message },
+          {
+            status: 409,
+            headers: {
+              "Cache-Control": "private, no-store",
+              [IDEMPOTENCY_KEY_HEADER]: idempotencyKey,
+            },
+          }
+        );
+      }
       if (
         error instanceof FieldServiceOrderMutationError &&
         ["22003", "22007", "22008", "22023", "22P02", "23503", "23505", "23514"].includes(
@@ -142,7 +177,13 @@ export async function POST(request: NextRequest) {
           { status: 403 }
         );
       }
-      console.error("POST /api/field-service-orders command failed:", error);
+      console.error("POST /api/field-service-orders command failed:", {
+        name: error instanceof Error ? error.name : "UnknownError",
+        code:
+          error instanceof FieldServiceOrderMutationError
+            ? error.code
+            : undefined,
+      });
       return NextResponse.json(
         { error: "Failed to create field service order" },
         { status: 500 }
@@ -164,18 +205,35 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (error) {
-      console.error("POST /api/field-service-orders hydration failed:", error);
+      console.error("POST /api/field-service-orders hydration failed:", {
+        code: error.code,
+      });
       return NextResponse.json(
         {
           data: { id: createdOrderId },
           warning:
             "Service order created; detail refresh is temporarily unavailable",
         },
-        { status: 201 }
+        {
+          status: 201,
+          headers: {
+            "Cache-Control": "private, no-store",
+            [IDEMPOTENCY_KEY_HEADER]: idempotencyKey,
+          },
+        }
       );
     }
 
-    return NextResponse.json({ data: order }, { status: 201 });
+    return NextResponse.json(
+      { data: order },
+      {
+        status: 201,
+        headers: {
+          "Cache-Control": "private, no-store",
+          [IDEMPOTENCY_KEY_HEADER]: idempotencyKey,
+        },
+      }
+    );
   } catch (error) {
     if (error instanceof z.ZodError) {
       return NextResponse.json(
@@ -183,7 +241,9 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
-    console.error("Create FSO error:", error);
+    console.error("Create FSO error:", {
+      name: error instanceof Error ? error.name : "UnknownError",
+    });
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

@@ -13,6 +13,13 @@ const credentialedMatrix = readFileSync(
   join(process.cwd(), "scripts/credentialed-role-matrix.mjs"),
   "utf8"
 );
+const profileMigration = readFileSync(
+  join(
+    process.cwd(),
+    "supabase/migrations/052_atomic_self_service_profile.sql"
+  ),
+  "utf8"
+);
 
 const commandOwnedTables = [
   "customers",
@@ -61,13 +68,17 @@ describe("migration 045 direct-write boundary", () => {
     expect(migration).not.toMatch(/CREATE POLICY[\s\S]+FOR ALL/i);
   });
 
-  it("preserves only the safe self-service profile update columns", () => {
+  it("records and then closes the legacy self-service profile grant", () => {
     expect(migration).toMatch(
       /REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER\s+ON TABLE public\.users\s+FROM PUBLIC, anon, authenticated;/i
     );
     expect(migration).toMatch(
       /GRANT UPDATE \(full_name, phone, avatar_url\)\s+ON TABLE public\.users\s+TO authenticated;/i
     );
+    expect(profileMigration).toMatch(
+      /REVOKE UPDATE \(full_name, phone, avatar_url\)\s+ON TABLE public\.users\s+FROM authenticated;/i
+    );
+    expect(profileMigration).toContain("public.update_own_profile");
   });
 
   it("keeps all number sequences behind service commands", () => {

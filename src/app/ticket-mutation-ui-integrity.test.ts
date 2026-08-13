@@ -63,6 +63,8 @@ describe("ticket mutation UI integrity", () => {
     expect(actionsPanel).toContain('htmlFor="ticket-attachment-visibility"');
     expect(actionsPanel).toContain("TICKET_COMMENT_MAX_LENGTH");
     expect(actionsPanel).toContain("TICKET_SUMMARY_MAX_LENGTH");
+    expect(actionsPanel).toContain("commentAttemptRef");
+    expect(actionsPanel).toContain("TICKET_IDEMPOTENCY_KEY_HEADER");
   });
 
   it("validates AI response shape and exposes accessible request state", () => {

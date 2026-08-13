@@ -10,11 +10,21 @@ A Slack-native support portal for DropletAI Services. Centralises customer suppo
 - **Account Recovery** — Non-enumerating email recovery and one-time password reset flow.
 - **Responsive Support Experience** — Detailed support guidance, supplied industrial automation visuals, self-hosted Inter, and a role-aware mobile application drawer.
 - **Ripple Assist (AI)** — Internal troubleshooting copilot. **Sprint 2: gracefully falls back to mock output if the AI provider key is invalid/missing** (does not block core ticket flow).
+- **Replay-Safe Ripple Assist** — Web and signed Slack requests retain stable
+  request keys, checkpoint before paid provider I/O, and atomically persist the
+  first durable suggestion receipt; ambiguous provider outcomes fail closed.
 - **Spare Parts + Field Service** — Phase 3 modules: catalog, per-site inventory, request workflow, dispatch.
 - **Audit Log** — Cross-entity audit trail (`audit_logs` table) covering tickets, customers, sites, users, security events.
 - **Durable Ticket Notifications** — Transactional outbox, lease-based dispatch,
   exponential retry, dead-letter retention, and provider idempotency for ticket
-  creation/update/resolution notifications.
+  creation/update/resolution notifications. Ambiguous Slack posts reconcile
+  their outbox metadata before any retry can create a duplicate.
+- **Replay-Safe Ticket Comments** — Web and Slack comment retries use durable
+  request receipts; customer-visible Slack replies enter the notification
+  outbox in the same transaction as the comment and SLA evidence.
+- **Replay-Safe Service Creation** — Spare-part requests and field-service
+  orders retain one browser attempt key; exact concurrent retries return the
+  first resource and altered key reuse fails closed.
 - **Role-Based Access** — 4 roles (admin / engineer / customer_manager / customer) consolidated in `017_consolidate_roles.sql`.
 - **Tenant-Contained Site Access** — Admin membership add/remove commands lock,
   validate, and audit customer/site authorization atomically.
@@ -23,6 +33,9 @@ A Slack-native support portal for DropletAI Services. Centralises customer suppo
 - **Atomic User Authorization Changes** — Admin profile, same-family role,
   status, and deactivation changes are serialized, invariant-checked, and
   audited in their database transaction.
+- **Atomic Self-Service Profiles** — Name and phone changes use a row-locked,
+  service-only command with exact per-field audit evidence; browser roles no
+  longer receive a direct profile-write grant.
 - **Secure User Provisioning** — Public signup metadata cannot mint privileged
   roles; admin and tenant-bound team creation finalize profile, membership, and
   audit state through guarded database commands.
@@ -49,14 +62,14 @@ A Slack-native support portal for DropletAI Services. Centralises customer suppo
 | Layer | Tool |
 |-------|------|
 | Frontend | Next.js 15.5.22 (App Router) + React 19 + TypeScript + Tailwind CSS v4 + self-hosted Inter |
-| Database | Supabase Postgres (47 migrations, see `supabase/migrations/`) |
+| Database | Supabase Postgres (52 migrations, see `supabase/migrations/`) |
 | Auth | Supabase Auth (email + password + recovery) + new `sb_publishable_` / `sb_secret_` key format |
 | Storage | Supabase Storage — bucket `ripple-attachments`, **50 MB cap per file** |
 | Slack | `@slack/bolt` + `@slack/web-api` (runs inside Next.js API routes, no separate process) |
 | AI | **MiniMax AI** (OpenAI-compatible) — was OpenAI → Zhipu → MiniMax. **See "AI provider" section below.** |
 | Email | Resend (transactional: ticket confirmation, resolution notice) |
 | Validation | Zod (all API request bodies) |
-| Testing | Vitest (944 unit/contract tests) + 40-check production HTTP smoke + credentialed Playwright/API/RLS matrix |
+| Testing | Vitest (1,084 unit/contract tests) + 41-check production HTTP smoke + credentialed Playwright/API/RLS matrix |
 | Hosting | Vercel (serverless API routes) |
 
 ## Phases
@@ -91,7 +104,7 @@ cp .env.local.example .env.local
 
 ### Run database migrations
 
-Apply the SQL files in `supabase/migrations/` **in order** (001 → 047) via the Supabase SQL editor or `supabase db push`:
+Apply the SQL files in `supabase/migrations/` **in order** (001 → 052) via the Supabase SQL editor or `supabase db push`:
 
 ```
 001_create_customers.sql
@@ -141,13 +154,38 @@ Apply the SQL files in `supabase/migrations/` **in order** (001 → 047) via the
 045_restrict_direct_application_writes.sql
 046_durable_public_rate_limits.sql
 047_idempotent_ticket_creation.sql
+048_idempotent_ticket_comments.sql
+049_idempotent_service_resource_creation.sql
+050_durable_slack_provider_attempts.sql
+051_replay_safe_ai_suggestions.sql
+052_atomic_self_service_profile.sql
 ```
 
 Later migrations replace policies/functions and should be applied once in
 order. Migration `017` also performs role data updates and must not be re-run
-blindly. Migrations 001–046 are confirmed applied as of 2026-08-02. Migration
-047 awaits application; deploy it before application commit `dc5f588`. Migration
-043 passed a disposable 72-assertion live matrix covering create/existing
+blindly. Migrations 001–051 are confirmed applied and live-verified as of
+2026-08-12. Migration 052 is the current migration-first deployment gate: it
+removes the legacy direct authenticated profile-write grant and routes name/
+phone changes through one atomic, audited service command. Migration 051
+passed a 57-assertion live actor/ticket validation,
+replay, independent 12-way reservation/checkpoint/completion concurrency,
+altered-input/output, settlement, cardinality, public API-role denial, and
+cleanup matrix with zero database/Auth residue and no provider request.
+Migration 050 passed a 27-assertion live lease/concurrency/
+settlement/privilege matrix with zero database/Auth residue. The reinstalled
+Slack bot exposes every required reconciliation scope; history/thread reads
+await the first real linked channel/master message. Migration 049 passed a
+134-assertion live matrix covering exact
+replay, independent 12-way concurrency for spare-part request and field-service
+order creation, altered-input rejection, exact parent/child/audit/ledger
+cardinality, ledger constraints, anonymous/authenticated privilege denial, and
+zero database/Auth residue. Migration 048 passed a 69-assertion live matrix covering exact replay, 12-way
+concurrency, altered-input rejection, effect and Slack-outbox cardinality,
+First Response semantics, anonymous/authenticated privilege denial, and zero
+database/Auth residue. Migration 047 passed a 42-assertion live matrix covering first create, exact replay,
+altered-key rejection, 12-way concurrency, exact effect cardinality,
+anonymous/authenticated privilege denial, and zero residue. Migration 043
+passed a disposable 72-assertion live matrix covering create/existing
 upsert, positive/no-op PATCH, stock and location constraints, active-parent and
 privilege guards, direct-command grants, concurrent serialization, exact audit
 attribution, increase-only restock facts, rollback, and zero residue. Migration
@@ -198,9 +236,11 @@ npm audit          # 0 known dependency vulnerabilities required
 The production server exposes two non-cacheable operational probes:
 
 - `GET /api/health/live` — process liveness only; returns `200`.
-- `GET /api/health/ready` — required database/Slack configuration status;
-  returns `200` when configured or `503` when traffic should not be admitted.
-  It reports only component state and never environment values.
+- `GET /api/health/ready` — secret-safe database, Slack, outbox, email, and
+  Ripple Assist configuration status; returns `200` when core delivery is
+  configured or `503` when traffic should not be admitted. Optional email and
+  AI services report disabled/invalid state without exposing environment
+  values.
 - `GET /api/internal/outbox/dispatch` — `CRON_SECRET`-protected durable
   notification worker. Request-path dispatch handles the normal fast path;
   Vercel Cron calls this recovery worker daily. On plans that support more
@@ -252,9 +292,14 @@ requests never receive this secret.
    - **Slash Commands**: `/ticket` → `https://your-domain.com/api/slack/command/ticket`
    - **Interactivity**: Request URL → `https://your-domain.com/api/slack/interactive`
    - **Event Subscriptions**: Request URL → `https://your-domain.com/api/slack/events`
-   - **Bot Token Scopes**: `commands`, `chat:write`, `chat:write.public`, `channels:read`, `users:read`, `files:read`
+   - **Bot Token Scopes**: `commands`, `chat:write`, `chat:write.public`, `channels:read`, `channels:history`, `groups:read`, `groups:history`, `metadata.message:read`, `users:read`, `files:read`
 3. Install the app to your workspace.
 4. Copy the Bot Token (`xoxb-…`) and Signing Secret to `.env.local`.
+
+The history and metadata scopes let an outbox retry find a Slack message whose
+provider call succeeded but whose local receipt was lost. Reinstall the app
+after adding scopes. If reconciliation cannot run, the retry fails closed and
+remains in the outbox instead of posting a possible duplicate.
 
 All three Slack ingress routes fail closed. Missing or template credentials
 return `503 SLACK_CONFIGURATION_ERROR`; requests with missing, stale, or invalid
@@ -270,7 +315,12 @@ MINIMAX_BASE_URL=https://api.minimax.chat/v1/
 MINIMAX_MODEL=M2.7-highspeed
 ```
 
-⚠️ **Caveat:** The domain `minimax.chat` is not a well-known public LLM endpoint. Sprint 2 verified the URL resolves and returns proper error responses, but the `MINIMAX_API_KEY` shipped in `.env` returns `401 invalid api key`. To avoid breaking the rest of the system, `src/lib/ai/suggest.ts` now **gracefully falls back to a mock response** when the key is missing or the provider returns auth errors. The response is marked with `confidence_level: "low"` and a `_mock: true` field in `metadata` so the UI can show "AI assist is offline" honestly.
+⚠️ **Caveat:** The domain `minimax.chat` is not a well-known public LLM endpoint. Sprint 2 verified the URL resolves and returns proper error responses, but the key configured at that time returned `401 invalid api key`. To avoid breaking the rest of the system, `src/lib/ai/suggest.ts` **gracefully falls back to a mock response** when the key is missing or the provider returns auth errors. The response is marked with `confidence_level: "low"` and `_mock: true` so the UI can show "AI assist is offline" honestly.
+
+`POST /api/ai/suggest` is internal-only and requires a bounded
+`Idempotency-Key` header. The browser retains that key across retries; signed
+Slack modal submissions derive the same identity from the view ID. Migration
+051 owns this replay boundary and is confirmed deployed/live-verified.
 
 **To switch provider** (e.g. back to Zhipu, OpenAI, or another OpenAI-compatible service): change the three env vars above. No code change required — `suggest.ts` is provider-agnostic.
 
@@ -324,7 +374,7 @@ src/
 │   ├── ticket.ts                # ⭐ all ticket domain enums + labels
 │   └── spare-parts.ts
 └── middleware.ts                # ⭐ route guard + session refresh
-supabase/migrations/             # 001-046
+supabase/migrations/             # 001-052
 plans/                           # Architecture + phase planning docs
 AGENTS.md                        # ⭐ project context, lessons learned, roadmap
 ```
@@ -334,8 +384,8 @@ AGENTS.md                        # ⭐ project context, lessons learned, roadmap
 - Ticket creation → `app/api/tickets/route.ts` (POST), `lib/slack/handlers/actions.ts` (view_submission), `lib/slack/blocks/ticket-form.ts`
 - Ticket detail → `app/(auth)/tickets/[ticketId]/page.tsx` + `ticket-actions-panel.tsx`
 - Slack actions → `lib/slack/handlers/actions.ts` + `app/api/slack/interactive/route.ts`
-- AI assist → `app/api/ai/suggest/route.ts` + `lib/ai/suggest.ts`
-- DB schema → `supabase/migrations/001_*.sql` … `046_durable_public_rate_limits.sql`
+- AI assist → `app/api/ai/suggest/route.ts` + `lib/ai/service.ts` + `lib/ai/suggest.ts`
+- DB schema → `supabase/migrations/001_*.sql` … `052_atomic_self_service_profile.sql`
 
 ## Ticket Lifecycle
 

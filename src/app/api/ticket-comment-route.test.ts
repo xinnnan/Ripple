@@ -6,11 +6,13 @@ const {
   getUserScopeMock,
   createAdminClientMock,
   recordCommentMock,
+  dispatchOutboxMock,
 } = vi.hoisted(() => ({
   getAuthUserMock: vi.fn(),
   getUserScopeMock: vi.fn(),
   createAdminClientMock: vi.fn(),
   recordCommentMock: vi.fn(),
+  dispatchOutboxMock: vi.fn(),
 }));
 
 vi.mock("@/lib/supabase/auth-helpers", () => ({
@@ -26,23 +28,40 @@ vi.mock("@/lib/supabase/scope", () => ({
 vi.mock("@/lib/tickets/lookup", () => ({
   resolveTicketQuery: (query: unknown) => query,
 }));
-vi.mock("@/lib/tickets/mutations", () => ({
-  recordTicketCommentWithSla: recordCommentMock,
+vi.mock("@/lib/tickets/mutations", async (importOriginal) => {
+  const actual = await importOriginal<
+    typeof import("@/lib/tickets/mutations")
+  >();
+  return { ...actual, recordTicketCommentWithSla: recordCommentMock };
+});
+vi.mock("@/lib/tickets/outbox", () => ({
+  dispatchTicketOutboxBestEffort: dispatchOutboxMock,
 }));
 
 import { POST } from "./tickets/[ticketId]/comments/route";
+import { InvalidTicketCommentReplayError } from "@/lib/tickets/mutations";
+import { TICKET_IDEMPOTENCY_KEY_HEADER } from "@/lib/tickets/idempotency";
 
 const USER_ID = "11111111-1111-4111-8111-111111111111";
 const TICKET_ID = "22222222-2222-4222-8222-222222222222";
 const SITE_ID = "33333333-3333-4333-8333-333333333333";
 const COMMENT_ID = "44444444-4444-4444-8444-444444444444";
 
-function request(body: unknown, raw = false) {
+function request(
+  body: unknown,
+  raw = false,
+  idempotencyKey?: string
+) {
   return new NextRequest(
     `http://localhost/api/tickets/${TICKET_ID}/comments`,
     {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: {
+        "content-type": "application/json",
+        ...(idempotencyKey
+          ? { [TICKET_IDEMPOTENCY_KEY_HEADER]: idempotencyKey }
+          : {}),
+      },
       body: raw ? String(body) : JSON.stringify(body),
     }
   );
@@ -96,6 +115,7 @@ beforeEach(() => {
     siteIds: [],
   });
   recordCommentMock.mockResolvedValue(COMMENT_ID);
+  dispatchOutboxMock.mockResolvedValue({ claimed: 1, delivered: 1 });
   createAdminClientMock.mockReturnValue(client().client);
 });
 
@@ -132,7 +152,11 @@ describe("ticket comment route settlement", () => {
     });
 
     const response = await POST(
-      request({ body: "  Production update  ", visibility: "internal" }),
+      request(
+        { body: "  Production update  ", visibility: "internal" },
+        false,
+        "web:comment:attempt-1234"
+      ),
       context()
     );
 
@@ -146,7 +170,50 @@ describe("ticket comment route settlement", () => {
       visibility: "customer",
       source: "web",
       isAutomated: false,
+      idempotencyKey: "web:comment:attempt-1234",
     });
+    expect(dispatchOutboxMock).toHaveBeenCalledWith({
+      aggregateId: TICKET_ID,
+    });
+    expect(response.headers.get(TICKET_IDEMPOTENCY_KEY_HEADER)).toBe(
+      "web:comment:attempt-1234"
+    );
+  });
+
+  it("rejects malformed request keys before database access", async () => {
+    const response = await POST(
+      request({ body: "Update" }, false, "unsafe key"),
+      context()
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: "Invalid Idempotency-Key header",
+    });
+    expect(createAdminClientMock).not.toHaveBeenCalled();
+    expect(recordCommentMock).not.toHaveBeenCalled();
+  });
+
+  it("returns a stable conflict for altered request-key reuse", async () => {
+    recordCommentMock.mockRejectedValueOnce(
+      new InvalidTicketCommentReplayError()
+    );
+
+    const response = await POST(
+      request(
+        { body: "Changed update" },
+        false,
+        "web:comment:attempt-1234"
+      ),
+      context()
+    );
+
+    expect(response.status).toBe(409);
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+    expect(await response.json()).toEqual({
+      error: "This comment request key was already used for different content.",
+    });
+    expect(dispatchOutboxMock).not.toHaveBeenCalled();
   });
 
   it("distinguishes a failed lookup from a missing ticket", async () => {

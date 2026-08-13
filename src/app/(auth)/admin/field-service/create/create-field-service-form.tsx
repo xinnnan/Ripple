@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { SERVICE_TYPE_LABELS, FSO_PRIORITY_LABELS } from "@/types/spare-parts";
 import type { ServiceType, FSOPriority } from "@/types/spare-parts";
@@ -8,6 +8,10 @@ import {
   assertClientMutationResponse,
   clientMutationErrorMessage,
 } from "@/lib/http/client-mutation";
+import {
+  generateIdempotencyKey,
+  IDEMPOTENCY_KEY_HEADER,
+} from "@/lib/idempotency";
 
 const MAX_ASSIGNED_ENGINEERS = 20;
 
@@ -44,6 +48,10 @@ export function CreateFieldServiceForm({
   const [navigating, startNavigation] = useTransition();
   const searchParams = useSearchParams();
   const ticketId = searchParams.get("ticket_id");
+  const creationAttemptRef = useRef<{
+    fingerprint: string;
+    key: string;
+  } | null>(null);
 
   const [siteId, setSiteId] = useState("");
   const [title, setTitle] = useState("");
@@ -117,28 +125,39 @@ export function CreateFieldServiceForm({
       return;
     }
 
+    const requestBody = JSON.stringify({
+      site_id: siteId,
+      ticket_id: ticketId || null,
+      title: normalizedTitle,
+      service_type: serviceType,
+      priority,
+      description: description.trim() || null,
+      scheduled_date: scheduledDate || null,
+      scheduled_end_date: scheduledEndDate || null,
+      estimated_hours: normalizedEstimatedHours,
+      travel_required: travelRequired,
+      engineers: selectedEngineers.map((id) => ({
+        engineer_id: id,
+        role: selectedEngineers.indexOf(id) === 0 ? "lead" : "engineer",
+      })),
+    });
+    if (creationAttemptRef.current?.fingerprint !== requestBody) {
+      creationAttemptRef.current = {
+        fingerprint: requestBody,
+        key: generateIdempotencyKey(),
+      };
+    }
+
     setLoading(true);
 
     try {
       const response = await fetch("/api/field-service-orders", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          site_id: siteId,
-          ticket_id: ticketId || null,
-          title: normalizedTitle,
-          service_type: serviceType,
-          priority,
-          description: description.trim() || null,
-          scheduled_date: scheduledDate || null,
-          scheduled_end_date: scheduledEndDate || null,
-          estimated_hours: normalizedEstimatedHours,
-          travel_required: travelRequired,
-          engineers: selectedEngineers.map((id) => ({
-            engineer_id: id,
-            role: selectedEngineers.indexOf(id) === 0 ? "lead" : "engineer",
-          })),
-        }),
+        headers: {
+          "Content-Type": "application/json",
+          [IDEMPOTENCY_KEY_HEADER]: creationAttemptRef.current.key,
+        },
+        body: requestBody,
       });
 
       await assertClientMutationResponse(

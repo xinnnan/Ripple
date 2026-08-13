@@ -10,15 +10,18 @@
 //     every change that should reflect in Slack goes through one
 //     well-tested path.
 //
-// Errors from Slack are swallowed — the database is the system of
-// record, the Slack card is a convenience. The ticket detail page
-// can always be re-rendered and the master message can be manually
-// re-posted if Slack ever falls out of sync.
+// Errors are returned as typed retry decisions — the database remains the
+// system of record. Ambiguous posts are reconciled through their Slack metadata
+// before a retry, while target/receipt lookup failures fail closed.
 
 import type { WebClient } from "@slack/web-api";
 import { WebClient as WebClientCtor } from "@slack/web-api";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { buildMasterTicketMessage } from "./blocks/ticket-master";
+import {
+  boundedSlackProviderCode,
+  findSlackDeliveryByMetadata,
+} from "./delivery-reconciliation";
 import type { Ticket } from "@/types/ticket";
 
 export interface SyncOptions {
@@ -45,49 +48,82 @@ export interface SyncOptions {
    * recognize an already-recorded delivery.
    */
   deliveryKey?: string;
+  /**
+   * Reconcile a previous ambiguous provider attempt before posting again.
+   * The provider lookup fails closed: absence must be proven before a retry.
+   */
+  reconcileDelivery?: boolean;
+  /** Timestamp of the previous provider attempt used to bound reconciliation. */
+  reconcileFrom?: string;
+  /**
+   * Durable outbox hook invoked immediately before a provider write. It must
+   * return the timestamp committed under the current queue lease. A failed
+   * hook prevents Slack I/O.
+   */
+  beforeProviderAttempt?: () => Promise<string>;
 }
 
 export interface SyncResult {
   ok: boolean;
-  reason?: "no_channel" | "no_message" | "no_token" | "slack_error";
+  reason?:
+    | "no_channel"
+    | "no_message"
+    | "no_token"
+    | "database_error"
+    | "reconciliation_error"
+    | "slack_error";
   error?: string;
   deduplicated?: boolean;
+  providerAttemptedAt?: string;
 }
 
 async function resolveTarget(
   ticketId: string,
   options: SyncOptions
 ): Promise<{
-  channelId: string;
-  channelRecordId: string;
-  messageTs: string;
-} | null> {
+  target: {
+    channelId: string;
+    channelRecordId: string;
+    messageTs: string;
+  } | null;
+  errorCode?: string;
+}> {
   let channelId = options.channelId ?? null;
   let messageTs = options.messageTs ?? null;
   let channelRecordId: string | null = null;
 
   if (!channelId || !messageTs) {
     const found = await lookupMaster(ticketId);
-    if (found) {
-      channelId = channelId ?? found.channelId;
-      messageTs = messageTs ?? found.messageTs;
-      channelRecordId = found.channelRecordId;
+    if (found.errorCode) return { target: null, errorCode: found.errorCode };
+    if (found.target) {
+      channelId = channelId ?? found.target.channelId;
+      messageTs = messageTs ?? found.target.messageTs;
+      channelRecordId = found.target.channelRecordId;
     }
   }
 
   if (channelId && !channelRecordId) {
     const supabase = createAdminClient();
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("slack_channels")
       .select("id")
       .eq("channel_id", channelId)
       .maybeSingle();
+    if (error) {
+      console.error("[slack/sync] channel lookup failed:", {
+        code: error.code,
+      });
+      return { target: null, errorCode: "channel_lookup_failed" };
+    }
     channelRecordId = data?.id ?? null;
   }
 
-  return channelId && channelRecordId && messageTs
-    ? { channelId, channelRecordId, messageTs }
-    : null;
+  return {
+    target:
+      channelId && channelRecordId && messageTs
+        ? { channelId, channelRecordId, messageTs }
+        : null,
+  };
 }
 
 function resolveClient(options: SyncOptions): WebClient | null {
@@ -97,6 +133,40 @@ function resolveClient(options: SyncOptions): WebClient | null {
       ? new WebClientCtor(process.env.SLACK_BOT_TOKEN)
       : null)
   );
+}
+
+async function beginProviderAttempt(
+  options: SyncOptions
+): Promise<
+  | { ok: true; attemptedAt: string }
+  | { ok: false; result: SyncResult }
+> {
+  try {
+    const attemptedAt = options.beforeProviderAttempt
+      ? await options.beforeProviderAttempt()
+      : new Date().toISOString();
+    if (!Number.isFinite(Date.parse(attemptedAt))) {
+      return {
+        ok: false,
+        result: {
+          ok: false,
+          reason: "database_error",
+          error: "Slack provider attempt timestamp is invalid",
+        },
+      };
+    }
+    return { ok: true, attemptedAt };
+  } catch {
+    console.error("[slack/sync] provider attempt could not be recorded");
+    return {
+      ok: false,
+      result: {
+        ok: false,
+        reason: "database_error",
+        error: "Slack provider attempt could not be recorded",
+      },
+    };
+  }
 }
 
 /**
@@ -122,10 +192,73 @@ export async function recordMasterMessage(args: {
   if (args.outboxEventId) row.outbox_event_id = args.outboxEventId;
   const { error } = await supabase.from("slack_messages").insert(row);
   if (error) {
-    console.error("[slack/sync] failed to record master message:", error);
-    return { ok: false, reason: "slack_error", error: error.message };
+    if (error.code === "23505" && args.outboxEventId) {
+      const existing = await supabase
+        .from("slack_messages")
+        .select("id")
+        .eq("outbox_event_id", args.outboxEventId)
+        .maybeSingle();
+      if (!existing.error && existing.data) {
+        return { ok: true, deduplicated: true };
+      }
+    }
+    console.error("[slack/sync] failed to record Slack message:", {
+      code: error.code,
+    });
+    return {
+      ok: false,
+      reason: "database_error",
+      error: "Slack delivery receipt could not be recorded",
+    };
   }
   return { ok: true };
+}
+
+async function reconcilePostedDelivery(args: {
+  ticketId: string;
+  channelId: string;
+  channelRecordId: string;
+  messageType: "master" | "notification";
+  client: WebClient;
+  options: SyncOptions;
+  threadTs?: string;
+}): Promise<SyncResult | null> {
+  if (!args.options.deliveryKey || !args.options.reconcileDelivery) return null;
+  if (!args.options.reconcileFrom) {
+    return {
+      ok: false,
+      reason: "reconciliation_error",
+      error: "Slack delivery reconciliation window is unavailable",
+    };
+  }
+
+  const reconciliation = await findSlackDeliveryByMetadata({
+    client: args.client,
+    channelId: args.channelId,
+    deliveryKey: args.options.deliveryKey,
+    attemptedAt: args.options.reconcileFrom,
+    threadTs: args.threadTs,
+  });
+  if (!reconciliation.ok) {
+    console.error("[slack/sync] delivery reconciliation failed:", {
+      code: reconciliation.errorCode,
+    });
+    return {
+      ok: false,
+      reason: "reconciliation_error",
+      error: `Slack delivery reconciliation failed (${reconciliation.errorCode})`,
+    };
+  }
+  if (!reconciliation.messageTs) return null;
+
+  const recorded = await recordMasterMessage({
+    ticketId: args.ticketId,
+    slackChannelId: args.channelRecordId,
+    messageTs: reconciliation.messageTs,
+    messageType: args.messageType,
+    outboxEventId: args.options.deliveryKey,
+  });
+  return recorded.ok ? { ok: true, deduplicated: true } : recorded;
 }
 
 /**
@@ -139,7 +272,14 @@ export async function postMasterMessage(
   options: SyncOptions = {}
 ): Promise<SyncResult> {
   const existing = await lookupMaster(ticket.id);
-  if (existing) return { ok: true, deduplicated: true };
+  if (existing.errorCode) {
+    return {
+      ok: false,
+      reason: "database_error",
+      error: "Slack master receipt lookup failed",
+    };
+  }
+  if (existing.target) return { ok: true, deduplicated: true };
 
   const site = (Array.isArray(ticket.site)
     ? ticket.site[0]
@@ -157,13 +297,36 @@ export async function postMasterMessage(
     .eq("channel_id", channelId)
     .limit(1)
     .maybeSingle();
-  if (channelError || !channelRecord) {
+  if (channelError) {
+    console.error("[slack/sync] site channel lookup failed:", {
+      code: channelError.code,
+    });
+    return {
+      ok: false,
+      reason: "database_error",
+      error: "Slack site channel lookup failed",
+    };
+  }
+  if (!channelRecord) {
     return { ok: false, reason: "no_channel" };
   }
 
   const client = resolveClient(options);
   if (!client) return { ok: false, reason: "no_token" };
 
+  const reconciled = await reconcilePostedDelivery({
+    ticketId: ticket.id,
+    channelId,
+    channelRecordId: channelRecord.id,
+    messageType: "master",
+    client,
+    options,
+  });
+  if (reconciled) return reconciled;
+
+  const attempt = await beginProviderAttempt(options);
+  if (!attempt.ok) return attempt.result;
+  const providerAttemptedAt = attempt.attemptedAt;
   try {
     const response = await client.chat.postMessage({
       channel: channelId,
@@ -181,20 +344,27 @@ export async function postMasterMessage(
         ok: false,
         reason: "slack_error",
         error: "Slack did not return a message timestamp",
+        providerAttemptedAt,
       };
     }
 
-    return recordMasterMessage({
+    const recorded = await recordMasterMessage({
       ticketId: ticket.id,
       slackChannelId: channelRecord.id,
       messageTs: response.ts,
       messageType: "master",
       outboxEventId: options.deliveryKey,
     });
+    return recorded.ok ? recorded : { ...recorded, providerAttemptedAt };
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    console.error("[slack/sync] master post failed:", message);
-    return { ok: false, reason: "slack_error", error: message };
+    const code = boundedSlackProviderCode(error);
+    console.error("[slack/sync] master post failed:", { code });
+    return {
+      ok: false,
+      reason: "slack_error",
+      error: `Slack master post failed (${code})`,
+      providerAttemptedAt,
+    };
   }
 }
 
@@ -205,12 +375,15 @@ export async function postMasterMessage(
 async function lookupMaster(
   ticketId: string
 ): Promise<{
-  channelId: string;
-  channelRecordId: string;
-  messageTs: string;
-} | null> {
+  target: {
+    channelId: string;
+    channelRecordId: string;
+    messageTs: string;
+  } | null;
+  errorCode?: string;
+}> {
   const supabase = createAdminClient();
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("slack_messages")
     .select(
       "message_ts, message_type, slack_channels!inner(id, channel_id)"
@@ -221,19 +394,28 @@ async function lookupMaster(
     .limit(1)
     .maybeSingle();
 
-  if (!data) return null;
+  if (error) {
+    console.error("[slack/sync] master receipt lookup failed:", {
+      code: error.code,
+    });
+    return { target: null, errorCode: "master_receipt_lookup_failed" };
+  }
+  if (!data) return { target: null };
   const channelRecord = (Array.isArray(data.slack_channels)
     ? data.slack_channels[0]
     : data.slack_channels) as {
       id: string;
       channel_id: string;
     } | null;
-  if (!channelRecord?.id || !channelRecord.channel_id || !data.message_ts)
-    return null;
+  if (!channelRecord?.id || !channelRecord.channel_id || !data.message_ts) {
+    return { target: null, errorCode: "master_receipt_invalid" };
+  }
   return {
-    channelId: channelRecord.channel_id,
-    channelRecordId: channelRecord.id,
-    messageTs: data.message_ts,
+    target: {
+      channelId: channelRecord.channel_id,
+      channelRecordId: channelRecord.id,
+      messageTs: data.message_ts,
+    },
   };
 }
 
@@ -252,7 +434,15 @@ export async function updateMasterMessage(
   ticket: Ticket,
   options: SyncOptions = {}
 ): Promise<SyncResult> {
-  const target = await resolveTarget(ticket.id, options);
+  const resolved = await resolveTarget(ticket.id, options);
+  if (resolved.errorCode) {
+    return {
+      ok: false,
+      reason: "database_error",
+      error: "Slack master target lookup failed",
+    };
+  }
+  const target = resolved.target;
   if (!target) {
     return {
       ok: false,
@@ -272,9 +462,13 @@ export async function updateMasterMessage(
     });
     return { ok: true };
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    console.error("[slack/sync] chat.update failed:", msg);
-    return { ok: false, reason: "slack_error", error: msg };
+    const code = boundedSlackProviderCode(e);
+    console.error("[slack/sync] chat.update failed:", { code });
+    return {
+      ok: false,
+      reason: "slack_error",
+      error: `Slack master update failed (${code})`,
+    };
   }
 }
 
@@ -290,7 +484,15 @@ export async function postMasterThreadReply(
   text: string,
   options: SyncOptions = {}
 ): Promise<SyncResult> {
-  const target = await resolveTarget(ticket.id, options);
+  const resolved = await resolveTarget(ticket.id, options);
+  if (resolved.errorCode) {
+    return {
+      ok: false,
+      reason: "database_error",
+      error: "Slack thread target lookup failed",
+    };
+  }
+  const target = resolved.target;
   if (!target) {
     return {
       ok: false,
@@ -301,19 +503,44 @@ export async function postMasterThreadReply(
   const client = resolveClient(options);
   if (!client) return { ok: false, reason: "no_token" };
 
+  let providerAttemptedAt: string | undefined;
   try {
     if (options.deliveryKey) {
       const supabase = createAdminClient();
-      const { data: recorded } = await supabase
+      const { data: recorded, error } = await supabase
         .from("slack_messages")
         .select("id")
         .eq("outbox_event_id", options.deliveryKey)
         .maybeSingle();
+      if (error) {
+        console.error("[slack/sync] thread receipt lookup failed:", {
+          code: error.code,
+        });
+        return {
+          ok: false,
+          reason: "database_error",
+          error: "Slack thread receipt lookup failed",
+        };
+      }
       if (recorded) {
         return { ok: true, deduplicated: true };
       }
     }
 
+    const reconciled = await reconcilePostedDelivery({
+      ticketId: ticket.id,
+      channelId: target.channelId,
+      channelRecordId: target.channelRecordId,
+      messageType: "notification",
+      client,
+      options,
+      threadTs: target.messageTs,
+    });
+    if (reconciled) return reconciled;
+
+    const attempt = await beginProviderAttempt(options);
+    if (!attempt.ok) return attempt.result;
+    providerAttemptedAt = attempt.attemptedAt;
     const response = await client.chat.postMessage({
       channel: target.channelId,
       thread_ts: target.messageTs,
@@ -327,7 +554,16 @@ export async function postMasterThreadReply(
         : undefined,
     });
 
-    if (options.deliveryKey && response.ts) {
+    if (!response.ts) {
+      return {
+        ok: false,
+        reason: "slack_error",
+        error: "Slack did not return a message timestamp",
+        providerAttemptedAt,
+      };
+    }
+
+    if (options.deliveryKey) {
       const recorded = await recordMasterMessage({
         ticketId: ticket.id,
         slackChannelId: target.channelRecordId,
@@ -335,12 +571,17 @@ export async function postMasterThreadReply(
         messageType: "notification",
         outboxEventId: options.deliveryKey,
       });
-      if (!recorded.ok) return recorded;
+      if (!recorded.ok) return { ...recorded, providerAttemptedAt };
     }
     return { ok: true };
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    console.error("[slack/sync] thread reply failed:", message);
-    return { ok: false, reason: "slack_error", error: message };
+    const code = boundedSlackProviderCode(error);
+    console.error("[slack/sync] thread reply failed:", { code });
+    return {
+      ok: false,
+      reason: "slack_error",
+      error: `Slack thread reply failed (${code})`,
+      providerAttemptedAt,
+    };
   }
 }

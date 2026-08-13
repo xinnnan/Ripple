@@ -5,14 +5,16 @@
 // (verified 2026-07-14: the configured MINIMAX_API_KEY returns
 // 401 invalid api key, see AGENTS.md §9). In that case we fall
 // back to a structured mock so the rest of the system keeps working —
-// engineers still get a row in the AI panel, the audit trail still
-// records the call, and the UI can mark it as "AI offline".
+// engineers still receive a clearly labelled offline result. Persistence and
+// replay settlement are owned by the application service so provider I/O is
+// checkpointed before the paid boundary and completed atomically afterward.
 //
 // The provider is pluggable: change MINIMAX_BASE_URL + MINIMAX_MODEL
 // in .env to switch (e.g. to OpenAI, Zhipu, or your own gateway).
 
 import OpenAI from "openai";
 import {
+  AI_CONTEXT_COMMENT_LIMIT,
   SYSTEM_PROMPT,
   TICKET_SUMMARY_PROMPT,
   CUSTOMER_REPLY_PROMPT,
@@ -20,6 +22,19 @@ import {
   buildTicketContext,
 } from "./prompt";
 import { createAdminClient } from "@/lib/supabase/admin";
+import {
+  AiSuggestionTicketNotFoundError,
+  AiSuggestionUnavailableError,
+} from "./errors";
+
+const AI_TICKET_CONTEXT_SELECT = `
+  id, ticket_no, title, description, severity, status, request_type,
+  asset_id, area, impact,
+  customer:customers(name),
+  site:sites(site_name)
+` as const;
+const AI_COMMENT_CONTEXT_SELECT = "body, visibility, created_at" as const;
+const AI_OUTPUT_MAX_LENGTH = 20_000;
 
 // ---------------------------------------------------------------------------
 // Client construction (lazy, provider-pluggable)
@@ -37,12 +52,18 @@ function getAiClient(): OpenAI | null {
   aiClient = new OpenAI({
     apiKey: key,
     baseURL: process.env.MINIMAX_BASE_URL || "https://api.minimax.chat/v1/",
+    timeout: 30_000,
+    // Provider idempotency has not been verified for the configured
+    // OpenAI-compatible gateway. Automatic SDK retries could repeat an
+    // ambiguously successful paid request inside one application attempt, so
+    // the durable request ledger is the only retry authority.
+    maxRetries: 0,
   });
   return aiClient;
 }
 
 function getModel(): string {
-  return process.env.MINIMAX_MODEL || "M2.7-highspeed";
+  return (process.env.MINIMAX_MODEL || "M2.7-highspeed").trim().slice(0, 200);
 }
 
 // ---------------------------------------------------------------------------
@@ -77,6 +98,48 @@ export interface SuggestionResult {
   _mock_reason?: "no_api_key" | "auth_error" | "provider_error";
 }
 
+export interface SuggestionGenerationOptions {
+  beforeProviderAttempt?: () => Promise<void>;
+}
+
+function firstRelationName(
+  relation: { name?: unknown; site_name?: unknown } | Array<{
+    name?: unknown;
+    site_name?: unknown;
+  }> | null
+): { name?: string; site_name?: string } {
+  const row = Array.isArray(relation) ? relation[0] : relation;
+  return {
+    ...(typeof row?.name === "string" ? { name: row.name } : {}),
+    ...(typeof row?.site_name === "string"
+      ? { site_name: row.site_name }
+      : {}),
+  };
+}
+
+function providerDiagnostic(error: unknown): Record<string, unknown> {
+  if (!error || typeof error !== "object") {
+    return { name: "UnknownProviderError" };
+  }
+  const candidate = error as {
+    name?: unknown;
+    status?: unknown;
+    code?: unknown;
+    type?: unknown;
+  };
+  return {
+    name:
+      typeof candidate.name === "string"
+        ? candidate.name
+        : "UnknownProviderError",
+    ...(typeof candidate.status === "number"
+      ? { status: candidate.status }
+      : {}),
+    ...(typeof candidate.code === "string" ? { code: candidate.code } : {}),
+    ...(typeof candidate.type === "string" ? { type: candidate.type } : {}),
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Main entry point
 // ---------------------------------------------------------------------------
@@ -84,26 +147,42 @@ export interface SuggestionResult {
 export async function generateSuggestion(
   ticketId: string,
   suggestionType: SuggestionType,
-  userId: string
+  options: SuggestionGenerationOptions = {}
 ): Promise<SuggestionResult> {
   const supabase = createAdminClient();
 
-  // Fetch ticket with context
-  const { data: ticket } = await supabase
+  // Fetch only the fields that are deliberately admitted into the provider
+  // context. Never hydrate the ticket's secure token, submitter contact data,
+  // internal summaries, or unrelated child records into this boundary.
+  const { data: ticket, error: ticketError } = await supabase
     .from("tickets")
-    .select(
-      `
-      *,
-      customer:customers(name),
-      site:sites(site_name),
-      ticket_comments(id, body, visibility, created_at)
-    `
-    )
+    .select(AI_TICKET_CONTEXT_SELECT)
     .eq("id", ticketId)
-    .single();
+    .maybeSingle();
+
+  if (ticketError) {
+    console.error("[ai] ticket context lookup failed:", {
+      code: ticketError.code,
+    });
+    throw new AiSuggestionUnavailableError();
+  }
 
   if (!ticket) {
-    throw new Error(`Ticket ${ticketId} not found`);
+    throw new AiSuggestionTicketNotFoundError();
+  }
+
+  const { data: comments, error: commentsError } = await supabase
+    .from("ticket_comments")
+    .select(AI_COMMENT_CONTEXT_SELECT)
+    .eq("ticket_id", ticketId)
+    .order("created_at", { ascending: false })
+    .limit(AI_CONTEXT_COMMENT_LIMIT);
+
+  if (commentsError) {
+    console.error("[ai] comment context lookup failed:", {
+      code: commentsError.code,
+    });
+    throw new AiSuggestionUnavailableError();
   }
 
   // Choose the user prompt based on suggestion type.
@@ -123,6 +202,8 @@ export async function generateSuggestion(
       userPrompt = TICKET_SUMMARY_PROMPT;
   }
 
+  const customer = firstRelationName(ticket.customer);
+  const site = firstRelationName(ticket.site);
   const context = buildTicketContext({
     ticket_no: ticket.ticket_no,
     title: ticket.title,
@@ -133,9 +214,9 @@ export async function generateSuggestion(
     asset_id: ticket.asset_id,
     area: ticket.area,
     impact: ticket.impact,
-    customer_name: ticket.customer?.name,
-    site_name: ticket.site?.site_name,
-    comments: ticket.ticket_comments,
+    customer_name: customer.name,
+    site_name: site.site_name,
+    comments: [...(comments ?? [])].reverse(),
   });
 
   // ---------------------------------------------------------------------
@@ -150,6 +231,11 @@ export async function generateSuggestion(
   if (!client) {
     mockReason = "no_api_key";
   } else {
+    // Persist the request boundary before starting provider network I/O. A
+    // checkpoint failure must propagate; treating it as a provider error and
+    // falling back to a mock would erase the evidence needed to prevent a
+    // paid-call replay.
+    await options.beforeProviderAttempt?.();
     try {
       const completion = await client.chat.completions.create({
         model,
@@ -160,20 +246,27 @@ export async function generateSuggestion(
         temperature: 0.3,
         max_tokens: 2000,
       });
-      outputText = completion.choices[0]?.message?.content || "";
-      confidence = detectConfidence(outputText);
+      outputText = completion.choices[0]?.message?.content?.trim() || "";
+      if (!outputText) {
+        mockReason = "provider_error";
+      } else {
+        confidence = detectConfidence(outputText);
+      }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       // 401 / 403 / "invalid api key" → auth_error
       if (/401|unauthor|invalid api key|forbidden|403/i.test(msg)) {
         mockReason = "auth_error";
         console.warn(
-          `[ai] provider returned auth error — falling back to mock. ` +
-            `Check MINIMAX_API_KEY / MINIMAX_BASE_URL. (${msg})`
+          "[ai] provider authentication failed; using mock response:",
+          providerDiagnostic(e)
         );
       } else {
         mockReason = "provider_error";
-        console.error(`[ai] provider error — falling back to mock:`, msg);
+        console.error(
+          "[ai] provider request failed; using mock response:",
+          providerDiagnostic(e)
+        );
       }
     }
   }
@@ -185,38 +278,14 @@ export async function generateSuggestion(
     outputText = buildMockResponse(suggestionType, ticket, mockReason);
     confidence = "low";
   }
-
-  // ---------------------------------------------------------------------
-  // 3. Save the suggestion (real or mock) to ai_suggestions for audit.
-  //    Mock rows are tagged with model_name prefixed "mock:" so the
-  //    audit page can filter them.
-  // ---------------------------------------------------------------------
-  const suggestionRow = {
-    ticket_id: ticketId,
-    suggestion_type: suggestionType,
-    model_name: mockReason ? `mock:${mockReason}` : model,
-    prompt_version: "v1",
-    output_text: outputText,
-    confidence_level: confidence,
-    created_by: userId,
-  };
-
-  const { data: suggestion, error } = await supabase
-    .from("ai_suggestions")
-    .insert(suggestionRow)
-    .select()
-    .single();
-
-  if (error) {
-    console.error("[ai] failed to save suggestion:", error);
-  }
+  outputText = outputText.slice(0, AI_OUTPUT_MAX_LENGTH);
 
   return {
-    id: suggestion?.id ?? null,
+    id: null,
     output_text: outputText,
     confidence_level: confidence,
     suggestion_type: suggestionType,
-    model_name: suggestionRow.model_name,
+    model_name: mockReason ? `mock:${mockReason}` : model,
     ...(mockReason ? { _mock: true, _mock_reason: mockReason } : {}),
   };
 }

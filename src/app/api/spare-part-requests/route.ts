@@ -4,6 +4,7 @@ import { requireInternal } from "@/lib/supabase/auth-helpers";
 import { getUserScope, scopeSiteRows } from "@/lib/supabase/scope";
 import {
   createSparePartRequestAtomic,
+  InvalidSparePartRequestReplayError,
   SparePartRequestMutationError,
 } from "@/lib/spare-parts/mutations";
 import { sparePartRequestForExternal } from "@/lib/resource-visibility";
@@ -13,6 +14,11 @@ import {
   INTERNAL_SPARE_PART_REQUEST_SELECT,
 } from "@/lib/resource-projections";
 import { parseSparePartRequestListFilters } from "@/lib/resource-list-filters";
+import {
+  generateIdempotencyKey,
+  IDEMPOTENCY_KEY_HEADER,
+  normalizeIdempotencyKey,
+} from "@/lib/idempotency";
 
 export const dynamic = "force-dynamic";
 
@@ -26,22 +32,25 @@ const createSPRSchema = z
     notes: z.string().trim().max(5000).nullable().optional(),
     items: z
       .array(
-        z.object({
-          spare_part_id: z.string().uuid(),
-          quantity: z.number().int().positive().max(2_147_483_647),
-          unit_price: z
-            .number()
-            .nonnegative()
-            .finite()
-            .max(99_999_999.99)
-            .nullable()
-            .optional(),
-          notes: z.string().trim().max(500).nullable().optional(),
-        })
+        z
+          .object({
+            spare_part_id: z.string().uuid(),
+            quantity: z.number().int().positive().max(2_147_483_647),
+            unit_price: z
+              .number()
+              .nonnegative()
+              .finite()
+              .max(99_999_999.99)
+              .nullable()
+              .optional(),
+            notes: z.string().trim().max(500).nullable().optional(),
+          })
+          .strict()
       )
       .min(1)
       .max(100),
   })
+  .strict()
   .superRefine((value, context) => {
     const partIds = value.items.map((item) => item.spare_part_id);
     if (new Set(partIds).size !== partIds.length) {
@@ -141,6 +150,22 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
     }
     const data = createSPRSchema.parse(body);
+    const suppliedIdempotencyKey = request.headers.get(
+      IDEMPOTENCY_KEY_HEADER
+    );
+    const idempotencyKey =
+      suppliedIdempotencyKey === null
+        ? generateIdempotencyKey()
+        : normalizeIdempotencyKey(suppliedIdempotencyKey);
+    if (!idempotencyKey) {
+      return NextResponse.json(
+        { error: "Invalid Idempotency-Key header" },
+        {
+          status: 400,
+          headers: { "Cache-Control": "private, no-store" },
+        }
+      );
+    }
 
     const { items, ...input } = data;
     const admin = createAdminClient();
@@ -152,8 +177,21 @@ export async function POST(request: NextRequest) {
         actorId: auth.userId,
         input,
         items,
+        idempotencyKey,
       });
     } catch (error) {
+      if (error instanceof InvalidSparePartRequestReplayError) {
+        return NextResponse.json(
+          { error: error.message },
+          {
+            status: 409,
+            headers: {
+              "Cache-Control": "private, no-store",
+              [IDEMPOTENCY_KEY_HEADER]: idempotencyKey,
+            },
+          }
+        );
+      }
       if (
         error instanceof SparePartRequestMutationError &&
         ["22003", "22023", "22P02", "23503", "23514"].includes(
@@ -174,7 +212,13 @@ export async function POST(request: NextRequest) {
           { status: 403 }
         );
       }
-      console.error("POST /api/spare-part-requests command failed:", error);
+      console.error("POST /api/spare-part-requests command failed:", {
+        name: error instanceof Error ? error.name : "UnknownError",
+        code:
+          error instanceof SparePartRequestMutationError
+            ? error.code
+            : undefined,
+      });
       return NextResponse.json(
         { error: "Failed to create spare part request" },
         { status: 500 }
@@ -196,18 +240,35 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (error) {
-      console.error("POST /api/spare-part-requests hydration failed:", error);
+      console.error("POST /api/spare-part-requests hydration failed:", {
+        code: error.code,
+      });
       return NextResponse.json(
         {
           data: { id: createdRequestId },
           warning:
             "Request created; detail refresh is temporarily unavailable",
         },
-        { status: 201 }
+        {
+          status: 201,
+          headers: {
+            "Cache-Control": "private, no-store",
+            [IDEMPOTENCY_KEY_HEADER]: idempotencyKey,
+          },
+        }
       );
     }
 
-    return NextResponse.json({ data: spr }, { status: 201 });
+    return NextResponse.json(
+      { data: spr },
+      {
+        status: 201,
+        headers: {
+          "Cache-Control": "private, no-store",
+          [IDEMPOTENCY_KEY_HEADER]: idempotencyKey,
+        },
+      }
+    );
   } catch (error) {
     if (error instanceof z.ZodError) {
       return NextResponse.json(
@@ -215,7 +276,9 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
-    console.error("Create SPR error:", error);
+    console.error("Create SPR error:", {
+      name: error instanceof Error ? error.name : "UnknownError",
+    });
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

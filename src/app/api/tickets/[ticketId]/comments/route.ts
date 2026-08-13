@@ -3,13 +3,22 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthUser } from "@/lib/supabase/auth-helpers";
 import { getUserScope, scopeTickets } from "@/lib/supabase/scope";
 import { resolveTicketQuery } from "@/lib/tickets/lookup";
-import { recordTicketCommentWithSla } from "@/lib/tickets/mutations";
+import {
+  InvalidTicketCommentReplayError,
+  recordTicketCommentWithSla,
+} from "@/lib/tickets/mutations";
+import { dispatchTicketOutboxBestEffort } from "@/lib/tickets/outbox";
 import { z } from "zod";
 import {
   EXTERNAL_TICKET_COMMENT_SELECT,
   INTERNAL_TICKET_COMMENT_SELECT,
 } from "@/lib/resource-projections";
 import { TICKET_COMMENT_MAX_LENGTH } from "@/lib/tickets/input-contract";
+import {
+  generateTicketIdempotencyKey,
+  normalizeTicketIdempotencyKey,
+  TICKET_IDEMPOTENCY_KEY_HEADER,
+} from "@/lib/tickets/idempotency";
 
 interface RouteContext {
   params: Promise<{ ticketId: string }>;
@@ -103,6 +112,22 @@ export async function POST(
       return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
     }
     const data = createCommentSchema.parse(body);
+    const suppliedIdempotencyKey = request.headers.get(
+      TICKET_IDEMPOTENCY_KEY_HEADER
+    );
+    const idempotencyKey =
+      suppliedIdempotencyKey === null
+        ? generateTicketIdempotencyKey()
+        : normalizeTicketIdempotencyKey(suppliedIdempotencyKey);
+    if (!idempotencyKey) {
+      return NextResponse.json(
+        { error: "Invalid Idempotency-Key header" },
+        {
+          status: 400,
+          headers: { "Cache-Control": "private, no-store" },
+        }
+      );
+    }
 
     const supabase = createAdminClient();
 
@@ -161,9 +186,10 @@ export async function POST(
     // ticketId might be a human-readable ticket_no like RPL-000005.
     // We resolved it to `ticket.id` (UUID) above for the scope check.
     // The insert needs the UUID, not the URL param.
-    // Migration 026 commits the comment, ticket timeline, audit entry, and
-    // first-response milestone together under a row lock. Only a human,
-    // internal-authored, customer-visible response can satisfy the milestone.
+    // Migration 048 wraps migration 026 so the comment, replay receipt,
+    // timeline, audit entry, first-response milestone, and customer-visible
+    // Slack event commit together. Only a human, internal-authored,
+    // customer-visible response can satisfy the milestone.
     const commentId = await recordTicketCommentWithSla({
       supabase,
       ticketId: (ticket as { id: string }).id,
@@ -174,6 +200,14 @@ export async function POST(
       // claim to be a Slack or email message.
       source: "web",
       isAutomated: false,
+      idempotencyKey,
+    });
+
+    // Migration 048 commits one customer-visible Slack reply event with the
+    // comment. Immediate delivery is best-effort; the leased worker retains
+    // responsibility if Slack or the request path is unavailable.
+    await dispatchTicketOutboxBestEffort({
+      aggregateId: (ticket as { id: string }).id,
     });
 
     const { data: comment, error } = await supabase
@@ -200,7 +234,10 @@ export async function POST(
         },
         {
           status: 201,
-          headers: { "Cache-Control": "private, no-store" },
+          headers: {
+            "Cache-Control": "private, no-store",
+            [TICKET_IDEMPOTENCY_KEY_HEADER]: idempotencyKey,
+          },
         }
       );
     }
@@ -209,10 +246,22 @@ export async function POST(
       { comment },
       {
         status: 201,
-        headers: { "Cache-Control": "private, no-store" },
+        headers: {
+          "Cache-Control": "private, no-store",
+          [TICKET_IDEMPOTENCY_KEY_HEADER]: idempotencyKey,
+        },
       }
     );
   } catch (error) {
+    if (error instanceof InvalidTicketCommentReplayError) {
+      return NextResponse.json(
+        { error: error.message },
+        {
+          status: 409,
+          headers: { "Cache-Control": "private, no-store" },
+        }
+      );
+    }
     if (error instanceof z.ZodError) {
       return NextResponse.json(
         { error: "Validation error", details: error.errors },

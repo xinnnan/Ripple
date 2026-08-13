@@ -4,14 +4,19 @@ import {
   applyFieldServiceOrderPatch,
   createFieldServiceOrderAtomic,
   FieldServiceOrderMutationError,
+  InvalidFieldServiceOrderReplayError,
 } from "./mutations";
 
 const ORDER_ID = "11111111-1111-4111-8111-111111111111";
 const ACTOR_ID = "22222222-2222-4222-8222-222222222222";
 const SITE_ID = "33333333-3333-4333-8333-333333333333";
 const ENGINEER_ID = "44444444-4444-4444-8444-444444444444";
+const IDEMPOTENCY_KEY = "field-order-attempt-1234";
 
-function clientWithRpc(result: { data: unknown; error: null | { code?: string } }) {
+function clientWithRpc(result: {
+  data: unknown;
+  error: null | { code?: string; message?: string };
+}) {
   const rpc = vi.fn().mockResolvedValue(result);
   return {
     client: { rpc } as unknown as SupabaseClient,
@@ -42,14 +47,19 @@ describe("field service mutation contract", () => {
         actorId: ACTOR_ID,
         input,
         engineers,
+        idempotencyKey: IDEMPOTENCY_KEY,
       })
     ).resolves.toBe(ORDER_ID);
 
-    expect(rpc).toHaveBeenCalledWith("create_field_service_order_atomic", {
-      p_actor_id: ACTOR_ID,
-      p_input: input,
-      p_engineers: engineers,
-    });
+    expect(rpc).toHaveBeenCalledWith(
+      "create_field_service_order_idempotent_atomic",
+      {
+        p_actor_id: ACTOR_ID,
+        p_input: input,
+        p_engineers: engineers,
+        p_idempotency_key: IDEMPOTENCY_KEY,
+      }
+    );
   });
 
   it("sends header and complete assignment replacement to one command", async () => {
@@ -124,6 +134,7 @@ describe("field service mutation contract", () => {
         travel_required: false,
       },
       engineers: [],
+      idempotencyKey: IDEMPOTENCY_KEY,
     });
 
     await expect(operation).rejects.toMatchObject({
@@ -131,5 +142,34 @@ describe("field service mutation contract", () => {
       message: "Atomic field service order creation failed",
       code: "22023",
     } satisfies Partial<FieldServiceOrderMutationError>);
+  });
+
+  it("maps altered idempotency-key reuse to a stable conflict", async () => {
+    const { client } = clientWithRpc({
+      data: null,
+      error: {
+        code: "22023",
+        message:
+          "Field service order idempotency key was already used for different input",
+      },
+    });
+
+    const operation = createFieldServiceOrderAtomic({
+      supabase: client,
+      actorId: ACTOR_ID,
+      input: {
+        site_id: SITE_ID,
+        service_type: "inspection",
+        priority: "normal",
+        title: "Inspect line",
+        travel_required: false,
+      },
+      engineers: [],
+      idempotencyKey: IDEMPOTENCY_KEY,
+    });
+
+    await expect(operation).rejects.toEqual(
+      new InvalidFieldServiceOrderReplayError()
+    );
   });
 });

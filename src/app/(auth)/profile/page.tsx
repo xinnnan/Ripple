@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import Image from "next/image";
 import Link from "next/link";
+import { Eye, EyeOff } from "lucide-react";
 import type { UserRole } from "@/types/ticket";
 import { ROLE_LABELS } from "@/lib/roles";
 import {
@@ -15,6 +16,10 @@ import {
   PASSWORD_UPDATE_ERROR_MESSAGE,
   PROFILE_UPDATE_ERROR_MESSAGE,
 } from "@/lib/profile/self-service";
+import {
+  assertClientMutationResponse,
+  clientMutationErrorMessage,
+} from "@/lib/http/client-mutation";
 
 interface UserProfile {
   id: string;
@@ -44,6 +49,7 @@ export default function ProfilePage() {
   const [changingPassword, setChangingPassword] = useState(false);
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPasswords, setShowPasswords] = useState(false);
   const [passwordMessage, setPasswordMessage] = useState<{
     type: "success" | "error";
     text: string;
@@ -96,8 +102,9 @@ export default function ProfilePage() {
     void loadProfile();
   }, [loadProfile]);
 
-  async function handleSave() {
-    if (!profile) return;
+  async function handleSave(event: React.FormEvent) {
+    event.preventDefault();
+    if (!profile || saving || changingPassword) return;
     const normalized = normalizeSelfServiceProfile({ fullName, phone });
     if (!normalized.success) {
       setMessage({ type: "error", text: normalized.error });
@@ -107,19 +114,18 @@ export default function ProfilePage() {
     setMessage(null);
 
     try {
-      const { error } = await supabase
-        .from("users")
-        .update({
+      const response = await fetch("/api/profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
           full_name: normalized.data.fullName,
           phone: normalized.data.phone,
-        })
-        .eq("id", profile.id);
-
-      if (error) {
-        logIdentityReadFailure("profile-page/update", error);
-        setMessage({ type: "error", text: PROFILE_UPDATE_ERROR_MESSAGE });
-        return;
-      }
+        }),
+      });
+      await assertClientMutationResponse(
+        response,
+        PROFILE_UPDATE_ERROR_MESSAGE
+      );
       setProfile({
         ...profile,
         full_name: normalized.data.fullName,
@@ -130,14 +136,18 @@ export default function ProfilePage() {
       setEditing(false);
       setMessage({ type: "success", text: "Profile updated successfully" });
     } catch (error) {
-      logIdentityReadFailure("profile-page/update-unexpected", error);
-      setMessage({ type: "error", text: PROFILE_UPDATE_ERROR_MESSAGE });
+      setMessage({
+        type: "error",
+        text: clientMutationErrorMessage(error, PROFILE_UPDATE_ERROR_MESSAGE),
+      });
     } finally {
       setSaving(false);
     }
   }
 
-  async function handleChangePassword() {
+  async function handleChangePassword(event: React.FormEvent) {
+    event.preventDefault();
+    if (changingPassword || saving) return;
     setPasswordMessage(null);
 
     if (!newPassword || newPassword.length < 12) {
@@ -177,6 +187,7 @@ export default function ProfilePage() {
       });
       setNewPassword("");
       setConfirmPassword("");
+      setShowPasswords(false);
     } catch (error) {
       logIdentityReadFailure("profile-page/password-unexpected", error);
       setPasswordMessage({
@@ -190,10 +201,10 @@ export default function ProfilePage() {
 
   if (loading) {
     return (
-      <div className="p-8">
-        <div className="animate-pulse space-y-4 max-w-2xl">
-          <div className="h-8 bg-muted rounded w-48" />
-          <div className="h-64 bg-muted rounded-xl" />
+      <div className="p-5 sm:p-8">
+        <div className="max-w-2xl animate-pulse space-y-4">
+          <div className="h-8 w-48 rounded bg-muted" />
+          <div className="h-64 rounded-xl bg-muted" />
         </div>
       </div>
     );
@@ -213,13 +224,13 @@ export default function ProfilePage() {
             <button
               type="button"
               onClick={() => void loadProfile()}
-              className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+              className="inline-flex min-h-11 items-center rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
             >
               Try again
             </button>
             <Link
               href="/login"
-              className="rounded-lg border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-900 hover:bg-red-100"
+              className="inline-flex min-h-11 items-center rounded-lg border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-900 hover:bg-red-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-700"
             >
               Sign in
             </Link>
@@ -240,6 +251,7 @@ export default function ProfilePage() {
 
       {message && (
         <div
+          role={message.type === "error" ? "alert" : "status"}
           className={`mb-6 rounded-lg px-4 py-3 text-sm ${
             message.type === "success"
               ? "bg-green-50 text-green-800 border border-green-200"
@@ -252,8 +264,11 @@ export default function ProfilePage() {
 
       <div className="max-w-2xl space-y-6">
         {/* Avatar & Basic Info */}
-        <div className="rounded-xl border border-border p-6">
-          <div className="flex items-center gap-6 mb-6">
+        <section
+          aria-labelledby="profile-details-heading"
+          className="rounded-xl border border-border bg-white p-5 sm:p-6"
+        >
+          <div className="mb-6 flex min-w-0 items-center gap-4 sm:gap-6">
             <div className="h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
               {profile.avatar_url ? (
                 <Image
@@ -269,26 +284,33 @@ export default function ProfilePage() {
                 </span>
               )}
             </div>
-            <div>
-              <h2 className="text-lg font-semibold text-foreground">
+            <div className="min-w-0">
+              <h2
+                id="profile-details-heading"
+                className="truncate text-lg font-semibold text-foreground"
+              >
                 {profile.full_name}
               </h2>
-              <p className="text-sm text-muted-foreground">{profile.email}</p>
+              <p className="break-all text-sm text-muted-foreground">
+                {profile.email}
+              </p>
             </div>
           </div>
 
           <div className="space-y-4">
-            <div className="flex items-center justify-between py-3 border-b border-border">
-              <div>
+            <div className="flex flex-col gap-2 border-b border-border py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+              <div className="min-w-0">
                 <p className="text-sm font-medium text-foreground">Email</p>
-                <p className="text-sm text-muted-foreground">{profile.email}</p>
+                <p className="break-all text-sm text-muted-foreground">
+                  {profile.email}
+                </p>
               </div>
-              <span className="text-xs text-muted-foreground">
+              <span className="shrink-0 text-xs text-muted-foreground">
                 Managed by auth provider
               </span>
             </div>
 
-            <div className="flex items-center justify-between py-3 border-b border-border">
+            <div className="flex items-center justify-between gap-4 border-b border-border py-3">
               <div>
                 <p className="text-sm font-medium text-foreground">Role</p>
                 <p className="text-sm text-muted-foreground">
@@ -307,9 +329,16 @@ export default function ProfilePage() {
             </div>
 
             {editing ? (
-              <>
+              <form
+                aria-busy={saving}
+                onSubmit={handleSave}
+                className="space-y-4"
+              >
                 <div>
-                  <label htmlFor="profile-full-name" className="block text-sm font-medium text-foreground mb-1">
+                  <label
+                    htmlFor="profile-full-name"
+                    className="mb-1 block text-sm font-medium text-foreground"
+                  >
                     Full Name
                   </label>
                   <input
@@ -317,13 +346,18 @@ export default function ProfilePage() {
                     type="text"
                     autoComplete="name"
                     maxLength={200}
+                    required
+                    disabled={saving || changingPassword}
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
-                    className="w-full rounded-lg border border-border px-3 py-2 text-sm text-foreground bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                    className="h-11 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-60"
                   />
                 </div>
                 <div>
-                  <label htmlFor="profile-phone" className="block text-sm font-medium text-foreground mb-1">
+                  <label
+                    htmlFor="profile-phone"
+                    className="mb-1 block text-sm font-medium text-foreground"
+                  >
                     Phone
                   </label>
                   <input
@@ -331,32 +365,36 @@ export default function ProfilePage() {
                     type="tel"
                     autoComplete="tel"
                     maxLength={50}
+                    disabled={saving || changingPassword}
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
                     placeholder="+1 (555) 000-0000"
-                    className="w-full rounded-lg border border-border px-3 py-2 text-sm text-foreground bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                    className="h-11 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-60"
                   />
                 </div>
-                <div className="flex gap-3 pt-2">
+                <div className="flex flex-col gap-3 pt-2 sm:flex-row">
                   <button
-                    onClick={handleSave}
-                    disabled={saving}
-                    className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
+                    type="submit"
+                    disabled={saving || changingPassword}
+                    className="inline-flex min-h-11 items-center justify-center rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 disabled:opacity-50"
                   >
-                    {saving ? "Saving..." : "Save Changes"}
+                    {saving ? "Saving…" : "Save changes"}
                   </button>
                   <button
+                    type="button"
+                    disabled={saving || changingPassword}
                     onClick={() => {
                       setEditing(false);
                       setFullName(profile.full_name || "");
                       setPhone(profile.phone || "");
+                      setMessage(null);
                     }}
-                    className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-accent transition-colors"
+                    className="inline-flex min-h-11 items-center justify-center rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50"
                   >
                     Cancel
                   </button>
                 </div>
-              </>
+              </form>
             ) : (
               <>
                 <div className="flex items-center justify-between py-3 border-b border-border">
@@ -378,25 +416,41 @@ export default function ProfilePage() {
                   </div>
                 </div>
                 <button
-                  onClick={() => setEditing(true)}
-                  className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+                  type="button"
+                  disabled={changingPassword}
+                  onClick={() => {
+                    setEditing(true);
+                    setMessage(null);
+                  }}
+                  className="inline-flex min-h-11 items-center justify-center rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 disabled:opacity-50"
                 >
-                  Edit Profile
+                  Edit profile
                 </button>
               </>
             )}
           </div>
-        </div>
+        </section>
 
         {/* Change Password */}
-        <div className="rounded-xl border border-border p-6">
-          <h2 className="text-base font-semibold text-foreground mb-4">
-            Change Password
+        <section
+          aria-labelledby="change-password-heading"
+          className="rounded-xl border border-border bg-white p-5 sm:p-6"
+        >
+          <h2
+            id="change-password-heading"
+            className="text-base font-semibold text-foreground"
+          >
+            Change password
           </h2>
+          <p className="mt-1 text-sm leading-6 text-muted-foreground">
+            Use at least 12 characters. A unique password from a password
+            manager is recommended.
+          </p>
 
           {passwordMessage && (
             <div
-              className={`mb-4 rounded-lg px-4 py-3 text-sm ${
+              role={passwordMessage.type === "error" ? "alert" : "status"}
+              className={`mt-4 rounded-lg px-4 py-3 text-sm ${
                 passwordMessage.type === "success"
                   ? "bg-green-50 text-green-800 border border-green-200"
                   : "bg-red-50 text-red-800 border border-red-200"
@@ -406,48 +460,76 @@ export default function ProfilePage() {
             </div>
           )}
 
-          <div className="space-y-4">
+          <form
+            aria-busy={changingPassword}
+            onSubmit={handleChangePassword}
+            className="mt-5 space-y-4"
+          >
             <div>
-              <label htmlFor="profile-new-password" className="block text-sm font-medium text-foreground mb-1">
+              <label
+                htmlFor="profile-new-password"
+                className="mb-1 block text-sm font-medium text-foreground"
+              >
                 New Password
               </label>
               <input
                 id="profile-new-password"
-                type="password"
+                type={showPasswords ? "text" : "password"}
                 autoComplete="new-password"
                 minLength={12}
                 maxLength={1024}
+                required
+                disabled={changingPassword || saving}
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
                 placeholder="At least 12 characters"
-                className="w-full rounded-lg border border-border px-3 py-2 text-sm text-foreground bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                className="h-11 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-60"
               />
             </div>
             <div>
-              <label htmlFor="profile-confirm-password" className="block text-sm font-medium text-foreground mb-1">
+              <label
+                htmlFor="profile-confirm-password"
+                className="mb-1 block text-sm font-medium text-foreground"
+              >
                 Confirm New Password
               </label>
               <input
                 id="profile-confirm-password"
-                type="password"
+                type={showPasswords ? "text" : "password"}
                 autoComplete="new-password"
                 minLength={12}
                 maxLength={1024}
+                required
+                disabled={changingPassword || saving}
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 placeholder="Repeat new password"
-                className="w-full rounded-lg border border-border px-3 py-2 text-sm text-foreground bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                className="h-11 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-60"
               />
             </div>
             <button
-              onClick={handleChangePassword}
-              disabled={changingPassword}
-              className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
+              type="button"
+              aria-pressed={showPasswords}
+              disabled={changingPassword || saving}
+              onClick={() => setShowPasswords((visible) => !visible)}
+              className="inline-flex min-h-11 items-center gap-2 rounded-lg px-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50"
             >
-              {changingPassword ? "Updating..." : "Update Password"}
+              {showPasswords ? (
+                <EyeOff className="h-4 w-4" aria-hidden="true" />
+              ) : (
+                <Eye className="h-4 w-4" aria-hidden="true" />
+              )}
+              {showPasswords ? "Hide passwords" : "Show passwords"}
             </button>
-          </div>
-        </div>
+            <button
+              type="submit"
+              disabled={changingPassword || saving}
+              className="inline-flex min-h-11 w-full items-center justify-center rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 disabled:opacity-50 sm:w-auto"
+            >
+              {changingPassword ? "Updating…" : "Update password"}
+            </button>
+          </form>
+        </section>
       </div>
     </div>
   );

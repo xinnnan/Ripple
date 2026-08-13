@@ -55,6 +55,7 @@ describe("configuration readiness", () => {
         slack: "ready",
         outbox: "ready",
         email: "disabled",
+        ai: "disabled",
       },
     });
   });
@@ -71,6 +72,7 @@ describe("configuration readiness", () => {
         slack: "not_ready",
         outbox: "ready",
         email: "disabled",
+        ai: "disabled",
       },
     });
     expect(JSON.stringify(result)).not.toContain("xoxb-real-token");
@@ -174,5 +176,57 @@ describe("configuration readiness", () => {
 
     expect(result.ready).toBe(true);
     expect(result.checks.email).toBe("ready");
+  });
+
+  it("reports configured AI separately without making it a core readiness dependency", () => {
+    const result = getConfigurationReadiness({
+      ...readyEnvironment,
+      MINIMAX_API_KEY: "minimax-real-api-key",
+      MINIMAX_BASE_URL: "https://api.minimax.chat/v1/",
+      MINIMAX_MODEL: "M2.7-highspeed",
+    });
+
+    expect(result.ready).toBe(true);
+    expect(result.checks.ai).toBe("ready");
+    expect(JSON.stringify(result)).not.toContain("minimax-real-api-key");
+  });
+
+  it.each([
+    { MINIMAX_API_KEY: "your-minimax-key" },
+    { MINIMAX_API_KEY: "minimax-real-api-key", MINIMAX_BASE_URL: "not-a-url" },
+    {
+      MINIMAX_API_KEY: "minimax-real-api-key",
+      MINIMAX_BASE_URL: "https://example.com/v1/",
+    },
+    {
+      MINIMAX_API_KEY: "minimax-real-api-key",
+      MINIMAX_MODEL: "placeholder-model",
+    },
+  ])("marks an enabled but invalid AI configuration not ready", (override) => {
+    const result = getConfigurationReadiness({
+      ...readyEnvironment,
+      ...override,
+    });
+
+    expect(result.ready).toBe(true);
+    expect(result.checks.ai).toBe("not_ready");
+  });
+
+  it("allows an explicit local AI endpoint only outside production", () => {
+    const development = getConfigurationReadiness({
+      ...readyEnvironment,
+      NODE_ENV: "development",
+      MINIMAX_API_KEY: "minimax-real-api-key",
+      MINIMAX_BASE_URL: "http://127.0.0.1:11434/v1/",
+    });
+    const production = getConfigurationReadiness({
+      ...readyEnvironment,
+      NODE_ENV: "production",
+      MINIMAX_API_KEY: "minimax-real-api-key",
+      MINIMAX_BASE_URL: "http://127.0.0.1:11434/v1/",
+    });
+
+    expect(development.checks.ai).toBe("ready");
+    expect(production.checks.ai).toBe("not_ready");
   });
 });
