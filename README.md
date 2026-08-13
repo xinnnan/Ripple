@@ -163,10 +163,10 @@ Apply the SQL files in `supabase/migrations/` **in order** (001 → 052) via the
 
 Later migrations replace policies/functions and should be applied once in
 order. Migration `017` also performs role data updates and must not be re-run
-blindly. Migrations 001–051 are confirmed applied and live-verified as of
-2026-08-12. Migration 052 is the current migration-first deployment gate: it
-removes the legacy direct authenticated profile-write grant and routes name/
-phone changes through one atomic, audited service command. Migration 051
+blindly. Migrations 001–052 are confirmed applied and live-verified as of
+2026-08-13. Migration 052 passed a 90-assertion live direct-write/RPC-denial,
+normalization, no-op, lifecycle, exact-audit, 12-way serialized-concurrency,
+and cleanup matrix with zero database/Auth residue. Migration 051
 passed a 57-assertion live actor/ticket validation,
 replay, independent 12-way reservation/checkpoint/completion concurrency,
 altered-input/output, settlement, cardinality, public API-role denial, and
