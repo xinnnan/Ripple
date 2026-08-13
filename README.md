@@ -167,10 +167,9 @@ Apply the SQL files in `supabase/migrations/` **in order** (001 → 053) via the
 
 Later migrations replace policies/functions and should be applied once in
 order. Migration `017` also performs role data updates and must not be re-run
-blindly. Migrations 001–052 are confirmed applied and live-verified as of
-2026-08-13. Migration 053 is the current migration-first deployment gate: it
-adds replay-safe Slack ticket-thread capture, current site-channel ownership,
-and transactional operational channel mapping. Migration 052 passed a
+blindly. Migrations 001–053 are confirmed applied and live-verified as of
+2026-08-13. Migration 053 passed a 173-assertion signed-ingress, mapping,
+replay, concurrency, privilege, no-echo, and cleanup matrix. Migration 052 passed a
 90-assertion live direct-write/RPC-denial,
 normalization, no-op, lifecycle, exact-audit, 12-way serialized-concurrency,
 and cleanup matrix with zero database/Auth residue. Migration 051
