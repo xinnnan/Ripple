@@ -20,6 +20,7 @@ const AUTH_ROUTES = ["/login", "/signup"];
 // gets bounced to /dashboard, not a half-rendered admin shell.
 //
 // /admin/*   → admin only
+// /settings  → internal only (admin + engineer)
 // /team      → customer_manager only (regular customers have
 //               site_members; managers have org-wide view)
 // /sites     → customer + customer_manager (not internal)
@@ -30,6 +31,7 @@ const AUTH_ROUTES = ["/login", "/signup"];
 // A page that doesn't add its own check still fails closed because
 // of these middleware gates.
 const ADMIN_ONLY_PREFIXES = ["/admin"];
+const INTERNAL_ONLY_PREFIXES = ["/settings"];
 const CM_ONLY = new Set(["/team"]);
 const NON_INTERNAL = new Set(["/sites"]);
 
@@ -124,10 +126,14 @@ export async function middleware(request: NextRequest) {
     // Look up the caller's role. We do this lazily — only when the
     // path matches a gated prefix, not for every protected route.
     // /admin/*  → admin only
+    // /settings → admin + engineer only
     // /team + /team/* → customer_manager only
     // /sites    → customer + customer_manager (not internal)
     const needsRole =
       ADMIN_ONLY_PREFIXES.some((p) => pathname.startsWith(p)) ||
+      INTERNAL_ONLY_PREFIXES.some(
+        (p) => pathname === p || pathname.startsWith(`${p}/`)
+      ) ||
       pathname === "/team" ||
       pathname.startsWith("/team/") ||
       NON_INTERNAL.has(pathname);
@@ -142,6 +148,20 @@ export async function middleware(request: NextRequest) {
         const url = request.nextUrl.clone();
         url.pathname = "/dashboard";
         url.searchParams.set("denied", "admin");
+        return NextResponse.redirect(url);
+      }
+
+      // Internal-only routes (admin + engineer)
+      if (
+        INTERNAL_ONLY_PREFIXES.some(
+          (p) => pathname === p || pathname.startsWith(`${p}/`)
+        ) &&
+        role !== "admin" &&
+        role !== "engineer"
+      ) {
+        const url = request.nextUrl.clone();
+        url.pathname = "/dashboard";
+        url.searchParams.set("denied", "internal");
         return NextResponse.redirect(url);
       }
 

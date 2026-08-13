@@ -125,7 +125,7 @@ export function AppShell({
       <div className="flex h-20 items-center justify-between border-b border-white/10 px-5">
         <Link
           href="/dashboard"
-          className="flex items-center gap-3 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lime-400"
+          className="flex min-h-11 items-center gap-3 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lime-400"
         >
           <Image
             src="/logo.png"
@@ -146,7 +146,7 @@ export function AppShell({
           type="button"
           onClick={() => setMobileOpen(false)}
           aria-label="Close navigation"
-          className="rounded-lg p-2 text-slate-400 hover:bg-white/10 hover:text-white lg:hidden"
+          className="inline-flex h-11 w-11 items-center justify-center rounded-lg text-slate-400 hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lime-400 lg:hidden"
         >
           <X className="h-5 w-5" aria-hidden="true" />
         </button>
@@ -184,7 +184,15 @@ export function AppShell({
       <div className="border-t border-white/10 p-3">
         <NavGroup
           items={[
-            { href: "/settings", label: "Settings", icon: Settings },
+            ...(isInternal
+              ? [
+                  {
+                    href: "/settings",
+                    label: "System status",
+                    icon: Settings,
+                  },
+                ]
+              : []),
             { href: "/profile", label: "Profile", icon: UserCircle },
           ]}
           pathname={pathname}
@@ -205,7 +213,7 @@ export function AppShell({
           <form action="/auth/logout" method="POST" className="mt-3">
             <button
               type="submit"
-              className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-400 transition hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lime-400"
+              className="flex min-h-11 w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-400 transition hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lime-400"
             >
               <LogOut className="h-4 w-4" aria-hidden="true" />
               Sign out
@@ -226,11 +234,14 @@ export function AppShell({
           aria-label="Open navigation"
           aria-expanded={mobileOpen}
           aria-controls="mobile-navigation"
-          className="rounded-lg border border-slate-200 p-2 text-slate-700 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          className="inline-flex h-11 w-11 items-center justify-center rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
         >
           <Menu className="h-5 w-5" aria-hidden="true" />
         </button>
-        <Link href="/dashboard" className="flex items-center gap-2">
+        <Link
+          href="/dashboard"
+          className="flex min-h-11 items-center gap-2 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        >
           <Image
             src="/logo.png"
             alt=""
@@ -242,7 +253,7 @@ export function AppShell({
         </Link>
         <Link
           href="/tickets"
-          className="rounded-lg bg-primary px-3 py-2 text-xs font-bold text-white"
+          className="inline-flex min-h-11 items-center rounded-lg bg-primary px-3 py-2 text-xs font-bold text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
         >
           Tickets
         </Link>
@@ -306,7 +317,7 @@ function NavGroup({
               onClick={onNavigate}
               aria-current={active ? "page" : undefined}
               className={cn(
-                "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lime-400",
+                "flex min-h-11 items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lime-400",
                 active
                   ? "bg-lime-400 text-slate-950 shadow-sm"
                   : "text-slate-400 hover:bg-white/10 hover:text-white"

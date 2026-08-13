@@ -229,9 +229,11 @@ npm audit          # 0 known dependency vulnerabilities required
 The production server exposes two non-cacheable operational probes:
 
 - `GET /api/health/live` — process liveness only; returns `200`.
-- `GET /api/health/ready` — required database/Slack configuration status;
-  returns `200` when configured or `503` when traffic should not be admitted.
-  It reports only component state and never environment values.
+- `GET /api/health/ready` — secret-safe database, Slack, outbox, email, and
+  Ripple Assist configuration status; returns `200` when core delivery is
+  configured or `503` when traffic should not be admitted. Optional email and
+  AI services report disabled/invalid state without exposing environment
+  values.
 - `GET /api/internal/outbox/dispatch` — `CRON_SECRET`-protected durable
   notification worker. Request-path dispatch handles the normal fast path;
   Vercel Cron calls this recovery worker daily. On plans that support more

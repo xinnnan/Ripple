@@ -27,6 +27,7 @@ const server = spawn(
       SLACK_BOT_TOKEN: "",
       SLACK_SIGNING_SECRET: "",
       RESEND_API_KEY: "",
+      MINIMAX_API_KEY: "",
       NEXT_PUBLIC_APP_URL: baseUrl,
     },
     stdio: ["ignore", "pipe", "pipe"],
@@ -447,6 +448,7 @@ try {
   await expectHealth("/api/health/live", 200, "live");
   await expectHealth("/api/health/ready", 503, "not_ready", {
     email: "disabled",
+    ai: "disabled",
   });
   await expectOutboxConfigurationDenial();
   await expectSlackConfigurationDenial(

@@ -17,8 +17,14 @@ export type ReadinessEnvironment = SlackEnvironment & {
   RESEND_API_KEY?: string;
   EMAIL_FROM?: string;
   NEXT_PUBLIC_APP_URL?: string;
+  MINIMAX_API_KEY?: string;
+  MINIMAX_BASE_URL?: string;
+  MINIMAX_MODEL?: string;
   NODE_ENV?: string;
 };
+
+const DEFAULT_AI_BASE_URL = "https://api.minimax.chat/v1/";
+const DEFAULT_AI_MODEL = "M2.7-highspeed";
 
 function isSupabaseUrlConfigured(value: string | undefined): boolean {
   if (!value) return false;
@@ -58,6 +64,42 @@ function getEmailReadiness(env: ReadinessEnvironment) {
   return ready ? ("ready" as const) : ("not_ready" as const);
 }
 
+function getAiReadiness(env: ReadinessEnvironment) {
+  const apiKey = env.MINIMAX_API_KEY?.trim();
+  if (!apiKey) return "disabled" as const;
+
+  const validKey =
+    apiKey.length >= 12 &&
+    !/placeholder|your[-_]|replace|change[-_ ]?me/i.test(apiKey);
+  const model = (env.MINIMAX_MODEL || DEFAULT_AI_MODEL).trim();
+  const validModel =
+    model.length >= 1 &&
+    model.length <= 200 &&
+    !/placeholder|your[-_]|replace|change[-_ ]?me/i.test(model);
+
+  let validBaseUrl = false;
+  try {
+    const baseUrl = new URL(env.MINIMAX_BASE_URL || DEFAULT_AI_BASE_URL);
+    const local = ["localhost", "127.0.0.1", "::1"].includes(
+      baseUrl.hostname
+    );
+    validBaseUrl =
+      (baseUrl.protocol === "https:" ||
+        (env.NODE_ENV !== "production" &&
+          local &&
+          baseUrl.protocol === "http:")) &&
+      !baseUrl.username &&
+      !baseUrl.password &&
+      !/placeholder|example\.(com|org|net)$/i.test(baseUrl.hostname);
+  } catch {
+    validBaseUrl = false;
+  }
+
+  return validKey && validModel && validBaseUrl
+    ? ("ready" as const)
+    : ("not_ready" as const);
+}
+
 export function getConfigurationReadiness(
   env: ReadinessEnvironment = process.env as ReadinessEnvironment
 ) {
@@ -75,6 +117,7 @@ export function getConfigurationReadiness(
     env.CRON_SECRET.trim().length >= 24 &&
     !/placeholder|your[-_]|replace|change[-_ ]?me/i.test(env.CRON_SECRET);
   const email = getEmailReadiness(env);
+  const ai = getAiReadiness(env);
 
   return {
     ready: database && slack && outbox && email !== "not_ready",
@@ -83,6 +126,7 @@ export function getConfigurationReadiness(
       slack: slack ? "ready" : "not_ready",
       outbox: outbox ? "ready" : "not_ready",
       email,
+      ai,
     },
   } as const;
 }

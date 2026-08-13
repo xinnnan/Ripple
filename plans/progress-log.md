@@ -7,11 +7,12 @@ meaningful change and before ending a work session. Newest entries go first.
 
 - **Branch:** `codex/prd-v1-1-gap-closure`
 - **Active phase:** Phase 0 — Containment and reproducible baseline
-- **Active work item:** close the misleading static Settings integration page
-  now that migration 051 passed live verification
-- **Last verified checkpoint commit:** `b152376` (`docs: verify migration 050 rollout`)
-- **Uncommitted work:** documentation checkpoint recording migration 051 live
-  verification; inspect `git status` before committing
+- **Active work item:** inventory the remaining repository-local Phase 0 gates
+  after closing the misleading Settings integration surface
+- **Last verified checkpoint commit:** `9502e8f` (`docs: verify migration 051 rollout`)
+- **Uncommitted work:** internal-only System Status readiness UI, authorization
+  boundaries, shared mobile touch-target corrections, tests, and records;
+  inspect `git status` before committing
 - **Deployment gate:** migrations 001–051 are confirmed applied and
   live-verified. Migration 044
   passed a 130-assertion disposable live matrix with zero residue. Migration
@@ -84,13 +85,18 @@ meaningful change and before ending a work session. Newest entries go first.
   Inter, expanded/collapsed accessibility state, no horizontal overflow, and
   zero console warnings/errors. A disposable engineer identity was fully
   removed with zero profile/audit residue, and no AI provider request was made.
-- **Exact next local step:** replace the static Settings integration claims
-  with secret-safe real readiness status and role-appropriate operational
-  guidance, then browser-verify desktop/mobile behavior. Configure
-  `CRON_SECRET` separately before production worker activation
+  The new internal System Status page was reviewed through a disposable real
+  account at 1280×900 and 390×844: database/Slack/outbox/email/AI status is
+  secret-safe, Inter is applied, there is no horizontal overflow, primary
+  controls meet a 44-pixel target, customer middleware denial/navigation
+  hiding is effective, and the console remained clean. The disposable Auth
+  identity and profile were fully removed.
+- **Exact next local step:** inventory the remaining Phase 0 release gates and
+  select the highest-value repository-local closure that does not require the
+  protected staging fixture or production provider/worker configuration
 - **Primary plan:** [`plans/prd-v1.1-gap-closure-plan.md`](./prd-v1.1-gap-closure-plan.md)
 
-## Overall project status — 2026-08-11
+## Overall project status — 2026-08-12
 
 - Ripple has a meaningful Phase 1–4 support-platform foundation, and Phase 0
   containment is substantially implemented through migration 051. Migrations
@@ -98,7 +104,7 @@ meaningful change and before ending a work session. Newest entries go first.
 - Against the full PRD v1.1 capability map, 17 domains remain
   **Partial** or **Unsafe/Partial** and seven remain **Absent**. No full PRD
   capability domain is yet honestly complete end to end.
-- The local deterministic baseline is green at 1,045 unit/contract tests, 40
+- The local deterministic baseline is green at 1,065 unit/contract tests, 40
   production HTTP smoke checks, a production build, zero-warning lint, and
   zero known dependency vulnerabilities.
 - Phase 0 cannot be declared exited until the protected six-account/two-tenant
@@ -110,6 +116,63 @@ meaningful change and before ending a work session. Newest entries go first.
   queues/routing, business-calendar SLA clocks, remote support, appointments,
   assets/entitlements, search/knowledge, i18n, versioned external APIs, and
   production SRE/recovery evidence.
+
+## Session record — 2026-08-12 (P0-BX / truthful system readiness)
+
+### Objective
+
+Replace the static Settings page's unconditional configured claims and fake
+masked credentials with a useful, secret-safe operational status surface.
+
+### Implementation
+
+- Made `/settings` an internal-only System Status surface at navigation,
+  middleware, and server-page authorization boundaries. Customer and customer-
+  manager callers are redirected before the page renders.
+- Reused the production readiness contract for database, Slack, durable outbox
+  recovery, and email; added bounded MiniMax key/base-URL/model validation as
+  an optional AI status without making AI a core traffic-admission dependency.
+- Removed all fake masked values and `.env.local` claims. The page now explains
+  what each shape check proves, what it does not prove, and never returns
+  environment values. Admin guidance links to site-channel management;
+  engineers receive credential-safe escalation guidance.
+- Rebuilt the page for responsive cards, semantic regions, keyboard focus, and
+  44-pixel primary actions. Raised the shared mobile header, navigation, and
+  sign-out targets to the same minimum.
+- Added 20 readiness, page, shell, and middleware contracts, bringing the
+  deterministic suite to 137 files and 1,065 tests. The production smoke now
+  fixes AI to a deterministic disabled state and asserts it explicitly.
+
+### Browser verification
+
+- A disposable real Supabase account was created as admin for the protected
+  page, then changed to customer to prove direct `/settings` denial and absence
+  of the System Status navigation item. Both Auth and profile rows were deleted
+  afterward.
+- Desktop 1280×900 and mobile 390×844 rendering use Inter, have no horizontal
+  overflow, preserve the complete status/card/guidance content, and expose
+  44-pixel primary/touch targets. The mobile dialog locks body scroll and keeps
+  all navigation targets at least 44 pixels. Browser console warnings/errors:
+  zero.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| Focused readiness/page/shell/middleware tests | Passed; 46 assertions |
+| `npm ci` | Passed from lockfile; install reported 0 vulnerabilities |
+| `npm test` | Passed; 137 files, 1,065 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build and type check |
+| `npm run test:e2e` | Passed; all 40 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+
+### Result
+
+P0-BX is closed without a migration or external provider request. Settings is
+now truthful and operationally useful for internal users; notification/user
+preferences remain a separate future capability.
 
 ## Session record — 2026-08-12 (migration 051 live verification)
 

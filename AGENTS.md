@@ -136,8 +136,8 @@ Roles were **consolidated from 7 → 4** in `017_consolidate_roles.sql` (commit 
 
 | Role | Old name(s) | Scope | Sidebar shows |
 |---|---|---|---|
-| `admin` | `internal_admin` | Full system access | Dashboard, Tickets, Admin section, Settings, Profile |
-| `engineer` | `internal_service_manager`, `internal_engineer`, `internal_solution_engineer` | All tickets, technical views | Dashboard, Tickets, Settings, Profile |
+| `admin` | `internal_admin` | Full system access | Dashboard, Tickets, Admin section, System Status, Profile |
+| `engineer` | `internal_service_manager`, `internal_engineer`, `internal_solution_engineer` | All tickets, technical views | Dashboard, Tickets, System Status, Profile |
 | `customer_manager` | `customer_admin` | All sites + tickets **under their `customer_id`** + manage their team | Dashboard, Tickets, My Sites, **Team**, Profile |
 | `customer` | `customer_user`, `guest` | Only `site_members` rows they own | Dashboard, Tickets, My Sites, Profile |
 
@@ -301,7 +301,7 @@ npm run dev
 - `npm run build` — production build
 - `npm run start` — production server
 - `npm run lint` — direct ESLint CLI across the repository; warnings fail the gate
-- `npm test` — Vitest unit/contract suite (1,045 tests)
+- `npm test` — Vitest unit/contract suite (1,065 tests)
 - `npm run test:e2e` — 40-check production HTTP smoke plus optional credentialed Playwright/API/RLS matrix; requires a successful build
 - `npm run test:e2e:credentialed` — real six-account/two-tenant matrix; set `RIPPLE_E2E_FIXTURES_FILE`
 - `npm run test:e2e:install-browser` — install the pinned Chromium runtime
@@ -1694,7 +1694,7 @@ resume work; this section remains the broader historical summary.
 | ✅ Closed | Ripple Assist serverless quota and provider-data boundary | `src/lib/ai/`, `/api/ai/suggest`, Slack assist submission, ticket detail | Commit `fe2aa45` adds a durable per-actor quota shared by web/Slack, explicit bounded provider projections, untrusted-context containment, bounded provider execution/diagnostics, visible degraded persistence, and overflow-free responsive rendering |
 | ✅ Verified | Migration 048 replay-safe ticket comments | `supabase/migrations/048_idempotent_ticket_comments.sql` | Applied 2026-08-09; 69 live assertions covered exact replay, 12-way concurrency, altered reuse, exact comment/event/audit/outbox/SLA cardinality, internal-note isolation, anonymous/authenticated denial, and zero database/Auth residue |
 | ✅ Verified | Migration 049 replay-safe service creation | `supabase/migrations/049_idempotent_service_resource_creation.sql` | Applied 2026-08-10; 134 live assertions covered exact replay, independent 12-way concurrency for both commands, altered reuse, exact parent/child/audit/ledger cardinality, constraints, anonymous/authenticated denial, and zero database/Auth residue |
-| 🟡 Med | `/settings` is read-only integration status | `src/app/(auth)/settings/page.tsx` | Add notification preferences, user timezone, and theme controls |
+| ✅ Closed | Static/misleading Settings integration claims | `src/app/(auth)/settings/page.tsx`, `src/lib/config/readiness.ts`, `src/middleware.ts` | The internal-only System Status page renders secret-safe database/Slack/outbox/email/AI readiness with role-appropriate guidance; customers are denied at navigation, middleware, and page boundaries; desktop/mobile browser checks are green. User preferences remain a separate future capability |
 | ✅ Verified | Migration 046 durable public rate limits | `supabase/migrations/046_durable_public_rate_limits.sql` | Applied 2026-08-02; 77 live assertions covered grants, constraints, concurrency, reset/retention, bounded cleanup, real HTTP limits/lifecycle, and zero residue |
 | 🟡 Med | Exact site-code validation remains an existence oracle | `/api/sites/validate` | Responses are minimal and migration 046 enforces 20 checks/minute/IP across instances, but full anti-enumeration still requires CAPTCHA, an invitation/intake token, or authenticated submission |
 | 🟡 Verify | Migration 031 protected business probes remain | `supabase/migrations/031_atomic_team_site_assignment.sql` | RPC presence and validation behavior are confirmed; run same-tenant, cross-tenant, role-preservation, explicit-clear, and rollback probes with staging fixtures |
@@ -2084,7 +2084,7 @@ npm audit
 ```
 
 **Apply a new migration:**
-1. Create `supabase/migrations/051_xxx.sql` (next number)
+1. Create `supabase/migrations/052_xxx.sql` (next number)
 2. Test locally: `supabase db reset` (drops + re-applies all)
 3. Apply to prod via Supabase SQL editor
 4. Document in this file's §5 + §10
