@@ -1,6 +1,7 @@
 import type { WebClient } from "@slack/web-api";
 import { buildTicketFormModal } from "../blocks/ticket-form";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { resolveSiteBySlackChannel } from "@/lib/tickets/create";
 
 interface CommandPayload {
   channel_id: string;
@@ -19,11 +20,7 @@ export async function handleTicketCommand(
 
   // Try to find the site associated with this channel
   const supabase = createAdminClient();
-  const { data: slackChannel } = await supabase
-    .from("slack_channels")
-    .select("site_id, sites(id, customer_id, site_name, site_code)")
-    .eq("channel_id", channel_id)
-    .single();
+  const site = await resolveSiteBySlackChannel(supabase, channel_id);
 
   // Build the ticket form modal
   const modal = buildTicketFormModal();
@@ -40,8 +37,8 @@ export async function handleTicketCommand(
           channel_id,
           channel_name,
           user_id,
-          site_id: slackChannel?.site_id || null,
-          customer_id: (slackChannel?.sites as unknown as { customer_id: string } | null)?.customer_id || null,
+          site_id: site?.id || null,
+          customer_id: site?.customer_id || null,
         }),
       },
     });

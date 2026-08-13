@@ -200,7 +200,7 @@ describe("atomic site creation route", () => {
     const body = await response.json();
 
     expect(response.status).toBe(409);
-    expect(body.error).toBe("Site code already exists");
+    expect(body.error).toBe("Site code or Slack channel is already in use");
     expect(JSON.stringify(body)).not.toContain("sensitive database detail");
   });
 });

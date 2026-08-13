@@ -16,15 +16,34 @@ function selection(result: { data: unknown; error: unknown }) {
   const query = {
     select: vi.fn(),
     eq: vi.fn(),
+    in: vi.fn(),
     order: vi.fn(),
     limit: vi.fn(),
     maybeSingle: vi.fn().mockResolvedValue(result),
   };
   query.select.mockReturnValue(query);
   query.eq.mockReturnValue(query);
+  query.in.mockReturnValue(query);
   query.order.mockReturnValue(query);
   query.limit.mockReturnValue(query);
   return query;
+}
+
+function canonicalTicketSelection() {
+  return selection({
+    data: { site_id: "33333333-3333-4333-8333-333333333333" },
+    error: null,
+  });
+}
+
+function canonicalSiteSelection(channelId = "C123") {
+  return selection({
+    data: {
+      slack_channel_id: channelId,
+      customer: { status: "active" },
+    },
+    error: null,
+  });
 }
 
 function ticket(): Ticket {
@@ -104,9 +123,12 @@ describe("Slack delivery settlement", () => {
   });
 
   it("fails closed before provider I/O when the master receipt lookup fails", async () => {
-    mocks.admin.from.mockReturnValue(
-      selection({ data: null, error: { code: "XX000" } })
-    );
+    mocks.admin.from
+      .mockReturnValueOnce(canonicalTicketSelection())
+      .mockReturnValueOnce(canonicalSiteSelection())
+      .mockReturnValueOnce(
+        selection({ data: null, error: { code: "XX000" } })
+      );
     const postMessage = vi.fn();
 
     await expect(
@@ -118,6 +140,8 @@ describe("Slack delivery settlement", () => {
   it("recovers an ambiguous master post from Slack metadata without reposting", async () => {
     const insert = vi.fn().mockResolvedValue({ error: null });
     mocks.admin.from
+      .mockReturnValueOnce(canonicalTicketSelection())
+      .mockReturnValueOnce(canonicalSiteSelection())
       .mockReturnValueOnce(selection({ data: null, error: null }))
       .mockReturnValueOnce(
         selection({ data: { id: "channel-record-1" }, error: null })
@@ -156,6 +180,8 @@ describe("Slack delivery settlement", () => {
 
   it("does not post a thread reply when its local receipt check is unavailable", async () => {
     mocks.admin.from
+      .mockReturnValueOnce(canonicalTicketSelection())
+      .mockReturnValueOnce(canonicalSiteSelection())
       .mockReturnValueOnce(
         selection({ data: { id: "channel-record-1" }, error: null })
       )
@@ -178,6 +204,8 @@ describe("Slack delivery settlement", () => {
   it("records the durable attempt checkpoint before posting to Slack", async () => {
     const insert = vi.fn().mockResolvedValue({ error: null });
     mocks.admin.from
+      .mockReturnValueOnce(canonicalTicketSelection())
+      .mockReturnValueOnce(canonicalSiteSelection())
       .mockReturnValueOnce(selection({ data: null, error: null }))
       .mockReturnValueOnce(
         selection({ data: { id: "channel-record-1" }, error: null })
@@ -206,6 +234,8 @@ describe("Slack delivery settlement", () => {
 
   it("fails closed when the attempt checkpoint cannot be committed", async () => {
     mocks.admin.from
+      .mockReturnValueOnce(canonicalTicketSelection())
+      .mockReturnValueOnce(canonicalSiteSelection())
       .mockReturnValueOnce(selection({ data: null, error: null }))
       .mockReturnValueOnce(
         selection({ data: { id: "channel-record-1" }, error: null })
@@ -223,6 +253,22 @@ describe("Slack delivery settlement", () => {
       reason: "database_error",
       error: "Slack provider attempt could not be recorded",
     });
+    expect(postMessage).not.toHaveBeenCalled();
+  });
+
+  it("does not deliver to an explicitly supplied stale channel", async () => {
+    mocks.admin.from
+      .mockReturnValueOnce(canonicalTicketSelection())
+      .mockReturnValueOnce(canonicalSiteSelection("C-CURRENT"));
+    const postMessage = vi.fn();
+
+    await expect(
+      postMasterThreadReply(ticket(), "Update", {
+        client: slackClient({ postMessage }),
+        channelId: "C-STALE",
+        messageTs: "1786373900.000001",
+      })
+    ).resolves.toEqual({ ok: false, reason: "no_message" });
     expect(postMessage).not.toHaveBeenCalled();
   });
 });

@@ -135,17 +135,26 @@ export async function resolveSiteBySlackChannel(
   supabase: SupabaseClient,
   channelId: string
 ): Promise<{ id: string; customer_id: string; slack_channel_id: string | null } | null> {
-  const { data } = await supabase
-    .from("slack_channels")
-    .select("site_id, sites(id, customer_id, slack_channel_id)")
-    .eq("channel_id", channelId)
+  // `sites.slack_channel_id` is the canonical admin selection. Migration 053
+  // transactionally materializes the operational slack_channels row used for
+  // message receipts, but ingress authorization must not accept a stale
+  // historical mapping after a site is unlinked or moved.
+  const { data, error } = await supabase
+    .from("sites")
+    .select(
+      "id, customer_id, slack_channel_id, customer:customers!inner(status)"
+    )
+    .eq("slack_channel_id", channelId)
+    .eq("status", "active")
+    .in("customer.status", ["active", "trial"])
     .maybeSingle();
+  if (error) throw new Error("Slack-channel site resolution failed");
   if (!data) return null;
-  const site = (Array.isArray(data.sites) ? data.sites[0] : data.sites) as
-    | { id: string; customer_id: string; slack_channel_id: string | null }
-    | null;
-  if (!site) return null;
-  return { ...site, slack_channel_id: data.site_id ? channelId : site.slack_channel_id };
+  return {
+    id: data.id,
+    customer_id: data.customer_id,
+    slack_channel_id: data.slack_channel_id,
+  };
 }
 
 // ---------------------------------------------------------------------------

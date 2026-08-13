@@ -18,7 +18,8 @@ This file is the **single source of truth for project context** — read it befo
 
 **Status** — Phase 1–4 foundation is present; PRD v1.1 gap closure and security
 containment are active on `codex/prd-v1-1-gap-closure`. Migrations 001–052 are
-deployed and live-verified. `main` is live on Vercel.
+deployed and live-verified; migration 053 is the current migration-first
+deployment gate. `main` is live on Vercel.
 
 ---
 
@@ -110,7 +111,7 @@ deployed and live-verified. `main` is live on Vercel.
 │   │   ├── ticket.ts                    # ⭐ All domain enums + labels
 │   │   └── spare-parts.ts               # ⭐ Spare parts + field service enums
 │   └── middleware.ts                    # ⭐ Route guard + session refresh
-├── supabase/migrations/                 # 001–052, apply in order
+├── supabase/migrations/                 # 001–053, apply in order
 ├── plans/                               # Architecture + phase planning docs
 │   ├── architecture.md
 │   ├── phase2-customer-auth-and-user-management.md
@@ -128,8 +129,9 @@ deployed and live-verified. `main` is live on Vercel.
 - Ticket creation flow → `src/app/api/tickets/route.ts` (POST), `src/app/(public)/submit/page.tsx`, `src/app/(auth)/tickets/create-ticket-modal.tsx`
 - Ticket detail UI → `src/app/(auth)/tickets/[ticketId]/page.tsx` (server) + `ticket-actions-panel.tsx` (client)
 - Slack ticket creation → `src/app/api/slack/command/ticket/route.ts` + `src/lib/slack/blocks/ticket-form.ts`
+- Slack ticket-thread capture → `src/app/api/slack/events/route.ts` + `src/lib/slack/handlers/events.ts`
 - AI assist → `src/app/api/ai/suggest/route.ts` + `src/lib/ai/service.ts` + `src/lib/ai/suggest.ts`
-- DB schema → `supabase/migrations/001_*.sql` … `052_atomic_self_service_profile.sql`
+- DB schema → `supabase/migrations/001_*.sql` … `053_replay_safe_slack_thread_capture.sql`
 
 ---
 
@@ -167,25 +169,27 @@ const isInternal = role ? INTERNAL_ROLES.includes(role) : email ? isInternalEmai
 
 ## 5. Database Schema (Supabase)
 
-52 migrations, to be applied in order. Migrations 001–052 are confirmed
-applied and live-verified as of 2026-08-13. Key tables:
+53 migrations, to be applied in order. Migrations 001–052 are confirmed
+applied and live-verified as of 2026-08-13; migration 053 awaits application
+and live verification. Key tables:
 
 | Table | Purpose | Notes |
 |---|---|---|
 | `customers` | Customer orgs | `name`, `domain`, `status`; migration 040 makes active/trial creation and ordinary updates transactionally audited and keeps inactive lifecycle behind the archive workflow |
 | `sites` | Customer locations | `site_code` (unique), `slack_channel_id`, `project_status`; migration 036 makes customer ownership immutable through normal admin updates and makes create/update audit atomic; migration 037 repairs its SQL-expression runtime defect and is live-verified |
-| `users` | All users (internal + external) | `role` (4 values, see §4), `customer_id`, `slack_user_id`; migration 038 makes same-family admin PATCH/deactivation serialized and transactionally audited. Migration 039 stops trusting signup role metadata and adds atomic admin/team provisioning finalizers. Migration 052 moves name/phone self-service behind a row-locked audited command, removes direct authenticated profile writes, and passed a 90-assertion live command/audit/privilege/concurrency matrix |
+| `users` | All users (internal + external) | `role` (4 values, see §4), `customer_id`, `slack_user_id`; migration 038 makes same-family admin PATCH/deactivation serialized and transactionally audited. Migration 039 stops trusting signup role metadata and adds atomic admin/team provisioning finalizers. Migration 052 moves name/phone self-service behind a row-locked audited command, removes direct authenticated profile writes, and passed a 90-assertion live command/audit/privilege/concurrency matrix. Migration 053 makes non-null Slack actor identities unique before signed thread capture can use them; application and live verification are pending |
 | `site_members` | User ↔ Site (M:N) | Customers join via this; customer_manager bypasses. Migration 035 adds tenant-contained, transactionally audited admin add/remove commands. Migration 045 removes the legacy direct authenticated write path; its 110-assertion live matrix is green |
 | `tickets` | Core ticket entity | `ticket_no` (RPL-XXXXXX), `secure_token` (32-byte hex), `severity` (P1–P4), 8-state `status`, response/resolution due/achieved/breached timestamps; migration 027 column-limits direct authenticated SELECT |
 | `ticket_creation_requests` | Service-only ticket-create replay ledger | Migration 047 serializes source/request keys, returns the first durable receipt for exact retries, and rejects altered reuse; its 42-assertion replay/concurrency/privilege live matrix is green |
 | `ticket_comment_requests` | Service-only ticket-comment replay ledger | Migration 048 serializes source/request keys, returns the first durable comment for exact retries, rejects altered reuse, and transactionally binds customer-visible comments to one Slack-reply outbox event; its 69-assertion replay/concurrency/cardinality/privilege live matrix is green |
+| `slack_event_comment_requests` | Service-only inbound Slack-message replay ledger | Migration 053 captures a signed human reply only when its current site channel, master thread, and active Ripple actor resolve unambiguously; exact retries return the first atomic comment/SLA result, altered reuse fails closed, and no Slack echo is enqueued. Application and live verification are pending |
 | `spare_part_request_creation_requests` / `field_service_order_creation_requests` | Service-only operational-create replay ledgers | Migration 049 serializes one request key per spare-part request or field-service order, stores an immutable normalized request snapshot, returns the first resource for exact retries, and rejects altered reuse; its 134-assertion concurrency/cardinality/constraint/privilege live matrix is green |
 | `ticket_comments` | Discussion, `visibility: customer\|internal` | `is_automated`; only human internal-authored customer-visible messages satisfy First Response |
 | `ticket_attachments` | File refs (storage_path) | Bucket `ripple-attachments`, 50MB cap; direct authenticated bucket access is removed by migration 027 and app routes mediate objects. Migration 044 adds bounded metadata/path constraints and atomic metadata plus timeline creation; its 130-assertion live matrix is green |
 | `ticket_events` | Audit log | `actor_id`, `event_type`, `old_value`/`new_value` |
 | `ai_suggestions` | Ripple Assist outputs | `model_name`, `confidence_level`, accept/dismiss feedback; migration 051 moves creation behind an atomic completion receipt |
 | `ai_suggestion_requests` | Service-only paid-AI replay ledger | Migration 051 reserves one web/Slack request key, checkpoints before provider I/O, returns the first durable result for exact retries, rejects altered reuse, and leaves ambiguous provider outcomes fail-closed; its 57-assertion live replay/concurrency/settlement/privilege matrix is green |
-| `slack_channels` / `slack_messages` | Site ↔ Slack channel map, message tracking | |
+| `slack_channels` / `slack_messages` | Site ↔ Slack channel map, message tracking | Migration 053 uniquely owns the current channel on `sites`, materializes per-site operational mappings transactionally, retains historical delivery receipts, and blocks ingress/outbound use of stale mappings; application and live verification are pending |
 | `integration_outbox` | Durable external delivery | Unique event keys, bounded leases, exponential backoff, delivery evidence, and dead-letter retention for ticket notifications and customer-visible Slack comment replies. Migration 050 checkpoints the exact Slack provider-write boundary under the active lease; retries reconcile bounded message metadata and fail closed when metadata visibility, history access, or a complete result window cannot be proven |
 | `request_rate_limits` | Opaque distributed boundary counters | Migration 046 adds service-role-only atomic consumption, bounded inputs/counts, indexed expiry, and opportunistic retention; site validation, anonymous ticket creation, guest attachment upload, public ticket view, and paid Ripple Assist actor quotas use distinct buckets, and the migration's 77-assertion live matrix is green |
 | `sla_policies` | Default/customer SLA targets | Migration 041 derives scope shape, orders response/resolution targets, serializes create/update/delete, protects default/referenced rows, and commits exact audit evidence atomically; its 35-assertion live matrix is green. Migration 045 removes the legacy direct admin write path; its 110-assertion live matrix is green |
@@ -239,7 +243,14 @@ Files: `src/types/spare-parts.ts`, `plans/phase3-spare-parts-and-field-service.m
 2. `src/app/api/slack/command/ticket/route.ts` opens a modal (`src/lib/slack/blocks/ticket-form.ts`)
 3. User submits → `src/app/api/slack/interactive/route.ts` → `view_submission` handler creates ticket
 4. Master Block Kit message posted to channel via `src/lib/slack/blocks/ticket-master.ts`
-5. **Still TODO:** most action handlers (Assign to Me, Mark In Progress, Request Info, Customer Update, Resolve) — see `src/app/api/slack/interactive/route.ts:24-76` for the 7 TODO markers. Engineers currently drive state from the **web portal**, not Slack.
+5. Internal Slack actions share the atomic web mutation/SLA/outbox commands for
+   assignment, progress, request-info, customer update, resolution, and Ripple
+   Assist.
+6. Migration 053 adds replay-safe capture of signed human replies beneath a
+   current master card. It resolves the canonical active site channel, exact
+   master thread, and active Ripple actor before recording a customer-visible
+   comment without enqueuing an echo reply; deployment/live verification are
+   pending.
 
 ---
 
@@ -294,7 +305,7 @@ if ("error" in auth) return NextResponse.json({ error: auth.error }, { status: a
 npm install
 cp .env.local.example .env.local   # fill in real values
 # Run migrations in Supabase SQL editor (or `supabase db push` if using CLI):
-#   001 → 052 in order
+#   001 → 053 in order
 # Enable pgvector: CREATE EXTENSION IF NOT EXISTS vector;
 npm run dev
 ```
@@ -304,7 +315,7 @@ npm run dev
 - `npm run build` — production build
 - `npm run start` — production server
 - `npm run lint` — direct ESLint CLI across the repository; warnings fail the gate
-- `npm test` — Vitest unit/contract suite (1,084 tests)
+- `npm test` — Vitest unit/contract suite (1,115 tests)
 - `npm run test:e2e` — 41-check production HTTP smoke plus optional credentialed Playwright/API/RLS matrix; requires a successful build
 - `npm run test:e2e:credentialed` — real six-account/two-tenant matrix; set `RIPPLE_E2E_FIXTURES_FILE`
 - `npm run test:e2e:install-browser` — install the pinned Chromium runtime
@@ -1699,6 +1710,7 @@ resume work; this section remains the broader historical summary.
 | ✅ Verified | Migration 049 replay-safe service creation | `supabase/migrations/049_idempotent_service_resource_creation.sql` | Applied 2026-08-10; 134 live assertions covered exact replay, independent 12-way concurrency for both commands, altered reuse, exact parent/child/audit/ledger cardinality, constraints, anonymous/authenticated denial, and zero database/Auth residue |
 | ✅ Closed | Static/misleading Settings integration claims | `src/app/(auth)/settings/page.tsx`, `src/lib/config/readiness.ts`, `src/middleware.ts` | The internal-only System Status page renders secret-safe database/Slack/outbox/email/AI readiness with role-appropriate guidance; customers are denied at navigation, middleware, and page boundaries; desktop/mobile browser checks are green. User preferences remain a separate future capability |
 | ✅ Verified | Atomic self-service profile boundary | `supabase/migrations/052_atomic_self_service_profile.sql`, `/api/profile`, `/profile` | Applied 2026-08-13; 90 live assertions verified direct-write/RPC denial, normalization, no-op and lifecycle rejection, exact audit evidence, 12-way serialized concurrency, and zero Auth/profile/audit residue. App/API/UI contracts and desktop/mobile browser QA are green |
+| 🟡 Deploy | Replay-safe Slack ticket-thread capture | `supabase/migrations/053_replay_safe_slack_thread_capture.sql`, `/api/slack/events`, `src/lib/slack/handlers/events.ts` | Migration 053 adds exact event replay, current-channel/master-thread/active-actor resolution, atomic comment/SLA capture without an echo outbox event, canonical outbound channel checks, and transactional site-channel mapping. Apply and live-verify before deploying the application code |
 | ✅ Verified | Migration 046 durable public rate limits | `supabase/migrations/046_durable_public_rate_limits.sql` | Applied 2026-08-02; 77 live assertions covered grants, constraints, concurrency, reset/retention, bounded cleanup, real HTTP limits/lifecycle, and zero residue |
 | 🟡 Med | Exact site-code validation remains an existence oracle | `/api/sites/validate` | Responses are minimal and migration 046 enforces 20 checks/minute/IP across instances, but full anti-enumeration still requires CAPTCHA, an invitation/intake token, or authenticated submission |
 | 🟡 Verify | Migration 031 protected business probes remain | `supabase/migrations/031_atomic_team_site_assignment.sql` | RPC presence and validation behavior are confirmed; run same-tenant, cross-tenant, role-preservation, explicit-clear, and rollback probes with staging fixtures |
@@ -2088,7 +2100,7 @@ npm audit
 ```
 
 **Apply a new migration:**
-1. Create `supabase/migrations/053_xxx.sql` (next number)
+1. Create `supabase/migrations/054_xxx.sql` (next number)
 2. Test locally: `supabase db reset` (drops + re-applies all)
 3. Apply to prod via Supabase SQL editor
 4. Document in this file's §5 + §10

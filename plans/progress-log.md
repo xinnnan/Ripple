@@ -7,11 +7,13 @@ meaningful change and before ending a work session. Newest entries go first.
 
 - **Branch:** `codex/prd-v1-1-gap-closure`
 - **Active phase:** Phase 0 — Containment and reproducible baseline
-- **Active work item:** inventory the next highest-value repository-local
-  Phase 0 gap after migration 052 live verification
-- **Last verified checkpoint commit:** `627345f` (`fix: make profile updates atomic`)
-- **Uncommitted work:** migration 052 live-verification records; inspect
-  `git status` before committing
+- **Active work item:** P0-BZ replay-safe Slack ticket-thread capture;
+  implementation and local gates are complete, with migration 053 application
+  and live verification pending
+- **Last verified checkpoint commit:** `cd1babc` (`docs: verify migration 052 rollout`)
+- **Uncommitted work:** migration 053, signed Slack event capture, canonical
+  channel mapping/delivery guards, tests, and records; inspect `git status`
+  before committing
 - **Deployment gate:** migrations 001–052 are confirmed applied and
   live-verified. Migration 044
   passed a 130-assertion disposable live matrix with zero residue. Migration
@@ -30,6 +32,8 @@ meaningful change and before ending a work session. Newest entries go first.
   Migration 052 passed a 90-assertion direct-write/RPC-denial, normalization,
   no-op, lifecycle, exact-audit, concurrency, and cleanup live matrix with zero
   database/Auth residue.
+  Migration 053 is the current migration-first gate and has not yet been
+  applied or live-verified.
   Production `CRON_SECRET` remains unset in this workspace.
   Protected positive business probes for migrations 028–037 still require
   staging fixtures
@@ -99,20 +103,22 @@ meaningful change and before ending a work session. Newest entries go first.
   local validation, and zero console warnings/errors are green. No profile or
   password mutation was sent during the pre-deployment browser QA, and the
   disposable Auth/profile rows were fully removed.
-- **Exact next local step:** select and implement the highest-value remaining
-  repository-local Phase 0 closure that does not depend on staging identities
-  or production provider/worker configuration
+- **Exact next local step:** apply migration 053, then live-verify mapping
+  backfill/uniqueness, privilege denial, exact/altered replay, concurrent event
+  deduplication, comment/event/audit/SLA cardinality, no-echo behavior, stale-
+  channel containment, and complete disposable cleanup
 - **Primary plan:** [`plans/prd-v1.1-gap-closure-plan.md`](./prd-v1.1-gap-closure-plan.md)
 
 ## Overall project status — 2026-08-13
 
 - Ripple has a meaningful Phase 1–4 support-platform foundation, and Phase 0
-  containment is substantially implemented through migration 052. Migrations
-  001–052 are deployed and live-verified.
+  containment is substantially implemented through migration 053. Migrations
+  001–052 are deployed/live-verified; migration 053 is implementation-complete
+  and awaits deployment/live verification.
 - Against the full PRD v1.1 capability map, 17 domains remain
   **Partial** or **Unsafe/Partial** and seven remain **Absent**. No full PRD
   capability domain is yet honestly complete end to end.
-- The local deterministic baseline is green at 1,084 unit/contract tests, 41
+- The local deterministic baseline is green at 1,115 unit/contract tests, 41
   production HTTP smoke checks, a production build, zero-warning lint, and
   zero known dependency vulnerabilities.
 - Phase 0 cannot be declared exited until the protected six-account/two-tenant
@@ -124,6 +130,60 @@ meaningful change and before ending a work session. Newest entries go first.
   queues/routing, business-calendar SLA clocks, remote support, appointments,
   assets/entitlements, search/knowledge, i18n, versioned external APIs, and
   production SRE/recovery evidence.
+
+## Session record — 2026-08-13 (P0-BZ / Slack ticket-thread capture)
+
+### Objective
+
+Close the explicit Slack Events no-op so human replies under ticket master
+cards become durable Ripple comments without cross-site ambiguity, duplicate
+capture, or an outbound echo loop.
+
+### Implementation
+
+- Replaced the signed Events endpoint's discard branch with a bounded parser
+  that ignores bot/app/edited/root/unsupported messages and captures only human
+  thread replies with a stable Slack `event_id`.
+- Resolves the current active site channel, exact master-message receipt, and
+  one active linked Ripple actor before any write. Missing mappings are safe
+  no-ops; database/ambiguous mapping failures fail closed with bounded logs.
+- Added migration 053's forced-RLS, service-only event receipt ledger and
+  row-serialized atomic command. Exact retries return the first comment;
+  altered reuse fails closed; the existing comment/SLA/timeline/audit command
+  commits the message without a Slack outbox echo because Slack already
+  delivered it.
+- Made `sites.slack_channel_id` uniquely own each current Slack channel and
+  each non-null `users.slack_user_id` uniquely identify one Ripple actor,
+  transactionally materialized its per-site operational mapping, deduplicated
+  equivalent mapping rows while repointing historical message receipts, and
+  retained old site mappings as delivery history.
+- Changed slash-command/site resolution and outbound master/thread delivery to
+  require the canonical active site/customer channel. Stale mapping rows and
+  caller-supplied stale channel overrides no longer authorize ingress or
+  delivery.
+- Added 31 signed-route, parser, replay, migration, site-resolution, mutation,
+  and outbound-delivery contracts, bringing the deterministic suite to 1,115.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| Focused Slack event/migration/mutation/delivery tests | Passed; 53 tests |
+| Focused lint | Passed; zero warnings |
+| Focused production build | Passed; Next.js 15.5.22 production build and type check |
+| `npm ci` | Passed from lockfile; install reported 0 vulnerabilities |
+| `npm test` | Passed; 143 files, 1,115 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build and type check |
+| `npm run test:e2e` | Passed; all 41 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+
+### Result
+
+P0-BZ is implementation-complete and migration-first. Apply migration 053 and
+run its disposable mapping/replay/concurrency/cardinality/privilege/no-echo
+matrix before deploying the dependent Slack ingress and delivery code.
 
 ## Session record — 2026-08-13 (migration 052 live verification)
 

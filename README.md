@@ -56,20 +56,23 @@ A Slack-native support portal for DropletAI Services. Centralises customer suppo
   actual content, stored under environment/tenant/ticket-bound keys, and their
   metadata plus timeline evidence share one guarded database transaction.
 - **Site Channel Model** — Each customer site has a dedicated Slack support channel, mapped via `slack_channels`.
+- **Replay-Safe Slack Thread Capture** — Signed human replies under a current
+  ticket master card become atomic customer-visible ticket comments without
+  echoing the message back to Slack; event retries are exactly deduplicated.
 
 ## Tech Stack
 
 | Layer | Tool |
 |-------|------|
 | Frontend | Next.js 15.5.22 (App Router) + React 19 + TypeScript + Tailwind CSS v4 + self-hosted Inter |
-| Database | Supabase Postgres (52 migrations, see `supabase/migrations/`) |
+| Database | Supabase Postgres (53 migrations, see `supabase/migrations/`) |
 | Auth | Supabase Auth (email + password + recovery) + new `sb_publishable_` / `sb_secret_` key format |
 | Storage | Supabase Storage — bucket `ripple-attachments`, **50 MB cap per file** |
 | Slack | `@slack/bolt` + `@slack/web-api` (runs inside Next.js API routes, no separate process) |
 | AI | **MiniMax AI** (OpenAI-compatible) — was OpenAI → Zhipu → MiniMax. **See "AI provider" section below.** |
 | Email | Resend (transactional: ticket confirmation, resolution notice) |
 | Validation | Zod (all API request bodies) |
-| Testing | Vitest (1,084 unit/contract tests) + 41-check production HTTP smoke + credentialed Playwright/API/RLS matrix |
+| Testing | Vitest (1,115 unit/contract tests) + 41-check production HTTP smoke + credentialed Playwright/API/RLS matrix |
 | Hosting | Vercel (serverless API routes) |
 
 ## Phases
@@ -104,7 +107,7 @@ cp .env.local.example .env.local
 
 ### Run database migrations
 
-Apply the SQL files in `supabase/migrations/` **in order** (001 → 052) via the Supabase SQL editor or `supabase db push`:
+Apply the SQL files in `supabase/migrations/` **in order** (001 → 053) via the Supabase SQL editor or `supabase db push`:
 
 ```
 001_create_customers.sql
@@ -159,12 +162,16 @@ Apply the SQL files in `supabase/migrations/` **in order** (001 → 052) via the
 050_durable_slack_provider_attempts.sql
 051_replay_safe_ai_suggestions.sql
 052_atomic_self_service_profile.sql
+053_replay_safe_slack_thread_capture.sql
 ```
 
 Later migrations replace policies/functions and should be applied once in
 order. Migration `017` also performs role data updates and must not be re-run
 blindly. Migrations 001–052 are confirmed applied and live-verified as of
-2026-08-13. Migration 052 passed a 90-assertion live direct-write/RPC-denial,
+2026-08-13. Migration 053 is the current migration-first deployment gate: it
+adds replay-safe Slack ticket-thread capture, current site-channel ownership,
+and transactional operational channel mapping. Migration 052 passed a
+90-assertion live direct-write/RPC-denial,
 normalization, no-op, lifecycle, exact-audit, 12-way serialized-concurrency,
 and cleanup matrix with zero database/Auth residue. Migration 051
 passed a 57-assertion live actor/ticket validation,
@@ -292,6 +299,7 @@ requests never receive this secret.
    - **Slash Commands**: `/ticket` → `https://your-domain.com/api/slack/command/ticket`
    - **Interactivity**: Request URL → `https://your-domain.com/api/slack/interactive`
    - **Event Subscriptions**: Request URL → `https://your-domain.com/api/slack/events`
+   - **Subscribe to bot events**: `message.channels`, `message.groups`
    - **Bot Token Scopes**: `commands`, `chat:write`, `chat:write.public`, `channels:read`, `channels:history`, `groups:read`, `groups:history`, `metadata.message:read`, `users:read`, `files:read`
 3. Install the app to your workspace.
 4. Copy the Bot Token (`xoxb-…`) and Signing Secret to `.env.local`.
@@ -374,7 +382,7 @@ src/
 │   ├── ticket.ts                # ⭐ all ticket domain enums + labels
 │   └── spare-parts.ts
 └── middleware.ts                # ⭐ route guard + session refresh
-supabase/migrations/             # 001-052
+supabase/migrations/             # 001-053
 plans/                           # Architecture + phase planning docs
 AGENTS.md                        # ⭐ project context, lessons learned, roadmap
 ```
@@ -385,7 +393,7 @@ AGENTS.md                        # ⭐ project context, lessons learned, roadmap
 - Ticket detail → `app/(auth)/tickets/[ticketId]/page.tsx` + `ticket-actions-panel.tsx`
 - Slack actions → `lib/slack/handlers/actions.ts` + `app/api/slack/interactive/route.ts`
 - AI assist → `app/api/ai/suggest/route.ts` + `lib/ai/service.ts` + `lib/ai/suggest.ts`
-- DB schema → `supabase/migrations/001_*.sql` … `052_atomic_self_service_profile.sql`
+- DB schema → `supabase/migrations/001_*.sql` … `053_replay_safe_slack_thread_capture.sql`
 
 ## Ticket Lifecycle
 
