@@ -90,7 +90,7 @@ export default async function AdminSiteDetailPage({ params, searchParams }: Prop
         .order("created_at", { ascending: false })
         .limit(20),
       supabase
-        .from("audit_logs")
+        .from("audit_logs_with_actor")
         .select("id, created_at, action, field_name, old_value, new_value, actor_email, actor_full_name, actor_role")
         .eq("entity_type", "site")
         .eq("entity_id", id)

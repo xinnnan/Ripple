@@ -26,7 +26,7 @@ export default async function AdminUserDetailPage({ params, searchParams }: Prop
 
   const userResult = await admin
     .from("users")
-    .select("id, email, full_name, role, status, phone, customer_id, created_at, customer:customers(name)")
+    .select("id, email, full_name, role, status, phone, slack_user_id, customer_id, created_at, customer:customers(name)")
     .eq("id", id)
     .maybeSingle();
   assertPageQueriesSucceeded("admin/user-detail", userResult);
@@ -59,7 +59,7 @@ export default async function AdminUserDetailPage({ params, searchParams }: Prop
       .eq("status", "active")
       .order("site_name"),
     admin
-      .from("audit_logs")
+      .from("audit_logs_with_actor")
       .select("id, created_at, action, field_name, old_value, new_value, actor_email, actor_full_name, actor_role")
       .eq("entity_type", "user")
       .eq("entity_id", id)

@@ -41,3 +41,28 @@ export async function applyAdminUserPatch(args: {
 
   return data;
 }
+
+export async function applyAdminUserSlackIdentity(args: {
+  supabase: SupabaseClient;
+  actorId: string;
+  targetUserId: string;
+  slackUserId: string | null;
+}): Promise<string> {
+  const { data, error } = await args.supabase.rpc(
+    "apply_admin_user_slack_identity",
+    {
+      p_actor_id: args.actorId,
+      p_target_user_id: args.targetUserId,
+      p_slack_user_id: args.slackUserId,
+    }
+  );
+
+  if (error || typeof data !== "string") {
+    throw new AdminUserMutationError(
+      "Atomic Slack identity update failed",
+      error?.code
+    );
+  }
+
+  return data;
+}

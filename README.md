@@ -65,14 +65,14 @@ A Slack-native support portal for DropletAI Services. Centralises customer suppo
 | Layer | Tool |
 |-------|------|
 | Frontend | Next.js 15.5.22 (App Router) + React 19 + TypeScript + Tailwind CSS v4 + self-hosted Inter |
-| Database | Supabase Postgres (53 migrations, see `supabase/migrations/`) |
+| Database | Supabase Postgres (54 migrations, see `supabase/migrations/`) |
 | Auth | Supabase Auth (email + password + recovery) + new `sb_publishable_` / `sb_secret_` key format |
 | Storage | Supabase Storage — bucket `ripple-attachments`, **50 MB cap per file** |
 | Slack | `@slack/bolt` + `@slack/web-api` (runs inside Next.js API routes, no separate process) |
 | AI | **MiniMax AI** (OpenAI-compatible) — was OpenAI → Zhipu → MiniMax. **See "AI provider" section below.** |
 | Email | Resend (transactional: ticket confirmation, resolution notice) |
 | Validation | Zod (all API request bodies) |
-| Testing | Vitest (1,115 unit/contract tests) + 41-check production HTTP smoke + credentialed Playwright/API/RLS matrix |
+| Testing | Vitest (1,146 unit/contract tests) + 42-check production HTTP smoke + credentialed Playwright/API/RLS matrix |
 | Hosting | Vercel (serverless API routes) |
 
 ## Phases
@@ -107,7 +107,7 @@ cp .env.local.example .env.local
 
 ### Run database migrations
 
-Apply the SQL files in `supabase/migrations/` **in order** (001 → 053) via the Supabase SQL editor or `supabase db push`:
+Apply the SQL files in `supabase/migrations/` **in order** (001 → 054) via the Supabase SQL editor or `supabase db push`:
 
 ```
 001_create_customers.sql
@@ -163,12 +163,15 @@ Apply the SQL files in `supabase/migrations/` **in order** (001 → 053) via the
 051_replay_safe_ai_suggestions.sql
 052_atomic_self_service_profile.sql
 053_replay_safe_slack_thread_capture.sql
+054_atomic_admin_slack_identity.sql
 ```
 
 Later migrations replace policies/functions and should be applied once in
 order. Migration `017` also performs role data updates and must not be re-run
 blindly. Migrations 001–053 are confirmed applied and live-verified as of
-2026-08-13. Migration 053 passed a 173-assertion signed-ingress, mapping,
+2026-08-13. Migration 054 is the current migration-first deployment gate; it
+adds the supported, atomic, audited admin workflow required to set or clear a
+unique Slack actor identity. Migration 053 passed a 173-assertion signed-ingress, mapping,
 replay, concurrency, privilege, no-echo, and cleanup matrix. Migration 052 passed a
 90-assertion live direct-write/RPC-denial,
 normalization, no-op, lifecycle, exact-audit, 12-way serialized-concurrency,
@@ -381,7 +384,7 @@ src/
 │   ├── ticket.ts                # ⭐ all ticket domain enums + labels
 │   └── spare-parts.ts
 └── middleware.ts                # ⭐ route guard + session refresh
-supabase/migrations/             # 001-053
+supabase/migrations/             # 001-054
 plans/                           # Architecture + phase planning docs
 AGENTS.md                        # ⭐ project context, lessons learned, roadmap
 ```
@@ -392,7 +395,7 @@ AGENTS.md                        # ⭐ project context, lessons learned, roadmap
 - Ticket detail → `app/(auth)/tickets/[ticketId]/page.tsx` + `ticket-actions-panel.tsx`
 - Slack actions → `lib/slack/handlers/actions.ts` + `app/api/slack/interactive/route.ts`
 - AI assist → `app/api/ai/suggest/route.ts` + `lib/ai/service.ts` + `lib/ai/suggest.ts`
-- DB schema → `supabase/migrations/001_*.sql` … `053_replay_safe_slack_thread_capture.sql`
+- DB schema → `supabase/migrations/001_*.sql` … `054_atomic_admin_slack_identity.sql`
 
 ## Ticket Lifecycle
 

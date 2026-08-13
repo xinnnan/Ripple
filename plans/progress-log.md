@@ -7,11 +7,12 @@ meaningful change and before ending a work session. Newest entries go first.
 
 - **Branch:** `codex/prd-v1-1-gap-closure`
 - **Active phase:** Phase 0 — Containment and reproducible baseline
-- **Active work item:** inventory the next highest-value repository-local
-  Phase 0 gap after migration 053 live verification
-- **Last verified checkpoint commit:** `185ec69` (`feat: capture Slack ticket thread replies`)
-- **Uncommitted work:** migration 053 live-verification records; inspect
-  `git status` before committing
+- **Active work item:** P0-CA administrator-managed Slack actor identities;
+  implementation and browser QA are complete, with the full pre-commit gate
+  and migration 054 deployment/live verification pending
+- **Last verified checkpoint commit:** `357ed28` (`docs: verify migration 053 rollout`)
+- **Uncommitted work:** none expected after the P0-CA checkpoint commit;
+  inspect `git status` before resuming
 - **Deployment gate:** migrations 001–053 are confirmed applied and
   live-verified. Migration 044
   passed a 130-assertion disposable live matrix with zero residue. Migration
@@ -33,6 +34,8 @@ meaningful change and before ending a work session. Newest entries go first.
   Migration 053 passed a 173-assertion signed production-HTTP, mapping,
   replay, 12-way concurrency, privilege, tenant-boundary, exact-cardinality,
   no-echo, and cleanup live matrix with zero database/Auth residue.
+  Migration 054 is the current migration-first gate and has not yet been
+  applied or live-verified.
   Production `CRON_SECRET` remains unset in this workspace.
   Protected positive business probes for migrations 028–037 still require
   staging fixtures
@@ -102,20 +105,27 @@ meaningful change and before ending a work session. Newest entries go first.
   local validation, and zero console warnings/errors are green. No profile or
   password mutation was sent during the pre-deployment browser QA, and the
   disposable Auth/profile rows were fully removed.
-- **Exact next local step:** select and implement the highest-value remaining
-  repository-local Phase 0 closure that does not depend on staging identities
-  or production provider/worker configuration
+  The administrator Slack-identity form was reviewed through a disposable
+  real admin at 1280×900 and 390×844: Inter, bound help text, 44-pixel controls,
+  responsive fit, and post-fix console output are green. Browser QA exposed a
+  pre-existing user-detail failure caused by selecting `actor_full_name` from
+  the base audit table; user, customer, and site detail history now use the
+  enriched view. No Slack mapping mutation was sent before migration 054, and
+  all disposable Auth/profile/audit data was removed with zero residue.
+- **Exact next local step:** run the full pre-commit gate, commit P0-CA, then
+  apply/live-verify migration 054
 - **Primary plan:** [`plans/prd-v1.1-gap-closure-plan.md`](./prd-v1.1-gap-closure-plan.md)
 
 ## Overall project status — 2026-08-13
 
 - Ripple has a meaningful Phase 1–4 support-platform foundation, and Phase 0
-  containment is substantially implemented through migration 053. Migrations
-  001–053 are deployed and live-verified.
+  containment is substantially implemented through migration 054. Migrations
+  001–053 are deployed/live-verified; migration 054 is implementation-complete
+  and awaits deployment/live verification.
 - Against the full PRD v1.1 capability map, 17 domains remain
   **Partial** or **Unsafe/Partial** and seven remain **Absent**. No full PRD
   capability domain is yet honestly complete end to end.
-- The local deterministic baseline is green at 1,115 unit/contract tests, 41
+- The local deterministic baseline is green at 1,146 unit/contract tests, 42
   production HTTP smoke checks, a production build, zero-warning lint, and
   zero known dependency vulnerabilities.
 - Phase 0 cannot be declared exited until the protected six-account/two-tenant
@@ -127,6 +137,57 @@ meaningful change and before ending a work session. Newest entries go first.
   queues/routing, business-calendar SLA clocks, remote support, appointments,
   assets/entitlements, search/knowledge, i18n, versioned external APIs, and
   production SRE/recovery evidence.
+
+## Session record — 2026-08-13 (P0-CA / administrator-managed Slack identities)
+
+### Objective
+
+Close the operational prerequisite introduced by signed Slack reply capture:
+give administrators a safe product workflow to set or clear the unique Slack
+identity used for attribution and authorization.
+
+### Changes
+
+- Added migration 054 with legacy-value preflight and canonicalization,
+  provider-ID shape enforcement, shared user-mutation serialization, active
+  administrator and target lifecycle checks, exact no-op handling, uniqueness,
+  and transactionally bound audit evidence.
+- Added a strict administrator-only API and RPC wrapper. Actor identity is
+  session-derived, malformed/extra input is rejected, and expected command
+  failures map to stable 400/403/404/409 responses without leaking internals.
+- Added a dedicated accessible Slack identity form to the administrator user
+  detail instead of mixing integration state into general profile/role writes.
+  The field normalizes to uppercase, supports explicit unlinking, explains how
+  to find the provider member ID, and is disabled for inactive users.
+- Browser QA found and fixed a pre-existing server-rendering defect across the
+  user, customer, and site detail pages: enriched actor display names now come
+  from `audit_logs_with_actor`, not the base `audit_logs` table.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| Focused contracts | Passed; 5 files, 38 tests |
+| Focused lint | Passed; zero warnings |
+| Production build | Passed on Next.js 15.5.22; new API route emitted |
+| Desktop browser | Passed at 1280×900; labelled empty form, Inter, 44-pixel controls, no horizontal overflow |
+| Mobile browser | Passed at 390×844; responsive field/help/action with no horizontal overflow |
+| Post-fix browser diagnostics | Passed; zero fresh warnings/errors |
+| Browser mutation containment | Passed; no Slack identity write before migration 054 |
+| Disposable data cleanup | Passed; zero Auth/profile/audit residue |
+| `npm ci` | Passed from lockfile; install audit reported 0 vulnerabilities |
+| `npm test` | Passed; 147 files, 1,146 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed on Next.js 15.5.22 |
+| `npm run test:e2e` | Passed; 42 production HTTP checks, including unauthenticated Slack-identity mutation denial; protected credentialed matrix skipped because its fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+
+### Remaining gate
+
+- Apply migration 054, then run live command, privilege, uniqueness, no-op,
+  lifecycle, concurrency, audit-cardinality, and cleanup probes before the API
+  and form can be considered deployment-ready.
 
 ## Session record — 2026-08-13 (migration 053 live verification)
 
