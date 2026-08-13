@@ -33,6 +33,9 @@ A Slack-native support portal for DropletAI Services. Centralises customer suppo
 - **Atomic User Authorization Changes** — Admin profile, same-family role,
   status, and deactivation changes are serialized, invariant-checked, and
   audited in their database transaction.
+- **Atomic Self-Service Profiles** — Name and phone changes use a row-locked,
+  service-only command with exact per-field audit evidence; browser roles no
+  longer receive a direct profile-write grant.
 - **Secure User Provisioning** — Public signup metadata cannot mint privileged
   roles; admin and tenant-bound team creation finalize profile, membership, and
   audit state through guarded database commands.
@@ -59,14 +62,14 @@ A Slack-native support portal for DropletAI Services. Centralises customer suppo
 | Layer | Tool |
 |-------|------|
 | Frontend | Next.js 15.5.22 (App Router) + React 19 + TypeScript + Tailwind CSS v4 + self-hosted Inter |
-| Database | Supabase Postgres (51 migrations, see `supabase/migrations/`) |
+| Database | Supabase Postgres (52 migrations, see `supabase/migrations/`) |
 | Auth | Supabase Auth (email + password + recovery) + new `sb_publishable_` / `sb_secret_` key format |
 | Storage | Supabase Storage — bucket `ripple-attachments`, **50 MB cap per file** |
 | Slack | `@slack/bolt` + `@slack/web-api` (runs inside Next.js API routes, no separate process) |
 | AI | **MiniMax AI** (OpenAI-compatible) — was OpenAI → Zhipu → MiniMax. **See "AI provider" section below.** |
 | Email | Resend (transactional: ticket confirmation, resolution notice) |
 | Validation | Zod (all API request bodies) |
-| Testing | Vitest (1,045 unit/contract tests) + 40-check production HTTP smoke + credentialed Playwright/API/RLS matrix |
+| Testing | Vitest (1,084 unit/contract tests) + 41-check production HTTP smoke + credentialed Playwright/API/RLS matrix |
 | Hosting | Vercel (serverless API routes) |
 
 ## Phases
@@ -101,7 +104,7 @@ cp .env.local.example .env.local
 
 ### Run database migrations
 
-Apply the SQL files in `supabase/migrations/` **in order** (001 → 051) via the Supabase SQL editor or `supabase db push`:
+Apply the SQL files in `supabase/migrations/` **in order** (001 → 052) via the Supabase SQL editor or `supabase db push`:
 
 ```
 001_create_customers.sql
@@ -155,12 +158,16 @@ Apply the SQL files in `supabase/migrations/` **in order** (001 → 051) via the
 049_idempotent_service_resource_creation.sql
 050_durable_slack_provider_attempts.sql
 051_replay_safe_ai_suggestions.sql
+052_atomic_self_service_profile.sql
 ```
 
 Later migrations replace policies/functions and should be applied once in
 order. Migration `017` also performs role data updates and must not be re-run
 blindly. Migrations 001–051 are confirmed applied and live-verified as of
-2026-08-12. Migration 051 passed a 57-assertion live actor/ticket validation,
+2026-08-12. Migration 052 is the current migration-first deployment gate: it
+removes the legacy direct authenticated profile-write grant and routes name/
+phone changes through one atomic, audited service command. Migration 051
+passed a 57-assertion live actor/ticket validation,
 replay, independent 12-way reservation/checkpoint/completion concurrency,
 altered-input/output, settlement, cardinality, public API-role denial, and
 cleanup matrix with zero database/Auth residue and no provider request.
@@ -367,7 +374,7 @@ src/
 │   ├── ticket.ts                # ⭐ all ticket domain enums + labels
 │   └── spare-parts.ts
 └── middleware.ts                # ⭐ route guard + session refresh
-supabase/migrations/             # 001-051
+supabase/migrations/             # 001-052
 plans/                           # Architecture + phase planning docs
 AGENTS.md                        # ⭐ project context, lessons learned, roadmap
 ```
@@ -378,7 +385,7 @@ AGENTS.md                        # ⭐ project context, lessons learned, roadmap
 - Ticket detail → `app/(auth)/tickets/[ticketId]/page.tsx` + `ticket-actions-panel.tsx`
 - Slack actions → `lib/slack/handlers/actions.ts` + `app/api/slack/interactive/route.ts`
 - AI assist → `app/api/ai/suggest/route.ts` + `lib/ai/service.ts` + `lib/ai/suggest.ts`
-- DB schema → `supabase/migrations/001_*.sql` … `051_replay_safe_ai_suggestions.sql`
+- DB schema → `supabase/migrations/001_*.sql` … `052_atomic_self_service_profile.sql`
 
 ## Ticket Lifecycle
 

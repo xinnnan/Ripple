@@ -13,6 +13,13 @@ export type NormalizedSelfServiceProfile = {
   phone: string | null;
 };
 
+function containsControlCharacters(value: string): boolean {
+  return Array.from(value).some((character) => {
+    const code = character.charCodeAt(0);
+    return code <= 31 || (code >= 127 && code <= 159);
+  });
+}
+
 export function normalizeSelfServiceProfile(
   input: SelfServiceProfileInput
 ):
@@ -30,11 +37,17 @@ export function normalizeSelfServiceProfile(
       error: "Full name must be 200 characters or fewer.",
     };
   }
+  if (containsControlCharacters(fullName)) {
+    return { success: false, error: "Full name contains invalid characters." };
+  }
   if (phone.length > 50) {
     return {
       success: false,
       error: "Phone must be 50 characters or fewer.",
     };
+  }
+  if (containsControlCharacters(phone)) {
+    return { success: false, error: "Phone contains invalid characters." };
   }
 
   return {

@@ -441,6 +441,10 @@ try {
     "PATCH",
     { quantity: 1 }
   );
+  await expectUnauthorizedMutation("/api/profile", "PATCH", {
+    full_name: "Unauthorized profile",
+    phone: null,
+  });
   await expectGuestUploadLimiterFailClosed();
   await expectInvalidSiteCodeContained();
   await expectLoginRedirect("/admin/users");

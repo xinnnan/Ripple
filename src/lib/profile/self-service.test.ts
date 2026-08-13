@@ -48,6 +48,21 @@ describe("self-service profile contract", () => {
     ).toMatchObject({ success: false });
   });
 
+  it("rejects control characters in audit-bound identity fields", () => {
+    expect(
+      normalizeSelfServiceProfile({ fullName: "Alex\nRivera", phone: "" })
+    ).toEqual({
+      success: false,
+      error: "Full name contains invalid characters.",
+    });
+    expect(
+      normalizeSelfServiceProfile({ fullName: "Alex", phone: "+1\t555" })
+    ).toEqual({
+      success: false,
+      error: "Phone contains invalid characters.",
+    });
+  });
+
   it("uses generic mutation messages that contain no provider detail", () => {
     expect(PROFILE_UPDATE_ERROR_MESSAGE).toBe(
       "Unable to update your profile. Please try again."

@@ -7,12 +7,12 @@ meaningful change and before ending a work session. Newest entries go first.
 
 - **Branch:** `codex/prd-v1-1-gap-closure`
 - **Active phase:** Phase 0 — Containment and reproducible baseline
-- **Active work item:** inventory the remaining repository-local Phase 0 gates
-  after closing the misleading Settings integration surface
-- **Last verified checkpoint commit:** `9502e8f` (`docs: verify migration 051 rollout`)
-- **Uncommitted work:** internal-only System Status readiness UI, authorization
-  boundaries, shared mobile touch-target corrections, tests, and records;
-  inspect `git status` before committing
+- **Active work item:** deploy and live-verify migration 052 after closing the
+  direct self-service profile-write and missing-audit boundary
+- **Last verified checkpoint commit:** `5333814` (`fix: show truthful system readiness`)
+- **Uncommitted work:** migration 052, strict authenticated profile API,
+  atomic mutation wrapper, responsive/accessibility profile UI, tests, and
+  records; inspect `git status` before committing
 - **Deployment gate:** migrations 001–051 are confirmed applied and
   live-verified. Migration 044
   passed a 130-assertion disposable live matrix with zero residue. Migration
@@ -28,6 +28,8 @@ meaningful change and before ending a work session. Newest entries go first.
   Migration 051 passed a 57-assertion actor/ticket/replay/concurrency/
   settlement/cardinality/privilege live matrix with zero database/Auth residue
   and no AI provider request.
+  Migration 052 is implementation-complete and awaits application plus a
+  disposable live verification matrix before its application code deploys.
   Production `CRON_SECRET` remains unset in this workspace.
   Protected positive business probes for migrations 028–037 still require
   staging fixtures
@@ -91,20 +93,27 @@ meaningful change and before ending a work session. Newest entries go first.
   controls meet a 44-pixel target, customer middleware denial/navigation
   hiding is effective, and the console remained clean. The disposable Auth
   identity and profile were fully removed.
-- **Exact next local step:** inventory the remaining Phase 0 release gates and
-  select the highest-value repository-local closure that does not require the
-  protected staging fixture or production provider/worker configuration
+  The authenticated Profile page was also reviewed at 1280×900 and 390×844
+  through a disposable customer account: Inter, responsive fit, long-email
+  wrapping, 44-pixel controls, edit/cancel, password visibility, accessible
+  local validation, and zero console warnings/errors are green. No profile or
+  password mutation was sent while migration 052 remained pending, and the
+  disposable Auth/profile rows were fully removed.
+- **Exact next local step:** apply migration 052, then run its disposable live
+  command/audit/privilege/concurrency/rollback matrix before deploying the
+  dependent application code
 - **Primary plan:** [`plans/prd-v1.1-gap-closure-plan.md`](./prd-v1.1-gap-closure-plan.md)
 
 ## Overall project status — 2026-08-12
 
 - Ripple has a meaningful Phase 1–4 support-platform foundation, and Phase 0
-  containment is substantially implemented through migration 051. Migrations
-  001–051 are deployed and live-verified.
+  containment is substantially implemented through migration 052. Migrations
+  001–051 are deployed and live-verified; migration 052 awaits application and
+  live verification.
 - Against the full PRD v1.1 capability map, 17 domains remain
   **Partial** or **Unsafe/Partial** and seven remain **Absent**. No full PRD
   capability domain is yet honestly complete end to end.
-- The local deterministic baseline is green at 1,065 unit/contract tests, 40
+- The local deterministic baseline is green at 1,084 unit/contract tests, 41
   production HTTP smoke checks, a production build, zero-warning lint, and
   zero known dependency vulnerabilities.
 - Phase 0 cannot be declared exited until the protected six-account/two-tenant
@@ -116,6 +125,66 @@ meaningful change and before ending a work session. Newest entries go first.
   queues/routing, business-calendar SLA clocks, remote support, appointments,
   assets/entitlements, search/knowledge, i18n, versioned external APIs, and
   production SRE/recovery evidence.
+
+## Session record — 2026-08-12 (P0-BY / atomic self-service profile)
+
+### Objective
+
+Close the remaining direct authenticated `users` write path and make supported
+self-service profile changes transactionally auditable without regressing the
+password flow or responsive Profile experience.
+
+### Implementation
+
+- Added migration 052 with a service-role-only `update_own_profile` command.
+  The command normalizes and bounds name/phone, locks and revalidates the active
+  actor row, preserves no-op timestamps/evidence, and commits one audit row per
+  changed field in the same transaction.
+- Removed the legacy self-update RLS policy and the authenticated
+  name/phone/avatar column grant. The product has no avatar-editing workflow,
+  so that unsupported write surface is no longer retained.
+- Added strict `PATCH /api/profile`, deriving actor identity solely from the
+  authenticated session and returning bounded private/no-store errors. The
+  shared RPC wrapper validates the minimal database receipt before returning it
+  to the browser.
+- Routed the Profile form through the new API and rebuilt both profile/password
+  sections with complete cross-form mutation locking, accessible live status,
+  password visibility/guidance, responsive stacking, long-identity wrapping,
+  and 44-pixel controls.
+- Added 19 route, wrapper, migration, direct-write, UI, and normalization
+  contracts. Production smoke now denies unauthenticated profile PATCH.
+- During SQL review, removed invalid schema qualification from `COALESCE` and
+  `NULLIF` and added a migration regression assertion for the migration-037
+  runtime failure class before deployment.
+
+### Browser verification
+
+- A disposable customer account exercised read-only desktop 1280×900 and
+  mobile 390×844 Profile flows. Edit/cancel, password visibility, mismatched-
+  password validation, Inter, no-overflow behavior, long-email wrapping, and
+  minimum control targets passed with zero console warnings/errors.
+- No profile or password write was sent because migration 052 is still the
+  migration-first gate. The disposable Auth identity and profile were fully
+  deleted with no retained test row.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| Focused profile/API/migration/boundary tests | Passed; 35 assertions |
+| `npm ci` | Passed from lockfile; install reported 0 vulnerabilities |
+| `npm test` | Passed; 140 files, 1,084 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build and type check |
+| `npm run test:e2e` | Passed; all 41 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+
+### Result
+
+P0-BY is implementation-complete and migration-first. Apply migration 052 and
+run its disposable command/audit/privilege/concurrency/rollback matrix before
+deploying the dependent application code.
 
 ## Session record — 2026-08-12 (P0-BX / truthful system readiness)
 
