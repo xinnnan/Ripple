@@ -7,15 +7,12 @@ meaningful change and before ending a work session. Newest entries go first.
 
 - **Branch:** `codex/prd-v1-1-gap-closure`
 - **Active phase:** Phase 0 — Containment and reproducible baseline
-- **Active work item:** P0-BW replay-safe Ripple Assist provider boundary;
-  implementation and local contract gates are complete, with migration 051
-  application and live verification pending
+- **Active work item:** close the misleading static Settings integration page
+  now that migration 051 passed live verification
 - **Last verified checkpoint commit:** `b152376` (`docs: verify migration 050 rollout`)
-- **Verified local slice awaiting deployment:** migration 051, service-only AI
-  request reservation/checkpoint/completion commands, stable browser/Slack
-  replay keys, fail-closed ambiguous-provider handling, tests, and deployment
-  documentation; inspect `git log -1` and `git status` when resuming
-- **Deployment gate:** migrations 001–050 are confirmed applied and
+- **Uncommitted work:** documentation checkpoint recording migration 051 live
+  verification; inspect `git status` before committing
+- **Deployment gate:** migrations 001–051 are confirmed applied and
   live-verified. Migration 044
   passed a 130-assertion disposable live matrix with zero residue. Migration
   045 passed a 110-assertion live matrix with zero residue. Migration 046
@@ -27,8 +24,9 @@ meaningful change and before ending a work session. Newest entries go first.
   with zero database/Auth residue.
   Migration 050 passed a 27-assertion lease/concurrency/settlement/privilege
   live matrix with zero database/Auth residue.
-  Migration 051 is the current migration-first gate and has not yet been
-  applied or live-verified.
+  Migration 051 passed a 57-assertion actor/ticket/replay/concurrency/
+  settlement/cardinality/privilege live matrix with zero database/Auth residue
+  and no AI provider request.
   Production `CRON_SECRET` remains unset in this workspace.
   Protected positive business probes for migrations 028–037 still require
   staging fixtures
@@ -86,19 +84,17 @@ meaningful change and before ending a work session. Newest entries go first.
   Inter, expanded/collapsed accessibility state, no horizontal overflow, and
   zero console warnings/errors. A disposable engineer identity was fully
   removed with zero profile/audit residue, and no AI provider request was made.
-- **Exact next local step:** apply migration 051, live-verify exact replay,
-  altered-input rejection, independent/concurrent request behavior, provider
-  checkpoint settlement, atomic receipt cardinality, and public API-role
-  denial. Then close the static Settings integration-readiness UI gap.
-  Configure `CRON_SECRET` separately before production worker activation
+- **Exact next local step:** replace the static Settings integration claims
+  with secret-safe real readiness status and role-appropriate operational
+  guidance, then browser-verify desktop/mobile behavior. Configure
+  `CRON_SECRET` separately before production worker activation
 - **Primary plan:** [`plans/prd-v1.1-gap-closure-plan.md`](./prd-v1.1-gap-closure-plan.md)
 
 ## Overall project status — 2026-08-11
 
 - Ripple has a meaningful Phase 1–4 support-platform foundation, and Phase 0
   containment is substantially implemented through migration 051. Migrations
-  001–050 are deployed/live-verified; migration 051 is implementation-complete
-  and awaits deployment/live verification.
+  001–051 are deployed and live-verified.
 - Against the full PRD v1.1 capability map, 17 domains remain
   **Partial** or **Unsafe/Partial** and seven remain **Absent**. No full PRD
   capability domain is yet honestly complete end to end.
@@ -114,6 +110,61 @@ meaningful change and before ending a work session. Newest entries go first.
   queues/routing, business-calendar SLA clocks, remote support, appointments,
   assets/entitlements, search/knowledge, i18n, versioned external APIs, and
   production SRE/recovery evidence.
+
+## Session record — 2026-08-12 (migration 051 live verification)
+
+### Objective
+
+Verify the deployed replay-safe Ripple Assist database boundary without making
+a paid AI provider request.
+
+### Evidence
+
+- A disposable unprivileged Auth/profile identity first proved that customer
+  actors cannot reserve AI work, then was elevated only inside the isolated
+  fixture to exercise the active-engineer command path against one existing
+  ticket foreign-key target.
+- Anonymous and authenticated API roles could neither read/insert the forced-
+  RLS ledger nor execute reservation, cancellation, checkpoint, or completion
+  commands directly.
+- Exact reservation replay returned the existing in-progress state; changed
+  task reuse failed. Twelve concurrent reservations created one ledger row and
+  returned one first reservation plus eleven existing-state receipts.
+- Pre-provider cancellation removed only its safe reservation and replayed as
+  a no-op. Altered checkpoint identity returned no timestamp; 12 concurrent
+  exact checkpoints retained one server timestamp; checkpointed work could not
+  be cancelled and returned the fail-closed provider-attempted state.
+- Twelve concurrent completions created exactly one suggestion and bound one
+  atomic receipt. Exact reserve/completion retries returned that receipt;
+  altered output and completion without reservation failed with no extra row.
+  Mock-only completion retained no false provider-attempt evidence.
+- The first verifier attempt stopped before ledger/suggestion creation because
+  the signup mirror returned a provisional rather than active customer. Its
+  Auth deletion exposed an orphaned public profile, which was removed by exact
+  `r051-*` scope; the corrected cleanup now deletes both identity layers.
+- The final matrix passed **57 assertions** with zero ledger, suggestion,
+  public-profile, or Auth residue. No MiniMax/provider request ran.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| Migration 051 live matrix | Passed; 57 actor/ticket/replay/concurrency/settlement/cardinality/privilege/cleanup assertions |
+| Provider execution | Not invoked; database boundary only |
+| `npm ci` | Passed from lockfile; install reported 0 vulnerabilities |
+| `npm test` | Passed; 134 files, 1,045 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build and type check |
+| `npm run test:e2e` | Passed; all 40 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+
+### Result
+
+Migrations 001–051 are deployed and live-verified. Proceed to the static
+Settings integration-readiness UI gap, while retaining the protected
+six-account/two-tenant matrix and production provider/worker configuration as
+separate external gates.
 
 ## Session record — 2026-08-11 (P0-BW / replay-safe Ripple Assist)
 

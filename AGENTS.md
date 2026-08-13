@@ -17,9 +17,8 @@ This file is the **single source of truth for project context** — read it befo
 - **External users** (customers): customer admins (manage their org's team + sites) + regular customers (submit + view their tickets)
 
 **Status** — Phase 1–4 foundation is present; PRD v1.1 gap closure and security
-containment are active on `codex/prd-v1-1-gap-closure`. Migrations 001–050 are
-deployed and live-verified; migration 051 is the current migration-first
-deployment gate. `main` is live on Vercel.
+containment are active on `codex/prd-v1-1-gap-closure`. Migrations 001–051 are
+deployed and live-verified. `main` is live on Vercel.
 
 ---
 
@@ -165,9 +164,8 @@ const isInternal = role ? INTERNAL_ROLES.includes(role) : email ? isInternalEmai
 
 ## 5. Database Schema (Supabase)
 
-51 migrations, to be applied in order. Migrations 001–050 are confirmed
-applied and live-verified as of 2026-08-11; migration 051 awaits application
-and live verification. Key tables:
+51 migrations, to be applied in order. Migrations 001–051 are confirmed
+applied and live-verified as of 2026-08-12. Key tables:
 
 | Table | Purpose | Notes |
 |---|---|---|
@@ -183,7 +181,7 @@ and live verification. Key tables:
 | `ticket_attachments` | File refs (storage_path) | Bucket `ripple-attachments`, 50MB cap; direct authenticated bucket access is removed by migration 027 and app routes mediate objects. Migration 044 adds bounded metadata/path constraints and atomic metadata plus timeline creation; its 130-assertion live matrix is green |
 | `ticket_events` | Audit log | `actor_id`, `event_type`, `old_value`/`new_value` |
 | `ai_suggestions` | Ripple Assist outputs | `model_name`, `confidence_level`, accept/dismiss feedback; migration 051 moves creation behind an atomic completion receipt |
-| `ai_suggestion_requests` | Service-only paid-AI replay ledger | Migration 051 reserves one web/Slack request key, checkpoints before provider I/O, returns the first durable result for exact retries, rejects altered reuse, and leaves ambiguous provider outcomes fail-closed; deployment/live verification are pending |
+| `ai_suggestion_requests` | Service-only paid-AI replay ledger | Migration 051 reserves one web/Slack request key, checkpoints before provider I/O, returns the first durable result for exact retries, rejects altered reuse, and leaves ambiguous provider outcomes fail-closed; its 57-assertion live replay/concurrency/settlement/privilege matrix is green |
 | `slack_channels` / `slack_messages` | Site ↔ Slack channel map, message tracking | |
 | `integration_outbox` | Durable external delivery | Unique event keys, bounded leases, exponential backoff, delivery evidence, and dead-letter retention for ticket notifications and customer-visible Slack comment replies. Migration 050 checkpoints the exact Slack provider-write boundary under the active lease; retries reconcile bounded message metadata and fail closed when metadata visibility, history access, or a complete result window cannot be proven |
 | `request_rate_limits` | Opaque distributed boundary counters | Migration 046 adds service-role-only atomic consumption, bounded inputs/counts, indexed expiry, and opportunistic retention; site validation, anonymous ticket creation, guest attachment upload, public ticket view, and paid Ripple Assist actor quotas use distinct buckets, and the migration's 77-assertion live matrix is green |

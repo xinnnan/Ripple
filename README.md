@@ -159,12 +159,12 @@ Apply the SQL files in `supabase/migrations/` **in order** (001 → 051) via the
 
 Later migrations replace policies/functions and should be applied once in
 order. Migration `017` also performs role data updates and must not be re-run
-blindly. Migrations 001–050 are confirmed applied and live-verified as of
-2026-08-11. Migration 051 is the current migration-first deployment gate and
-must be applied before the corresponding application update. It adds the
-service-only Ripple Assist request ledger, pre-provider checkpoint, safe
-pre-provider cancellation, and atomic suggestion receipt. Migration 050 passed
-a 27-assertion live lease/concurrency/
+blindly. Migrations 001–051 are confirmed applied and live-verified as of
+2026-08-12. Migration 051 passed a 57-assertion live actor/ticket validation,
+replay, independent 12-way reservation/checkpoint/completion concurrency,
+altered-input/output, settlement, cardinality, public API-role denial, and
+cleanup matrix with zero database/Auth residue and no provider request.
+Migration 050 passed a 27-assertion live lease/concurrency/
 settlement/privilege matrix with zero database/Auth residue. The reinstalled
 Slack bot exposes every required reconciliation scope; history/thread reads
 await the first real linked channel/master message. Migration 049 passed a
@@ -311,7 +311,7 @@ MINIMAX_MODEL=M2.7-highspeed
 `POST /api/ai/suggest` is internal-only and requires a bounded
 `Idempotency-Key` header. The browser retains that key across retries; signed
 Slack modal submissions derive the same identity from the view ID. Migration
-051 must be deployed before this application version.
+051 owns this replay boundary and is confirmed deployed/live-verified.
 
 **To switch provider** (e.g. back to Zhipu, OpenAI, or another OpenAI-compatible service): change the three env vars above. No code change required — `suggest.ts` is provider-agnostic.
 

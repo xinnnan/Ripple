@@ -71,7 +71,7 @@ The correct approach is therefore:
 | Production build | Passed on Next.js 15.5.22 | Environment-free build is reproducible |
 | Dependency audit | 0 vulnerabilities | Patched direct/transitive versions are lockfile-pinned and compatibility-tested, including `js-yaml` 4.3.1 and `nanoid` 3.3.17 after their 2026-08-08 advisories entered the audit feed |
 | Worktree | Clean at baseline | Work started on `codex/prd-v1-1-gap-closure` |
-| Committed end-to-end tests | 40 production HTTP checks + credentialed Playwright/API/RLS matrix | Public/recovery/negative/configuration smoke always runs, including public share access denial, malformed site-code containment, fail-closed guest-upload/outbox-worker configuration, and site-membership/site/user/customer/SLA/catalog/inventory-write/provisioning denials. Migrations 001–050 are applied and live-verified; migration 051 awaits application and a disposable replay/concurrency/privilege matrix. Migration 046 passed 77 live assertions, migration 047 passed a 42-assertion replay/concurrency/privilege matrix, migration 048 passed a 69-assertion replay/concurrency/cardinality/privilege matrix, migration 049 passed a 134-assertion replay/concurrency/cardinality/constraint/privilege matrix, migration 050 passed a 27-assertion lease/concurrency/settlement/privilege matrix, and the extended upload/share boundary passed a separate 22-assertion live matrix with zero residue. Protected positive request/field-service/team/site-access/site/user/customer/catalog/inventory/attachment-administration/provisioning/transition/outbox/create probes and the six-account two-tenant matrix await staging credentials/fixtures |
+| Committed end-to-end tests | 40 production HTTP checks + credentialed Playwright/API/RLS matrix | Public/recovery/negative/configuration smoke always runs, including public share access denial, malformed site-code containment, fail-closed guest-upload/outbox-worker configuration, and site-membership/site/user/customer/SLA/catalog/inventory-write/provisioning denials. Migrations 001–051 are applied and live-verified. Migration 046 passed 77 live assertions, migration 047 passed a 42-assertion replay/concurrency/privilege matrix, migration 048 passed a 69-assertion replay/concurrency/cardinality/privilege matrix, migration 049 passed a 134-assertion replay/concurrency/cardinality/constraint/privilege matrix, migration 050 passed a 27-assertion lease/concurrency/settlement/privilege matrix, migration 051 passed a 57-assertion replay/concurrency/settlement/cardinality/privilege matrix, and the extended upload/share boundary passed a separate 22-assertion live matrix with zero residue. Protected positive request/field-service/team/site-access/site/user/customer/catalog/inventory/attachment-administration/provisioning/transition/outbox/create probes and the six-account two-tenant matrix await staging credentials/fixtures |
 | Hosted CI | Workflow committed in `4ceacd0`; first hosted run pending | Read-only, SHA-pinned quality job is reproducible; repository branch protection and the protected staging environment still require activation |
 
 ## 4. PRD capability gap map
@@ -809,7 +809,7 @@ Every implementation slice must:
     checkpoints, settlement retention, API-role denial, and zero residue. The
     reinstalled bot exposes every required scope; provider history/thread reads
     await the first real linked channel/master because none currently exist.
-75. **P0-BW — implementation complete; deployment pending:** Migration 051
+75. **P0-BW — closed, deployed, and live-verified:** Migration 051
     adds a forced-RLS, service-only Ripple Assist request ledger. Web retries
     retain one key and signed Slack modal submissions derive a stable key. The
     shared service returns completed receipts before quota/provider execution,
@@ -817,9 +817,10 @@ Every implementation slice must:
     I/O, disables unverified SDK-level retries, and atomically persists the
     suggestion plus receipt. Altered key reuse fails closed; a provider-
     checkpointed request without a durable receipt is never replayed
-    automatically. Thirty contracts bring the suite to 1,045;
-    migration application and live replay/concurrency/privilege verification
-    remain required.
-76. **Next local audit:** after migration 051 is deployed/live-verified, close
-    the misleading static Settings integration page and resume the remaining
-    product/UI-readiness gaps.
+    automatically. Thirty contracts bring the suite to 1,045. Fifty-seven live
+    assertions verified actor/ticket validation, exact and altered replay,
+    independent 12-way reservation/checkpoint/completion concurrency, safe
+    cancellation, atomic cardinality, API-role denial, and zero residue without
+    making an AI provider request.
+76. **Next local audit:** close the misleading static Settings integration page
+    and resume the remaining product/UI-readiness gaps.
