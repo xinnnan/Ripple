@@ -178,7 +178,7 @@ and live verification. Key tables:
 |---|---|---|
 | `customers` | Customer orgs | `name`, `domain`, `status`; migration 040 makes active/trial creation and ordinary updates transactionally audited and keeps inactive lifecycle behind the archive workflow |
 | `sites` | Customer locations | `site_code` (unique), `slack_channel_id`, `project_status`; migration 036 makes customer ownership immutable through normal admin updates and makes create/update audit atomic; migration 037 repairs its SQL-expression runtime defect and is live-verified |
-| `users` | All users (internal + external) | `role` (4 values, see §4), `customer_id`, `slack_user_id`; migration 038 makes same-family admin PATCH/deactivation serialized and transactionally audited. Migration 039 stops trusting signup role metadata and adds atomic admin/team provisioning finalizers. Migration 052 moves name/phone self-service behind a row-locked audited command and passed a 90-assertion live matrix. Migration 053 makes non-null Slack actor identities unique and passed a 173-assertion signed-ingress matrix. Migration 054 adds canonical Slack-ID shape enforcement plus a service-only, row-locked, exactly audited admin mapping command; application and live verification are pending |
+| `users` | All users (internal + external) | `role` (4 values, see §4), `customer_id`, `slack_user_id`; migration 038 makes same-family admin PATCH/deactivation serialized and transactionally audited. Migration 039 stops trusting signup role metadata and adds atomic admin/team provisioning finalizers. Migration 052 moves name/phone self-service behind a row-locked audited command and passed a 90-assertion live matrix. Migration 053 makes non-null Slack actor identities unique and passed a 173-assertion signed-ingress matrix. Migration 054 quarantines unusable legacy IDs with system audit, rejects ambiguous valid ownership, adds canonical Slack-ID shape enforcement, and adds a service-only, row-locked, exactly audited admin mapping command; application and live verification are pending |
 | `site_members` | User ↔ Site (M:N) | Customers join via this; customer_manager bypasses. Migration 035 adds tenant-contained, transactionally audited admin add/remove commands. Migration 045 removes the legacy direct authenticated write path; its 110-assertion live matrix is green |
 | `tickets` | Core ticket entity | `ticket_no` (RPL-XXXXXX), `secure_token` (32-byte hex), `severity` (P1–P4), 8-state `status`, response/resolution due/achieved/breached timestamps; migration 027 column-limits direct authenticated SELECT |
 | `ticket_creation_requests` | Service-only ticket-create replay ledger | Migration 047 serializes source/request keys, returns the first durable receipt for exact retries, and rejects altered reuse; its 42-assertion replay/concurrency/privilege live matrix is green |
@@ -316,7 +316,7 @@ npm run dev
 - `npm run build` — production build
 - `npm run start` — production server
 - `npm run lint` — direct ESLint CLI across the repository; warnings fail the gate
-- `npm test` — Vitest unit/contract suite (1,146 tests)
+- `npm test` — Vitest unit/contract suite (1,147 tests)
 - `npm run test:e2e` — 42-check production HTTP smoke plus optional credentialed Playwright/API/RLS matrix; requires a successful build
 - `npm run test:e2e:credentialed` — real six-account/two-tenant matrix; set `RIPPLE_E2E_FIXTURES_FILE`
 - `npm run test:e2e:install-browser` — install the pinned Chromium runtime
@@ -1482,6 +1482,25 @@ a duplicate paid call.
 select only intentional fields before retrieval, bound every attacker-controlled
 dimension, delimit content as untrusted data, and keep post-side-effect
 persistence failures from misrepresenting the already-completed provider call.
+
+### Invalid legacy identity and ambiguous ownership need different migration handling
+Found 2026-08-16 when migration 054 first ran against the live database. Its
+preflight correctly rolled the transaction back after finding 19 invalid
+`U_HANDLER_*` mappings left by old handler fixtures, but those strings contain
+characters that no Slack member ID can use. Blocking deployment preserved
+unusable values without protecting a real identity. The affected users also
+retain Auth rows and ticket ownership, so deleting fixture-shaped users would
+destroy operational history outside the migration's scope.
+
+The repaired migration quarantines only impossible provider IDs to NULL and
+writes one explicit system audit row per value. It still aborts when two valid
+legacy values collapse to the same normalized ID, because that is genuine
+ownership ambiguity that requires operator resolution.
+
+**Lesson:** migration preflights should classify legacy defects by recovery
+semantics. Quarantine provably unusable external identifiers with exact audit;
+fail closed on ambiguous valid ownership; never delete identity or business
+history merely because a row originated in an old test fixture.
 
 ---
 

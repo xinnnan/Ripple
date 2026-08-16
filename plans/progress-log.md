@@ -8,11 +8,11 @@ meaningful change and before ending a work session. Newest entries go first.
 - **Branch:** `codex/prd-v1-1-gap-closure`
 - **Active phase:** Phase 0 — Containment and reproducible baseline
 - **Active work item:** P0-CA administrator-managed Slack actor identities;
-  implementation and browser QA are complete, with the full pre-commit gate
-  and migration 054 deployment/live verification pending
-- **Last verified checkpoint commit:** `357ed28` (`docs: verify migration 053 rollout`)
-- **Uncommitted work:** none expected after the P0-CA checkpoint commit;
-  inspect `git status` before resuming
+  implementation and browser QA are complete; migration 054 rollback-safe
+  legacy quarantine repair and re-verification are active
+- **Last verified checkpoint commit:** `bea3fdb` (`feat: manage Slack user identities`)
+- **Uncommitted work:** none expected after the migration 054 rollback-safety
+  repair commit; inspect `git status` before resuming
 - **Deployment gate:** migrations 001–053 are confirmed applied and
   live-verified. Migration 044
   passed a 130-assertion disposable live matrix with zero residue. Migration
@@ -34,8 +34,9 @@ meaningful change and before ending a work session. Newest entries go first.
   Migration 053 passed a 173-assertion signed production-HTTP, mapping,
   replay, 12-way concurrency, privilege, tenant-boundary, exact-cardinality,
   no-echo, and cleanup live matrix with zero database/Auth residue.
-  Migration 054 is the current migration-first gate and has not yet been
-  applied or live-verified.
+  Migration 054 is the current migration-first gate. Its first application
+  attempt on 2026-08-16 rolled back at the invalid-legacy preflight; the RPC
+  remains absent. The retry must be applied and live-verified.
   Production `CRON_SECRET` remains unset in this workspace.
   Protected positive business probes for migrations 028–037 still require
   staging fixtures
@@ -112,8 +113,8 @@ meaningful change and before ending a work session. Newest entries go first.
   the base audit table; user, customer, and site detail history now use the
   enriched view. No Slack mapping mutation was sent before migration 054, and
   all disposable Auth/profile/audit data was removed with zero residue.
-- **Exact next local step:** run the full pre-commit gate, commit P0-CA, then
-  apply/live-verify migration 054
+- **Exact next local step:** verify and commit the rollback-safe migration 054
+  repair, then reapply/live-verify migration 054
 - **Primary plan:** [`plans/prd-v1.1-gap-closure-plan.md`](./prd-v1.1-gap-closure-plan.md)
 
 ## Overall project status — 2026-08-13
@@ -125,7 +126,7 @@ meaningful change and before ending a work session. Newest entries go first.
 - Against the full PRD v1.1 capability map, 17 domains remain
   **Partial** or **Unsafe/Partial** and seven remain **Absent**. No full PRD
   capability domain is yet honestly complete end to end.
-- The local deterministic baseline is green at 1,146 unit/contract tests, 42
+- The local deterministic baseline is green at 1,147 unit/contract tests, 42
   production HTTP smoke checks, a production build, zero-warning lint, and
   zero known dependency vulnerabilities.
 - Phase 0 cannot be declared exited until the protected six-account/two-tenant
@@ -137,6 +138,45 @@ meaningful change and before ending a work session. Newest entries go first.
   queues/routing, business-calendar SLA clocks, remote support, appointments,
   assets/entitlements, search/knowledge, i18n, versioned external APIs, and
   production SRE/recovery evidence.
+
+## Session record — 2026-08-16 (migration 054 invalid-legacy rollback)
+
+### Finding
+
+- The first migration 054 application stopped with `22023` before the command,
+  constraint, or audit normalization could commit. A service-role probe
+  confirmed `apply_admin_user_slack_identity` is absent (`PGRST202`), so the
+  transaction rolled back rather than leaving a partial deployment.
+- Read-only inspection found 19 non-null mappings, all synthetic
+  `U_HANDLER_*` values from July handler fixtures. Their `_`/`-` characters
+  make them impossible Slack member IDs under the provider contract. All 19
+  have Auth rows and retained ticket ownership, so deleting those users or
+  their operational history is outside this migration's scope.
+
+### Repair
+
+- Migration 054 now transactionally sets only invalid legacy mappings to NULL
+  and records one system audit row per user with the old value and explicit
+  `invalid_provider_id_shape` reason. Valid mappings still normalize safely;
+  valid identities that become ambiguous after normalization still abort for
+  operator resolution.
+- No live data was mutated during diagnosis. The repaired migration and its
+  updated contracts passed the complete pre-commit gate before retry.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| Rollback probe | Passed; RPC absent with `PGRST202`, proving no partial function deployment |
+| Legacy inspection | Passed; 19/19 non-null values are impossible synthetic `U_HANDLER_*` IDs; no valid mapping requires preservation |
+| Focused migration contracts | Passed; 1 file, 8 tests |
+| `npm ci` | Passed from lockfile; install audit reported 0 vulnerabilities |
+| `npm test` | Passed; 147 files, 1,147 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed on Next.js 15.5.22 |
+| `npm run test:e2e` | Passed; 42 production HTTP checks; protected credentialed matrix skipped because its fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
 
 ## Session record — 2026-08-13 (P0-CA / administrator-managed Slack identities)
 

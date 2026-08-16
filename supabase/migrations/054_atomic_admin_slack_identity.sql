@@ -11,27 +11,64 @@
 
 BEGIN;
 
--- Canonicalize any safe legacy mapping before enforcing the same shape used
--- by the admin API. Reject ambiguous or invalid legacy values instead of
--- silently disconnecting, merging, or reassigning an identity.
+-- Invalid legacy values cannot resolve to a Slack member and are therefore
+-- not operational identities. Quarantine them to NULL with one audit row per
+-- user instead of blocking the migration or silently inventing a mapping.
+WITH invalid_before AS MATERIALIZED (
+  SELECT
+    app_user.id,
+    app_user.email,
+    app_user.slack_user_id AS old_value
+  FROM public.users AS app_user
+  WHERE app_user.slack_user_id IS NOT NULL
+    AND (
+      pg_catalog.char_length(
+        pg_catalog.upper(pg_catalog.btrim(app_user.slack_user_id))
+      ) NOT BETWEEN 9 AND 50
+      OR pg_catalog.upper(pg_catalog.btrim(app_user.slack_user_id))
+        !~ '^[UW][A-Z0-9]{8,49}$'
+    )
+), quarantined AS (
+  UPDATE public.users AS target
+  SET slack_user_id = NULL
+  FROM invalid_before
+  WHERE target.id = invalid_before.id
+  RETURNING target.id
+)
+INSERT INTO public.audit_logs (
+  actor_id,
+  actor_email,
+  actor_role,
+  entity_type,
+  entity_id,
+  action,
+  field_name,
+  old_value,
+  new_value,
+  metadata
+)
+SELECT
+  NULL,
+  NULL,
+  'system',
+  'user',
+  invalid_before.id,
+  'updated',
+  'slack_user_id',
+  invalid_before.old_value,
+  NULL,
+  pg_catalog.jsonb_build_object(
+    'command', 'migration_054_quarantine_invalid_slack_identity',
+    'reason', 'invalid_provider_id_shape',
+    'target_email', invalid_before.email
+  )
+FROM invalid_before
+JOIN quarantined ON quarantined.id = invalid_before.id;
+
+-- Valid provider identities may be safely trimmed and case-normalized, but
+-- two rows that collapse to the same identity require operator resolution.
 DO $$
 BEGIN
-  IF EXISTS (
-    SELECT 1
-    FROM public.users AS app_user
-    WHERE app_user.slack_user_id IS NOT NULL
-      AND (
-        pg_catalog.char_length(
-          pg_catalog.upper(pg_catalog.btrim(app_user.slack_user_id))
-        ) NOT BETWEEN 9 AND 50
-        OR pg_catalog.upper(pg_catalog.btrim(app_user.slack_user_id))
-          !~ '^[UW][A-Z0-9]{8,49}$'
-      )
-  ) THEN
-    RAISE EXCEPTION 'An existing Slack user identity has an invalid shape'
-      USING ERRCODE = '22023';
-  END IF;
-
   IF EXISTS (
     SELECT pg_catalog.upper(pg_catalog.btrim(app_user.slack_user_id))
     FROM public.users AS app_user

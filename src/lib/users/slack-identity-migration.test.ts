@@ -41,10 +41,19 @@ describe("migration 054 administrator Slack identity mapping", () => {
     expect(migration).toContain("!~ '^[UW][A-Z0-9]{8,49}$'");
     expect(migration).toContain("Inactive users cannot change Slack identity");
     expect(migration).toContain("users_slack_user_id_shape");
-    expect(migration).toContain("An existing Slack user identity has an invalid shape");
   });
 
-  it("normalizes safe legacy values with audit and rejects ambiguous migration", () => {
+  it("quarantines unusable legacy identities with exact audit evidence", () => {
+    expect(migration).toContain("WITH invalid_before AS MATERIALIZED");
+    expect(migration).toContain("SET slack_user_id = NULL");
+    expect(migration).toContain("invalid_before.old_value");
+    expect(migration).toContain(
+      "'migration_054_quarantine_invalid_slack_identity'"
+    );
+    expect(migration).toContain("'reason', 'invalid_provider_id_shape'");
+  });
+
+  it("normalizes safe legacy values with audit and rejects ambiguous valid ownership", () => {
     expect(migration).toContain(
       "Existing Slack user identities become ambiguous after normalization"
     );

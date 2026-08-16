@@ -72,7 +72,7 @@ A Slack-native support portal for DropletAI Services. Centralises customer suppo
 | AI | **MiniMax AI** (OpenAI-compatible) — was OpenAI → Zhipu → MiniMax. **See "AI provider" section below.** |
 | Email | Resend (transactional: ticket confirmation, resolution notice) |
 | Validation | Zod (all API request bodies) |
-| Testing | Vitest (1,146 unit/contract tests) + 42-check production HTTP smoke + credentialed Playwright/API/RLS matrix |
+| Testing | Vitest (1,147 unit/contract tests) + 42-check production HTTP smoke + credentialed Playwright/API/RLS matrix |
 | Hosting | Vercel (serverless API routes) |
 
 ## Phases
@@ -170,8 +170,9 @@ Later migrations replace policies/functions and should be applied once in
 order. Migration `017` also performs role data updates and must not be re-run
 blindly. Migrations 001–053 are confirmed applied and live-verified as of
 2026-08-13. Migration 054 is the current migration-first deployment gate; it
-adds the supported, atomic, audited admin workflow required to set or clear a
-unique Slack actor identity. Migration 053 passed a 173-assertion signed-ingress, mapping,
+quarantines unusable legacy mappings with audit and adds the supported, atomic,
+audited admin workflow required to set or clear a unique Slack actor identity.
+Migration 053 passed a 173-assertion signed-ingress, mapping,
 replay, concurrency, privilege, no-echo, and cleanup matrix. Migration 052 passed a
 90-assertion live direct-write/RPC-denial,
 normalization, no-op, lifecycle, exact-audit, 12-way serialized-concurrency,
