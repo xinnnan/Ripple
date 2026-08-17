@@ -703,6 +703,13 @@ when a row next enters/changes a guarded state. PRD v1.1's additional TRIAGE,
 WAITING_THIRD_PARTY, PENDING_ONSITE_WORK, DUPLICATE, REJECTED, and CANCELLED
 states remain future schema work.
 
+Migration 032 was comprehensively live-verified on 2026-08-17 with 430
+disposable assertions. The service-only SQL helper and authoritative trigger
+matched the application table for all 64 state pairs; public-role denial,
+owner/summary invariants, transactional rollback, non-retroactive legacy-row
+updates, exact timeline/audit/SLA/outbox effects, and twelve identical
+concurrent assignments all passed with zero database/Auth residue.
+
 **Lesson:** front-end action filtering is usability, not integrity. Put the
 truth table and entry guards inside the same transaction as the mutation,
 return a typed conflict to each transport, test every allowed/rejected pair,
@@ -1764,7 +1771,7 @@ resume work; this section remains the broader historical summary.
 | ✅ Verified | Migration 046 durable public rate limits | `supabase/migrations/046_durable_public_rate_limits.sql` | Applied 2026-08-02; 77 live assertions covered grants, constraints, concurrency, reset/retention, bounded cleanup, real HTTP limits/lifecycle, and zero residue |
 | 🟡 Med | Exact site-code validation remains an existence oracle | `/api/sites/validate` | Responses are minimal and migration 046 enforces 20 checks/minute/IP across instances, but full anti-enumeration still requires CAPTCHA, an invitation/intake token, or authenticated submission |
 | ✅ Verified | Migration 031 atomic team access | `supabase/migrations/031_atomic_team_site_assignment.sql`, `/api/team/[id]` | A 175-assertion disposable live matrix passed 2026-08-17 across public-role denial, actor/tenant/target/site lifecycle guards, retained membership roles and row identities, omission/clear/no-op semantics, exact audits, rollback, 12-way serialization, and zero database/Auth residue |
-| 🟡 Verify | Migration 032 positive business probe remains | `supabase/migrations/032_guard_ticket_status_transitions.sql` | Truth-table and three rollback guards are live/green; run one allowed transition and restore it on a disposable staging ticket |
+| ✅ Verified | Migration 032 guarded ticket transitions | `supabase/migrations/032_guard_ticket_status_transitions.sql`, `src/lib/tickets/status.ts`, `/api/tickets/[ticketId]` | A 430-assertion disposable live matrix passed 2026-08-17 across all 64 state pairs, SQL/application parity, public-role denial, owner/summary guards, rollback, legacy compatibility, exact event/audit/SLA/outbox effects, 12-way serialization, and zero database/Auth residue |
 | 🟡 Configure | Production `CRON_SECRET` is not configured | deployment environment | Migration 033 is live and its non-writing RPC/column probes passed; set a long server-only secret, then verify readiness and worker authorization |
 | 🟡 Verify | Migration 034 protected creation probes remain | `supabase/migrations/034_atomic_ticket_creation_outbox.sql` | Command privilege, validation, constraint, and zero-residue probes are live/green; run disposable web/Slack creation and outbox-delivery probes with staging fixtures |
 | 🟡 Verify | Migration 035 protected membership probes remain | `supabase/migrations/035_atomic_admin_site_membership.sql` | Service validation/not-found and anonymous-denial probes are live/green with zero residue; run disposable same/cross-tenant add/remove/rollback probes |
@@ -1814,8 +1821,8 @@ resume work; this section remains the broader historical summary.
 16. **Sprint 3 feature work** — Kanban view (INT-5), SLA monitoring (INT-6), notifications center (INT-7).
 17. **Start real Slack Connect work** — see PRD §8.5 / SLK-015.
 18. **Guard ticket state transitions (INT-001).** ✅ deployed in `b344d18` +
-    migration 032; truth table and rejected owner/summary/jump probes passed,
-    while one disposable positive transition/restore remains.
+    migration 032 and comprehensively live-verified through the 430-assertion
+    matrix.
 19. **Close current Slack mutation parity (INT-011).** ✅ code complete in
     `4892dcb` and made durable for ticket updates in `a6ccd33`; web and Slack
     share resolution email/thread/master-card effects through the outbox.

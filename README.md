@@ -187,6 +187,10 @@ team profile/site-access updates, manager/tenant/target/site boundaries,
 retained membership roles and identities, omission/clear/no-op semantics,
 exact audit evidence, rollback, and 12-way concurrency with zero database/Auth
 residue.
+Migration 032 passed a 430-assertion disposable live matrix covering all 64
+state pairs, database/application transition parity, owner and resolution-
+summary invariants, rollback, historical-row compatibility, exact event/audit/
+SLA/outbox effects, and 12-way concurrency with zero database/Auth residue.
 Migration 053 passed a 173-assertion signed-ingress, mapping,
 replay, concurrency, privilege, no-echo, and cleanup matrix. Migration 052 passed a
 90-assertion live direct-write/RPC-denial,
