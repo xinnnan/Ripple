@@ -6,15 +6,14 @@ meaningful change and before ending a work session. Newest entries go first.
 ## Current checkpoint
 
 - **Branch:** `codex/prd-v1-1-gap-closure`
-- **Active phase:** Phase 0 — Containment and reproducible baseline
-- **Active work item:** P0-CB complete locally; record the first comprehensive
-  six-account/two-tenant live authorization run, then begin the highest-value
-  repository-local Phase 1 authorization-kernel work while hosted activation
-  remains external
-- **Last verified checkpoint commit:** `a8b45ca` (`docs: verify migrations 036 and 037`)
-- **Uncommitted work:** credentialed matrix fixes, inactive-login settlement,
-  complete internal ticket contact projection, regression contracts, and live
-  release-gate evidence
+- **Active phase:** Phase 1 — Authorization and domain foundation; Phase 0
+  hosted activation remains an external release gate
+- **Active work item:** P1-A additive customer-membership and site-assignment
+  authorization roots, compatibility backfill, and temporal policy primitives
+- **Last verified checkpoint commit:** `41c7a04` (`fix: close credentialed authorization gate`)
+- **Uncommitted work:** migration 055, shared authorization vocabularies and
+  fail-closed effective-window helpers, deterministic contracts, and rollout
+  documentation
 - **Deployment gate:** migrations 001–054 are confirmed applied and
   live-verified. Migration 044
   passed a 130-assertion disposable live matrix with zero residue. Migration
@@ -65,6 +64,9 @@ meaningful change and before ending a work session. Newest entries go first.
   no-op/Slack-mapping/rollback/12-way-concurrency live matrix with zero
   database/Auth residue. Combined with the 028–031 matrices, all six repaired
   migration-037 commands have live positive paths.
+  Migration 055 is additive and awaits application. It creates the PRD
+  customer-membership and tenant-bound site-assignment roots, snapshots current
+  compatibility access, and deliberately does not switch runtime reads.
   Production `CRON_SECRET` remains unset in this workspace.
 - **External validation gate:** the complete credentialed matrix passed locally
   against disposable live Supabase fixtures and the production Next build with
@@ -148,20 +150,21 @@ meaningful change and before ending a work session. Newest entries go first.
   404s, external/internal attachment controls, and customer-safe/internal API
   projections. It exposed and fixed the inactive-login message remount defect;
   every rerun completed without browser authorization leakage.
-- **Exact next local step:** commit P0-CB after the full clean-install quality
-  gate, then begin the Phase 1 authorization-kernel design/implementation seam
-  that can be completed without hosted environment or provider changes.
+- **Exact next local step:** finish the full clean-install gate and commit P1-A,
+  then apply migration 055 and run its backfill/constraint/privilege/residue
+  matrix before any policy-resolver or runtime-read cutover.
 - **Primary plan:** [`plans/prd-v1.1-gap-closure-plan.md`](./prd-v1.1-gap-closure-plan.md)
 
 ## Overall project status — 2026-08-17
 
 - Ripple has a meaningful Phase 1–4 support-platform foundation, and Phase 0
   containment is substantially implemented through migration 054. Migrations
-  001–054 are deployed and live-verified.
+  001–054 are deployed and live-verified. Migration 055 is an additive Phase 1
+  authorization-foundation deployment gate.
 - Against the full PRD v1.1 capability map, 17 domains remain
   **Partial** or **Unsafe/Partial** and seven remain **Absent**. No full PRD
   capability domain is yet honestly complete end to end.
-- The local deterministic baseline is green at 1,150 unit/contract tests, 42
+- The local deterministic baseline is green at 1,160 unit/contract tests, 42
   production HTTP smoke checks, a production build, zero-warning lint, and
   zero known dependency vulnerabilities. The complete credentialed matrix also
   passed locally against disposable live fixtures with zero residue.
@@ -173,6 +176,68 @@ meaningful change and before ending a work session. Newest entries go first.
   queues/routing, business-calendar SLA clocks, remote support, appointments,
   assets/entitlements, search/knowledge, i18n, versioned external APIs, and
   production SRE/recovery evidence.
+
+## Session record — 2026-08-17 (P1-A membership authorization foundation)
+
+### Objective
+
+Create the first additive PRD authorization-kernel seam: independent
+user-to-customer memberships plus tenant-bound site assignments, while
+preserving every current runtime access path until a separately verified
+policy cutover.
+
+### Changes
+
+- Added migration 055 with independent organization roles, membership
+  invited/active/suspended/revoked lifecycle, OWN/SITE/CUSTOMER ticket scope,
+  stackable approval capabilities, effective windows, actor references,
+  optimistic versions, and retention-safe foreign keys.
+- Added customer IDs to site assignments and composite membership/site foreign
+  keys, making a cross-customer grant structurally impossible rather than
+  relying on a caller-side check.
+- Backfill derives one home membership plus any regular-customer retained-site
+  customer memberships. Legacy customer managers receive only their existing
+  home-customer organization scope; the migration does not invent access to a
+  second tenant.
+- Legacy owner/manager/member/viewer site roles map to
+  site_admin/site_admin/requester/viewer. Existing manager-wide CUSTOMER and
+  regular-customer SITE ticket visibility are retained as a compatibility
+  snapshot instead of silently tightening production behavior.
+- Every migrated membership and assignment writes explicit system audit
+  evidence in the same transaction. Both new tables enable RLS, expose no
+  anon/authenticated privileges, and are read only through the service role
+  until command and policy cutover work is ready.
+- Added shared TypeScript role/lifecycle/scope/capability vocabularies and a
+  start-inclusive, end-exclusive temporal predicate that fails closed for
+  invalid timestamps or inactive membership state.
+- Current `users.customer_id` and `site_members` are documented as
+  compatibility paths; migration 055 makes no runtime authorization change.
+- A read-only live preflight found 216 external profiles, 119 legacy site
+  assignments, 181 expected customer memberships, 119 expected new site
+  assignments, and zero orphan/unsupported-role anomalies. Thirty-five
+  external profiles have no legacy customer/site access and correctly receive
+  no new grant. Both destination tables are absent in the live PostgREST schema.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| Focused authorization contracts | Passed; 2 files, 10 tests |
+| Focused lint | Passed; no warnings/errors |
+| Read-only live backfill preflight | Passed; 181 membership + 119 assignment rows predicted, zero shape anomalies, destination tables absent |
+| `npm ci` | Passed; 533 packages installed from lockfile, 0 vulnerabilities |
+| `npm test` | Passed; 149 files, 1,160 tests |
+| `npm run lint` | Passed; no warnings/errors |
+| `npm run build` | Passed; optimized Next.js production build |
+| `npm run test:e2e` | Passed; 42 production HTTP checks; credentialed matrix skipped because its disposable secret fixture was removed after the separately recorded complete pass |
+| `npm audit --audit-level=low` | Passed; 0 vulnerabilities |
+| `git diff --check` | Passed |
+
+### Exact next step
+
+- Run the full pre-commit gate and commit P1-A. Migration 055 must then be
+  applied and live-verified before the policy resolver or any production read
+  is switched to the new authorization roots.
 
 ## Session record — 2026-08-17 (P0-CB credentialed authorization gate)
 

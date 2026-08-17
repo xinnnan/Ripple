@@ -18,8 +18,8 @@ This file is the **single source of truth for project context** — read it befo
 
 **Status** — Phase 1–4 foundation is present; PRD v1.1 gap closure and security
 containment are active on `codex/prd-v1-1-gap-closure`. Migrations 001–054 are
-deployed and live-verified; the next migration number is 055. `main` is live on
-Vercel.
+deployed and live-verified; additive authorization-foundation migration 055 is
+the current deployment gate. `main` is live on Vercel.
 
 ---
 
@@ -69,6 +69,8 @@ Vercel.
 │   │   ├── layout.tsx                   # Root
 │   │   └── page.tsx                     # Marketing landing
 │   ├── lib/
+│   │   ├── authorization/
+│   │   │   └── model.ts                    # PRD membership/scope vocabulary + temporal predicates
 │   │   ├── roles.ts                     # ⭐ Role constants + helpers (single source)
 │   │   ├── utils.ts                     # cn, generateSecureToken, formatDate, COMMON_TIMEZONES
 │   │   ├── supabase/
@@ -111,7 +113,7 @@ Vercel.
 │   │   ├── ticket.ts                    # ⭐ All domain enums + labels
 │   │   └── spare-parts.ts               # ⭐ Spare parts + field service enums
 │   └── middleware.ts                    # ⭐ Route guard + session refresh
-├── supabase/migrations/                 # 001–054, apply in order
+├── supabase/migrations/                 # 001–055, apply in order
 ├── plans/                               # Architecture + phase planning docs
 │   ├── architecture.md
 │   ├── phase2-customer-auth-and-user-management.md
@@ -126,13 +128,14 @@ Vercel.
 
 **Where to look first** when debugging:
 - Auth/role issues → `src/middleware.ts`, `src/lib/roles.ts`, `src/lib/supabase/auth-helpers.ts`
+- Authorization foundation → `src/lib/authorization/model.ts`, `supabase/migrations/055_customer_membership_foundation.sql`
 - Ticket creation flow → `src/app/api/tickets/route.ts` (POST), `src/app/(public)/submit/page.tsx`, `src/app/(auth)/tickets/create-ticket-modal.tsx`
 - Ticket detail UI → `src/app/(auth)/tickets/[ticketId]/page.tsx` (server) + `ticket-actions-panel.tsx` (client)
 - Slack ticket creation → `src/app/api/slack/command/ticket/route.ts` + `src/lib/slack/blocks/ticket-form.ts`
 - Slack ticket-thread capture → `src/app/api/slack/events/route.ts` + `src/lib/slack/handlers/events.ts`
 - Slack actor identity mapping → `src/app/(auth)/admin/users/[id]/edit-user-form.tsx` + `src/app/api/admin/users/[id]/slack/route.ts`
 - AI assist → `src/app/api/ai/suggest/route.ts` + `src/lib/ai/service.ts` + `src/lib/ai/suggest.ts`
-- DB schema → `supabase/migrations/001_*.sql` … `054_atomic_admin_slack_identity.sql`
+- DB schema → `supabase/migrations/001_*.sql` … `055_customer_membership_foundation.sql`
 
 ---
 
@@ -161,6 +164,10 @@ const isInternal = role ? INTERNAL_ROLES.includes(role) : email ? isInternalEmai
 ```
 - `isInternalEmail()` checks `email.endsWith("@dropletai.services")` — fallback when role isn't set yet
 - `customer_id` on `users` table is required for `customer_manager` to see their full org (auto-populated from `site_members` by migration 017)
+- Migration 055 introduces additive `customer_memberships` and
+  `customer_site_assignments`. Until its later policy cutover, `users.customer_id`
+  and `site_members` remain the runtime compatibility path and must not be
+  removed or treated as the final PRD authorization model.
 
 **API auth** — use `requireAdmin()` / `requireInternal()` / `getAuthUser()` from `src/lib/supabase/auth-helpers.ts:1` rather than rolling your own.
 
@@ -170,8 +177,9 @@ const isInternal = role ? INTERNAL_ROLES.includes(role) : email ? isInternalEmai
 
 ## 5. Database Schema (Supabase)
 
-54 migrations, to be applied in order. Migrations 001–054 are confirmed
-applied and live-verified as of 2026-08-17. Key tables:
+55 migrations, to be applied in order. Migrations 001–054 are confirmed
+applied and live-verified as of 2026-08-17; migration 055 awaits application
+and live backfill verification. Key tables:
 
 | Table | Purpose | Notes |
 |---|---|---|
@@ -179,6 +187,7 @@ applied and live-verified as of 2026-08-17. Key tables:
 | `sites` | Customer locations | `site_code` (unique), `slack_channel_id`, `project_status`; migration 036 makes customer ownership immutable through normal admin updates and makes create/update audit atomic. Migration 037 repairs its SQL-expression runtime defect; the current commands passed a 500-assertion live matrix |
 | `users` | All users (internal + external) | `role` (4 values, see §4), `customer_id`, `slack_user_id`; migration 038 makes same-family admin PATCH/deactivation serialized and transactionally audited. Migration 039 stops trusting signup role metadata and adds atomic admin/team provisioning finalizers. Migration 052 moves name/phone self-service behind a row-locked audited command and passed a 90-assertion live matrix. Migration 053 makes non-null Slack actor identities unique and passed a 173-assertion signed-ingress matrix. Migration 054 quarantines unusable legacy IDs with system audit, rejects ambiguous valid ownership, adds canonical Slack-ID shape enforcement, and adds a service-only, row-locked, exactly audited admin mapping command. It passed a 326-assertion live matrix plus real signed-in API/UI set-clear verification with zero disposable residue |
 | `site_members` | User ↔ Site (M:N) | Customers join via this; customer_manager bypasses. Migration 035 adds tenant-contained, transactionally audited admin add/remove commands. Migration 045 removes the legacy direct authenticated write path; its 110-assertion live matrix is green |
+| `customer_memberships` / `customer_site_assignments` | Additive PRD authorization roots | Migration 055 snapshots legacy home-tenant and retained-site access into independent customer memberships and tenant-bound site assignments with roles, lifecycle, effective windows, ticket scopes, approval capabilities, optimistic versions, composite tenant foreign keys, system migration audit, and service-only access. Runtime reads remain on the compatibility model until a later policy cutover; application and live verification are pending |
 | `tickets` | Core ticket entity | `ticket_no` (RPL-XXXXXX), `secure_token` (32-byte hex), `severity` (P1–P4), 8-state `status`, response/resolution due/achieved/breached timestamps; migration 027 column-limits direct authenticated SELECT |
 | `ticket_creation_requests` | Service-only ticket-create replay ledger | Migration 047 serializes source/request keys, returns the first durable receipt for exact retries, and rejects altered reuse; its 42-assertion replay/concurrency/privilege live matrix is green |
 | `ticket_comment_requests` | Service-only ticket-comment replay ledger | Migration 048 serializes source/request keys, returns the first durable comment for exact retries, rejects altered reuse, and transactionally binds customer-visible comments to one Slack-reply outbox event; its 69-assertion replay/concurrency/cardinality/privilege live matrix is green |
@@ -305,7 +314,7 @@ if ("error" in auth) return NextResponse.json({ error: auth.error }, { status: a
 npm install
 cp .env.local.example .env.local   # fill in real values
 # Run migrations in Supabase SQL editor (or `supabase db push` if using CLI):
-#   001 → 054 in order
+#   001 → 055 in order
 # Enable pgvector: CREATE EXTENSION IF NOT EXISTS vector;
 npm run dev
 ```
@@ -315,7 +324,7 @@ npm run dev
 - `npm run build` — production build
 - `npm run start` — production server
 - `npm run lint` — direct ESLint CLI across the repository; warnings fail the gate
-- `npm test` — Vitest unit/contract suite (1,150 tests)
+- `npm test` — Vitest unit/contract suite (1,160 tests)
 - `npm run test:e2e` — 42-check production HTTP smoke plus optional credentialed Playwright/API/RLS matrix; requires a successful build
 - `npm run test:e2e:credentialed` — real six-account/two-tenant matrix; set `RIPPLE_E2E_FIXTURES_FILE`
 - `npm run test:e2e:install-browser` — install the pinned Chromium runtime
@@ -2218,7 +2227,7 @@ npm audit
 ```
 
 **Apply a new migration:**
-1. Create `supabase/migrations/055_xxx.sql` (next number)
+1. Create `supabase/migrations/056_xxx.sql` (next number)
 2. Test locally: `supabase db reset` (drops + re-applies all)
 3. Apply to prod via Supabase SQL editor
 4. Document in this file's §5 + §10

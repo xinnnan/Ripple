@@ -68,14 +68,14 @@ A Slack-native support portal for DropletAI Services. Centralises customer suppo
 | Layer | Tool |
 |-------|------|
 | Frontend | Next.js 15.5.22 (App Router) + React 19 + TypeScript + Tailwind CSS v4 + self-hosted Inter |
-| Database | Supabase Postgres (54 migrations, see `supabase/migrations/`) |
+| Database | Supabase Postgres (55 migrations, see `supabase/migrations/`) |
 | Auth | Supabase Auth (email + password + recovery) + new `sb_publishable_` / `sb_secret_` key format |
 | Storage | Supabase Storage — bucket `ripple-attachments`, **50 MB cap per file** |
 | Slack | `@slack/bolt` + `@slack/web-api` (runs inside Next.js API routes, no separate process) |
 | AI | **MiniMax AI** (OpenAI-compatible) — was OpenAI → Zhipu → MiniMax. **See "AI provider" section below.** |
 | Email | Resend (transactional: ticket confirmation, resolution notice) |
 | Validation | Zod (all API request bodies) |
-| Testing | Vitest (1,150 unit/contract tests) + 42-check production HTTP smoke + credentialed Playwright/API/RLS matrix |
+| Testing | Vitest (1,160 unit/contract tests) + 42-check production HTTP smoke + credentialed Playwright/API/RLS matrix |
 | Hosting | Vercel (serverless API routes) |
 
 ## Phases
@@ -167,6 +167,7 @@ Apply the SQL files in `supabase/migrations/` **in order** (001 → 054) via the
 052_atomic_self_service_profile.sql
 053_replay_safe_slack_thread_capture.sql
 054_atomic_admin_slack_identity.sql
+055_customer_membership_foundation.sql
 ```
 
 Later migrations replace policies/functions and should be applied once in
@@ -178,6 +179,11 @@ audited admin workflow required to set or clear a unique Slack actor identity.
 It passed a 326-assertion live command/privilege/lifecycle/uniqueness/audit/
 concurrency matrix plus a real signed-in API/UI set-clear flow with zero
 disposable residue.
+Migration 055 is an additive authorization-foundation gate awaiting
+application. It creates multi-customer memberships and tenant-bound site
+assignments, backfills the legacy access paths with system audit evidence, and
+does not switch current runtime reads away from `users.customer_id` or
+`site_members`.
 Migrations 028–030 also passed a 173-assertion disposable live matrix covering
 atomic spare-part request and field-service create/update behavior, protected
 numbering, tenant/parent/lifecycle constraints, exact audit evidence, rollback,
@@ -330,7 +336,7 @@ gate.
 
 ### GitHub Actions
 
-`.github/workflows/ci.yml` runs the locked install, 1,150 unit/contract tests,
+`.github/workflows/ci.yml` runs the locked install, 1,160 unit/contract tests,
 lint, production build, 42-check HTTP E2E, and dependency audit for pull
 requests and pushes to `main`. GitHub-owned actions are pinned to full commit
 SHAs and the workflow has read-only repository permissions.
@@ -422,6 +428,7 @@ src/
 │   ├── site-members/            # tenant-contained atomic access wrappers
 │   ├── sites/                   # tenant-safe atomic site wrappers
 │   ├── spare-parts/             # atomic catalog/inventory contracts + wrappers
+│   ├── authorization/           # PRD membership/scope vocabulary + temporal predicates
 │   ├── team/                    # team contracts + atomic set-diff wrapper
 │   ├── tickets/                 # lifecycle + durable notification outbox
 │   ├── users/                   # atomic admin-user mutation wrapper
@@ -432,7 +439,7 @@ src/
 │   ├── ticket.ts                # ⭐ all ticket domain enums + labels
 │   └── spare-parts.ts
 └── middleware.ts                # ⭐ route guard + session refresh
-supabase/migrations/             # 001-054
+supabase/migrations/             # 001-055
 plans/                           # Architecture + phase planning docs
 AGENTS.md                        # ⭐ project context, lessons learned, roadmap
 ```
@@ -443,7 +450,7 @@ AGENTS.md                        # ⭐ project context, lessons learned, roadmap
 - Ticket detail → `app/(auth)/tickets/[ticketId]/page.tsx` + `ticket-actions-panel.tsx`
 - Slack actions → `lib/slack/handlers/actions.ts` + `app/api/slack/interactive/route.ts`
 - AI assist → `app/api/ai/suggest/route.ts` + `lib/ai/service.ts` + `lib/ai/suggest.ts`
-- DB schema → `supabase/migrations/001_*.sql` … `054_atomic_admin_slack_identity.sql`
+- DB schema → `supabase/migrations/001_*.sql` … `055_customer_membership_foundation.sql`
 
 ## Ticket Lifecycle
 
