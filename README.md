@@ -191,6 +191,11 @@ Migration 032 passed a 430-assertion disposable live matrix covering all 64
 state pairs, database/application transition parity, owner and resolution-
 summary invariants, rollback, historical-row compatibility, exact event/audit/
 SLA/outbox effects, and 12-way concurrency with zero database/Auth residue.
+Migration 033's current outbox contract (including migration 050's provider-
+attempt checkpoint) passed a 167-assertion disposable live matrix covering
+service-only access, constraints, atomic enqueue, leases, settlement, retry,
+dead-letter/stale recovery, ordering, and 12-way `SKIP LOCKED` concurrency with
+zero database/Auth residue. Production recovery still requires `CRON_SECRET`.
 Migration 053 passed a 173-assertion signed-ingress, mapping,
 replay, concurrency, privilege, no-echo, and cleanup matrix. Migration 052 passed a
 90-assertion live direct-write/RPC-denial,

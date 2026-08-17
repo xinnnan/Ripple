@@ -7,11 +7,11 @@ meaningful change and before ending a work session. Newest entries go first.
 
 - **Branch:** `codex/prd-v1-1-gap-closure`
 - **Active phase:** Phase 0 — Containment and reproducible baseline
-- **Active work item:** P0-CB remaining protected migration 033–037 positive/
-  rollback verification; migrations 028–032 are now comprehensively live-
+- **Active work item:** P0-CB remaining protected migration 034–037 positive/
+  rollback verification; migrations 028–033 are now comprehensively live-
   verified
-- **Last verified checkpoint commit:** `863fb97` (`docs: verify migration 031 transactions`)
-- **Uncommitted work:** migration 032 live-verification evidence and checkpoint
+- **Last verified checkpoint commit:** `2bf7cd8` (`docs: verify migration 032 transitions`)
+- **Uncommitted work:** migration 033 live-verification evidence and checkpoint
   updates
 - **Deployment gate:** migrations 001–054 are confirmed applied and
   live-verified. Migration 044
@@ -48,8 +48,11 @@ meaningful change and before ending a work session. Newest entries go first.
   Migration 032 passed a 430-assertion all-state-pair/parity/privilege/
   invariant/rollback/legacy-compatibility/event/audit/SLA/outbox/12-way
   concurrency live matrix with zero database/Auth residue.
+  Migration 033's current contract passed a 167-assertion privilege/constraint/
+  enqueue/claim/lease/checkpoint/delivery/retry/dead-letter/stale-recovery/
+  ordering/12-way concurrency live matrix with zero database/Auth residue.
   Production `CRON_SECRET` remains unset in this workspace.
-  Protected positive business probes for migrations 033–037 remain
+  Protected positive business probes for migrations 034–037 remain
 - **External validation gate:** populate the gitignored credential fixture with six
   dedicated staging accounts, two tenants, a decommissioned site/ticket, and
   real internal artifact IDs; then run
@@ -63,11 +66,11 @@ meaningful change and before ending a work session. Newest entries go first.
   database currently has zero linked Slack channels and zero recorded master
   messages, so read-only history/thread reconciliation awaits the first real
   target rather than posting a synthetic message to a customer channel
-- **Runtime verification debt:** migrations 028–032 request/field-service/team/
-  ticket-transition creation, fulfillment, assignment, DATE, access-set,
-  rollback, audit, privilege, and concurrency cases are live-verified.
-  Remaining debt starts with migration 033 outbox lease/retry/dead-letter
-  behavior, followed by migrations 034–037. The credentialed matrix
+- **Runtime verification debt:** migrations 028–033 request/field-service/team/
+  ticket-transition/outbox creation, fulfillment, assignment, DATE, access-
+  set, rollback, audit, privilege, and concurrency cases are live-verified.
+  Remaining debt starts with migration 034 atomic ticket creation, followed by
+  migrations 035–037. The credentialed matrix
   also carries real malformed-JSON 400 probes for ticket create, ticket PATCH,
   ticket comments, and AI suggestions
 - **Support UX verification:** public pages and the real admin shell were
@@ -123,10 +126,10 @@ meaningful change and before ending a work session. Newest entries go first.
   enriched view. After deployment, a second disposable browser flow performed
   an actual normalized set and clear at desktop/mobile widths with exact audit
   evidence and zero residue.
-- **Exact next local step:** commit the migration 032 verification record, then
-  live-verify migration 033 outbox enqueue/claim/lease/retry/delivery/dead-
-  letter behavior, privileges, rollback, and concurrency with disposable
-  fixtures.
+- **Exact next local step:** commit the migration 033 verification record, then
+  live-verify migration 034 atomic web/Slack ticket creation, scope, exact
+  timeline/audit/outbox effects, rollback, privileges, and concurrency with
+  disposable fixtures.
 - **Primary plan:** [`plans/prd-v1.1-gap-closure-plan.md`](./prd-v1.1-gap-closure-plan.md)
 
 ## Overall project status — 2026-08-17
@@ -141,7 +144,7 @@ meaningful change and before ending a work session. Newest entries go first.
   production HTTP smoke checks, a production build, zero-warning lint, and
   zero known dependency vulnerabilities.
 - Phase 0 cannot be declared exited until the protected six-account/two-tenant
-  matrix and remaining migration 033–037 positive/rollback probes run in
+  matrix and remaining migration 034–037 positive/rollback probes run in
   staging, hosted branch protection and the reviewer-protected staging
   environment are activated, and production worker/provider configuration is
   completed.
@@ -149,6 +152,70 @@ meaningful change and before ending a work session. Newest entries go first.
   queues/routing, business-calendar SLA clocks, remote support, appointments,
   assets/entitlements, search/knowledge, i18n, versioned external APIs, and
   production SRE/recovery evidence.
+
+## Session record — 2026-08-17 (migration 033 live verification)
+
+### Objective
+
+Retire the protected outbox lifecycle debt against the current deployed schema,
+including migration 050's provider-attempt checkpoint, without claiming or
+settling existing production events.
+
+### Evidence
+
+- A read-only preflight confirmed no prior migration-033 fixtures and no
+  unrelated exhausted stale processing leases, avoiding the claim command's
+  intentional global stale-final cleanup side effect.
+- Anonymous and authenticated roles cannot read/write the outbox or invoke
+  claim, delivery, failure, or provider-checkpoint commands. Invalid claim
+  bounds/type and invalid table aggregate/event/status/attempt shapes failed
+  closed; duplicate idempotency keys returned `23505`.
+- Claiming selected only the exact aggregate's ready event, incremented the
+  attempt, minted a token and lease time, and would not reclaim a fresh lease.
+  Wrong-token checkpoint/delivery/failure calls were inert; the active token
+  recorded the provider boundary and settled exact delivery evidence once.
+- Retryable failures cleared the lease, retained attempt history and exact
+  result, truncated errors to 2,000 characters, and scheduled approximately
+  30- then 60-second exponential delays. Events were unavailable before their
+  retry time.
+- Non-retryable failures, failures at the maximum attempt, and abandoned final
+  stale leases became retained dead letters with exact diagnostics and no
+  further claim. A stale non-final lease rotated its token and incremented the
+  attempt, while a fresh lease remained untouched.
+- Claim ordering followed `available_at`; twelve simultaneous one-event claims
+  returned every fixture exactly once through `SKIP LOCKED`, with twelve unique
+  active leases.
+- Ticket severity, assignment, and resolution changes enqueued exactly three
+  master syncs, one Slack resolution reply, and one email resolution event.
+  A business-field no-op added nothing, and a rejected invalid transition
+  preserved the entire ticket and left no outbox row.
+- The first run stopped only because the verifier compared JSONB insertion key
+  order. PostgreSQL had persisted the exact delivery object with canonical key
+  order. The deep comparator was corrected, the failed run's fixtures were
+  cleaned, and the complete matrix passed from a clean preflight.
+- All disposable outbox/ticket/timeline/audit/customer/site/profile/Auth data
+  was removed; independent residue checks were empty.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| Migration 033 live matrix | Passed; 167 privilege/constraint/enqueue/claim/lease/checkpoint/settlement/retry/dead-letter/concurrency assertions |
+| Concurrency | Passed; 12 simultaneous claims returned 12 distinct events and exact leases |
+| Backoff/dead letter | Passed; ~30s/~60s retry windows plus terminal, exhausted, and stale-final retention |
+| Disposable cleanup | Passed; zero outbox/ticket/event/audit/customer/site/profile/Auth residue |
+| `npm ci` | Passed; 533 packages installed from lockfile, 0 vulnerabilities |
+| `npm test` | Passed; 147 files, 1,147 tests |
+| `npm run lint` | Passed; no warnings/errors |
+| `npm run build` | Passed; optimized Next.js production build |
+| `npm run test:e2e` | Passed; 42 production HTTP checks; credentialed matrix skipped because its fixture file is unset |
+| `npm audit --audit-level=low` | Passed; 0 vulnerabilities |
+| `git diff --check` | Passed |
+
+### Exact next step
+
+- Commit this verification record, then execute the migration 034 disposable
+  atomic ticket-creation matrix.
 
 ## Session record — 2026-08-17 (migration 032 live verification)
 

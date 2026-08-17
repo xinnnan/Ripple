@@ -71,7 +71,7 @@ The correct approach is therefore:
 | Production build | Passed on Next.js 15.5.22 | Environment-free build is reproducible |
 | Dependency audit | 0 vulnerabilities | Patched direct/transitive versions are lockfile-pinned and compatibility-tested, including `js-yaml` 4.3.1 and `nanoid` 3.3.18 after their advisories entered the audit feed |
 | Worktree | Clean at baseline | Work started on `codex/prd-v1-1-gap-closure` |
-| Committed end-to-end tests | 42 production HTTP checks + credentialed Playwright/API/RLS matrix | Public/recovery/negative/configuration smoke always runs, including public share access denial, malformed site-code containment, fail-closed guest-upload/outbox-worker/Slack configuration, profile and site-membership/site/user/customer/Slack-identity/SLA/catalog/inventory-write/provisioning denials. Migrations 001–054 are applied and live-verified. Migrations 028–030 passed a combined 173-assertion service-resource transaction matrix; migration 031 passed a 175-assertion team-access transaction matrix; migration 032 passed a 430-assertion transition/invariant matrix; migration 046 passed 77 live assertions, migration 047 passed a 42-assertion replay/concurrency/privilege matrix, migration 048 passed a 69-assertion replay/concurrency/cardinality/privilege matrix, migration 049 passed a 134-assertion replay/concurrency/cardinality/constraint/privilege matrix, migration 050 passed a 27-assertion lease/concurrency/settlement/privilege matrix, migration 051 passed a 57-assertion replay/concurrency/settlement/cardinality/privilege matrix, migration 052 passed a 90-assertion command/audit/privilege/concurrency matrix, migration 053 passed a 173-assertion signed-ingress/mapping/replay/concurrency/privilege/no-echo matrix, migration 054 passed a 326-assertion command/privilege/lifecycle/uniqueness/audit/concurrency matrix plus signed-in API/UI set-clear verification, and the extended upload/share boundary passed a separate 22-assertion live matrix with zero residue. Protected site-administration/ticket-create/outbox probes and the six-account two-tenant matrix remain open |
+| Committed end-to-end tests | 42 production HTTP checks + credentialed Playwright/API/RLS matrix | Public/recovery/negative/configuration smoke always runs, including public share access denial, malformed site-code containment, fail-closed guest-upload/outbox-worker/Slack configuration, profile and site-membership/site/user/customer/Slack-identity/SLA/catalog/inventory-write/provisioning denials. Migrations 001–054 are applied and live-verified. Migrations 028–030 passed a combined 173-assertion service-resource transaction matrix; migration 031 passed a 175-assertion team-access transaction matrix; migration 032 passed a 430-assertion transition/invariant matrix; migration 033 passed a 167-assertion outbox-lifecycle matrix; migration 046 passed 77 live assertions, migration 047 passed a 42-assertion replay/concurrency/privilege matrix, migration 048 passed a 69-assertion replay/concurrency/cardinality/privilege matrix, migration 049 passed a 134-assertion replay/concurrency/cardinality/constraint/privilege matrix, migration 050 passed a 27-assertion lease/concurrency/settlement/privilege matrix, migration 051 passed a 57-assertion replay/concurrency/settlement/cardinality/privilege matrix, migration 052 passed a 90-assertion command/audit/privilege/concurrency matrix, migration 053 passed a 173-assertion signed-ingress/mapping/replay/concurrency/privilege/no-echo matrix, migration 054 passed a 326-assertion command/privilege/lifecycle/uniqueness/audit/concurrency matrix plus signed-in API/UI set-clear verification, and the extended upload/share boundary passed a separate 22-assertion live matrix with zero residue. Protected site-administration/ticket-create probes and the six-account two-tenant matrix remain open |
 | Hosted CI | Workflow committed in `4ceacd0`; first hosted run pending | Read-only, SHA-pinned quality job is reproducible; repository branch protection and the protected staging environment still require activation |
 
 ## 4. PRD capability gap map
@@ -431,14 +431,17 @@ Every implementation slice must:
     best-effort notification dispatcher. Both now refresh the master card; a
     new resolution posts the same plain-text Slack thread reply and attempts
     the same submitter email without duplicating resolved-summary edits.
-21. **P0-U — migration applied; worker activation pending:** Commit `a6ccd33`
+21. **P0-U — live-verified; worker activation pending:** Commit `a6ccd33`
     and migration 033 add
     the first INT-007 platform outbox. Ticket update/resolution events enqueue
     transactionally, workers use unique ids, `SKIP LOCKED` leases, exponential
     retry, and dead-letter retention, Resend receives stable idempotency keys,
-    and Slack replies retain event identity. Migration 033's table, column,
-    validation, and acknowledgement surface is live/verified. Web/Slack request
-    paths drain immediately; production `CRON_SECRET` remains an operator gate.
+    and Slack replies retain event identity. The current outbox contract,
+    including the later provider checkpoint, passed a 167-assertion live matrix
+    across atomic enqueue, lease/retry/delivery/dead-letter/stale recovery,
+    privileges, constraints, ordering, concurrency, and zero residue. Web/Slack
+    request paths drain immediately; production `CRON_SECRET` remains an
+    operator gate.
 22. **P0-V — deployed; protected verification pending:** Commit `21f7781` and
     migration 034 add
     a rollout-safe service-role atomic ticket-create command. Site/actor/source
