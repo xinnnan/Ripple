@@ -7,13 +7,12 @@ meaningful change and before ending a work session. Newest entries go first.
 
 - **Branch:** `codex/prd-v1-1-gap-closure`
 - **Active phase:** Phase 0 — Containment and reproducible baseline
-- **Active work item:** P0-CA administrator-managed Slack actor identities;
-  implementation and browser QA are complete; migration 054 rollback-safe
-  legacy quarantine repair and re-verification are active
-- **Last verified checkpoint commit:** `bea3fdb` (`feat: manage Slack user identities`)
-- **Uncommitted work:** none expected after the migration 054 rollback-safety
-  repair commit; inspect `git status` before resuming
-- **Deployment gate:** migrations 001–053 are confirmed applied and
+- **Active work item:** P0-CB remaining protected migration 028–037 positive/
+  rollback verification; migration 054 and its dependent API/UI are now live-
+  verified
+- **Last verified checkpoint commit:** `f06fd95` (`fix: quarantine invalid Slack identities`)
+- **Uncommitted work:** migration 054 rollout evidence and checkpoint updates
+- **Deployment gate:** migrations 001–054 are confirmed applied and
   live-verified. Migration 044
   passed a 130-assertion disposable live matrix with zero residue. Migration
   045 passed a 110-assertion live matrix with zero residue. Migration 046
@@ -34,9 +33,11 @@ meaningful change and before ending a work session. Newest entries go first.
   Migration 053 passed a 173-assertion signed production-HTTP, mapping,
   replay, 12-way concurrency, privilege, tenant-boundary, exact-cardinality,
   no-echo, and cleanup live matrix with zero database/Auth residue.
-  Migration 054 is the current migration-first gate. Its first application
-  attempt on 2026-08-16 rolled back at the invalid-legacy preflight; the RPC
-  remains absent. The retry must be applied and live-verified.
+  Migration 054 passed a 326-assertion quarantine/shape/privilege/admin/
+  lifecycle/uniqueness/no-op/audit/concurrency live matrix with zero database/
+  Auth residue. A real signed-in admin API/UI set-clear flow added two exact
+  audit rows, passed desktop/mobile/Inter/overflow/control-size/console checks,
+  and its disposable Auth/profile/audit fixtures were fully removed.
   Production `CRON_SECRET` remains unset in this workspace.
   Protected positive business probes for migrations 028–037 still require
   staging fixtures
@@ -111,18 +112,20 @@ meaningful change and before ending a work session. Newest entries go first.
   responsive fit, and post-fix console output are green. Browser QA exposed a
   pre-existing user-detail failure caused by selecting `actor_full_name` from
   the base audit table; user, customer, and site detail history now use the
-  enriched view. No Slack mapping mutation was sent before migration 054, and
-  all disposable Auth/profile/audit data was removed with zero residue.
-- **Exact next local step:** verify and commit the rollback-safe migration 054
-  repair, then reapply/live-verify migration 054
+  enriched view. After deployment, a second disposable browser flow performed
+  an actual normalized set and clear at desktop/mobile widths with exact audit
+  evidence and zero residue.
+- **Exact next local step:** commit the migration 054 rollout record, then use
+  disposable live fixtures to close the remaining migration 028–037 positive/
+  rollback verification debt, starting with part-request and field-service
+  creation/fulfillment boundaries.
 - **Primary plan:** [`plans/prd-v1.1-gap-closure-plan.md`](./prd-v1.1-gap-closure-plan.md)
 
-## Overall project status — 2026-08-13
+## Overall project status — 2026-08-17
 
 - Ripple has a meaningful Phase 1–4 support-platform foundation, and Phase 0
   containment is substantially implemented through migration 054. Migrations
-  001–053 are deployed/live-verified; migration 054 is implementation-complete
-  and awaits deployment/live verification.
+  001–054 are deployed and live-verified.
 - Against the full PRD v1.1 capability map, 17 domains remain
   **Partial** or **Unsafe/Partial** and seven remain **Absent**. No full PRD
   capability domain is yet honestly complete end to end.
@@ -138,6 +141,56 @@ meaningful change and before ending a work session. Newest entries go first.
   queues/routing, business-calendar SLA clocks, remote support, appointments,
   assets/entitlements, search/knowledge, i18n, versioned external APIs, and
   production SRE/recovery evidence.
+
+## Session record — 2026-08-17 (migration 054 live verification)
+
+### Objective
+
+Confirm the repaired migration deployed completely, prove the administrator
+Slack-identity command under real Supabase authorization/concurrency, exercise
+the actual signed-in API/form, and leave no disposable data.
+
+### Evidence
+
+- Migration rollout quarantined exactly 19 impossible `U_HANDLER_*` values to
+  NULL with 19 exact `system` audit rows. All 19 Auth identities and profiles
+  remain, and all 19 retained ticket ownerships remain.
+- The command is deployed and service-only. Anonymous and authenticated RPC
+  execution, authenticated direct Slack-field writes, non-admin actors,
+  missing/invalid targets, invalid IDs, inactive targets, and duplicate
+  ownership all failed closed without mutation or audit residue.
+- Normalized set, exact no-op, clear, and blank-null no-op semantics matched
+  the contract with exact attributable audit cardinality.
+- Twelve concurrent exact commands against one target produced one mapping and
+  one audit row. Twelve targets competing for one ID produced one winner,
+  eleven `23505` conflicts, one mapping, and one audit row.
+- A disposable real administrator signed in through `/login`, opened the real
+  user-detail form, set lowercase `u054brow01` as canonical `U054BROW01`, and
+  cleared it. The API returned the visible success states and the database
+  retained exactly the expected two admin-attributed audit rows.
+- Desktop and 390×844 checks confirmed Inter, no horizontal overflow, 44-pixel
+  input/button targets, and zero browser warnings/errors.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| Migration 054 live matrix | Passed; 326 quarantine/command/privilege/lifecycle/uniqueness/audit/concurrency/cleanup assertions |
+| Signed-in API/UI mutation | Passed; canonical set + clear with exactly two attributable audit rows |
+| Responsive browser | Passed at desktop and 390×844; Inter, no overflow, 44-pixel controls, zero warnings/errors |
+| Disposable cleanup | Passed; zero live matrix or browser profile/audit/Auth residue |
+| `npm ci` | Passed from the lockfile; install audit reported 0 vulnerabilities |
+| `npm test` | Passed; 147 files, 1,147 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed on Next.js 15.5.22; Slack-identity API route emitted |
+| `npm run test:e2e` | Passed; 42 production HTTP checks; protected credentialed matrix skipped because its fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+
+### Exact next step
+
+- Run the full pre-commit gate, commit this rollout record, then start the
+  disposable migration 028–037 positive/rollback verification campaign.
 
 ## Session record — 2026-08-16 (migration 054 invalid-legacy rollback)
 

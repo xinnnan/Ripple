@@ -59,6 +59,9 @@ A Slack-native support portal for DropletAI Services. Centralises customer suppo
 - **Replay-Safe Slack Thread Capture** — Signed human replies under a current
   ticket master card become atomic customer-visible ticket comments without
   echoing the message back to Slack; event retries are exactly deduplicated.
+- **Admin-Managed Slack Identities** — Administrators can safely link or clear
+  the unique Slack member ID used for signed reply attribution and internal
+  actions through a normalized, lifecycle-guarded, exactly audited command.
 
 ## Tech Stack
 
@@ -168,10 +171,13 @@ Apply the SQL files in `supabase/migrations/` **in order** (001 → 054) via the
 
 Later migrations replace policies/functions and should be applied once in
 order. Migration `017` also performs role data updates and must not be re-run
-blindly. Migrations 001–053 are confirmed applied and live-verified as of
-2026-08-13. Migration 054 is the current migration-first deployment gate; it
-quarantines unusable legacy mappings with audit and adds the supported, atomic,
+blindly. Migrations 001–054 are confirmed applied and live-verified as of
+2026-08-17. Migration 054 quarantined 19 unusable legacy mappings without
+removing their Auth/profile/ticket history and adds the supported, atomic,
 audited admin workflow required to set or clear a unique Slack actor identity.
+It passed a 326-assertion live command/privilege/lifecycle/uniqueness/audit/
+concurrency matrix plus a real signed-in API/UI set-clear flow with zero
+disposable residue.
 Migration 053 passed a 173-assertion signed-ingress, mapping,
 replay, concurrency, privilege, no-echo, and cleanup matrix. Migration 052 passed a
 90-assertion live direct-write/RPC-denial,
