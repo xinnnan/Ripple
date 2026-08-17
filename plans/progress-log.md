@@ -7,12 +7,14 @@ meaningful change and before ending a work session. Newest entries go first.
 
 - **Branch:** `codex/prd-v1-1-gap-closure`
 - **Active phase:** Phase 0 — Containment and reproducible baseline
-- **Active work item:** P0-CB protected migration 028–037 verification campaign
-  complete; audit the remaining Phase 0 release gates and select the next
-  repository-local closure
-- **Last verified checkpoint commit:** `3e0ed8c` (`docs: verify migration 035 membership`)
-- **Uncommitted work:** migrations 036–037 live-verification evidence and
-  checkpoint updates
+- **Active work item:** P0-CB complete locally; record the first comprehensive
+  six-account/two-tenant live authorization run, then begin the highest-value
+  repository-local Phase 1 authorization-kernel work while hosted activation
+  remains external
+- **Last verified checkpoint commit:** `a8b45ca` (`docs: verify migrations 036 and 037`)
+- **Uncommitted work:** credentialed matrix fixes, inactive-login settlement,
+  complete internal ticket contact projection, regression contracts, and live
+  release-gate evidence
 - **Deployment gate:** migrations 001–054 are confirmed applied and
   live-verified. Migration 044
   passed a 130-assertion disposable live matrix with zero residue. Migration
@@ -64,10 +66,12 @@ meaningful change and before ending a work session. Newest entries go first.
   database/Auth residue. Combined with the 028–031 matrices, all six repaired
   migration-037 commands have live positive paths.
   Production `CRON_SECRET` remains unset in this workspace.
-- **External validation gate:** populate the gitignored credential fixture with six
-  dedicated staging accounts, two tenants, a decommissioned site/ticket, and
-  real internal artifact IDs; then run
-  `RIPPLE_E2E_REQUIRE_CREDENTIALS=1 npm run test:e2e:credentialed`
+- **External validation gate:** the complete credentialed matrix passed locally
+  against disposable live Supabase fixtures and the production Next build with
+  six accounts, two tenants, archived resources, internal artifacts, 54
+  fixture/cleanup assertions, and zero database/Auth residue. Materialize the
+  equivalent permanent fixture in the reviewer-protected `staging`
+  environment and run the hosted job before release.
 - **Hosted CI activation:** require the `Quality gates` check in branch
   protection; create a reviewer-protected `staging` environment with the
   `RIPPLE_E2E_FIXTURES_JSON` secret before manually enabling the credentialed
@@ -80,10 +84,12 @@ meaningful change and before ending a work session. Newest entries go first.
 - **Runtime verification debt:** migrations 028–037 request/field-service/team/
   ticket-transition/outbox/ticket creation, fulfillment, assignment, DATE,
   access-set, admin membership/site administration, rollback, audit,
-  privilege, and concurrency cases are live-verified. The credentialed matrix
-  still carries the six-account/two-tenant browser/API/RLS gate and real
-  malformed-JSON 400 probes for ticket create, ticket PATCH, ticket comments,
-  and AI suggestions
+  privilege, and concurrency cases are live-verified. The complete local
+  six-account/two-tenant browser/API/PostgREST/RPC/RLS/Storage matrix and all
+  four real malformed-JSON 400 probes are green. Remaining runtime evidence is
+  hosted protected execution, real password-recovery email/link consumption,
+  production provider/worker configuration, and first real Slack-thread
+  reconciliation.
 - **Support UX verification:** public pages and the real admin shell were
   reviewed at 1440×1000 and 390×844. A short-lived admin test identity was
   created for read-only protected-page visits and fully deleted afterward.
@@ -137,10 +143,14 @@ meaningful change and before ending a work session. Newest entries go first.
   enriched view. After deployment, a second disposable browser flow performed
   an actual normalized set and clear at desktop/mobile widths with exact audit
   evidence and zero residue.
-- **Exact next local step:** commit the migrations 036–037 verification record,
-  then inventory the remaining Phase 0 release gates and select the highest-
-  value repository-local closure that does not require protected staging
-  credentials or production provider changes.
+  The first complete credentialed browser run then verified five active login
+  roles, explicit inactive-account denial, navigation boundaries, cross-tenant
+  404s, external/internal attachment controls, and customer-safe/internal API
+  projections. It exposed and fixed the inactive-login message remount defect;
+  every rerun completed without browser authorization leakage.
+- **Exact next local step:** commit P0-CB after the full clean-install quality
+  gate, then begin the Phase 1 authorization-kernel design/implementation seam
+  that can be completed without hosted environment or provider changes.
 - **Primary plan:** [`plans/prd-v1.1-gap-closure-plan.md`](./prd-v1.1-gap-closure-plan.md)
 
 ## Overall project status — 2026-08-17
@@ -151,17 +161,79 @@ meaningful change and before ending a work session. Newest entries go first.
 - Against the full PRD v1.1 capability map, 17 domains remain
   **Partial** or **Unsafe/Partial** and seven remain **Absent**. No full PRD
   capability domain is yet honestly complete end to end.
-- The local deterministic baseline is green at 1,147 unit/contract tests, 42
+- The local deterministic baseline is green at 1,150 unit/contract tests, 42
   production HTTP smoke checks, a production build, zero-warning lint, and
-  zero known dependency vulnerabilities.
-- Phase 0 cannot be declared exited until the protected six-account/two-tenant
-  matrix runs in staging, hosted branch protection and the reviewer-protected
-  staging environment are activated, and production worker/provider
-  configuration is completed.
+  zero known dependency vulnerabilities. The complete credentialed matrix also
+  passed locally against disposable live fixtures with zero residue.
+- Phase 0 cannot be declared exited until the credentialed matrix is repeated
+  in the reviewer-protected hosted staging environment, hosted branch
+  protection is activated, and production worker/provider configuration is
+  completed.
 - The largest remaining product gaps are the PRD authorization kernel,
   queues/routing, business-calendar SLA clocks, remote support, appointments,
   assets/entitlements, search/knowledge, i18n, versioned external APIs, and
   production SRE/recovery evidence.
+
+## Session record — 2026-08-17 (P0-CB credentialed authorization gate)
+
+### Objective
+
+Run the committed six-account/two-tenant browser/API/PostgREST/RPC/RLS/Storage
+matrix end to end against the production Next build and disposable live
+Supabase fixtures, fix any real defects it exposes, and leave no test residue.
+
+### Evidence
+
+- Provisioned disposable admin, engineer, customer-manager, two cross-tenant
+  customers, and inactive users plus active/archived sites, tickets, and real
+  internal comment/attachment/event rows. The protected fixture lived only in
+  an OS temporary file.
+- All five active browser logins and the inactive-account denial passed. Admin,
+  engineer, manager, and customer navigation boundaries held; both cross-
+  tenant ticket pages returned 404.
+- External and internal attachment controls, customer-safe and complete
+  internal ticket API projections, admin/team/inactive API authorization, and
+  all four malformed-JSON parser branches passed through real HTTP requests.
+- Direct profile reads, tenant ownership, active/archived site scope, ticket
+  RLS, sensitive ticket columns, internal comments/attachments/events,
+  Storage objects, direct membership/SLA/rate-limit/AI-ledger access, AI RPC,
+  and inactive PostgREST access all honored their intended boundaries.
+- The run exposed a real same-component auth redirect defect: middleware sent
+  an inactive user back to `/login?account=inactive`, but client navigation
+  could preserve the login component and hide the explanation. Successful
+  sign-in now crosses the auth boundary with a full document navigation.
+- The run exposed that the internal ticket API projection omitted
+  `submitter_name` while returning the other internal contact/diagnostic
+  fields. The projection is now centralized and complete.
+- Two harness assumptions were repaired: attachment visibility targets its
+  stable element ID, and malformed JSON is sent as raw bytes because Playwright
+  otherwise serializes a string into valid JSON.
+- The corrected matrix passed completely. Fifty-four independent fixture and
+  cleanup assertions confirmed zero database/Auth residue, and the temporary
+  fixture/harness files were removed.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| Credentialed role/tenant matrix | Passed; complete browser/API/PostgREST/RPC/RLS/Storage and malformed-JSON coverage |
+| Disposable setup/cleanup | Passed; 54 assertions and zero database/Auth residue |
+| Focused regression tests | Passed; authentication settlement, internal read projection, and matrix transport contracts |
+| Focused lint/build | Passed during defect isolation and corrected reruns |
+| `npm ci` | Passed; 533 packages installed from lockfile, 0 vulnerabilities |
+| `npm test` | Passed; 147 files, 1,150 tests |
+| `npm run lint` | Passed; no warnings/errors |
+| `npm run build` | Passed; optimized Next.js production build |
+| `npm run test:e2e` | Passed; 42 production HTTP checks; fixture-file run skipped because the separate disposable live matrix had already passed and its secret fixture was removed |
+| `npm audit --audit-level=low` | Passed; 0 vulnerabilities |
+| `git diff --check` | Passed |
+
+### Exact next step
+
+- Run the full clean-install pre-commit gate, commit P0-CB, then begin the next
+  repository-local Phase 1 authorization-kernel closure. The hosted protected
+  fixture/workflow, branch protection, and provider/worker configuration remain
+  explicit operator gates.
 
 ## Session record — 2026-08-17 (migrations 036–037 live verification)
 

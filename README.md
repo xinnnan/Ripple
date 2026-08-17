@@ -75,7 +75,7 @@ A Slack-native support portal for DropletAI Services. Centralises customer suppo
 | AI | **MiniMax AI** (OpenAI-compatible) — was OpenAI → Zhipu → MiniMax. **See "AI provider" section below.** |
 | Email | Resend (transactional: ticket confirmation, resolution notice) |
 | Validation | Zod (all API request bodies) |
-| Testing | Vitest (1,147 unit/contract tests) + 42-check production HTTP smoke + credentialed Playwright/API/RLS matrix |
+| Testing | Vitest (1,150 unit/contract tests) + 42-check production HTTP smoke + credentialed Playwright/API/RLS matrix |
 | Hosting | Vercel (serverless API routes) |
 
 ## Phases
@@ -321,10 +321,17 @@ site/ticket, and real internal comment/attachment/event rows. The suite is
 read-only. A missing fixture prints an explicit skip for local development;
 protected CI should set `RIPPLE_E2E_REQUIRE_CREDENTIALS=1` so it fails closed.
 
+The complete matrix first passed locally against a disposable live Supabase
+fixture on 2026-08-17. That run covered all six account states, both tenants,
+archived-resource denial, internal-artifact visibility, malformed JSON, direct
+PostgREST/RPC/Storage containment, and zero database/Auth residue. A hosted run
+with the reviewer-protected staging fixture remains a deployment activation
+gate.
+
 ### GitHub Actions
 
-`.github/workflows/ci.yml` runs the locked install, 449 unit/contract tests,
-lint, production build, 40-check HTTP E2E, and dependency audit for pull
+`.github/workflows/ci.yml` runs the locked install, 1,150 unit/contract tests,
+lint, production build, 42-check HTTP E2E, and dependency audit for pull
 requests and pushes to `main`. GitHub-owned actions are pinned to full commit
 SHAs and the workflow has read-only repository permissions.
 

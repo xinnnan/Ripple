@@ -43,6 +43,12 @@ describe("password recovery flow contract", () => {
     expect(forgotPasswordPage).not.toContain("User not found");
   });
 
+  it("uses a full navigation after sign-in so account-state redirects remount", () => {
+    expect(loginPage).toContain("window.location.assign(redirectPath)");
+    expect(loginPage).not.toContain("router.push(redirectPath)");
+    expect(loginPage).toContain('search.get("account") === "inactive"');
+  });
+
   it("requires a recovery session and a twelve-character password", () => {
     expect(resetPasswordPage).toContain("supabase.auth.getUser()");
     expect(resetPasswordPage).toContain("supabase.auth.updateUser");

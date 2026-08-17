@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { INTERNAL_TICKET_API_SENSITIVE_SELECT } from "./resource-projections";
 
 const ticketPage = readFileSync(
   "src/app/(auth)/tickets/[ticketId]/page.tsx",
@@ -9,6 +10,10 @@ const sitesPage = readFileSync("src/app/(auth)/sites/page.tsx", "utf8");
 const sitesRoute = readFileSync("src/app/api/sites/route.ts", "utf8");
 const commentsRoute = readFileSync(
   "src/app/api/tickets/[ticketId]/comments/route.ts",
+  "utf8"
+);
+const ticketRoute = readFileSync(
+  "src/app/api/tickets/[ticketId]/route.ts",
   "utf8"
 );
 
@@ -42,6 +47,21 @@ describe("authenticated customer read containment", () => {
     expect(ticketPage).toContain(
       'currentUserId={isInternal ? currentUserId : ""}'
     );
+  });
+
+  it("restores the complete contact and diagnostic projection for internal API callers", () => {
+    expect(ticketRoute).toContain("INTERNAL_TICKET_API_SENSITIVE_SELECT");
+    for (const field of [
+      "internal_summary",
+      "root_cause_category",
+      "follow_up_needed",
+      "secure_token",
+      "submitter_name",
+      "submitter_email",
+      "submitter_phone",
+    ]) {
+      expect(INTERNAL_TICKET_API_SENSITIVE_SELECT).toContain(field);
+    }
   });
 
   it("uses explicit child-resource projections on ticket detail", () => {

@@ -315,7 +315,7 @@ npm run dev
 - `npm run build` — production build
 - `npm run start` — production server
 - `npm run lint` — direct ESLint CLI across the repository; warnings fail the gate
-- `npm test` — Vitest unit/contract suite (1,147 tests)
+- `npm test` — Vitest unit/contract suite (1,150 tests)
 - `npm run test:e2e` — 42-check production HTTP smoke plus optional credentialed Playwright/API/RLS matrix; requires a successful build
 - `npm run test:e2e:credentialed` — real six-account/two-tenant matrix; set `RIPPLE_E2E_FIXTURES_FILE`
 - `npm run test:e2e:install-browser` — install the pinned Chromium runtime
@@ -1572,6 +1572,25 @@ semantics. Quarantine provably unusable external identifiers with exact audit;
 fail closed on ambiguous valid ownership; never delete identity or business
 history merely because a row originated in an old test fixture.
 
+### Authentication-boundary redirects need a document navigation
+Found 2026-08-17 during the first complete credentialed matrix run. A valid but
+inactive user could sign in, then middleware correctly redirected back to
+`/login?account=inactive`. Because the login form used the Next client router
+to navigate away and immediately return to the same component, the existing
+instance could survive and its one-time query-string effect did not show the
+inactive-account explanation.
+
+Use `window.location.assign()` after successful password sign-in so the cookie,
+middleware decision, and destination query are settled through a fresh document
+request. This also makes the auth boundary observable to real browser tests.
+
+### Playwright strings are JSON values, not malformed request bytes
+Found in the same matrix. Passing `data: "{"` to Playwright serializes a valid
+JSON string, so it does not exercise a route's JSON-parser failure. Use
+`Buffer.from("{")` when a test must send invalid JSON bytes. Also bind UI
+assertions to stable control IDs: a page-wide `select` search matched both the
+comment and attachment visibility controls and produced a false failure.
+
 ---
 
 ## 10. Current State & Roadmap
@@ -1817,7 +1836,7 @@ resume work; this section remains the broader historical summary.
 | 🟡 Med | File-service malware/quarantine and durable reconciliation are incomplete | `src/lib/files/attachment-validation.ts`, `/api/upload` | Content/type/path validation and safe cross-system compensation are present; add malware scanning, quarantine/release, checksums, retention, and an operator queue for ambiguous outcomes |
 | 🟡 Med | Vercel recovery cron runs daily for plan compatibility | `vercel.json` | Request-path dispatch is immediate; use a supported 1–5 minute schedule or external scheduler when the production Vercel plan permits |
 | 🟢 Low | Slack `events` route doesn't route customer messages to a ticket comment yet | `src/app/api/slack/events/route.ts` | Sprint 3 — bidirectional thread sync (SLK-008) |
-| 🟡 Med | Credentialed role/tenant matrix has not had its first staging execution | `scripts/credentialed-role-matrix.mjs` | Harness, fixture validation, and Chromium launch are committed/green; provision six dedicated accounts and non-vacuous two-tenant/archive/internal-artifact IDs, then run with required credentials |
+| ✅ Local / 🟡 Hosted | Credentialed role/tenant matrix | `scripts/credentialed-role-matrix.mjs` | The complete matrix passed locally on 2026-08-17 against disposable live fixtures across six accounts, two tenants, archived resources, internal artifacts, malformed JSON, PostgREST/RPC/RLS/Storage boundaries, 54 fixture/cleanup assertions, and zero residue; create the permanent reviewer-protected staging fixture and run the hosted job |
 | 🟡 Activate | Hosted quality workflow and protected staging job are not activated yet | `.github/workflows/ci.yml` | After pushing, require `Quality gates`; create a reviewer-protected `staging` environment and add only `RIPPLE_E2E_FIXTURES_JSON` there |
 
 ### Next priorities (Sprint 3, in proposed order)
@@ -1836,9 +1855,9 @@ resume work; this section remains the broader historical summary.
    2026-08-17; 175 disposable assertions covered same/cross-tenant boundaries,
    role and row-identity preservation, omission/clear/no-op semantics,
    rollback, exact audit, privileges, concurrency, and zero residue.
-5. **Run the required credentialed staging matrix.** Migrations 027–049 are
-   applied and live-verified; the secret six-account/two-tenant fixture remains
-   the protected runtime gate.
+5. **Run the required credentialed staging matrix.** ✅ complete locally on
+   2026-08-17 against disposable live fixtures; the reviewer-protected hosted
+   fixture and workflow execution remain activation gates.
 6. **Apply migration 019** ✅ done (2026-07-14).
 7. **Migrate `next lint` and add protected CI quality gates.** ✅ code done
    (`4ceacd0`); hosted activation remains.

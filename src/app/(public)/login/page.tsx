@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { AlertCircle, ArrowLeft, Eye, EyeOff, ShieldCheck } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { getSafeRedirectPath } from "@/lib/auth/redirect";
@@ -15,7 +14,6 @@ import {
 import { logIdentityReadFailure } from "@/lib/supabase/auth-read";
 
 export default function LoginPage() {
-  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -79,8 +77,11 @@ export default function LoginPage() {
         return;
       }
 
-      router.push(redirectPath);
-      router.refresh();
+      // Cross the authentication boundary with a full document navigation.
+      // If middleware rejects an inactive account back to this same page, a
+      // client-router round trip can retain the existing component instance
+      // and skip its query-string effect, hiding the account-state message.
+      window.location.assign(redirectPath);
     } catch (signInError) {
       logIdentityReadFailure("login/sign-in-unexpected", signInError);
       setError(getLoginErrorMessage(signInError));

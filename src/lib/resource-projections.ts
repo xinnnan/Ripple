@@ -23,6 +23,11 @@ export const EXTERNAL_TICKET_COMMENT_SELECT = `
   author:users(full_name)
 ` as const;
 
+export const INTERNAL_TICKET_API_SENSITIVE_SELECT = `
+  internal_summary, root_cause_category, follow_up_needed, secure_token,
+  submitter_name, submitter_email, submitter_phone
+` as const;
+
 export const TICKET_DETAIL_COMMENT_SELECT = `
   id, body, visibility, source, created_at,
   author:users(full_name)
