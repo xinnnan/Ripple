@@ -71,7 +71,7 @@ The correct approach is therefore:
 | Production build | Passed on Next.js 15.5.22 | Environment-free build is reproducible |
 | Dependency audit | 0 vulnerabilities | Patched direct/transitive versions are lockfile-pinned and compatibility-tested, including `js-yaml` 4.3.1 and `nanoid` 3.3.18 after their advisories entered the audit feed |
 | Worktree | Clean at baseline | Work started on `codex/prd-v1-1-gap-closure` |
-| Committed end-to-end tests | 42 production HTTP checks + credentialed Playwright/API/RLS matrix | Public/recovery/negative/configuration smoke always runs, including public share access denial, malformed site-code containment, fail-closed guest-upload/outbox-worker/Slack configuration, profile and site-membership/site/user/customer/Slack-identity/SLA/catalog/inventory-write/provisioning denials. Migrations 001–054 are applied and live-verified. Migrations 028–030 passed a combined 173-assertion service-resource transaction matrix; migration 031 passed a 175-assertion team-access transaction matrix; migration 032 passed a 430-assertion transition/invariant matrix; migration 033 passed a 167-assertion outbox-lifecycle matrix; migration 034 passed a 222-assertion atomic-create matrix; migration 046 passed 77 live assertions, migration 047 passed a 42-assertion replay/concurrency/privilege matrix, migration 048 passed a 69-assertion replay/concurrency/cardinality/privilege matrix, migration 049 passed a 134-assertion replay/concurrency/cardinality/constraint/privilege matrix, migration 050 passed a 27-assertion lease/concurrency/settlement/privilege matrix, migration 051 passed a 57-assertion replay/concurrency/settlement/cardinality/privilege matrix, migration 052 passed a 90-assertion command/audit/privilege/concurrency matrix, migration 053 passed a 173-assertion signed-ingress/mapping/replay/concurrency/privilege/no-echo matrix, migration 054 passed a 326-assertion command/privilege/lifecycle/uniqueness/audit/concurrency matrix plus signed-in API/UI set-clear verification, and the extended upload/share boundary passed a separate 22-assertion live matrix with zero residue. Protected site-administration probes and the six-account two-tenant matrix remain open |
+| Committed end-to-end tests | 42 production HTTP checks + credentialed Playwright/API/RLS matrix | Public/recovery/negative/configuration smoke always runs, including public share access denial, malformed site-code containment, fail-closed guest-upload/outbox-worker/Slack configuration, profile and site-membership/site/user/customer/Slack-identity/SLA/catalog/inventory-write/provisioning denials. Migrations 001–054 are applied and live-verified. Migrations 028–030 passed a combined 173-assertion service-resource transaction matrix; migration 031 passed a 175-assertion team-access transaction matrix; migration 032 passed a 430-assertion transition/invariant matrix; migration 033 passed a 167-assertion outbox-lifecycle matrix; migration 034 passed a 222-assertion atomic-create matrix; migration 035 passed a 112-assertion atomic admin-membership matrix; migration 046 passed 77 live assertions, migration 047 passed a 42-assertion replay/concurrency/privilege matrix, migration 048 passed a 69-assertion replay/concurrency/cardinality/privilege matrix, migration 049 passed a 134-assertion replay/concurrency/cardinality/constraint/privilege matrix, migration 050 passed a 27-assertion lease/concurrency/settlement/privilege matrix, migration 051 passed a 57-assertion replay/concurrency/settlement/cardinality/privilege matrix, migration 052 passed a 90-assertion command/audit/privilege/concurrency matrix, migration 053 passed a 173-assertion signed-ingress/mapping/replay/concurrency/privilege/no-echo matrix, migration 054 passed a 326-assertion command/privilege/lifecycle/uniqueness/audit/concurrency matrix plus signed-in API/UI set-clear verification, and the extended upload/share boundary passed a separate 22-assertion live matrix with zero residue. Protected site-administration probes and the six-account two-tenant matrix remain open |
 | Hosted CI | Workflow committed in `4ceacd0`; first hosted run pending | Read-only, SHA-pinned quality job is reproducible; repository branch protection and the protected staging environment still require activation |
 
 ## 4. PRD capability gap map
@@ -452,15 +452,16 @@ Every implementation slice must:
     privileges, payload/lifecycle/SLA/scope validation, web/Slack creation,
     exact effects, duplicate-token rollback, concurrency, and zero residue.
     Migration 047 separately verifies stable-key replay behavior.
-23. **P0-W — deployed; protected verification pending:** Commit `a14ec45` and
+23. **P0-W — closed and live-verified:** Commit `a14ec45` and
     migration 035 add
     service-role-only atomic admin site-membership add/remove commands.
     Active actor/user/site/customer lifecycle and cross-tenant guards run under
     locks; legacy null customer association is derived safely; membership,
     customer, and audit writes commit together. Admin forms now constrain
-    choices and the HTTP smoke denies unauthenticated mutation. Service
-    validation/not-found and anonymous-denial probes are live/green with zero
-    residue; protected positive/rollback probes remain.
+    choices and the HTTP smoke denies unauthenticated mutation. A 112-assertion
+    disposable matrix passed across privileges, lifecycle and tenant guards,
+    legacy derivation, duplicate rollback, role preservation, exact audits,
+    twelve-way add/remove serialization, and zero database/Auth residue.
 24. **P0-X — deployed; protected positive verification pending:** Migration 036 adds
     service-role-only atomic site create/update commands. Ordinary tenant
     reassignment is rejected, active tenant/lifecycle/configuration invariants

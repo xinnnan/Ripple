@@ -201,6 +201,11 @@ matrix covering payload, tenant/site/SLA/actor scope, guest web/signed-Slack
 paths, sequence numbers, exact timeline/audit/outbox effects, rollback, and
 12-way concurrency with zero database/Auth residue. Migration 047 separately
 verifies replay-safe creation.
+Migration 035 passed a 112-assertion disposable live matrix covering atomic
+admin site-membership privileges, actor/target/site/customer lifecycle and
+tenant scope, legacy tenant derivation, duplicate rollback, role preservation,
+exact joined/left audits, and 12-way concurrent add/remove serialization with
+zero database/Auth residue.
 Migration 053 passed a 173-assertion signed-ingress, mapping,
 replay, concurrency, privilege, no-echo, and cleanup matrix. Migration 052 passed a
 90-assertion live direct-write/RPC-denial,

@@ -787,6 +787,14 @@ membership roles. Existing inconsistent rows are not rewritten; the add
 command blocks further mixed-tenant access and the remove command remains the
 repair path.
 
+Migration 035 was comprehensively live-verified on 2026-08-17 with 112
+disposable assertions. The matrix covered anonymous/authenticated RPC denial,
+actor/target/site/customer lifecycle and role boundaries, same-tenant and
+cross-tenant access, legacy null-customer derivation, duplicate rollback,
+role-preserving multi-site membership, exact joined/left audit evidence, and
+twelve-way concurrent add and remove serialization. All database and Auth
+fixtures were removed.
+
 **Lesson:** admin authorization is not automatically safe because the caller
 is privileged. Validate both sides of every tenant relationship inside the
 same database command that changes access, serialize concurrent changes, and
@@ -1793,7 +1801,7 @@ resume work; this section remains the broader historical summary.
 | ✅ Verified | Migration 033 durable outbox lifecycle | `supabase/migrations/033_ticket_notification_outbox.sql`, `supabase/migrations/050_durable_slack_provider_attempts.sql`, `/api/internal/outbox/dispatch` | A 167-assertion disposable live matrix passed 2026-08-17 across service-only access, constraints, atomic enqueue/no-op/rollback, claim/lease/checkpoint/delivery/retry/dead-letter/stale-recovery behavior, ordering, 12-way `SKIP LOCKED` concurrency, and zero database/Auth residue |
 | 🟡 Configure | Production `CRON_SECRET` is not configured | deployment environment | Migration 033's database lifecycle is comprehensively live-verified; set a long server-only secret, then verify production readiness and worker authorization |
 | ✅ Verified | Migration 034 atomic ticket creation | `supabase/migrations/034_atomic_ticket_creation_outbox.sql`, `src/lib/tickets/create.ts` | A 222-assertion disposable live matrix passed 2026-08-17 across service-only access, payload/lifecycle/SLA/actor/site scope, guest web/signed-Slack paths, sequence-backed creation, exact timeline/audit/outbox effects, duplicate-token rollback, 12-way independent concurrency, and zero database/Auth residue; migration 047 separately verifies replay safety |
-| 🟡 Verify | Migration 035 protected membership probes remain | `supabase/migrations/035_atomic_admin_site_membership.sql` | Service validation/not-found and anonymous-denial probes are live/green with zero residue; run disposable same/cross-tenant add/remove/rollback probes |
+| ✅ Verified | Migration 035 atomic admin site membership | `supabase/migrations/035_atomic_admin_site_membership.sql`, `/api/admin/site-members` | A 112-assertion disposable live matrix passed 2026-08-17 across public-role denial, actor/target/site/customer lifecycle and tenant guards, legacy tenant derivation, duplicate rollback, role preservation, exact joined/left audits, 12-way add/remove serialization, and zero database/Auth residue |
 | 🟡 Verify | Migration 037 protected positive probes remain | `supabase/migrations/037_repair_qualified_sql_expressions.sql` | All six definitions now reach domain validation instead of `42883`; anonymous denial and zero-residue probes are green. Run disposable positive/rollback business probes with staging fixtures |
 | ✅ Verified | Migration 045 direct-write boundary | `supabase/migrations/045_restrict_direct_application_writes.sql` | Applied 2026-08-01; 110 live assertions covered all 22 command-owned tables, historical membership/SLA bypasses, profile continuity/protection, five minting RPCs, real admin APIs, exact audit evidence, scope continuity, and zero residue |
 | 🟡 Med | File-service malware/quarantine and durable reconciliation are incomplete | `src/lib/files/attachment-validation.ts`, `/api/upload` | Content/type/path validation and safe cross-system compensation are present; add malware scanning, quarantine/release, checksums, retention, and an operator queue for ambiguous outcomes |
@@ -1851,9 +1859,10 @@ resume work; this section remains the broader historical summary.
 21. **Deploy atomic ticket creation.** ✅ migration 034 is applied and passed
     the 222-assertion raw-command live matrix; migration 047's replay wrapper
     also passed its 42-assertion matrix.
-22. **Deploy atomic admin site access.** ✅ migration 035 is applied and its
-    service validation/not-found, privilege, and zero-residue probes passed;
-    protected same/cross-tenant membership and rollback probes remain.
+22. **Deploy atomic admin site access.** ✅ migration 035 is applied and passed
+    a 112-assertion disposable matrix covering privileges, lifecycle, tenant
+    containment, legacy derivation, exact audits, rollback, concurrent add/
+    remove serialization, and zero database/Auth residue.
 23. **Deploy tenant-safe site administration.** ✅ migration 036 is applied;
     migration 037 repaired the SQL-expression defect and all six affected
     commands now pass validation/privilege/zero-residue probes. Disposable
