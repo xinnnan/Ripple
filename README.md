@@ -206,6 +206,12 @@ admin site-membership privileges, actor/target/site/customer lifecycle and
 tenant scope, legacy tenant derivation, duplicate rollback, role preservation,
 exact joined/left audits, and 12-way concurrent add/remove serialization with
 zero database/Auth residue.
+Migrations 036–037 passed a 500-assertion disposable live site-command matrix
+covering privileges, actor/customer/owner/site lifecycle, strict inputs,
+normalization/defaults, immutable ownership, exact audits, no-op behavior,
+Slack mapping/unique-channel rollback, and 12-way create/update serialization
+with zero database/Auth residue. Together with the positive 028–031 matrices,
+all six commands repaired by migration 037 now have live positive evidence.
 Migration 053 passed a 173-assertion signed-ingress, mapping,
 replay, concurrency, privilege, no-echo, and cleanup matrix. Migration 052 passed a
 90-assertion live direct-write/RPC-denial,

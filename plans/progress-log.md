@@ -7,11 +7,12 @@ meaningful change and before ending a work session. Newest entries go first.
 
 - **Branch:** `codex/prd-v1-1-gap-closure`
 - **Active phase:** Phase 0 — Containment and reproducible baseline
-- **Active work item:** P0-CB remaining migration 036–037 positive/rollback
-  verification; migrations 028–035 are now comprehensively live-verified
-- **Last verified checkpoint commit:** `f7eb23e` (`docs: verify migration 034 creation`)
-- **Uncommitted work:** migration 035 live-verification evidence and checkpoint
-  updates
+- **Active work item:** P0-CB protected migration 028–037 verification campaign
+  complete; audit the remaining Phase 0 release gates and select the next
+  repository-local closure
+- **Last verified checkpoint commit:** `3e0ed8c` (`docs: verify migration 035 membership`)
+- **Uncommitted work:** migrations 036–037 live-verification evidence and
+  checkpoint updates
 - **Deployment gate:** migrations 001–054 are confirmed applied and
   live-verified. Migration 044
   passed a 130-assertion disposable live matrix with zero residue. Migration
@@ -57,8 +58,12 @@ meaningful change and before ending a work session. Newest entries go first.
   lifecycle/tenant/legacy-derivation/duplicate-rollback/role-preservation/
   exact-audit/12-way-add-remove-concurrency live matrix with zero database/Auth
   residue.
+  Migrations 036–037 passed a 500-assertion site-command privilege/actor/
+  customer/owner/site-lifecycle/input/normalization/default/ownership/audit/
+  no-op/Slack-mapping/rollback/12-way-concurrency live matrix with zero
+  database/Auth residue. Combined with the 028–031 matrices, all six repaired
+  migration-037 commands have live positive paths.
   Production `CRON_SECRET` remains unset in this workspace.
-  Protected positive business probes for migrations 036–037 remain
 - **External validation gate:** populate the gitignored credential fixture with six
   dedicated staging accounts, two tenants, a decommissioned site/ticket, and
   real internal artifact IDs; then run
@@ -72,13 +77,13 @@ meaningful change and before ending a work session. Newest entries go first.
   database currently has zero linked Slack channels and zero recorded master
   messages, so read-only history/thread reconciliation awaits the first real
   target rather than posting a synthetic message to a customer channel
-- **Runtime verification debt:** migrations 028–035 request/field-service/team/
+- **Runtime verification debt:** migrations 028–037 request/field-service/team/
   ticket-transition/outbox/ticket creation, fulfillment, assignment, DATE,
-  access-set, admin site membership, rollback, audit, privilege, and
-  concurrency cases are live-verified. Remaining debt starts with migrations
-  036–037 tenant-safe site administration. The credentialed matrix
-  also carries real malformed-JSON 400 probes for ticket create, ticket PATCH,
-  ticket comments, and AI suggestions
+  access-set, admin membership/site administration, rollback, audit,
+  privilege, and concurrency cases are live-verified. The credentialed matrix
+  still carries the six-account/two-tenant browser/API/RLS gate and real
+  malformed-JSON 400 probes for ticket create, ticket PATCH, ticket comments,
+  and AI suggestions
 - **Support UX verification:** public pages and the real admin shell were
   reviewed at 1440×1000 and 390×844. A short-lived admin test identity was
   created for read-only protected-page visits and fully deleted afterward.
@@ -132,10 +137,10 @@ meaningful change and before ending a work session. Newest entries go first.
   enriched view. After deployment, a second disposable browser flow performed
   an actual normalized set and clear at desktop/mobile widths with exact audit
   evidence and zero residue.
-- **Exact next local step:** commit the migration 035 verification record, then
-  live-verify migrations 036–037 site creation/update, immutable ownership,
-  lifecycle/configuration validation, no-op/rollback/audit, privileges, and
-  concurrency with disposable fixtures.
+- **Exact next local step:** commit the migrations 036–037 verification record,
+  then inventory the remaining Phase 0 release gates and select the highest-
+  value repository-local closure that does not require protected staging
+  credentials or production provider changes.
 - **Primary plan:** [`plans/prd-v1.1-gap-closure-plan.md`](./prd-v1.1-gap-closure-plan.md)
 
 ## Overall project status — 2026-08-17
@@ -150,14 +155,71 @@ meaningful change and before ending a work session. Newest entries go first.
   production HTTP smoke checks, a production build, zero-warning lint, and
   zero known dependency vulnerabilities.
 - Phase 0 cannot be declared exited until the protected six-account/two-tenant
-  matrix and remaining migration 036–037 positive/rollback probes run in
-  staging, hosted branch protection and the reviewer-protected staging
-  environment are activated, and production worker/provider configuration is
-  completed.
+  matrix runs in staging, hosted branch protection and the reviewer-protected
+  staging environment are activated, and production worker/provider
+  configuration is completed.
 - The largest remaining product gaps are the PRD authorization kernel,
   queues/routing, business-calendar SLA clocks, remote support, appointments,
   assets/entitlements, search/knowledge, i18n, versioned external APIs, and
   production SRE/recovery evidence.
+
+## Session record — 2026-08-17 (migrations 036–037 live verification)
+
+### Objective
+
+Retire the tenant-safe site-administration commands' protected positive,
+rollback, privilege, exact-audit, derived Slack-mapping, and concurrency debt
+on the current deployed schema.
+
+### Evidence
+
+- Anonymous and authenticated API roles could not invoke either command;
+  missing, non-admin, and inactive actors failed before business validation.
+- Create rejected malformed/extra/non-string inputs, invalid UUIDs, names,
+  codes, timezones, addresses, Slack IDs, lifecycle/project states, inactive or
+  missing customers, and missing/inactive/external owners without residue.
+- Minimal trial-customer and fully populated active-customer creates proved
+  migration 037's repaired default/null expressions, normalization, active
+  internal ownership, exact single create audit, and current Slack mapping.
+- Patch rejected customer reassignment, default-owner mutation, malformed/
+  unsupported fields, inactive/decommissioned sites, inactive parent tenants,
+  and invalid lifecycle/configuration values without row or audit changes.
+- A seven-field patch preserved customer/default-owner/creation identity,
+  normalized values, and wrote exactly one attributable audit per changed
+  field. An exact no-op added no audit or mapping; nullable clears wrote two
+  exact audits while retaining the historical Slack mapping.
+- Reusing a canonical Slack channel during create or patch failed with
+  `23505`; the site, audit, and derived mapping changes rolled back together.
+- Twelve simultaneous same-code creates produced one site and one audit with
+  eleven conflicts. Twelve identical simultaneous site patches all returned
+  successfully but produced only the seven first-change audits and one
+  derived mapping.
+- All disposable sites, mappings, audits, profiles, customers, and the real
+  Auth admin were removed; independent residue checks were empty. The first
+  run reached cleanup and exposed only a verifier assumption: deleted Auth
+  lookup returns `User not found` in this project. The cleanup assertion was
+  corrected and the complete matrix reran from a clean preflight.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| Migrations 036–037 live matrix | Passed; 500 privilege/lifecycle/input/default/ownership/audit/mapping/rollback/concurrency assertions |
+| Migration 037 repaired commands | Passed; site commands here plus positive 028–031 matrices cover all six repaired definitions |
+| Concurrency | Passed; 12 same-code creates committed once; 12 identical patches wrote one exact changed-field audit set |
+| Disposable cleanup | Passed; zero site/mapping/audit/profile/customer/Auth residue |
+| `npm ci` | Passed; 533 packages installed from lockfile, 0 vulnerabilities |
+| `npm test` | Passed; 147 files, 1,147 tests |
+| `npm run lint` | Passed; no warnings/errors |
+| `npm run build` | Passed; optimized Next.js production build |
+| `npm run test:e2e` | Passed; 42 production HTTP checks; credentialed matrix skipped because its fixture file is unset |
+| `npm audit --audit-level=low` | Passed; 0 vulnerabilities |
+| `git diff --check` | Passed |
+
+### Exact next step
+
+- Commit this verification record, then re-audit the remaining Phase 0 release
+  gates and select the highest-value repository-local closure.
 
 ## Session record — 2026-08-17 (migration 035 live verification)
 

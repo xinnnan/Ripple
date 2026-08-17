@@ -176,7 +176,7 @@ applied and live-verified as of 2026-08-17. Key tables:
 | Table | Purpose | Notes |
 |---|---|---|
 | `customers` | Customer orgs | `name`, `domain`, `status`; migration 040 makes active/trial creation and ordinary updates transactionally audited and keeps inactive lifecycle behind the archive workflow |
-| `sites` | Customer locations | `site_code` (unique), `slack_channel_id`, `project_status`; migration 036 makes customer ownership immutable through normal admin updates and makes create/update audit atomic; migration 037 repairs its SQL-expression runtime defect and is live-verified |
+| `sites` | Customer locations | `site_code` (unique), `slack_channel_id`, `project_status`; migration 036 makes customer ownership immutable through normal admin updates and makes create/update audit atomic. Migration 037 repairs its SQL-expression runtime defect; the current commands passed a 500-assertion live matrix |
 | `users` | All users (internal + external) | `role` (4 values, see §4), `customer_id`, `slack_user_id`; migration 038 makes same-family admin PATCH/deactivation serialized and transactionally audited. Migration 039 stops trusting signup role metadata and adds atomic admin/team provisioning finalizers. Migration 052 moves name/phone self-service behind a row-locked audited command and passed a 90-assertion live matrix. Migration 053 makes non-null Slack actor identities unique and passed a 173-assertion signed-ingress matrix. Migration 054 quarantines unusable legacy IDs with system audit, rejects ambiguous valid ownership, adds canonical Slack-ID shape enforcement, and adds a service-only, row-locked, exactly audited admin mapping command. It passed a 326-assertion live matrix plus real signed-in API/UI set-clear verification with zero disposable residue |
 | `site_members` | User ↔ Site (M:N) | Customers join via this; customer_manager bypasses. Migration 035 adds tenant-contained, transactionally audited admin add/remove commands. Migration 045 removes the legacy direct authenticated write path; its 110-assertion live matrix is green |
 | `tickets` | Core ticket entity | `ticket_no` (RPL-XXXXXX), `secure_token` (32-byte hex), `severity` (P1–P4), 8-state `status`, response/resolution due/achieved/breached timestamps; migration 027 column-limits direct authenticated SELECT |
@@ -835,6 +835,16 @@ the valid SQL expressions, and reapply the service-role-only grants. The
 allowlist fails closed when an expected command is missing. This forward fix
 keeps already-applied migrations immutable and also repairs clean deployments
 after 029–036 run in order.
+
+Migrations 036–037 were comprehensively live-verified on 2026-08-17 with 500
+disposable assertions against the current schema. The site create/update
+matrix covered public-role denial, actor/customer/owner/site lifecycle,
+strict input bounds and normalization, immutable ownership, exact create and
+per-field update audits, no-op behavior, Slack mapping derivation and unique-
+channel rollback, and twelve-way same-code creation and identical-patch
+serialization. All database and Auth fixtures were removed. Together with
+the positive 028–031 matrices, every repaired migration-037 command now has
+live positive-path evidence.
 
 **Lesson:** qualify real PostgreSQL functions when using an empty search path,
 but do not qualify grammar constructs such as `COALESCE` or `NULLIF`. Static
@@ -1802,7 +1812,7 @@ resume work; this section remains the broader historical summary.
 | 🟡 Configure | Production `CRON_SECRET` is not configured | deployment environment | Migration 033's database lifecycle is comprehensively live-verified; set a long server-only secret, then verify production readiness and worker authorization |
 | ✅ Verified | Migration 034 atomic ticket creation | `supabase/migrations/034_atomic_ticket_creation_outbox.sql`, `src/lib/tickets/create.ts` | A 222-assertion disposable live matrix passed 2026-08-17 across service-only access, payload/lifecycle/SLA/actor/site scope, guest web/signed-Slack paths, sequence-backed creation, exact timeline/audit/outbox effects, duplicate-token rollback, 12-way independent concurrency, and zero database/Auth residue; migration 047 separately verifies replay safety |
 | ✅ Verified | Migration 035 atomic admin site membership | `supabase/migrations/035_atomic_admin_site_membership.sql`, `/api/admin/site-members` | A 112-assertion disposable live matrix passed 2026-08-17 across public-role denial, actor/target/site/customer lifecycle and tenant guards, legacy tenant derivation, duplicate rollback, role preservation, exact joined/left audits, 12-way add/remove serialization, and zero database/Auth residue |
-| 🟡 Verify | Migration 037 protected positive probes remain | `supabase/migrations/037_repair_qualified_sql_expressions.sql` | All six definitions now reach domain validation instead of `42883`; anonymous denial and zero-residue probes are green. Run disposable positive/rollback business probes with staging fixtures |
+| ✅ Verified | Migrations 036–037 tenant-safe site administration and command repair | `supabase/migrations/036_atomic_admin_site_commands.sql`, `supabase/migrations/037_repair_qualified_sql_expressions.sql`, `/api/sites`, `/api/admin/sites/[id]` | A 500-assertion disposable live site matrix passed 2026-08-17 across public-role denial, lifecycle/tenant/owner/input guards, normalization/defaults, immutable ownership, exact audits, no-op, Slack mapping/unique-channel rollback, 12-way create/update serialization, and zero database/Auth residue; the 028–031 matrices provide live positive evidence for the other four repaired commands |
 | ✅ Verified | Migration 045 direct-write boundary | `supabase/migrations/045_restrict_direct_application_writes.sql` | Applied 2026-08-01; 110 live assertions covered all 22 command-owned tables, historical membership/SLA bypasses, profile continuity/protection, five minting RPCs, real admin APIs, exact audit evidence, scope continuity, and zero residue |
 | 🟡 Med | File-service malware/quarantine and durable reconciliation are incomplete | `src/lib/files/attachment-validation.ts`, `/api/upload` | Content/type/path validation and safe cross-system compensation are present; add malware scanning, quarantine/release, checksums, retention, and an operator queue for ambiguous outcomes |
 | 🟡 Med | Vercel recovery cron runs daily for plan compatibility | `vercel.json` | Request-path dispatch is immediate; use a supported 1–5 minute schedule or external scheduler when the production Vercel plan permits |
@@ -1863,10 +1873,11 @@ resume work; this section remains the broader historical summary.
     a 112-assertion disposable matrix covering privileges, lifecycle, tenant
     containment, legacy derivation, exact audits, rollback, concurrent add/
     remove serialization, and zero database/Auth residue.
-23. **Deploy tenant-safe site administration.** ✅ migration 036 is applied;
-    migration 037 repaired the SQL-expression defect and all six affected
-    commands now pass validation/privilege/zero-residue probes. Disposable
-    site/audit positive and rollback probes still require protected fixtures.
+23. **Deploy tenant-safe site administration.** ✅ migrations 036–037 are
+    applied and passed a 500-assertion site-command matrix covering privileges,
+    lifecycle/tenant/configuration guards, defaults, immutable ownership,
+    exact audits, Slack mapping rollback, concurrency, and zero residue. With
+    the 028–031 matrices, all six repaired commands have live positive paths.
 24. **Deploy atomic admin-user authorization changes.** ✅ migration 038 is
     applied and passed a 30-assertion disposable live matrix covering positive
     patch/deactivation, audit cardinality, cross-family/inactive/self-demotion
