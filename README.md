@@ -196,6 +196,11 @@ attempt checkpoint) passed a 167-assertion disposable live matrix covering
 service-only access, constraints, atomic enqueue, leases, settlement, retry,
 dead-letter/stale recovery, ordering, and 12-way `SKIP LOCKED` concurrency with
 zero database/Auth residue. Production recovery still requires `CRON_SECRET`.
+Migration 034's raw atomic ticket-create command passed a 222-assertion live
+matrix covering payload, tenant/site/SLA/actor scope, guest web/signed-Slack
+paths, sequence numbers, exact timeline/audit/outbox effects, rollback, and
+12-way concurrency with zero database/Auth residue. Migration 047 separately
+verifies replay-safe creation.
 Migration 053 passed a 173-assertion signed-ingress, mapping,
 replay, concurrency, privilege, no-echo, and cleanup matrix. Migration 052 passed a
 90-assertion live direct-write/RPC-denial,

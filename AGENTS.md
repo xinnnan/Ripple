@@ -738,6 +738,15 @@ web endpoint assigns provenance server-side. Migration 034 is deliberately
 opt-in rather than an INSERT trigger, so applying the migration before the
 application commit does not duplicate the old direct provider calls.
 
+Migration 034's raw command was comprehensively live-verified on 2026-08-17
+with 222 disposable assertions. The matrix covered public-role denial, strict
+payload bounds, active site/customer/SLA scope, guest web/signed-Slack rules,
+internal and customer actor scope, normalized fields, sequence numbering,
+exact creation timeline/audit/outbox timestamps and cardinality, duplicate-
+token rollback, and twelve concurrent independent creations. All database and
+Auth fixtures were removed. Migration 047 separately covers caller-stable
+replay of this command.
+
 Master-card updates are naturally repeatable, resolution email passes a stable
 Resend idempotency key, confirmation email does the same, and Slack creation
 and resolution records retain the outbox event id locally plus message
@@ -1783,7 +1792,7 @@ resume work; this section remains the broader historical summary.
 | ✅ Verified | Migration 032 guarded ticket transitions | `supabase/migrations/032_guard_ticket_status_transitions.sql`, `src/lib/tickets/status.ts`, `/api/tickets/[ticketId]` | A 430-assertion disposable live matrix passed 2026-08-17 across all 64 state pairs, SQL/application parity, public-role denial, owner/summary guards, rollback, legacy compatibility, exact event/audit/SLA/outbox effects, 12-way serialization, and zero database/Auth residue |
 | ✅ Verified | Migration 033 durable outbox lifecycle | `supabase/migrations/033_ticket_notification_outbox.sql`, `supabase/migrations/050_durable_slack_provider_attempts.sql`, `/api/internal/outbox/dispatch` | A 167-assertion disposable live matrix passed 2026-08-17 across service-only access, constraints, atomic enqueue/no-op/rollback, claim/lease/checkpoint/delivery/retry/dead-letter/stale-recovery behavior, ordering, 12-way `SKIP LOCKED` concurrency, and zero database/Auth residue |
 | 🟡 Configure | Production `CRON_SECRET` is not configured | deployment environment | Migration 033's database lifecycle is comprehensively live-verified; set a long server-only secret, then verify production readiness and worker authorization |
-| 🟡 Verify | Migration 034 protected creation probes remain | `supabase/migrations/034_atomic_ticket_creation_outbox.sql` | Command privilege, validation, constraint, and zero-residue probes are live/green; run disposable web/Slack creation and outbox-delivery probes with staging fixtures |
+| ✅ Verified | Migration 034 atomic ticket creation | `supabase/migrations/034_atomic_ticket_creation_outbox.sql`, `src/lib/tickets/create.ts` | A 222-assertion disposable live matrix passed 2026-08-17 across service-only access, payload/lifecycle/SLA/actor/site scope, guest web/signed-Slack paths, sequence-backed creation, exact timeline/audit/outbox effects, duplicate-token rollback, 12-way independent concurrency, and zero database/Auth residue; migration 047 separately verifies replay safety |
 | 🟡 Verify | Migration 035 protected membership probes remain | `supabase/migrations/035_atomic_admin_site_membership.sql` | Service validation/not-found and anonymous-denial probes are live/green with zero residue; run disposable same/cross-tenant add/remove/rollback probes |
 | 🟡 Verify | Migration 037 protected positive probes remain | `supabase/migrations/037_repair_qualified_sql_expressions.sql` | All six definitions now reach domain validation instead of `42883`; anonymous denial and zero-residue probes are green. Run disposable positive/rollback business probes with staging fixtures |
 | ✅ Verified | Migration 045 direct-write boundary | `supabase/migrations/045_restrict_direct_application_writes.sql` | Applied 2026-08-01; 110 live assertions covered all 22 command-owned tables, historical membership/SLA bypasses, profile continuity/protection, five minting RPCs, real admin APIs, exact audit evidence, scope continuity, and zero residue |
@@ -1839,9 +1848,9 @@ resume work; this section remains the broader historical summary.
 20. **Deploy the first INT-007 outbox slice.** ✅ migration 033 is applied and
     its current contract passed the 167-assertion live lifecycle matrix.
     Configure `CRON_SECRET` to activate the production recovery worker.
-21. **Deploy atomic ticket creation.** ✅ migration 034 is applied and its
-    service-role command, constraint, privilege, and zero-residue probes
-    passed; disposable web/Slack create and delivery probes remain.
+21. **Deploy atomic ticket creation.** ✅ migration 034 is applied and passed
+    the 222-assertion raw-command live matrix; migration 047's replay wrapper
+    also passed its 42-assertion matrix.
 22. **Deploy atomic admin site access.** ✅ migration 035 is applied and its
     service validation/not-found, privilege, and zero-residue probes passed;
     protected same/cross-tenant membership and rollback probes remain.

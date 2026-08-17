@@ -7,11 +7,11 @@ meaningful change and before ending a work session. Newest entries go first.
 
 - **Branch:** `codex/prd-v1-1-gap-closure`
 - **Active phase:** Phase 0 — Containment and reproducible baseline
-- **Active work item:** P0-CB remaining protected migration 034–037 positive/
-  rollback verification; migrations 028–033 are now comprehensively live-
+- **Active work item:** P0-CB remaining protected migration 035–037 positive/
+  rollback verification; migrations 028–034 are now comprehensively live-
   verified
-- **Last verified checkpoint commit:** `2bf7cd8` (`docs: verify migration 032 transitions`)
-- **Uncommitted work:** migration 033 live-verification evidence and checkpoint
+- **Last verified checkpoint commit:** `aca9388` (`docs: verify migration 033 outbox`)
+- **Uncommitted work:** migration 034 live-verification evidence and checkpoint
   updates
 - **Deployment gate:** migrations 001–054 are confirmed applied and
   live-verified. Migration 044
@@ -51,8 +51,11 @@ meaningful change and before ending a work session. Newest entries go first.
   Migration 033's current contract passed a 167-assertion privilege/constraint/
   enqueue/claim/lease/checkpoint/delivery/retry/dead-letter/stale-recovery/
   ordering/12-way concurrency live matrix with zero database/Auth residue.
+  Migration 034's raw command passed a 222-assertion privilege/payload/
+  lifecycle/SLA/actor/site/scope/normalization/numbering/timeline/audit/outbox/
+  rollback/12-way concurrency live matrix with zero database/Auth residue.
   Production `CRON_SECRET` remains unset in this workspace.
-  Protected positive business probes for migrations 034–037 remain
+  Protected positive business probes for migrations 035–037 remain
 - **External validation gate:** populate the gitignored credential fixture with six
   dedicated staging accounts, two tenants, a decommissioned site/ticket, and
   real internal artifact IDs; then run
@@ -66,11 +69,11 @@ meaningful change and before ending a work session. Newest entries go first.
   database currently has zero linked Slack channels and zero recorded master
   messages, so read-only history/thread reconciliation awaits the first real
   target rather than posting a synthetic message to a customer channel
-- **Runtime verification debt:** migrations 028–033 request/field-service/team/
-  ticket-transition/outbox creation, fulfillment, assignment, DATE, access-
-  set, rollback, audit, privilege, and concurrency cases are live-verified.
-  Remaining debt starts with migration 034 atomic ticket creation, followed by
-  migrations 035–037. The credentialed matrix
+- **Runtime verification debt:** migrations 028–034 request/field-service/team/
+  ticket-transition/outbox/ticket creation, fulfillment, assignment, DATE,
+  access-set, rollback, audit, privilege, and concurrency cases are live-
+  verified. Remaining debt starts with migration 035 atomic admin site
+  membership, followed by migrations 036–037. The credentialed matrix
   also carries real malformed-JSON 400 probes for ticket create, ticket PATCH,
   ticket comments, and AI suggestions
 - **Support UX verification:** public pages and the real admin shell were
@@ -126,10 +129,10 @@ meaningful change and before ending a work session. Newest entries go first.
   enriched view. After deployment, a second disposable browser flow performed
   an actual normalized set and clear at desktop/mobile widths with exact audit
   evidence and zero residue.
-- **Exact next local step:** commit the migration 033 verification record, then
-  live-verify migration 034 atomic web/Slack ticket creation, scope, exact
-  timeline/audit/outbox effects, rollback, privileges, and concurrency with
-  disposable fixtures.
+- **Exact next local step:** commit the migration 034 verification record, then
+  live-verify migration 035 same/cross-tenant admin site-membership add/remove,
+  legacy tenant derivation, no-op/rollback/audit, privileges, and concurrency
+  with disposable fixtures.
 - **Primary plan:** [`plans/prd-v1.1-gap-closure-plan.md`](./prd-v1.1-gap-closure-plan.md)
 
 ## Overall project status — 2026-08-17
@@ -144,7 +147,7 @@ meaningful change and before ending a work session. Newest entries go first.
   production HTTP smoke checks, a production build, zero-warning lint, and
   zero known dependency vulnerabilities.
 - Phase 0 cannot be declared exited until the protected six-account/two-tenant
-  matrix and remaining migration 034–037 positive/rollback probes run in
+  matrix and remaining migration 035–037 positive/rollback probes run in
   staging, hosted branch protection and the reviewer-protected staging
   environment are activated, and production worker/provider configuration is
   completed.
@@ -152,6 +155,64 @@ meaningful change and before ending a work session. Newest entries go first.
   queues/routing, business-calendar SLA clocks, remote support, appointments,
   assets/entitlements, search/knowledge, i18n, versioned external APIs, and
   production SRE/recovery evidence.
+
+## Session record — 2026-08-17 (migration 034 live verification)
+
+### Objective
+
+Retire the raw atomic ticket-creation command's protected positive/rollback
+debt beneath migration 047's already-verified replay wrapper.
+
+### Evidence
+
+- Anonymous and authenticated API roles cannot invoke `create_ticket_atomic`;
+  only the service role reaches its independent validation and authorization.
+- Null/non-object/unknown fields, malformed identifiers/timestamps, missing or
+  mismatched customer/site, inactive lifecycle, foreign SLA, unsupported
+  source/request/severity/impact, invalid secure token, and bounded text/contact
+  failures all left the marked ticket count unchanged.
+- Null creators were accepted only for web and signed-Slack provenance.
+  Active internal creators could create across active tenants; customer
+  managers remained inside their organization; customers required an exact
+  active membership; inactive, missing, cross-tenant, unassigned, and non-web
+  external actors failed closed.
+- A fully populated guest web ticket trimmed/normalized optional fields,
+  retained its exact 64-character token and SLA timestamps, started New with a
+  sequence-backed number, and committed one creation event, one guest audit,
+  one Slack-master event, and one confirmation-email event at the same
+  timestamp. The raw command correctly created no replay-ledger row.
+- The null-actor signed-Slack path created only its required master event;
+  internal, manager, and assigned-customer positive paths persisted exact
+  actor and site scope with attributable audit evidence.
+- Reusing an existing secure token returned `23505`; the second ticket and all
+  child effects rolled back while the first ticket's exact event/audit/outbox
+  cardinality remained unchanged.
+- Twelve simultaneous independent raw creates returned twelve distinct UUIDs,
+  twelve unique sequence numbers/tokens, and exactly twelve tickets, creation
+  events, audits, and Slack-master events with no replay-ledger rows.
+- All disposable tickets, events, audits, outbox/replay rows, policies,
+  memberships, sites, customers, profiles, and the real Auth engineer were
+  removed; independent residue checks were empty.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| Migration 034 live matrix | Passed; 222 privilege/payload/lifecycle/SLA/scope/creation/effect/rollback/concurrency assertions |
+| Concurrency | Passed; 12 independent creates produced 12 unique sequence-backed tickets and exact child effects |
+| Disposable cleanup | Passed; zero ticket/event/audit/outbox/replay/policy/membership/site/customer/profile/Auth residue |
+| `npm ci` | Passed; 533 packages installed from lockfile, 0 vulnerabilities |
+| `npm test` | Passed; 147 files, 1,147 tests |
+| `npm run lint` | Passed; no warnings/errors |
+| `npm run build` | Passed; optimized Next.js production build |
+| `npm run test:e2e` | Passed; 42 production HTTP checks; credentialed matrix skipped because its fixture file is unset |
+| `npm audit --audit-level=low` | Passed; 0 vulnerabilities |
+| `git diff --check` | Passed |
+
+### Exact next step
+
+- Commit this verification record, then execute the migration 035 disposable
+  admin site-membership matrix.
 
 ## Session record — 2026-08-17 (migration 033 live verification)
 
