@@ -650,6 +650,14 @@ and existing memberships, independently verifies an active
 active desired site, then deletes only removed links and inserts only new
 links. Omitted `site_ids` leaves access unchanged; `[]` explicitly clears it.
 
+Migration 031 was comprehensively live-verified on 2026-08-17 with 175
+disposable assertions. The matrix covered anonymous/authenticated RPC denial,
+manager/customer lifecycle and role boundaries, same-tenant and cross-tenant
+targets/sites, strict payload bounds, role-preserving additions/removals,
+omission versus explicit clearing, no-op behavior, exact audits, transactional
+rollback, and twelve identical concurrent saves. All database and Auth
+fixtures were removed.
+
 **Lesson:** a submitted child collection is a desired state, not permission to
 destroy and reconstruct every row. Preserve retained row identity and
 attributes, distinguish omission from an explicit empty set, and commit the
@@ -1755,7 +1763,7 @@ resume work; this section remains the broader historical summary.
 | ✅ Verified | Migrations 028–030 service-resource transactions | `supabase/migrations/028_atomic_spare_part_request_updates.sql` through `030_atomic_field_service_order_commands.sql` | A 173-assertion disposable live matrix passed 2026-08-17 across service-only grants/numbering, request/order create and update, tenant/ticket/part/assignee/date/quantity guards, parent containment, assignment replacement, exact audit effects, rollback, 12-way serialization, and zero database/Auth residue |
 | ✅ Verified | Migration 046 durable public rate limits | `supabase/migrations/046_durable_public_rate_limits.sql` | Applied 2026-08-02; 77 live assertions covered grants, constraints, concurrency, reset/retention, bounded cleanup, real HTTP limits/lifecycle, and zero residue |
 | 🟡 Med | Exact site-code validation remains an existence oracle | `/api/sites/validate` | Responses are minimal and migration 046 enforces 20 checks/minute/IP across instances, but full anti-enumeration still requires CAPTCHA, an invitation/intake token, or authenticated submission |
-| 🟡 Verify | Migration 031 protected business probes remain | `supabase/migrations/031_atomic_team_site_assignment.sql` | RPC presence and validation behavior are confirmed; run same-tenant, cross-tenant, role-preservation, explicit-clear, and rollback probes with staging fixtures |
+| ✅ Verified | Migration 031 atomic team access | `supabase/migrations/031_atomic_team_site_assignment.sql`, `/api/team/[id]` | A 175-assertion disposable live matrix passed 2026-08-17 across public-role denial, actor/tenant/target/site lifecycle guards, retained membership roles and row identities, omission/clear/no-op semantics, exact audits, rollback, 12-way serialization, and zero database/Auth residue |
 | 🟡 Verify | Migration 032 positive business probe remains | `supabase/migrations/032_guard_ticket_status_transitions.sql` | Truth-table and three rollback guards are live/green; run one allowed transition and restore it on a disposable staging ticket |
 | 🟡 Configure | Production `CRON_SECRET` is not configured | deployment environment | Migration 033 is live and its non-writing RPC/column probes passed; set a long server-only secret, then verify readiness and worker authorization |
 | 🟡 Verify | Migration 034 protected creation probes remain | `supabase/migrations/034_atomic_ticket_creation_outbox.sql` | Command privilege, validation, constraint, and zero-residue probes are live/green; run disposable web/Slack creation and outbox-delivery probes with staging fixtures |
@@ -1780,9 +1788,10 @@ resume work; this section remains the broader historical summary.
 3. **Run migration 030 field-service transaction probes.** ✅ completed in the
    same 173-assertion matrix, including positive create/update, assignment-set
    replacement, rollback, DATE constraints, audit evidence, and concurrency.
-4. **Run migration 031 team-access transaction probes.** The command is live;
-   protected same/cross-tenant, role-preservation, explicit-clear, and rollback
-   fixtures remain unavailable.
+4. **Run migration 031 team-access transaction probes.** ✅ completed
+   2026-08-17; 175 disposable assertions covered same/cross-tenant boundaries,
+   role and row-identity preservation, omission/clear/no-op semantics,
+   rollback, exact audit, privileges, concurrency, and zero residue.
 5. **Run the required credentialed staging matrix.** Migrations 027–049 are
    applied and live-verified; the secret six-account/two-tenant fixture remains
    the protected runtime gate.
@@ -1794,7 +1803,7 @@ resume work; this section remains the broader historical summary.
 9. **Complete INT-004 field-service order/engineer atomicity and date contract.**
    ✅ deployed in `2557760` + migration 030; protected probes remain.
 10. **Complete INT-006 team access set diff.** ✅ deployed in `c0c2354` +
-   migration 031; protected business probes remain.
+   migration 031 and live-verified through the 175-assertion matrix.
 11. **Fix MiniMax AI key** (or swap provider in `.env`). Verify `/api/ai/suggest` returns a real model response, not a mock.
 12. **Verify Resend sender domain** so confirmation / resolution emails actually send.
 13. **Ticket number sequence migration** (020) ✅ done (2026-07-14) — `next_ticket_no()` RPC + 021 volatility fix.

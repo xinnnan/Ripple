@@ -182,6 +182,11 @@ Migrations 028–030 also passed a 173-assertion disposable live matrix covering
 atomic spare-part request and field-service create/update behavior, protected
 numbering, tenant/parent/lifecycle constraints, exact audit evidence, rollback,
 and concurrency with zero database/Auth residue.
+Migration 031 passed a 175-assertion disposable live matrix covering atomic
+team profile/site-access updates, manager/tenant/target/site boundaries,
+retained membership roles and identities, omission/clear/no-op semantics,
+exact audit evidence, rollback, and 12-way concurrency with zero database/Auth
+residue.
 Migration 053 passed a 173-assertion signed-ingress, mapping,
 replay, concurrency, privilege, no-echo, and cleanup matrix. Migration 052 passed a
 90-assertion live direct-write/RPC-denial,
