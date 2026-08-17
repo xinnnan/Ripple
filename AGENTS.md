@@ -627,6 +627,15 @@ calendar date through the runtime timezone, and do not split a parent write,
 complete child-set replacement, or its required audit evidence across
 best-effort calls.
 
+Migrations 028–030 were comprehensively live-verified on 2026-08-17 with 173
+disposable assertions. The matrix covered anonymous/authenticated RPC and
+number-minting denial, positive request/order creation and updates, cross-site/
+cross-tenant ticket rejection, inactive-part and invalid-assignee containment,
+parent-owned fulfillment, exact totals and DATE values, assignment-set
+replacement, changed-field audit cardinality, table constraints, rollback,
+and 12-way exact update serialization for both resources. All database and
+Auth fixtures were removed.
+
 ### Replace child collections with a set diff, not delete-all/reinsert
 Found 2026-07-30 in `PATCH /api/team/[id]`. A customer manager saving one team
 member first updated the profile, then deleted every `site_members` row, then
@@ -1743,6 +1752,7 @@ resume work; this section remains the broader historical summary.
 | ✅ Verified | Atomic self-service profile boundary | `supabase/migrations/052_atomic_self_service_profile.sql`, `/api/profile`, `/profile` | Applied 2026-08-13; 90 live assertions verified direct-write/RPC denial, normalization, no-op and lifecycle rejection, exact audit evidence, 12-way serialized concurrency, and zero Auth/profile/audit residue. App/API/UI contracts and desktop/mobile browser QA are green |
 | ✅ Verified | Replay-safe Slack ticket-thread capture | `supabase/migrations/053_replay_safe_slack_thread_capture.sql`, `/api/slack/events`, `src/lib/slack/handlers/events.ts` | Applied 2026-08-13; 173 live assertions verified signed production HTTP ingress, mapping and actor uniqueness, stale/unknown/bot/inactive containment, cross-site denial, exact and altered replay, 12-way concurrency, exact comment/timeline/audit/SLA cardinality, no echo outbox event, public privilege denial, and zero database/Auth residue |
 | ✅ Verified | Administrator-managed Slack identities | `supabase/migrations/054_atomic_admin_slack_identity.sql`, `/api/admin/users/[id]/slack`, `/admin/users/[id]` | Applied 2026-08-17; 19 impossible legacy values were quarantined without losing identity/ticket history, and a 326-assertion live matrix plus signed-in API/UI set-clear verification covered command, privilege, lifecycle, uniqueness, no-op, exact audit, 12-way concurrency, responsive browser behavior, and zero disposable residue |
+| ✅ Verified | Migrations 028–030 service-resource transactions | `supabase/migrations/028_atomic_spare_part_request_updates.sql` through `030_atomic_field_service_order_commands.sql` | A 173-assertion disposable live matrix passed 2026-08-17 across service-only grants/numbering, request/order create and update, tenant/ticket/part/assignee/date/quantity guards, parent containment, assignment replacement, exact audit effects, rollback, 12-way serialization, and zero database/Auth residue |
 | ✅ Verified | Migration 046 durable public rate limits | `supabase/migrations/046_durable_public_rate_limits.sql` | Applied 2026-08-02; 77 live assertions covered grants, constraints, concurrency, reset/retention, bounded cleanup, real HTTP limits/lifecycle, and zero residue |
 | 🟡 Med | Exact site-code validation remains an existence oracle | `/api/sites/validate` | Responses are minimal and migration 046 enforces 20 checks/minute/IP across instances, but full anti-enumeration still requires CAPTCHA, an invitation/intake token, or authenticated submission |
 | 🟡 Verify | Migration 031 protected business probes remain | `supabase/migrations/031_atomic_team_site_assignment.sql` | RPC presence and validation behavior are confirmed; run same-tenant, cross-tenant, role-preservation, explicit-clear, and rollback probes with staging fixtures |
@@ -1764,10 +1774,12 @@ resume work; this section remains the broader historical summary.
    now return a stable 400. Protected routes authenticate first, public ticket
    intake consumes both limits first, eight new unit tests are green, and four
    real HTTP probes are queued in the protected credentialed matrix.
-2. **Run migrations 028–029 part-request probes.** Both migrations are
-   applied; staging credentials are not present in this workspace.
-3. **Run migration 030 field-service transaction probes.** Both command RPCs
-   are live; protected positive/rollback fixtures remain unavailable.
+2. **Run migrations 028–029 part-request probes.** ✅ completed 2026-08-17;
+   the combined 028–030 disposable matrix passed 173 assertions with zero
+   database/Auth residue.
+3. **Run migration 030 field-service transaction probes.** ✅ completed in the
+   same 173-assertion matrix, including positive create/update, assignment-set
+   replacement, rollback, DATE constraints, audit evidence, and concurrency.
 4. **Run migration 031 team-access transaction probes.** The command is live;
    protected same/cross-tenant, role-preservation, explicit-clear, and rollback
    fixtures remain unavailable.

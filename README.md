@@ -178,6 +178,10 @@ audited admin workflow required to set or clear a unique Slack actor identity.
 It passed a 326-assertion live command/privilege/lifecycle/uniqueness/audit/
 concurrency matrix plus a real signed-in API/UI set-clear flow with zero
 disposable residue.
+Migrations 028–030 also passed a 173-assertion disposable live matrix covering
+atomic spare-part request and field-service create/update behavior, protected
+numbering, tenant/parent/lifecycle constraints, exact audit evidence, rollback,
+and concurrency with zero database/Auth residue.
 Migration 053 passed a 173-assertion signed-ingress, mapping,
 replay, concurrency, privilege, no-echo, and cleanup matrix. Migration 052 passed a
 90-assertion live direct-write/RPC-denial,

@@ -7,11 +7,12 @@ meaningful change and before ending a work session. Newest entries go first.
 
 - **Branch:** `codex/prd-v1-1-gap-closure`
 - **Active phase:** Phase 0 — Containment and reproducible baseline
-- **Active work item:** P0-CB remaining protected migration 028–037 positive/
-  rollback verification; migration 054 and its dependent API/UI are now live-
+- **Active work item:** P0-CB remaining protected migration 031–037 positive/
+  rollback verification; migrations 028–030 are now comprehensively live-
   verified
-- **Last verified checkpoint commit:** `f06fd95` (`fix: quarantine invalid Slack identities`)
-- **Uncommitted work:** migration 054 rollout evidence and checkpoint updates
+- **Last verified checkpoint commit:** `f4482ee` (`docs: verify migration 054 rollout`)
+- **Uncommitted work:** migration 028–030 live-verification evidence and
+  checkpoint updates
 - **Deployment gate:** migrations 001–054 are confirmed applied and
   live-verified. Migration 044
   passed a 130-assertion disposable live matrix with zero residue. Migration
@@ -38,9 +39,11 @@ meaningful change and before ending a work session. Newest entries go first.
   Auth residue. A real signed-in admin API/UI set-clear flow added two exact
   audit rows, passed desktop/mobile/Inter/overflow/control-size/console checks,
   and its disposable Auth/profile/audit fixtures were fully removed.
+  Migrations 028–030 passed a combined 173-assertion service-only privilege,
+  creation/update, tenant/parent/lifecycle/constraint, exact-audit, rollback,
+  and 12-way concurrency live matrix with zero database/Auth residue.
   Production `CRON_SECRET` remains unset in this workspace.
-  Protected positive business probes for migrations 028–037 still require
-  staging fixtures
+  Protected positive business probes for migrations 031–037 remain
 - **External validation gate:** populate the gitignored credential fixture with six
   dedicated staging accounts, two tenants, a decommissioned site/ticket, and
   real internal artifact IDs; then run
@@ -54,14 +57,13 @@ meaningful change and before ending a work session. Newest entries go first.
   database currently has zero linked Slack channels and zero recorded master
   messages, so read-only history/thread reconciliation awaits the first real
   target rather than posting a synthetic message to a customer channel
-- **Runtime verification debt:** when staging credentials become available,
-  test request creation/fulfillment, field-service create/update, and team
-  access positive/negative cases, including cross-site tickets, inactive
-  parts, foreign items, over-fulfillment, invalid/reversed dates, invalid
-  assignees, assignment-replacement rollback, cross-tenant team targets,
-  retained membership roles, and explicit access clearing. The credentialed
-  matrix now also carries real malformed-JSON 400 probes for ticket create,
-  ticket PATCH, ticket comments, and AI suggestions
+- **Runtime verification debt:** migrations 028–030 request/field-service
+  creation, fulfillment, assignment, DATE, rollback, audit, privilege, and
+  concurrency cases are live-verified. Remaining debt starts with migration
+  031 same/cross-tenant team targets, retained membership roles, and explicit
+  access clearing, followed by migrations 032–037. The credentialed matrix
+  also carries real malformed-JSON 400 probes for ticket create, ticket PATCH,
+  ticket comments, and AI suggestions
 - **Support UX verification:** public pages and the real admin shell were
   reviewed at 1440×1000 and 390×844. A short-lived admin test identity was
   created for read-only protected-page visits and fully deleted afterward.
@@ -115,10 +117,10 @@ meaningful change and before ending a work session. Newest entries go first.
   enriched view. After deployment, a second disposable browser flow performed
   an actual normalized set and clear at desktop/mobile widths with exact audit
   evidence and zero residue.
-- **Exact next local step:** commit the migration 054 rollout record, then use
-  disposable live fixtures to close the remaining migration 028–037 positive/
-  rollback verification debt, starting with part-request and field-service
-  creation/fulfillment boundaries.
+- **Exact next local step:** commit the migration 028–030 verification record,
+  then live-verify migration 031 same/cross-tenant team updates, retained role
+  preservation, omission versus explicit-clear semantics, rollback, audit,
+  privilege, and concurrency with disposable fixtures.
 - **Primary plan:** [`plans/prd-v1.1-gap-closure-plan.md`](./prd-v1.1-gap-closure-plan.md)
 
 ## Overall project status — 2026-08-17
@@ -133,7 +135,7 @@ meaningful change and before ending a work session. Newest entries go first.
   production HTTP smoke checks, a production build, zero-warning lint, and
   zero known dependency vulnerabilities.
 - Phase 0 cannot be declared exited until the protected six-account/two-tenant
-  matrix and remaining migration 028–037 positive/rollback probes run in
+  matrix and remaining migration 031–037 positive/rollback probes run in
   staging, hosted branch protection and the reviewer-protected staging
   environment are activated, and production worker/provider configuration is
   completed.
@@ -141,6 +143,63 @@ meaningful change and before ending a work session. Newest entries go first.
   queues/routing, business-calendar SLA clocks, remote support, appointments,
   assets/entitlements, search/knowledge, i18n, versioned external APIs, and
   production SRE/recovery evidence.
+
+## Session record — 2026-08-17 (migrations 028–030 live verification)
+
+### Objective
+
+Retire the protected positive/rollback debt for atomic spare-part request and
+field-service transactions without touching existing tenant/business rows.
+
+### Evidence
+
+- Anonymous and authenticated callers cannot invoke the four service commands
+  or mint ticket/request/order numbers directly. Active internal attribution
+  is rechecked in each command; inactive/internal and customer actors fail
+  closed.
+- Spare-part request creation persisted the exact header, two owned items,
+  rounded prices, derived total, sequence number, and one attributable audit
+  row. Cross-site/cross-tenant tickets, inactive or duplicate parts, and
+  unknown fields left no parent residue.
+- Approval and fulfillment committed header, approval attribution, owned item,
+  and exact changed-field audits together. Cross-request items,
+  over-fulfillment, duplicate items, and direct table-bound violations rolled
+  back completely. Twelve identical concurrent fulfillment updates produced
+  one final quantity and one new audit row.
+- Field-service creation persisted the exact calendar dates, estimates,
+  ticket/site, sequence, two engineer roles, and one attributable audit row.
+  Cross-site/cross-tenant tickets, reversed/invalid dates, non-engineer and
+  duplicate assignees left no parent residue.
+- Field-service patch replaced the full engineer set and committed operational
+  fields plus exact changed-field audit rows. Invalid replacement assignees,
+  reversed dates, and direct schedule-bound violations rolled back. Completion
+  attribution/timestamp/report persisted, and twelve identical concurrent
+  hour updates produced one final value and one new audit row.
+- The temporary verifier's first cleanup attempted customer deletion before
+  deleting the disposable user profiles. The foreign key correctly blocked
+  it; after the profiles were removed, the two exact remaining customer rows
+  were identified and deleted. Cleanup order was corrected and the complete
+  matrix was rerun successfully from scratch with zero residue.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| Migrations 028–030 live matrix | Passed; 173 privilege/create/update/tenant/parent/lifecycle/constraint/audit/rollback/concurrency assertions |
+| Concurrency | Passed; independent 12-way exact request-fulfillment and field-service-hour updates each produced one changed-field audit |
+| Disposable cleanup | Passed after corrected rerun; zero request/order/item/assignment/ticket/site/part/customer/profile/audit/Auth residue |
+| `npm ci` | Passed; 533 packages installed from lockfile, 0 vulnerabilities |
+| `npm test` | Passed; 147 files, 1,147 tests |
+| `npm run lint` | Passed; no warnings/errors |
+| `npm run build` | Passed; optimized Next.js production build |
+| `npm run test:e2e` | Passed; 42 production HTTP checks; credentialed matrix skipped because its fixture file is unset |
+| `npm audit --audit-level=low` | Passed; 0 vulnerabilities |
+| `git diff --check` | Passed |
+
+### Exact next step
+
+- Commit this verification record, then execute the migration 031 disposable
+  team-access matrix.
 
 ## Session record — 2026-08-17 (migration 054 live verification)
 

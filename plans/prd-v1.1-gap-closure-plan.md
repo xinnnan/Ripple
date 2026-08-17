@@ -71,7 +71,7 @@ The correct approach is therefore:
 | Production build | Passed on Next.js 15.5.22 | Environment-free build is reproducible |
 | Dependency audit | 0 vulnerabilities | Patched direct/transitive versions are lockfile-pinned and compatibility-tested, including `js-yaml` 4.3.1 and `nanoid` 3.3.18 after their advisories entered the audit feed |
 | Worktree | Clean at baseline | Work started on `codex/prd-v1-1-gap-closure` |
-| Committed end-to-end tests | 42 production HTTP checks + credentialed Playwright/API/RLS matrix | Public/recovery/negative/configuration smoke always runs, including public share access denial, malformed site-code containment, fail-closed guest-upload/outbox-worker/Slack configuration, profile and site-membership/site/user/customer/Slack-identity/SLA/catalog/inventory-write/provisioning denials. Migrations 001–054 are applied and live-verified. Migration 046 passed 77 live assertions, migration 047 passed a 42-assertion replay/concurrency/privilege matrix, migration 048 passed a 69-assertion replay/concurrency/cardinality/privilege matrix, migration 049 passed a 134-assertion replay/concurrency/cardinality/constraint/privilege matrix, migration 050 passed a 27-assertion lease/concurrency/settlement/privilege matrix, migration 051 passed a 57-assertion replay/concurrency/settlement/cardinality/privilege matrix, migration 052 passed a 90-assertion command/audit/privilege/concurrency matrix, migration 053 passed a 173-assertion signed-ingress/mapping/replay/concurrency/privilege/no-echo matrix, migration 054 passed a 326-assertion command/privilege/lifecycle/uniqueness/audit/concurrency matrix plus signed-in API/UI set-clear verification, and the extended upload/share boundary passed a separate 22-assertion live matrix with zero residue. Protected positive request/field-service/team/site-access/site/user/customer/catalog/inventory/attachment-administration/provisioning/transition/outbox/create probes and the six-account two-tenant matrix remain open |
+| Committed end-to-end tests | 42 production HTTP checks + credentialed Playwright/API/RLS matrix | Public/recovery/negative/configuration smoke always runs, including public share access denial, malformed site-code containment, fail-closed guest-upload/outbox-worker/Slack configuration, profile and site-membership/site/user/customer/Slack-identity/SLA/catalog/inventory-write/provisioning denials. Migrations 001–054 are applied and live-verified. Migrations 028–030 passed a combined 173-assertion service-resource transaction matrix; migration 046 passed 77 live assertions, migration 047 passed a 42-assertion replay/concurrency/privilege matrix, migration 048 passed a 69-assertion replay/concurrency/cardinality/privilege matrix, migration 049 passed a 134-assertion replay/concurrency/cardinality/constraint/privilege matrix, migration 050 passed a 27-assertion lease/concurrency/settlement/privilege matrix, migration 051 passed a 57-assertion replay/concurrency/settlement/cardinality/privilege matrix, migration 052 passed a 90-assertion command/audit/privilege/concurrency matrix, migration 053 passed a 173-assertion signed-ingress/mapping/replay/concurrency/privilege/no-echo matrix, migration 054 passed a 326-assertion command/privilege/lifecycle/uniqueness/audit/concurrency matrix plus signed-in API/UI set-clear verification, and the extended upload/share boundary passed a separate 22-assertion live matrix with zero residue. Protected team/site-access/site-administration/transition/ticket-create/outbox probes and the six-account two-tenant matrix remain open |
 | Hosted CI | Workflow committed in `4ceacd0`; first hosted run pending | Read-only, SHA-pinned quality job is reproducible; repository branch protection and the protected staging environment still require activation |
 
 ## 4. PRD capability gap map
@@ -135,8 +135,8 @@ has a release-blocking security or integrity problem.
 | INT-001 | Ticket statuses can jump to any state; domain guards exist only in UI convention | **Deployed; positive verification pending:** `b344d18` + migration 032 define the eight-state compatibility truth table, enforce it below web/Slack, require owner/customer-summary entry invariants, and map guard failures to typed transport errors; truth-table and three rollback probes are live/green |
 | INT-002 | Internal-only comments count as first response while customer-visible engineer comments do not; status changes can also count | **Closed in `b71b3d7`:** human + internal author + customer visibility + non-automated truth table and atomic persistence |
 | INT-003 | A ticket resolved after its due time can be recorded as SLA met | **Closed in `b71b3d7`:** actual `resolved_at` is compared with the due timestamp and milestone breach is persisted |
-| INT-004 | Part-request header and items, and field order plus engineer assignments, are non-atomic | **Deployed; protected verification pending:** part-request update/create are deployed in `1f49ecc`/`64cee3d` + migrations 028/029. `2557760` + migration 030 make field-order create/update, complete engineer assignment sets, numbering, and audit atomic; both RPCs are live and protected rollback probes remain |
-| INT-005 | Part fulfillment updates do not verify the item belongs to the request in the URL | **Closed in `1f49ecc`; migration 028 confirmed applied 2026-07-29:** the row-locked command constrains every item by both `request_id` and item ID and rejects invalid quantity bounds; protected runtime probes remain |
+| INT-004 | Part-request header and items, and field order plus engineer assignments, are non-atomic | **Closed and live-verified 2026-08-17:** `1f49ecc`/`64cee3d` + migrations 028/029 make request header/items/totals/number/audit atomic; `2557760` + migration 030 does the same for field orders and complete assignment sets. A combined 173-assertion matrix covered positive paths, tenant/lifecycle/date/assignee guards, exact audit, rollback, concurrency, privileges, and zero residue |
+| INT-005 | Part fulfillment updates do not verify the item belongs to the request in the URL | **Closed and live-verified 2026-08-17:** the row-locked migration 028 command constrains every item by request and item ID, rejects cross-parent and over-fulfillment writes transactionally, enforces the table bound, and passed the combined 173-assertion 028–030 live matrix |
 | INT-006 | Team site assignments are delete-all then insert, so a failed insert removes all access | **Deployed; protected verification pending:** `c0c2354` + migration 031 atomically update profile/status, apply a role-preserving membership set diff, validate the manager/tenant/target/sites, and write audit evidence; RPC presence and non-writing validation behavior are confirmed |
 | INT-007 | Audit writes are best-effort and separate from the business transaction | **Platform foundation extended through `03499f9`:** migrations 033–044 are applied/live-verified for ticket delivery/create, admin site-membership/site/user/customer/SLA/catalog/inventory mutations, command repair, secure provisioning, and attachment metadata/timeline evidence. Other best-effort domains still need conversion |
 | INT-008 | Site detail assigns the inventory query to an unused tuple slot and always renders empty inventory | **Closed in `9083ece`:** the inventory query result is wired to the inventory tab and covered by the external-resource containment regression checkpoint |
@@ -374,15 +374,17 @@ Every implementation slice must:
     manual protected-staging credentialed job. First hosted run, branch
     protection, environment reviewers, and secret configuration remain
     operator actions.
-13. **P0-M — deployed:** Migration 028
+13. **P0-M — closed and live-verified:** Migration 028
     makes request-header, fulfillment-item, and audit writes atomic; enforces
     request/item containment and quantity bounds. Migration application was
-    confirmed 2026-07-29; the three protected runtime probes remain pending.
-14. **P0-N — deployed:** Commit `64cee3d` and
+    confirmed 2026-07-29 and its positive/rollback/constraint/concurrency
+    behavior was included in the 173-assertion 2026-08-17 live matrix.
+14. **P0-N — closed and live-verified:** Commit `64cee3d` and
     migration 029 make spare-part request header, items, total calculation,
     sequence allocation, and audit atomic. The migration also restricts all
-    current number-minting RPCs to `service_role`. Application was confirmed
-    2026-07-29 with a non-mutating RPC validation probe.
+    current number-minting RPCs to `service_role`. Its positive creation,
+    tenant/ticket/part validation, exact total/item/audit cardinality, rollback,
+    and public-role denials passed in the 173-assertion 2026-08-17 matrix.
 15. **P0-O — completed in `7cd876b`:** Rebuilt the public support experience,
     added non-enumerating password recovery, fixed Supabase callback cookie
     propagation and redirect safety, introduced the responsive role-aware
@@ -390,14 +392,15 @@ Every implementation slice must:
     A disposable admin identity was used for read-only protected-page review
     and deleted afterward. Recovery-link delivery/consumption remains a
     protected staging-mailbox gate.
-16. **P0-P — deployed:** Commit `2557760` and
+16. **P0-P — closed and live-verified:** Commit `2557760` and
     migration 030 make field-service order creation/update, complete engineer
     assignment replacement, sequence allocation, and audit rows one
     transaction. Browser/API/database contracts now use strict real-calendar
     `YYYY-MM-DD`; display formatting no longer shifts DATE values by timezone.
-    Migration 030 was confirmed live 2026-07-30 through both commands'
-    expected non-writing validation SQLSTATEs; protected positive/rollback
-    probes remain.
+    Migration 030 was confirmed live 2026-07-30; positive create/update,
+    complete assignment replacement, exact DATE/audit behavior, rollback,
+    table constraints, and 12-way serialization passed in the 173-assertion
+    2026-08-17 matrix with zero residue.
 17. **P0-Q — deployed; protected verification pending:** Commit `c0c2354` and
     migration 031 replace team access delete-all/reinsert with a row-locked,
     role-preserving set diff. Profile/status, memberships, and audit evidence
