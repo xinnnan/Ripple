@@ -2,7 +2,7 @@
 
 > DropletAI's Slack-native support portal. Lightweight ticket system, web portal, and AI-assisted troubleshooting for industrial automation deployments (AMR / AGV / conveyor / sortation / RCS / WCS).
 
-This file is the **single source of truth for project context** — read it before touching anything. It also serves as the lessons-learned notebook and progress tracker. Last updated 2026-08-13.
+This file is the **single source of truth for project context** — read it before touching anything. It also serves as the lessons-learned notebook and progress tracker. Last updated 2026-08-19.
 
 ---
 
@@ -17,9 +17,9 @@ This file is the **single source of truth for project context** — read it befo
 - **External users** (customers): customer admins (manage their org's team + sites) + regular customers (submit + view their tickets)
 
 **Status** — Phase 1–4 foundation is present; PRD v1.1 gap closure and security
-containment are active on `codex/prd-v1-1-gap-closure`. Migrations 001–054 are
-deployed and live-verified; additive authorization-foundation migration 055 is
-the current deployment gate. `main` is live on Vercel.
+containment are active on `codex/prd-v1-1-gap-closure`. Migrations 001–055 are
+deployed and live-verified; the read-only authorization policy resolver is the
+next Phase 1 slice. `main` is live on Vercel.
 
 ---
 
@@ -177,9 +177,8 @@ const isInternal = role ? INTERNAL_ROLES.includes(role) : email ? isInternalEmai
 
 ## 5. Database Schema (Supabase)
 
-55 migrations, to be applied in order. Migrations 001–054 are confirmed
-applied and live-verified as of 2026-08-17; migration 055 awaits application
-and live backfill verification. Key tables:
+55 migrations, to be applied in order. Migrations 001–055 are confirmed
+applied and live-verified as of 2026-08-19. Key tables:
 
 | Table | Purpose | Notes |
 |---|---|---|
@@ -187,7 +186,7 @@ and live backfill verification. Key tables:
 | `sites` | Customer locations | `site_code` (unique), `slack_channel_id`, `project_status`; migration 036 makes customer ownership immutable through normal admin updates and makes create/update audit atomic. Migration 037 repairs its SQL-expression runtime defect; the current commands passed a 500-assertion live matrix |
 | `users` | All users (internal + external) | `role` (4 values, see §4), `customer_id`, `slack_user_id`; migration 038 makes same-family admin PATCH/deactivation serialized and transactionally audited. Migration 039 stops trusting signup role metadata and adds atomic admin/team provisioning finalizers. Migration 052 moves name/phone self-service behind a row-locked audited command and passed a 90-assertion live matrix. Migration 053 makes non-null Slack actor identities unique and passed a 173-assertion signed-ingress matrix. Migration 054 quarantines unusable legacy IDs with system audit, rejects ambiguous valid ownership, adds canonical Slack-ID shape enforcement, and adds a service-only, row-locked, exactly audited admin mapping command. It passed a 326-assertion live matrix plus real signed-in API/UI set-clear verification with zero disposable residue |
 | `site_members` | User ↔ Site (M:N) | Customers join via this; customer_manager bypasses. Migration 035 adds tenant-contained, transactionally audited admin add/remove commands. Migration 045 removes the legacy direct authenticated write path; its 110-assertion live matrix is green |
-| `customer_memberships` / `customer_site_assignments` | Additive PRD authorization roots | Migration 055 snapshots legacy home-tenant and retained-site access into independent customer memberships and tenant-bound site assignments with roles, lifecycle, effective windows, ticket scopes, approval capabilities, optimistic versions, composite tenant foreign keys, system migration audit, and service-only access. Runtime reads remain on the compatibility model until a later policy cutover; application and live verification are pending |
+| `customer_memberships` / `customer_site_assignments` | Additive PRD authorization roots | Migration 055 snapshots legacy home-tenant and retained-site access into independent customer memberships and tenant-bound site assignments with roles, lifecycle, effective windows, ticket scopes, approval capabilities, optimistic versions, composite tenant foreign keys, system migration audit, and service-only access. Its 7,437-assertion live backfill/constraint/privilege/tenant/audit matrix passed with exactly 181 memberships, 119 assignments, and zero disposable residue. Runtime reads remain on the compatibility model until a later policy cutover |
 | `tickets` | Core ticket entity | `ticket_no` (RPL-XXXXXX), `secure_token` (32-byte hex), `severity` (P1–P4), 8-state `status`, response/resolution due/achieved/breached timestamps; migration 027 column-limits direct authenticated SELECT |
 | `ticket_creation_requests` | Service-only ticket-create replay ledger | Migration 047 serializes source/request keys, returns the first durable receipt for exact retries, and rejects altered reuse; its 42-assertion replay/concurrency/privilege live matrix is green |
 | `ticket_comment_requests` | Service-only ticket-comment replay ledger | Migration 048 serializes source/request keys, returns the first durable comment for exact retries, rejects altered reuse, and transactionally binds customer-visible comments to one Slack-reply outbox event; its 69-assertion replay/concurrency/cardinality/privilege live matrix is green |
@@ -1599,6 +1598,25 @@ JSON string, so it does not exercise a route's JSON-parser failure. Use
 `Buffer.from("{")` when a test must send invalid JSON bytes. Also bind UI
 assertions to stable control IDs: a page-wide `select` search matched both the
 comment and attachment visibility controls and produced a false failure.
+
+### Explicit grants do not narrow inherited service-role privileges
+Found 2026-08-19 while live-verifying migration 055. The migration revokes all
+new authorization-table access from `PUBLIC`, `anon`, and `authenticated`, then
+explicitly grants `service_role` SELECT. The connected Supabase project also
+has default privileges that already give `service_role` mutation access to new
+tables, so the explicit SELECT grant did not make that role read-only. Public
+API roles were correctly denied; the server-only role could exercise the live
+CHECK, unique, composite-foreign-key, restrict-delete, and update paths.
+
+Auth cleanup exposed a separate boundary: deleting `auth.users` does not
+remove the mirrored `public.users` row in this project. Disposable live tests
+must clean the authorization children first, then Auth, then the application
+profile, and prove every layer is empty.
+
+**Lesson:** PostgreSQL privilege verification must test the effective role,
+not infer it from the latest `GRANT` statement. If a table must be service-read-
+only, explicitly revoke service mutations too. Cross-schema identity cleanup
+must be ordered and residue-checked rather than assuming a cascade.
 
 ---
 

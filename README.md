@@ -110,7 +110,7 @@ cp .env.local.example .env.local
 
 ### Run database migrations
 
-Apply the SQL files in `supabase/migrations/` **in order** (001 → 054) via the Supabase SQL editor or `supabase db push`:
+Apply the SQL files in `supabase/migrations/` **in order** (001 → 055) via the Supabase SQL editor or `supabase db push`:
 
 ```
 001_create_customers.sql
@@ -172,18 +172,20 @@ Apply the SQL files in `supabase/migrations/` **in order** (001 → 054) via the
 
 Later migrations replace policies/functions and should be applied once in
 order. Migration `017` also performs role data updates and must not be re-run
-blindly. Migrations 001–054 are confirmed applied and live-verified as of
-2026-08-17. Migration 054 quarantined 19 unusable legacy mappings without
+blindly. Migrations 001–055 are confirmed applied and live-verified as of
+2026-08-19. Migration 054 quarantined 19 unusable legacy mappings without
 removing their Auth/profile/ticket history and adds the supported, atomic,
 audited admin workflow required to set or clear a unique Slack actor identity.
 It passed a 326-assertion live command/privilege/lifecycle/uniqueness/audit/
 concurrency matrix plus a real signed-in API/UI set-clear flow with zero
 disposable residue.
-Migration 055 is an additive authorization-foundation gate awaiting
-application. It creates multi-customer memberships and tenant-bound site
-assignments, backfills the legacy access paths with system audit evidence, and
-does not switch current runtime reads away from `users.customer_id` or
-`site_members`.
+Migration 055 is the deployed additive authorization foundation. It creates
+multi-customer memberships and tenant-bound site assignments, backfills the
+legacy access paths with system audit evidence, and does not switch current
+runtime reads away from `users.customer_id` or `site_members`. Its 7,437-
+assertion live matrix matched all 181 derived memberships and 119 legacy site
+assignments exactly, exercised constraints and effective privileges, and left
+zero disposable authorization, tenant, site, Auth, or profile rows.
 Migrations 028–030 also passed a 173-assertion disposable live matrix covering
 atomic spare-part request and field-service create/update behavior, protected
 numbering, tenant/parent/lifecycle constraints, exact audit evidence, rollback,

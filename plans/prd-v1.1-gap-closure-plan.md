@@ -33,7 +33,7 @@ Ripple is a useful support-ticket prototype with meaningful Phase 1–4 work:
 - spare-parts and field-service skeletons
 - simple wall-clock SLA targets
 - email and AI integrations with graceful failure
-- 1,045 committed unit/contract tests, production HTTP smoke, and an opt-in
+- 1,160 committed unit/contract tests, production HTTP smoke, and an opt-in
   credentialed browser/API/RLS matrix
 
 It is not yet the operations platform described by PRD v1.1. The old
@@ -71,7 +71,7 @@ The correct approach is therefore:
 | Production build | Passed on Next.js 15.5.22 | Environment-free build is reproducible |
 | Dependency audit | 0 vulnerabilities | Patched direct/transitive versions are lockfile-pinned and compatibility-tested, including `js-yaml` 4.3.1 and `nanoid` 3.3.18 after their advisories entered the audit feed |
 | Worktree | Clean at baseline | Work started on `codex/prd-v1-1-gap-closure` |
-| Committed end-to-end tests | 42 production HTTP checks + credentialed Playwright/API/RLS matrix | Public/recovery/negative/configuration smoke always runs, including public share access denial, malformed site-code containment, fail-closed guest-upload/outbox-worker/Slack configuration, profile and site-membership/site/user/customer/Slack-identity/SLA/catalog/inventory-write/provisioning denials. Migrations 001–054 are applied and live-verified. Migrations 028–030 passed a combined 173-assertion service-resource transaction matrix; migration 031 passed a 175-assertion team-access transaction matrix; migration 032 passed a 430-assertion transition/invariant matrix; migration 033 passed a 167-assertion outbox-lifecycle matrix; migration 034 passed a 222-assertion atomic-create matrix; migration 035 passed a 112-assertion atomic admin-membership matrix; migrations 036–037 passed a 500-assertion site-command/repair matrix; migration 046 passed 77 live assertions, migration 047 passed a 42-assertion replay/concurrency/privilege matrix, migration 048 passed a 69-assertion replay/concurrency/cardinality/privilege matrix, migration 049 passed a 134-assertion replay/concurrency/cardinality/constraint/privilege matrix, migration 050 passed a 27-assertion lease/concurrency/settlement/privilege matrix, migration 051 passed a 57-assertion replay/concurrency/settlement/cardinality/privilege matrix, migration 052 passed a 90-assertion command/audit/privilege/concurrency matrix, migration 053 passed a 173-assertion signed-ingress/mapping/replay/concurrency/privilege/no-echo matrix, migration 054 passed a 326-assertion command/privilege/lifecycle/uniqueness/audit/concurrency matrix plus signed-in API/UI set-clear verification, and the extended upload/share boundary passed a separate 22-assertion live matrix with zero residue. The complete six-account/two-tenant browser/API/PostgREST/RPC/Storage matrix passed locally against disposable live fixtures with 54 setup/cleanup assertions and zero residue; its protected hosted run remains an activation gate |
+| Committed end-to-end tests | 42 production HTTP checks + credentialed Playwright/API/RLS matrix | Public/recovery/negative/configuration smoke always runs, including public share access denial, malformed site-code containment, fail-closed guest-upload/outbox-worker/Slack configuration, profile and site-membership/site/user/customer/Slack-identity/SLA/catalog/inventory-write/provisioning denials. Migrations 001–055 are applied and live-verified. Migrations 028–030 passed a combined 173-assertion service-resource transaction matrix; migration 031 passed a 175-assertion team-access transaction matrix; migration 032 passed a 430-assertion transition/invariant matrix; migration 033 passed a 167-assertion outbox-lifecycle matrix; migration 034 passed a 222-assertion atomic-create matrix; migration 035 passed a 112-assertion atomic admin-membership matrix; migrations 036–037 passed a 500-assertion site-command/repair matrix; migration 046 passed 77 live assertions, migration 047 passed a 42-assertion replay/concurrency/privilege matrix, migration 048 passed a 69-assertion replay/concurrency/cardinality/privilege matrix, migration 049 passed a 134-assertion replay/concurrency/cardinality/constraint/privilege matrix, migration 050 passed a 27-assertion lease/concurrency/settlement/privilege matrix, migration 051 passed a 57-assertion replay/concurrency/settlement/cardinality/privilege matrix, migration 052 passed a 90-assertion command/audit/privilege/concurrency matrix, migration 053 passed a 173-assertion signed-ingress/mapping/replay/concurrency/privilege/no-echo matrix, migration 054 passed a 326-assertion command/privilege/lifecycle/uniqueness/audit/concurrency matrix plus signed-in API/UI set-clear verification, migration 055 passed a 7,437-assertion exact-backfill/constraint/tenant/audit/privilege/residue matrix, and the extended upload/share boundary passed a separate 22-assertion live matrix with zero residue. The complete six-account/two-tenant browser/API/PostgREST/RPC/Storage matrix passed locally against disposable live fixtures with 54 setup/cleanup assertions and zero residue; its protected hosted run remains an activation gate |
 | Hosted CI | Workflow committed in `4ceacd0`; first hosted run pending | Read-only, SHA-pinned quality job is reproducible; repository branch protection and the protected staging environment still require activation |
 
 ## 4. PRD capability gap map
@@ -83,7 +83,7 @@ has a release-blocking security or integrity problem.
 | PRD capability | Current state | Main gap |
 |---|---|---|
 | Identity and account lifecycle | Partial | Same-family global role/status edits and deactivation are serialized and atomically audited; privileged signup metadata is contained and deployed admin/team provisioning finalizers are live-verified, but there is no complete invite/reactivation lifecycle, MFA, session/device management, or scoped internal access |
-| Membership and Site Assignment | Partial | Admin-managed customer site access is tenant-contained and transactionally audited, unsafe global role-family transfers are blocked, and deployed migration 045 closes the direct PostgREST membership-write bypass. Migration 055 adds the PRD multi-customer membership and tenant-bound site-assignment roots plus compatibility backfill, but awaits application and later policy/command cutover from global `users.role` + `users.customer_id` |
+| Membership and Site Assignment | Partial | Admin-managed customer site access is tenant-contained and transactionally audited, unsafe global role-family transfers are blocked, and deployed migration 045 closes the direct PostgREST membership-write bypass. Deployed and live-verified migration 055 adds the PRD multi-customer membership and tenant-bound site-assignment roots plus an exact compatibility backfill; the policy/command cutover from global `users.role` + `users.customer_id` remains |
 | Tenant isolation | Unsafe/Partial | Site ownership is immutable through ordinary administration and membership assignment is tenant-contained. Deployed migration 045 establishes a whole-application direct-write boundary; migration 055 structurally prevents cross-customer site grants in the new additive model, but admin-client reads still depend on manual filters and the new authorization root is not active yet |
 | Customer Portal | Partial | Public intake and share-token view now have distributed throttling, explicit failure states, aligned tenant lifecycle, customer-safe projections, and customer-visible child filtering; no onsite requests, assets, broader history, preferences, or PRD wizard |
 | Ticket Core | Partial | Current creation plus eight-state transitions and resolution entry rules are database-guarded/atomic; PRD states, merge/relations, visibility scopes, versioning, and optimistic concurrency remain |
@@ -906,7 +906,7 @@ Every implementation slice must:
     and corrected two false-negative Playwright assumptions. The permanent
     reviewer-protected hosted fixture and workflow execution remain operator
     activation work.
-82. **P1-A — implemented; deployment pending:** Establish the additive PRD
+82. **P1-A — closed, deployed, and live-verified:** Establish the additive PRD
     customer-membership and site-assignment authorization roots without
     changing current production reads. Migration 055 models organization and
     site roles, invited/active/suspended/revoked lifecycle, OWN/SITE/CUSTOMER
@@ -916,5 +916,14 @@ Every implementation slice must:
     with system audit evidence, denies public API-role access, and labels
     `users.customer_id` / `site_members` as compatibility paths. Shared
     TypeScript vocabularies and fail-closed effective-window predicates are
-    covered by ten deterministic contracts. Apply and live-verify migration
-    055 before building the policy resolver or switching any runtime read.
+    covered by ten deterministic contracts. Migration 055 passed 7,437 live
+    assertions with exactly 181 memberships, 119 assignments, exact system
+    audit evidence, enforced role/lifecycle/scope/window/version/tenant
+    constraints, public-role denial, and zero disposable residue.
+83. **P1-B — next:** Build a read-only authorization policy resolver over the
+    live membership and site-assignment roots. It must require active user and
+    tenant lifecycle, evaluate start-inclusive/end-exclusive effective
+    windows, preserve independent customer roles and ticket scopes, merge site
+    grants without privilege widening, and return explicit deny decisions.
+    Add exhaustive deterministic contracts and parity checks against the
+    compatibility model before switching any production read or write path.
