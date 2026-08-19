@@ -8,12 +8,11 @@ meaningful change and before ending a work session. Newest entries go first.
 - **Branch:** `codex/prd-v1-1-gap-closure`
 - **Active phase:** Phase 1 — Authorization and domain foundation; Phase 0
   hosted activation remains an external release gate
-- **Active work item:** P1-C canonical authorization commands and atomic
-  compatibility synchronization
-- **Last verified checkpoint commit:** `27ebf9a` (`docs: verify customer membership foundation`)
-- **Uncommitted work:** P1-B fail-closed policy evaluator, explicit service-
-  only resolver, exhaustive deterministic contracts, live compatibility parity,
-  and rollout documentation
+- **Active work item:** P1-CA atomic compatibility-to-canonical authorization
+  synchronization
+- **Last verified checkpoint:** migration 056's seven-command atomic
+  synchronization bridge is committed under `feat: synchronize customer
+  authorization writes`; 34 deterministic contracts and every local gate pass
 - **Deployment gate:** migrations 001–055 are confirmed applied and
   live-verified. Migration 044
   passed a 130-assertion disposable live matrix with zero residue. Migration
@@ -72,6 +71,7 @@ meaningful change and before ending a work session. Newest entries go first.
   memberships and 119 assignments across 368 live customer/site compatibility
   decisions. Runtime reads deliberately remain on the compatibility model
   pending canonical synchronized writes and a later shadow-read cutover.
+  Migration 056 is the current unapplied deployment gate.
   Production `CRON_SECRET` remains unset in this workspace.
 - **External validation gate:** the complete credentialed matrix passed locally
   against disposable live Supabase fixtures and the production Next build with
@@ -155,21 +155,75 @@ meaningful change and before ending a work session. Newest entries go first.
   404s, external/internal attachment controls, and customer-safe/internal API
   projections. It exposed and fixed the inactive-login message remount defect;
   every rerun completed without browser authorization leakage.
-- **Exact next local step:** run the full clean-install gate and commit P1-B,
-  then design migration 056's canonical membership/site-assignment commands
-  and atomic legacy synchronization before any runtime cutover.
+- **Exact next local step:** apply migration 056 and execute its disposable
+  live synchronization/rollback/concurrency/privilege matrix before P1-CB.
 - **Primary plan:** [`plans/prd-v1.1-gap-closure-plan.md`](./prd-v1.1-gap-closure-plan.md)
+
+## Session record — 2026-08-19 (P1-CA authorization synchronization)
+
+### Objective
+
+Prevent migration 055's canonical authorization snapshot from becoming stale
+after the next production team/admin access change, without switching runtime
+reads or enabling multi-customer authoring the compatibility model cannot
+represent.
+
+### Changes
+
+- Added migration 056 with an internal service-owner synchronizer that derives
+  one user's complete compatibility graph under a global bridge lock plus
+  stable target, membership, and assignment row locks.
+- Preserved membership and assignment identities, approval capabilities, and
+  historical rows. New or changed state is versioned and gets one attributable
+  full-snapshot audit; exact no-ops do not change timestamps, versions, or
+  audit cardinality.
+- Mapped active/invited compatibility profiles directly and suspended every
+  other lifecycle. Removed grants are closed rather than deleted; reactivation
+  starts a new effective interval after lock acquisition, and future-dated
+  rows can be safely revoked without violating strict window constraints.
+- Renamed and revoked the prior implementations, then restored the exact public
+  signatures as service-role-only wrappers that execute the verified legacy
+  command and canonical synchronization in one transaction.
+- Covered all seven current access-mutating commands: team patch, admin site
+  add/remove, admin user patch, bulk user deactivation, team provisioning, and
+  aggregate customer archival. A repository-wide write inventory confirmed
+  that site archival intentionally preserves historical assignments and is
+  enforced through resource lifecycle in the policy resolver.
+- Kept the dormant resolver out of production routes. This bridge makes the
+  canonical model a synchronized mirror only; P1-CB must replace it before
+  canonical multi-customer authoring or policy cutover.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| Focused migration contracts | Passed; 1 new file, 34 tests |
+| `npm ci` | Passed; 533 packages installed from lockfile, 0 vulnerabilities |
+| Full `npm test` integration pass | Passed; 152 files, 1,217 tests |
+| `npm run lint` | Passed; no warnings/errors |
+| `npm run build` | Passed; optimized production build and type validation |
+| `npm run test:e2e` | Passed; all 42 production HTTP checks; credentialed fixture intentionally absent after its separately recorded complete pass |
+| `npm audit --audit-level=low` | Passed; 0 vulnerabilities |
+| `git diff --check` | Passed |
+| Migration 056 live matrix | Blocked until operator application |
+
+### Exact next step
+
+- Commit migration 056. After operator application, run a disposable live
+  matrix over create/update/no-op/remove/reactivate/deactivate/archive,
+  rollback, audit, privilege, residue, and concurrent access paths.
 
 ## Overall project status — 2026-08-19
 
 - Ripple has a meaningful Phase 1–4 support-platform foundation, and Phase 0
   containment is substantially implemented through migration 054. Migrations
-  001–055 are deployed and live-verified, and the additive Phase 1
-  authorization roots are ready for a read-only policy resolver.
+  001–055 are deployed and live-verified, the additive Phase 1 authorization
+  roots and dormant policy resolver are ready, and migration 056 is awaiting
+  deployment after its local gate.
 - Against the full PRD v1.1 capability map, 17 domains remain
   **Partial** or **Unsafe/Partial** and seven remain **Absent**. No full PRD
   capability domain is yet honestly complete end to end.
-- The local deterministic baseline is green at 1,183 unit/contract tests, 42
+- The local deterministic baseline is green at 1,217 unit/contract tests, 42
   production HTTP smoke checks, a production build, zero-warning lint, and
   zero known dependency vulnerabilities. The complete credentialed matrix also
   passed locally against disposable live fixtures with zero residue.

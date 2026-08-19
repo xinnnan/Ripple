@@ -33,7 +33,7 @@ Ripple is a useful support-ticket prototype with meaningful Phase 1–4 work:
 - spare-parts and field-service skeletons
 - simple wall-clock SLA targets
 - email and AI integrations with graceful failure
-- 1,183 committed unit/contract tests, production HTTP smoke, and an opt-in
+- 1,217 committed unit/contract tests, production HTTP smoke, and an opt-in
   credentialed browser/API/RLS matrix
 
 It is not yet the operations platform described by PRD v1.1. The old
@@ -66,7 +66,7 @@ The correct approach is therefore:
 
 | Gate | Result through 2026-08-17 | Meaning |
 |---|---|---|
-| Unit tests | 1,183/1,183 passed | Scope, lifecycle and exhaustive ticket-transition guards, atomic and replay-safe ticket/comment/Slack-event/spare-part-request/field-service/customer/catalog/inventory/attachment creation and updates, durable customer-visible Slack comment delivery with provider-attempt checkpoint and metadata reconciliation contracts, canonical site-channel ownership, no-echo inbound thread capture, and atomic administrator-managed Slack identities, replay-safe paid-AI reservations/provider checkpoints/atomic receipts, attachment content and storage-key validation, direct-write privilege containment, durable public-rate-limit/share-view/paid-AI contracts, bounded least-data AI context and prompt-injection containment, notification outbox leases/idempotency/retry contracts, context-safe transactional email rendering and conditional provider/public-origin readiness, tenant-safe site/user/customer/SLA/catalog/inventory administration, secure user provisioning and membership containment, identity-provider/profile failure classification across API authorization, tenant scope, the authenticated shell, browser account/site enrichment, authentication/recovery settlement, and client lifecycle-action settlement, canonical manager-wide active-site presentation, explicit authenticated customer ticket/comment/site/spare-part/field-service read projections and client-payload containment, bounded and atomic self-service profiles, spreadsheet-safe ticket CSV encoding, strict ticket page/API/export, customer-capable service/site and admin list/page filters, guarded PostgREST search construction, strict API and authenticated server-page UUID boundaries, non-broadening inventory preselection, exact audit pagination, missing-safe detail reads, contained code-only admin/customer/dashboard/ticket list/detail/create-option load failures, lifecycle-aligned site/team/dashboard/create selectors, unavailable-prerequisite form guards, retained-membership active-site hydration, empty-scope query suppression, relation-shape normalization, least-data admin catalog and ticket-child hydration, allow-listed admin detail tabs, enriched admin detail audit history, secret-safe integration readiness and settings authorization, qualified-SQL-expression repair, visibility, auth recovery/redirects, public/responsive/admin UI contracts, deterministic site-timezone dashboard and Slack rendering with exact totals, Slack authentication/configuration/action filtering and direct AI-service invocation, readiness, CI policy, filters, SLA, fixture validation, migration/RPC contracts, additive multi-customer membership/site-assignment foundations, exhaustive fail-closed customer authorization policy decisions, spare-part, field-service, and team-access transaction containment, DATE handling, and audit coverage is green |
+| Unit tests | 1,217/1,217 passed | Scope, lifecycle and exhaustive ticket-transition guards, atomic and replay-safe ticket/comment/Slack-event/spare-part-request/field-service/customer/catalog/inventory/attachment creation and updates, durable customer-visible Slack comment delivery with provider-attempt checkpoint and metadata reconciliation contracts, canonical site-channel ownership, no-echo inbound thread capture, and atomic administrator-managed Slack identities, replay-safe paid-AI reservations/provider checkpoints/atomic receipts, attachment content and storage-key validation, direct-write privilege containment, durable public-rate-limit/share-view/paid-AI contracts, bounded least-data AI context and prompt-injection containment, notification outbox leases/idempotency/retry contracts, context-safe transactional email rendering and conditional provider/public-origin readiness, tenant-safe site/user/customer/SLA/catalog/inventory administration, secure user provisioning and membership containment, identity-provider/profile failure classification across API authorization, tenant scope, the authenticated shell, browser account/site enrichment, authentication/recovery settlement, and client lifecycle-action settlement, canonical manager-wide active-site presentation, explicit authenticated customer ticket/comment/site/spare-part/field-service read projections and client-payload containment, bounded and atomic self-service profiles, spreadsheet-safe ticket CSV encoding, strict ticket page/API/export, customer-capable service/site and admin list/page filters, guarded PostgREST search construction, strict API and authenticated server-page UUID boundaries, non-broadening inventory preselection, exact audit pagination, missing-safe detail reads, contained code-only admin/customer/dashboard/ticket list/detail/create-option load failures, lifecycle-aligned site/team/dashboard/create selectors, unavailable-prerequisite form guards, retained-membership active-site hydration, empty-scope query suppression, relation-shape normalization, least-data admin catalog and ticket-child hydration, allow-listed admin detail tabs, enriched admin detail audit history, secret-safe integration readiness and settings authorization, qualified-SQL-expression repair, visibility, auth recovery/redirects, public/responsive/admin UI contracts, deterministic site-timezone dashboard and Slack rendering with exact totals, Slack authentication/configuration/action filtering and direct AI-service invocation, readiness, CI policy, filters, SLA, fixture validation, migration/RPC contracts, additive multi-customer membership/site-assignment foundations, exhaustive fail-closed customer authorization policy decisions, atomic compatibility-to-canonical authorization synchronization, spare-part, field-service, and team-access transaction containment, DATE handling, and audit coverage is green |
 | Lint | Passed, no warnings | Direct ESLint CLI with zero-warning enforcement and generated-artifact ignores |
 | Production build | Passed on Next.js 15.5.22 | Environment-free build is reproducible |
 | Dependency audit | 0 vulnerabilities | Patched direct/transitive versions are lockfile-pinned and compatibility-tested, including `js-yaml` 4.3.1 and `nanoid` 3.3.18 after their advisories entered the audit feed |
@@ -83,7 +83,7 @@ has a release-blocking security or integrity problem.
 | PRD capability | Current state | Main gap |
 |---|---|---|
 | Identity and account lifecycle | Partial | Same-family global role/status edits and deactivation are serialized and atomically audited; privileged signup metadata is contained and deployed admin/team provisioning finalizers are live-verified, but there is no complete invite/reactivation lifecycle, MFA, session/device management, or scoped internal access |
-| Membership and Site Assignment | Partial | Admin-managed customer site access is tenant-contained and transactionally audited, unsafe global role-family transfers are blocked, and deployed migration 045 closes the direct PostgREST membership-write bypass. Deployed and live-verified migration 055 adds the PRD multi-customer membership and tenant-bound site-assignment roots plus an exact compatibility backfill; the policy/command cutover from global `users.role` + `users.customer_id` remains |
+| Membership and Site Assignment | Partial | Admin-managed customer site access is tenant-contained and transactionally audited, unsafe global role-family transfers are blocked, and deployed migration 045 closes the direct PostgREST membership-write bypass. Deployed and live-verified migration 055 adds the PRD multi-customer membership and tenant-bound site-assignment roots plus an exact compatibility backfill; migration 056's pending bridge makes all seven current access mutations synchronize canonical state atomically. Canonical multi-customer commands and the policy/read cutover remain |
 | Tenant isolation | Unsafe/Partial | Site ownership is immutable through ordinary administration and membership assignment is tenant-contained. Deployed migration 045 establishes a whole-application direct-write boundary; migration 055 structurally prevents cross-customer site grants in the new additive model, but admin-client reads still depend on manual filters and the new authorization root is not active yet |
 | Customer Portal | Partial | Public intake and share-token view now have distributed throttling, explicit failure states, aligned tenant lifecycle, customer-safe projections, and customer-visible child filtering; no onsite requests, assets, broader history, preferences, or PRD wizard |
 | Ticket Core | Partial | Current creation plus eight-state transitions and resolution entry rules are database-guarded/atomic; PRD states, merge/relations, visibility scopes, versioning, and optimistic concurrency remain |
@@ -920,7 +920,7 @@ Every implementation slice must:
     assertions with exactly 181 memberships, 119 assignments, exact system
     audit evidence, enforced role/lifecycle/scope/window/version/tenant
     constraints, public-role denial, and zero disposable residue.
-83. **P1-B — implemented locally; runtime cutover intentionally blocked:** Build a read-only authorization policy resolver over the
+83. **P1-B — closed in `c96be75`; runtime cutover intentionally blocked:** Build a read-only authorization policy resolver over the
     live membership and site-assignment roots. It must require active user and
     tenant lifecycle, evaluate start-inclusive/end-exclusive effective
     windows, preserve independent customer roles and ticket scopes, merge site
@@ -932,9 +932,18 @@ Every implementation slice must:
     compatibility cases. A read-only live audit matched all 181 memberships
     and 119 assignments across 368 customer/site decisions. No production route
     imports the resolver.
-84. **P1-C — next:** Add canonical, service-only customer-membership and site-
-    assignment commands with actor/tenant/role-escalation guards, effective-
-    window and optimistic-version checks, exact audit evidence, and serialized
-    concurrency. Existing team/admin authorization workflows must update the
-    canonical rows and compatibility model in one transaction before shadow
-    reads or production policy cutover can begin.
+84. **P1-CA — implemented; deployment/live verification pending:** Preserve
+    every current application RPC while wrapping the seven compatibility
+    commands that can change external authorization, including aggregate
+    customer archival. Migration 056 derives the complete canonical graph
+    under stable locks, preserves row IDs and approval capabilities, advances
+    versions and writes one snapshot audit only on real change, closes removed
+    grants without deleting history, and rolls back compatibility plus
+    canonical mutations together. Thirty-four deterministic contracts cover
+    the source mapping, lifecycle, time boundaries, wrappers, and privileges.
+85. **P1-CB — next after migration 056 live verification:** Add canonical,
+    service-only customer-membership and site-assignment authoring commands
+    with actor/tenant/role-escalation guards, effective-window and optimistic-
+    version checks, exact audit evidence, and serialized concurrency. Replace
+    the compatibility-derived bridge before permitting multi-customer state
+    the legacy model cannot represent, then begin shadow-read parity.
