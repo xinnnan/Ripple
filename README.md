@@ -28,6 +28,11 @@ A Slack-native support portal for DropletAI Services. Centralises customer suppo
 - **Role-Based Access** — 4 roles (admin / engineer / customer_manager / customer) consolidated in `017_consolidate_roles.sql`.
 - **Tenant-Contained Site Access** — Admin membership add/remove commands lock,
   validate, and audit customer/site authorization atomically.
+- **Authorization Policy Kernel** — The additive multi-customer membership
+  model has a fail-closed read-only evaluator for role, lifecycle, effective
+  window, ticket scope, site assignment, object scope, visibility, and approval
+  capability decisions. Production reads remain on the compatibility model
+  until canonical writes synchronize both representations.
 - **Immutable Site Ownership** — Normal administration cannot move an
   established site or its service history across customer tenants.
 - **Atomic User Authorization Changes** — Admin profile, same-family role,
@@ -75,7 +80,7 @@ A Slack-native support portal for DropletAI Services. Centralises customer suppo
 | AI | **MiniMax AI** (OpenAI-compatible) — was OpenAI → Zhipu → MiniMax. **See "AI provider" section below.** |
 | Email | Resend (transactional: ticket confirmation, resolution notice) |
 | Validation | Zod (all API request bodies) |
-| Testing | Vitest (1,160 unit/contract tests) + 42-check production HTTP smoke + credentialed Playwright/API/RLS matrix |
+| Testing | Vitest (1,183 unit/contract tests) + 42-check production HTTP smoke + credentialed Playwright/API/RLS matrix |
 | Hosting | Vercel (serverless API routes) |
 
 ## Phases
@@ -185,7 +190,10 @@ legacy access paths with system audit evidence, and does not switch current
 runtime reads away from `users.customer_id` or `site_members`. Its 7,437-
 assertion live matrix matched all 181 derived memberships and 119 legacy site
 assignments exactly, exercised constraints and effective privileges, and left
-zero disposable authorization, tenant, site, Auth, or profile rows.
+zero disposable authorization, tenant, site, Auth, or profile rows. The
+read-only policy resolver also matched 368 live compatibility decisions; it is
+not wired into production routes until canonical writes keep both models in
+sync.
 Migrations 028–030 also passed a 173-assertion disposable live matrix covering
 atomic spare-part request and field-service create/update behavior, protected
 numbering, tenant/parent/lifecycle constraints, exact audit evidence, rollback,
@@ -338,7 +346,7 @@ gate.
 
 ### GitHub Actions
 
-`.github/workflows/ci.yml` runs the locked install, 1,160 unit/contract tests,
+`.github/workflows/ci.yml` runs the locked install, 1,183 unit/contract tests,
 lint, production build, 42-check HTTP E2E, and dependency audit for pull
 requests and pushes to `main`. GitHub-owned actions are pinned to full commit
 SHAs and the workflow has read-only repository permissions.

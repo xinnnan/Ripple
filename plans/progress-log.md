@@ -8,11 +8,12 @@ meaningful change and before ending a work session. Newest entries go first.
 - **Branch:** `codex/prd-v1-1-gap-closure`
 - **Active phase:** Phase 1 — Authorization and domain foundation; Phase 0
   hosted activation remains an external release gate
-- **Active work item:** P1-B read-only authorization policy resolver over the
-  deployed customer-membership and site-assignment roots
-- **Last verified checkpoint commit:** `0213f84` (`feat: add customer membership foundation`)
-- **Uncommitted work:** migration 055 live-verification evidence and durable
-  checkpoint updates
+- **Active work item:** P1-C canonical authorization commands and atomic
+  compatibility synchronization
+- **Last verified checkpoint commit:** `27ebf9a` (`docs: verify customer membership foundation`)
+- **Uncommitted work:** P1-B fail-closed policy evaluator, explicit service-
+  only resolver, exhaustive deterministic contracts, live compatibility parity,
+  and rollout documentation
 - **Deployment gate:** migrations 001–055 are confirmed applied and
   live-verified. Migration 044
   passed a 130-assertion disposable live matrix with zero residue. Migration
@@ -67,8 +68,10 @@ meaningful change and before ending a work session. Newest entries go first.
   effective-window/tenant/audit/constraint/privilege/cleanup live matrix.
   Its 181 customer memberships and 119 site assignments exactly match the
   compatibility sources, and all disposable authorization, tenant, site,
-  Auth, and profile rows were removed. Runtime reads deliberately remain on
-  the compatibility model pending the policy resolver and parity cutover.
+  Auth, and profile rows were removed. The P1-B resolver then matched all 181
+  memberships and 119 assignments across 368 live customer/site compatibility
+  decisions. Runtime reads deliberately remain on the compatibility model
+  pending canonical synchronized writes and a later shadow-read cutover.
   Production `CRON_SECRET` remains unset in this workspace.
 - **External validation gate:** the complete credentialed matrix passed locally
   against disposable live Supabase fixtures and the production Next build with
@@ -152,9 +155,9 @@ meaningful change and before ending a work session. Newest entries go first.
   404s, external/internal attachment controls, and customer-safe/internal API
   projections. It exposed and fixed the inactive-login message remount defect;
   every rerun completed without browser authorization leakage.
-- **Exact next local step:** run the full clean-install gate and commit the
-  migration 055 verification record, then implement the P1-B read-only policy
-  resolver and compatibility-parity contracts before any runtime cutover.
+- **Exact next local step:** run the full clean-install gate and commit P1-B,
+  then design migration 056's canonical membership/site-assignment commands
+  and atomic legacy synchronization before any runtime cutover.
 - **Primary plan:** [`plans/prd-v1.1-gap-closure-plan.md`](./prd-v1.1-gap-closure-plan.md)
 
 ## Overall project status — 2026-08-19
@@ -166,7 +169,7 @@ meaningful change and before ending a work session. Newest entries go first.
 - Against the full PRD v1.1 capability map, 17 domains remain
   **Partial** or **Unsafe/Partial** and seven remain **Absent**. No full PRD
   capability domain is yet honestly complete end to end.
-- The local deterministic baseline is green at 1,160 unit/contract tests, 42
+- The local deterministic baseline is green at 1,183 unit/contract tests, 42
   production HTTP smoke checks, a production build, zero-warning lint, and
   zero known dependency vulnerabilities. The complete credentialed matrix also
   passed locally against disposable live fixtures with zero residue.
@@ -178,6 +181,65 @@ meaningful change and before ending a work session. Newest entries go first.
   queues/routing, business-calendar SLA clocks, remote support, appointments,
   assets/entitlements, search/knowledge, i18n, versioned external APIs, and
   production SRE/recovery evidence.
+
+## Session record — 2026-08-19 (P1-B read-only authorization policy)
+
+### Objective
+
+Implement the first executable PRD customer authorization formula over the
+deployed membership and site-assignment roots, prove compatibility against live
+data, and keep every production route on the legacy model until writes are
+synchronized.
+
+### Changes
+
+- Added a pure evaluator for customer/site/ticket read and management, ticket
+  creation/commenting, and approval decisions. Every outcome is a typed allow
+  receipt or an explicit denial reason.
+- Intersected active actor and customer lifecycle, active/effective membership,
+  organization action capability, ticket visibility scope, tenant-bound and
+  effective site assignment, site role, assignment object-scope override,
+  object participation, content visibility, and stacked approver capability.
+- Organization admins require effective CUSTOMER scope to bypass per-site
+  assignments. Other roles are capped at site scope; viewer actions remain
+  read-only. Explicit requester SITE scope preserves migration-055 read
+  compatibility rather than silently forcing the suggested OWN default.
+- Inactive/decommissioned sites retain customer-visible historical reads but
+  reject management, new tickets, comments, and approvals.
+- Added strict pre-query UUID/object validation, bounded actor lists, persisted
+  vocabulary/shape checks, generic database-read failures with code/name-only
+  diagnostics, explicit field projections, and customer filters on membership,
+  site, and assignment reads. The server adapter takes the trusted authenticated
+  actor separately from the resource request, preventing a future route from
+  accepting actor identity in caller-controlled payload data.
+- Added a service-only injected resolver plus convenience wrapper. A repository
+  import scan confirms no production page, API, Slack handler, or compatibility
+  scope helper consumes it yet.
+- Identified the next cutover gate: current team/admin workflows still mutate
+  only `users.customer_id` and `site_members`; canonical writes must synchronize
+  both models transactionally before shadow reads can be meaningful.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| Focused authorization contracts | Passed; 2 new files, 23 tests |
+| Exhaustive matrices | Passed; every organization role/action, site role/action, and role/scope/assignment-override intersection |
+| Live read-only compatibility parity | Passed; 181 memberships, 119 assignments, 368 exact customer/site decisions; no writes |
+| `npm ci` | Passed; 533 packages installed from lockfile, 0 vulnerabilities |
+| Full `npm test` integration pass | Passed; 151 files, 1,183 tests |
+| `npm run lint` integration pass | Passed; no warnings/errors |
+| `npm run build` integration pass | Passed; optimized Next.js production build and type validation |
+| `npm run test:e2e` | Passed; 42 production HTTP checks; credentialed matrix skipped because its secret fixture is intentionally absent after the separately recorded complete pass |
+| `npm audit --audit-level=low` | Passed; 0 vulnerabilities |
+| `git diff --check` | Passed |
+| Production runtime imports | None; resolver remains dormant |
+
+### Exact next step
+
+- Run the required clean-install/E2E/audit pre-commit gate and commit P1-B.
+  Then implement P1-C's canonical, actor-guarded, versioned, exactly audited
+  membership and site-assignment commands with atomic compatibility updates.
 
 ## Session record — 2026-08-19 (migration 055 live verification)
 

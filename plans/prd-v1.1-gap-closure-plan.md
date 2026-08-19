@@ -33,7 +33,7 @@ Ripple is a useful support-ticket prototype with meaningful Phase 1–4 work:
 - spare-parts and field-service skeletons
 - simple wall-clock SLA targets
 - email and AI integrations with graceful failure
-- 1,160 committed unit/contract tests, production HTTP smoke, and an opt-in
+- 1,183 committed unit/contract tests, production HTTP smoke, and an opt-in
   credentialed browser/API/RLS matrix
 
 It is not yet the operations platform described by PRD v1.1. The old
@@ -66,7 +66,7 @@ The correct approach is therefore:
 
 | Gate | Result through 2026-08-17 | Meaning |
 |---|---|---|
-| Unit tests | 1,160/1,160 passed | Scope, lifecycle and exhaustive ticket-transition guards, atomic and replay-safe ticket/comment/Slack-event/spare-part-request/field-service/customer/catalog/inventory/attachment creation and updates, durable customer-visible Slack comment delivery with provider-attempt checkpoint and metadata reconciliation contracts, canonical site-channel ownership, no-echo inbound thread capture, and atomic administrator-managed Slack identities, replay-safe paid-AI reservations/provider checkpoints/atomic receipts, attachment content and storage-key validation, direct-write privilege containment, durable public-rate-limit/share-view/paid-AI contracts, bounded least-data AI context and prompt-injection containment, notification outbox leases/idempotency/retry contracts, context-safe transactional email rendering and conditional provider/public-origin readiness, tenant-safe site/user/customer/SLA/catalog/inventory administration, secure user provisioning and membership containment, identity-provider/profile failure classification across API authorization, tenant scope, the authenticated shell, browser account/site enrichment, authentication/recovery settlement, and client lifecycle-action settlement, canonical manager-wide active-site presentation, explicit authenticated customer ticket/comment/site/spare-part/field-service read projections and client-payload containment, bounded and atomic self-service profiles, spreadsheet-safe ticket CSV encoding, strict ticket page/API/export, customer-capable service/site and admin list/page filters, guarded PostgREST search construction, strict API and authenticated server-page UUID boundaries, non-broadening inventory preselection, exact audit pagination, missing-safe detail reads, contained code-only admin/customer/dashboard/ticket list/detail/create-option load failures, lifecycle-aligned site/team/dashboard/create selectors, unavailable-prerequisite form guards, retained-membership active-site hydration, empty-scope query suppression, relation-shape normalization, least-data admin catalog and ticket-child hydration, allow-listed admin detail tabs, enriched admin detail audit history, secret-safe integration readiness and settings authorization, qualified-SQL-expression repair, visibility, auth recovery/redirects, public/responsive/admin UI contracts, deterministic site-timezone dashboard and Slack rendering with exact totals, Slack authentication/configuration/action filtering and direct AI-service invocation, readiness, CI policy, filters, SLA, fixture validation, migration/RPC contracts, additive multi-customer membership/site-assignment foundations, spare-part, field-service, and team-access transaction containment, DATE handling, and audit coverage is green |
+| Unit tests | 1,183/1,183 passed | Scope, lifecycle and exhaustive ticket-transition guards, atomic and replay-safe ticket/comment/Slack-event/spare-part-request/field-service/customer/catalog/inventory/attachment creation and updates, durable customer-visible Slack comment delivery with provider-attempt checkpoint and metadata reconciliation contracts, canonical site-channel ownership, no-echo inbound thread capture, and atomic administrator-managed Slack identities, replay-safe paid-AI reservations/provider checkpoints/atomic receipts, attachment content and storage-key validation, direct-write privilege containment, durable public-rate-limit/share-view/paid-AI contracts, bounded least-data AI context and prompt-injection containment, notification outbox leases/idempotency/retry contracts, context-safe transactional email rendering and conditional provider/public-origin readiness, tenant-safe site/user/customer/SLA/catalog/inventory administration, secure user provisioning and membership containment, identity-provider/profile failure classification across API authorization, tenant scope, the authenticated shell, browser account/site enrichment, authentication/recovery settlement, and client lifecycle-action settlement, canonical manager-wide active-site presentation, explicit authenticated customer ticket/comment/site/spare-part/field-service read projections and client-payload containment, bounded and atomic self-service profiles, spreadsheet-safe ticket CSV encoding, strict ticket page/API/export, customer-capable service/site and admin list/page filters, guarded PostgREST search construction, strict API and authenticated server-page UUID boundaries, non-broadening inventory preselection, exact audit pagination, missing-safe detail reads, contained code-only admin/customer/dashboard/ticket list/detail/create-option load failures, lifecycle-aligned site/team/dashboard/create selectors, unavailable-prerequisite form guards, retained-membership active-site hydration, empty-scope query suppression, relation-shape normalization, least-data admin catalog and ticket-child hydration, allow-listed admin detail tabs, enriched admin detail audit history, secret-safe integration readiness and settings authorization, qualified-SQL-expression repair, visibility, auth recovery/redirects, public/responsive/admin UI contracts, deterministic site-timezone dashboard and Slack rendering with exact totals, Slack authentication/configuration/action filtering and direct AI-service invocation, readiness, CI policy, filters, SLA, fixture validation, migration/RPC contracts, additive multi-customer membership/site-assignment foundations, exhaustive fail-closed customer authorization policy decisions, spare-part, field-service, and team-access transaction containment, DATE handling, and audit coverage is green |
 | Lint | Passed, no warnings | Direct ESLint CLI with zero-warning enforcement and generated-artifact ignores |
 | Production build | Passed on Next.js 15.5.22 | Environment-free build is reproducible |
 | Dependency audit | 0 vulnerabilities | Patched direct/transitive versions are lockfile-pinned and compatibility-tested, including `js-yaml` 4.3.1 and `nanoid` 3.3.18 after their advisories entered the audit feed |
@@ -920,10 +920,21 @@ Every implementation slice must:
     assertions with exactly 181 memberships, 119 assignments, exact system
     audit evidence, enforced role/lifecycle/scope/window/version/tenant
     constraints, public-role denial, and zero disposable residue.
-83. **P1-B — next:** Build a read-only authorization policy resolver over the
+83. **P1-B — implemented locally; runtime cutover intentionally blocked:** Build a read-only authorization policy resolver over the
     live membership and site-assignment roots. It must require active user and
     tenant lifecycle, evaluate start-inclusive/end-exclusive effective
     windows, preserve independent customer roles and ticket scopes, merge site
     grants without privilege widening, and return explicit deny decisions.
-    Add exhaustive deterministic contracts and parity checks against the
-    compatibility model before switching any production read or write path.
+    Twenty-three deterministic contracts execute every organization-role/
+    action, site-role/action, and role/membership-scope/assignment-override
+    intersection plus lifecycle, temporal, tenant, visibility, approval,
+    inactive-history, malformed-data, contained-read-error, and migration-055
+    compatibility cases. A read-only live audit matched all 181 memberships
+    and 119 assignments across 368 customer/site decisions. No production route
+    imports the resolver.
+84. **P1-C — next:** Add canonical, service-only customer-membership and site-
+    assignment commands with actor/tenant/role-escalation guards, effective-
+    window and optimistic-version checks, exact audit evidence, and serialized
+    concurrency. Existing team/admin authorization workflows must update the
+    canonical rows and compatibility model in one transaction before shadow
+    reads or production policy cutover can begin.

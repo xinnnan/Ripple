@@ -18,8 +18,10 @@ This file is the **single source of truth for project context** — read it befo
 
 **Status** — Phase 1–4 foundation is present; PRD v1.1 gap closure and security
 containment are active on `codex/prd-v1-1-gap-closure`. Migrations 001–055 are
-deployed and live-verified; the read-only authorization policy resolver is the
-next Phase 1 slice. `main` is live on Vercel.
+deployed and live-verified; the read-only authorization policy resolver and
+live compatibility parity are implemented locally. Canonical authorization
+commands plus compatibility synchronization are the next Phase 1 slice.
+`main` is live on Vercel.
 
 ---
 
@@ -70,7 +72,9 @@ next Phase 1 slice. `main` is live on Vercel.
 │   │   └── page.tsx                     # Marketing landing
 │   ├── lib/
 │   │   ├── authorization/
-│   │   │   └── model.ts                    # PRD membership/scope vocabulary + temporal predicates
+│   │   │   ├── model.ts                 # PRD membership/scope vocabulary + temporal predicates
+│   │   │   ├── policy.ts                # Pure fail-closed customer policy decisions
+│   │   │   └── resolver.ts              # Explicit service-only authorization reads
 │   │   ├── roles.ts                     # ⭐ Role constants + helpers (single source)
 │   │   ├── utils.ts                     # cn, generateSecureToken, formatDate, COMMON_TIMEZONES
 │   │   ├── supabase/
@@ -128,7 +132,7 @@ next Phase 1 slice. `main` is live on Vercel.
 
 **Where to look first** when debugging:
 - Auth/role issues → `src/middleware.ts`, `src/lib/roles.ts`, `src/lib/supabase/auth-helpers.ts`
-- Authorization foundation → `src/lib/authorization/model.ts`, `supabase/migrations/055_customer_membership_foundation.sql`
+- Authorization foundation → `src/lib/authorization/model.ts`, `src/lib/authorization/policy.ts`, `src/lib/authorization/resolver.ts`, `supabase/migrations/055_customer_membership_foundation.sql`
 - Ticket creation flow → `src/app/api/tickets/route.ts` (POST), `src/app/(public)/submit/page.tsx`, `src/app/(auth)/tickets/create-ticket-modal.tsx`
 - Ticket detail UI → `src/app/(auth)/tickets/[ticketId]/page.tsx` (server) + `ticket-actions-panel.tsx` (client)
 - Slack ticket creation → `src/app/api/slack/command/ticket/route.ts` + `src/lib/slack/blocks/ticket-form.ts`
@@ -186,7 +190,7 @@ applied and live-verified as of 2026-08-19. Key tables:
 | `sites` | Customer locations | `site_code` (unique), `slack_channel_id`, `project_status`; migration 036 makes customer ownership immutable through normal admin updates and makes create/update audit atomic. Migration 037 repairs its SQL-expression runtime defect; the current commands passed a 500-assertion live matrix |
 | `users` | All users (internal + external) | `role` (4 values, see §4), `customer_id`, `slack_user_id`; migration 038 makes same-family admin PATCH/deactivation serialized and transactionally audited. Migration 039 stops trusting signup role metadata and adds atomic admin/team provisioning finalizers. Migration 052 moves name/phone self-service behind a row-locked audited command and passed a 90-assertion live matrix. Migration 053 makes non-null Slack actor identities unique and passed a 173-assertion signed-ingress matrix. Migration 054 quarantines unusable legacy IDs with system audit, rejects ambiguous valid ownership, adds canonical Slack-ID shape enforcement, and adds a service-only, row-locked, exactly audited admin mapping command. It passed a 326-assertion live matrix plus real signed-in API/UI set-clear verification with zero disposable residue |
 | `site_members` | User ↔ Site (M:N) | Customers join via this; customer_manager bypasses. Migration 035 adds tenant-contained, transactionally audited admin add/remove commands. Migration 045 removes the legacy direct authenticated write path; its 110-assertion live matrix is green |
-| `customer_memberships` / `customer_site_assignments` | Additive PRD authorization roots | Migration 055 snapshots legacy home-tenant and retained-site access into independent customer memberships and tenant-bound site assignments with roles, lifecycle, effective windows, ticket scopes, approval capabilities, optimistic versions, composite tenant foreign keys, system migration audit, and service-only access. Its 7,437-assertion live backfill/constraint/privilege/tenant/audit matrix passed with exactly 181 memberships, 119 assignments, and zero disposable residue. Runtime reads remain on the compatibility model until a later policy cutover |
+| `customer_memberships` / `customer_site_assignments` | Additive PRD authorization roots | Migration 055 snapshots legacy home-tenant and retained-site access into independent customer memberships and tenant-bound site assignments with roles, lifecycle, effective windows, ticket scopes, approval capabilities, optimistic versions, composite tenant foreign keys, system migration audit, and service-only access. Its 7,437-assertion live backfill/constraint/privilege/tenant/audit matrix passed with exactly 181 memberships, 119 assignments, and zero disposable residue. The read-only policy resolver passed 368 live compatibility decisions, but runtime reads remain on the compatibility model until canonical writes synchronize both models and a later cutover is verified |
 | `tickets` | Core ticket entity | `ticket_no` (RPL-XXXXXX), `secure_token` (32-byte hex), `severity` (P1–P4), 8-state `status`, response/resolution due/achieved/breached timestamps; migration 027 column-limits direct authenticated SELECT |
 | `ticket_creation_requests` | Service-only ticket-create replay ledger | Migration 047 serializes source/request keys, returns the first durable receipt for exact retries, and rejects altered reuse; its 42-assertion replay/concurrency/privilege live matrix is green |
 | `ticket_comment_requests` | Service-only ticket-comment replay ledger | Migration 048 serializes source/request keys, returns the first durable comment for exact retries, rejects altered reuse, and transactionally binds customer-visible comments to one Slack-reply outbox event; its 69-assertion replay/concurrency/cardinality/privilege live matrix is green |
@@ -323,7 +327,7 @@ npm run dev
 - `npm run build` — production build
 - `npm run start` — production server
 - `npm run lint` — direct ESLint CLI across the repository; warnings fail the gate
-- `npm test` — Vitest unit/contract suite (1,160 tests)
+- `npm test` — Vitest unit/contract suite (1,183 tests)
 - `npm run test:e2e` — 42-check production HTTP smoke plus optional credentialed Playwright/API/RLS matrix; requires a successful build
 - `npm run test:e2e:credentialed` — real six-account/two-tenant matrix; set `RIPPLE_E2E_FIXTURES_FILE`
 - `npm run test:e2e:install-browser` — install the pinned Chromium runtime
@@ -1617,6 +1621,26 @@ profile, and prove every layer is empty.
 not infer it from the latest `GRANT` statement. If a table must be service-read-
 only, explicitly revoke service mutations too. Cross-schema identity cleanup
 must be ordered and residue-checked rather than assuming a cascade.
+
+### Authorization snapshots are not a cutover plan
+Found 2026-08-19 while building the first policy resolver over migration 055.
+The additive backfill is exact, but existing team and administrator commands
+still write the compatibility columns and tables. A resolver can therefore be
+correct for the snapshot and become stale after the next legacy access change.
+
+The P1-B evaluator returns typed allow/deny decisions, validates UUIDs before
+service-role reads, intersects organization role, membership scope, effective
+site assignment, object scope, lifecycle, and visibility, and contains database
+diagnostics. It deliberately has no production consumer. Its deterministic
+matrix covers every role/action and role/scope/assignment intersection; a
+read-only live audit matched all 181 memberships and 119 assignments across
+368 current customer/site decisions.
+
+**Lesson:** land a new authorization model in three separately verified seams:
+exact snapshot, synchronized canonical writes, then shadow-read parity and
+cutover. Never switch reads merely because the initial backfill and pure policy
+tests are green, and return explicit denial reasons so fail-closed behavior is
+testable rather than hidden in a boolean.
 
 ---
 
