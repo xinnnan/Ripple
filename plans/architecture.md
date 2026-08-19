@@ -418,6 +418,11 @@ reactions:write   # Add emoji reactions
 pins:write        # Pin messages
 ```
 
+Bot Event Subscriptions: `message.channels` and `message.groups` deliver human
+public/private ticket-thread replies to `/api/slack/events`. The handler uses
+the signed envelope `event_id` for exact replay and ignores bot/root/edit
+events.
+
 ### 6.3 Master Ticket Message Block Kit Structure
 
 The master message uses Slack Block Kit with action buttons:

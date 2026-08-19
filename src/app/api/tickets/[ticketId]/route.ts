@@ -17,6 +17,7 @@ import {
   TICKET_ROOT_CAUSE_MAX_LENGTH,
   TICKET_SUMMARY_MAX_LENGTH,
 } from "@/lib/tickets/input-contract";
+import { INTERNAL_TICKET_API_SENSITIVE_SELECT } from "@/lib/resource-projections";
 
 interface RouteContext {
   params: Promise<{ ticketId: string }>;
@@ -119,9 +120,7 @@ export async function GET(
     if (scope.isInternal) {
       const internal = await supabase
         .from("tickets")
-        .select(
-          "internal_summary, root_cause_category, follow_up_needed, secure_token, submitter_email, submitter_phone"
-        )
+        .select(INTERNAL_TICKET_API_SENSITIVE_SELECT)
         .eq("id", (ticket as { id: string }).id)
         .maybeSingle();
       if (internal.data) {

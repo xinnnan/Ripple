@@ -32,6 +32,13 @@ export class InvalidTicketCommentReplayError extends Error {
   }
 }
 
+export class InvalidSlackEventCommentReplayError extends Error {
+  constructor() {
+    super("This Slack event key was already used for different content.");
+    this.name = "InvalidSlackEventCommentReplayError";
+  }
+}
+
 function safeTransitionMessage(databaseMessage: string): string {
   if (databaseMessage.startsWith("Invalid ticket status transition:")) {
     return databaseMessage;
@@ -127,6 +134,43 @@ export async function recordTicketCommentWithSla(args: {
       throw new InvalidTicketCommentReplayError();
     }
     throw new Error("Atomic ticket comment failed");
+  }
+
+  return data;
+}
+
+/**
+ * Capture a human message that Slack has already delivered in a ticket
+ * thread. Migration 053 owns exact replay and calls the atomic comment/SLA
+ * command without creating a Slack reply outbox event, preventing an echo.
+ */
+export async function recordSlackEventCommentWithSla(args: {
+  supabase: SupabaseClient;
+  ticketId: string;
+  actorId: string;
+  body: string;
+  idempotencyKey: string;
+}): Promise<string> {
+  const { data, error } = await args.supabase.rpc(
+    "record_slack_event_comment_atomic",
+    {
+      p_input: {
+        ticket_id: args.ticketId,
+        actor_id: args.actorId,
+        body: args.body,
+        idempotency_key: args.idempotencyKey,
+      },
+    }
+  );
+
+  if (error || typeof data !== "string") {
+    if (
+      error?.code === "22023" &&
+      error.message.includes("Slack event idempotency key")
+    ) {
+      throw new InvalidSlackEventCommentReplayError();
+    }
+    throw new Error("Atomic Slack event comment failed");
   }
 
   return data;

@@ -4,6 +4,7 @@ import {
   verifySlackSignature,
 } from "@/lib/slack/verify";
 import { isSlackBotTokenConfigured } from "@/lib/slack/config";
+import { captureSlackThreadReply } from "@/lib/slack/handlers/events";
 
 export async function POST(request: NextRequest) {
   try {
@@ -43,27 +44,35 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const body = JSON.parse(rawBody);
+    let body: unknown;
+    try {
+      body = JSON.parse(rawBody);
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
 
     // Handle Slack URL verification challenge
-    if (body.type === "url_verification" && body.challenge) {
+    if (
+      typeof body === "object" &&
+      body !== null &&
+      "type" in body &&
+      body.type === "url_verification" &&
+      "challenge" in body &&
+      typeof body.challenge === "string"
+    ) {
       return NextResponse.json({ challenge: body.challenge });
     }
 
-    // Real event handling: message / reaction_added / app_mention / etc.
-    // For now we just acknowledge. Future Sprint 3 can wire this up.
-    if (body.type === "event_callback" && body.event) {
-      const event = body.event;
-      // Minimal handling: ignore bot messages, ignore message edits, etc.
-      if (event.type === "message" && !event.subtype && !event.bot_id) {
-        // TODO Sprint 3: route customer messages posted in a site
-        // channel to a comment on the linked ticket.
-      }
-    }
+    // Signed human replies to a known master-card thread are captured through
+    // migration 053's replay-safe command. Bot messages, root messages,
+    // unlinked users/channels, and unrelated events remain intentional no-ops.
+    await captureSlackThreadReply(body);
 
     return NextResponse.json({ ok: true });
   } catch (error) {
-    console.error("Slack events error:", error);
+    console.error("Slack events error:", {
+      name: error instanceof Error ? error.name : "UnknownError",
+    });
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

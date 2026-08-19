@@ -92,6 +92,15 @@ async function resolveTarget(
   let messageTs = options.messageTs ?? null;
   let channelRecordId: string | null = null;
 
+  const canonical = await lookupCanonicalTicketChannel(ticketId);
+  if (canonical.errorCode) {
+    return { target: null, errorCode: canonical.errorCode };
+  }
+  if (!canonical.channelId || !canonical.siteId) return { target: null };
+  if (channelId && channelId !== canonical.channelId) {
+    return { target: null };
+  }
+
   if (!channelId || !messageTs) {
     const found = await lookupMaster(ticketId);
     if (found.errorCode) return { target: null, errorCode: found.errorCode };
@@ -102,11 +111,16 @@ async function resolveTarget(
     }
   }
 
+  if (channelId && channelId !== canonical.channelId) {
+    return { target: null };
+  }
+
   if (channelId && !channelRecordId) {
     const supabase = createAdminClient();
     const { data, error } = await supabase
       .from("slack_channels")
       .select("id")
+      .eq("site_id", canonical.siteId)
       .eq("channel_id", channelId)
       .maybeSingle();
     if (error) {
@@ -123,6 +137,52 @@ async function resolveTarget(
       channelId && channelRecordId && messageTs
         ? { channelId, channelRecordId, messageTs }
         : null,
+  };
+}
+
+async function lookupCanonicalTicketChannel(ticketId: string): Promise<{
+  siteId: string | null;
+  channelId: string | null;
+  errorCode?: string;
+}> {
+  const supabase = createAdminClient();
+  const ticketResult = await supabase
+    .from("tickets")
+    .select("site_id")
+    .eq("id", ticketId)
+    .maybeSingle();
+  if (ticketResult.error) {
+    console.error("[slack/sync] ticket site lookup failed:", {
+      code: ticketResult.error.code,
+    });
+    return {
+      siteId: null,
+      channelId: null,
+      errorCode: "ticket_site_lookup_failed",
+    };
+  }
+  if (!ticketResult.data?.site_id) return { siteId: null, channelId: null };
+
+  const siteResult = await supabase
+    .from("sites")
+    .select("slack_channel_id, customer:customers!inner(status)")
+    .eq("id", ticketResult.data.site_id)
+    .eq("status", "active")
+    .in("customer.status", ["active", "trial"])
+    .maybeSingle();
+  if (siteResult.error) {
+    console.error("[slack/sync] canonical channel lookup failed:", {
+      code: siteResult.error.code,
+    });
+    return {
+      siteId: ticketResult.data.site_id,
+      channelId: null,
+      errorCode: "canonical_channel_lookup_failed",
+    };
+  }
+  return {
+    siteId: ticketResult.data.site_id,
+    channelId: siteResult.data?.slack_channel_id ?? null,
   };
 }
 
@@ -271,6 +331,21 @@ export async function postMasterMessage(
   ticket: Ticket,
   options: SyncOptions = {}
 ): Promise<SyncResult> {
+  const canonical = await lookupCanonicalTicketChannel(ticket.id);
+  if (canonical.errorCode) {
+    return {
+      ok: false,
+      reason: "database_error",
+      error: "Slack canonical channel lookup failed",
+    };
+  }
+  if (!canonical.siteId || !canonical.channelId) {
+    return { ok: false, reason: "no_channel" };
+  }
+  if (options.channelId && options.channelId !== canonical.channelId) {
+    return { ok: false, reason: "no_channel" };
+  }
+
   const existing = await lookupMaster(ticket.id);
   if (existing.errorCode) {
     return {
@@ -279,21 +354,17 @@ export async function postMasterMessage(
       error: "Slack master receipt lookup failed",
     };
   }
-  if (existing.target) return { ok: true, deduplicated: true };
+  if (existing.target?.channelId === canonical.channelId) {
+    return { ok: true, deduplicated: true };
+  }
 
-  const site = (Array.isArray(ticket.site)
-    ? ticket.site[0]
-    : ticket.site) as {
-      slack_channel_id?: string | null;
-    } | null;
-  const channelId = options.channelId ?? site?.slack_channel_id ?? null;
-  if (!channelId) return { ok: false, reason: "no_channel" };
+  const channelId = canonical.channelId;
 
   const supabase = createAdminClient();
   const { data: channelRecord, error: channelError } = await supabase
     .from("slack_channels")
     .select("id")
-    .eq("site_id", ticket.site_id)
+    .eq("site_id", canonical.siteId)
     .eq("channel_id", channelId)
     .limit(1)
     .maybeSingle();

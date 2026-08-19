@@ -378,15 +378,20 @@ async function expectAttachmentUi(page, { internal }) {
     .getByText("Max 50MB. JPEG/PNG/GIF/WebP, MP4/MOV, PDF, UTF-8 text, or Excel.")
     .waitFor();
 
-  const internalVisibility = page
-    .locator("select")
-    .filter({ has: page.locator('option[value="internal"]') });
+  const internalVisibility = page.locator("#ticket-attachment-visibility");
   assert(
     (await internalVisibility.count()) === (internal ? 1 : 0),
     internal
       ? "internal attachment visibility control is missing"
       : "external user received an internal visibility control"
   );
+  if (internal) {
+    assert(
+      (await internalVisibility.locator('option[value="internal"]').count()) ===
+        1,
+      "attachment visibility control omits the internal-only option"
+    );
+  }
   pass(`${internal ? "internal" : "external"} attachment UI contract`);
 }
 
@@ -408,7 +413,9 @@ async function expectMalformedJson(context, pathName, method) {
     method,
     failOnStatusCode: false,
     headers: { "content-type": "application/json" },
-    data: "{",
+    // A string is JSON-encoded by Playwright into the valid JSON value "{".
+    // Raw bytes are required to exercise the route's malformed-parser branch.
+    data: Buffer.from("{"),
   });
   const body = await response.json();
   assert(
@@ -417,7 +424,8 @@ async function expectMalformedJson(context, pathName, method) {
   );
   assert(
     body?.error === "Invalid JSON body",
-    `${method} ${pathName} returned an unstable malformed JSON error`
+    `${method} ${pathName} returned an unstable malformed JSON error: ` +
+      JSON.stringify(body)
   );
   pass(`API ${method} ${pathName} rejects malformed JSON`);
 }

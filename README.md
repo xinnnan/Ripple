@@ -56,20 +56,26 @@ A Slack-native support portal for DropletAI Services. Centralises customer suppo
   actual content, stored under environment/tenant/ticket-bound keys, and their
   metadata plus timeline evidence share one guarded database transaction.
 - **Site Channel Model** — Each customer site has a dedicated Slack support channel, mapped via `slack_channels`.
+- **Replay-Safe Slack Thread Capture** — Signed human replies under a current
+  ticket master card become atomic customer-visible ticket comments without
+  echoing the message back to Slack; event retries are exactly deduplicated.
+- **Admin-Managed Slack Identities** — Administrators can safely link or clear
+  the unique Slack member ID used for signed reply attribution and internal
+  actions through a normalized, lifecycle-guarded, exactly audited command.
 
 ## Tech Stack
 
 | Layer | Tool |
 |-------|------|
 | Frontend | Next.js 15.5.22 (App Router) + React 19 + TypeScript + Tailwind CSS v4 + self-hosted Inter |
-| Database | Supabase Postgres (52 migrations, see `supabase/migrations/`) |
+| Database | Supabase Postgres (55 migrations, see `supabase/migrations/`) |
 | Auth | Supabase Auth (email + password + recovery) + new `sb_publishable_` / `sb_secret_` key format |
 | Storage | Supabase Storage — bucket `ripple-attachments`, **50 MB cap per file** |
 | Slack | `@slack/bolt` + `@slack/web-api` (runs inside Next.js API routes, no separate process) |
 | AI | **MiniMax AI** (OpenAI-compatible) — was OpenAI → Zhipu → MiniMax. **See "AI provider" section below.** |
 | Email | Resend (transactional: ticket confirmation, resolution notice) |
 | Validation | Zod (all API request bodies) |
-| Testing | Vitest (1,084 unit/contract tests) + 41-check production HTTP smoke + credentialed Playwright/API/RLS matrix |
+| Testing | Vitest (1,160 unit/contract tests) + 42-check production HTTP smoke + credentialed Playwright/API/RLS matrix |
 | Hosting | Vercel (serverless API routes) |
 
 ## Phases
@@ -104,7 +110,7 @@ cp .env.local.example .env.local
 
 ### Run database migrations
 
-Apply the SQL files in `supabase/migrations/` **in order** (001 → 052) via the Supabase SQL editor or `supabase db push`:
+Apply the SQL files in `supabase/migrations/` **in order** (001 → 054) via the Supabase SQL editor or `supabase db push`:
 
 ```
 001_create_customers.sql
@@ -159,14 +165,64 @@ Apply the SQL files in `supabase/migrations/` **in order** (001 → 052) via the
 050_durable_slack_provider_attempts.sql
 051_replay_safe_ai_suggestions.sql
 052_atomic_self_service_profile.sql
+053_replay_safe_slack_thread_capture.sql
+054_atomic_admin_slack_identity.sql
+055_customer_membership_foundation.sql
 ```
 
 Later migrations replace policies/functions and should be applied once in
 order. Migration `017` also performs role data updates and must not be re-run
-blindly. Migrations 001–051 are confirmed applied and live-verified as of
-2026-08-12. Migration 052 is the current migration-first deployment gate: it
-removes the legacy direct authenticated profile-write grant and routes name/
-phone changes through one atomic, audited service command. Migration 051
+blindly. Migrations 001–054 are confirmed applied and live-verified as of
+2026-08-17. Migration 054 quarantined 19 unusable legacy mappings without
+removing their Auth/profile/ticket history and adds the supported, atomic,
+audited admin workflow required to set or clear a unique Slack actor identity.
+It passed a 326-assertion live command/privilege/lifecycle/uniqueness/audit/
+concurrency matrix plus a real signed-in API/UI set-clear flow with zero
+disposable residue.
+Migration 055 is an additive authorization-foundation gate awaiting
+application. It creates multi-customer memberships and tenant-bound site
+assignments, backfills the legacy access paths with system audit evidence, and
+does not switch current runtime reads away from `users.customer_id` or
+`site_members`.
+Migrations 028–030 also passed a 173-assertion disposable live matrix covering
+atomic spare-part request and field-service create/update behavior, protected
+numbering, tenant/parent/lifecycle constraints, exact audit evidence, rollback,
+and concurrency with zero database/Auth residue.
+Migration 031 passed a 175-assertion disposable live matrix covering atomic
+team profile/site-access updates, manager/tenant/target/site boundaries,
+retained membership roles and identities, omission/clear/no-op semantics,
+exact audit evidence, rollback, and 12-way concurrency with zero database/Auth
+residue.
+Migration 032 passed a 430-assertion disposable live matrix covering all 64
+state pairs, database/application transition parity, owner and resolution-
+summary invariants, rollback, historical-row compatibility, exact event/audit/
+SLA/outbox effects, and 12-way concurrency with zero database/Auth residue.
+Migration 033's current outbox contract (including migration 050's provider-
+attempt checkpoint) passed a 167-assertion disposable live matrix covering
+service-only access, constraints, atomic enqueue, leases, settlement, retry,
+dead-letter/stale recovery, ordering, and 12-way `SKIP LOCKED` concurrency with
+zero database/Auth residue. Production recovery still requires `CRON_SECRET`.
+Migration 034's raw atomic ticket-create command passed a 222-assertion live
+matrix covering payload, tenant/site/SLA/actor scope, guest web/signed-Slack
+paths, sequence numbers, exact timeline/audit/outbox effects, rollback, and
+12-way concurrency with zero database/Auth residue. Migration 047 separately
+verifies replay-safe creation.
+Migration 035 passed a 112-assertion disposable live matrix covering atomic
+admin site-membership privileges, actor/target/site/customer lifecycle and
+tenant scope, legacy tenant derivation, duplicate rollback, role preservation,
+exact joined/left audits, and 12-way concurrent add/remove serialization with
+zero database/Auth residue.
+Migrations 036–037 passed a 500-assertion disposable live site-command matrix
+covering privileges, actor/customer/owner/site lifecycle, strict inputs,
+normalization/defaults, immutable ownership, exact audits, no-op behavior,
+Slack mapping/unique-channel rollback, and 12-way create/update serialization
+with zero database/Auth residue. Together with the positive 028–031 matrices,
+all six commands repaired by migration 037 now have live positive evidence.
+Migration 053 passed a 173-assertion signed-ingress, mapping,
+replay, concurrency, privilege, no-echo, and cleanup matrix. Migration 052 passed a
+90-assertion live direct-write/RPC-denial,
+normalization, no-op, lifecycle, exact-audit, 12-way serialized-concurrency,
+and cleanup matrix with zero database/Auth residue. Migration 051
 passed a 57-assertion live actor/ticket validation,
 replay, independent 12-way reservation/checkpoint/completion concurrency,
 altered-input/output, settlement, cardinality, public API-role denial, and
@@ -271,10 +327,17 @@ site/ticket, and real internal comment/attachment/event rows. The suite is
 read-only. A missing fixture prints an explicit skip for local development;
 protected CI should set `RIPPLE_E2E_REQUIRE_CREDENTIALS=1` so it fails closed.
 
+The complete matrix first passed locally against a disposable live Supabase
+fixture on 2026-08-17. That run covered all six account states, both tenants,
+archived-resource denial, internal-artifact visibility, malformed JSON, direct
+PostgREST/RPC/Storage containment, and zero database/Auth residue. A hosted run
+with the reviewer-protected staging fixture remains a deployment activation
+gate.
+
 ### GitHub Actions
 
-`.github/workflows/ci.yml` runs the locked install, 449 unit/contract tests,
-lint, production build, 40-check HTTP E2E, and dependency audit for pull
+`.github/workflows/ci.yml` runs the locked install, 1,160 unit/contract tests,
+lint, production build, 42-check HTTP E2E, and dependency audit for pull
 requests and pushes to `main`. GitHub-owned actions are pinned to full commit
 SHAs and the workflow has read-only repository permissions.
 
@@ -292,6 +355,7 @@ requests never receive this secret.
    - **Slash Commands**: `/ticket` → `https://your-domain.com/api/slack/command/ticket`
    - **Interactivity**: Request URL → `https://your-domain.com/api/slack/interactive`
    - **Event Subscriptions**: Request URL → `https://your-domain.com/api/slack/events`
+   - **Subscribe to bot events**: `message.channels`, `message.groups`
    - **Bot Token Scopes**: `commands`, `chat:write`, `chat:write.public`, `channels:read`, `channels:history`, `groups:read`, `groups:history`, `metadata.message:read`, `users:read`, `files:read`
 3. Install the app to your workspace.
 4. Copy the Bot Token (`xoxb-…`) and Signing Secret to `.env.local`.
@@ -364,6 +428,7 @@ src/
 │   ├── site-members/            # tenant-contained atomic access wrappers
 │   ├── sites/                   # tenant-safe atomic site wrappers
 │   ├── spare-parts/             # atomic catalog/inventory contracts + wrappers
+│   ├── authorization/           # PRD membership/scope vocabulary + temporal predicates
 │   ├── team/                    # team contracts + atomic set-diff wrapper
 │   ├── tickets/                 # lifecycle + durable notification outbox
 │   ├── users/                   # atomic admin-user mutation wrapper
@@ -374,7 +439,7 @@ src/
 │   ├── ticket.ts                # ⭐ all ticket domain enums + labels
 │   └── spare-parts.ts
 └── middleware.ts                # ⭐ route guard + session refresh
-supabase/migrations/             # 001-052
+supabase/migrations/             # 001-055
 plans/                           # Architecture + phase planning docs
 AGENTS.md                        # ⭐ project context, lessons learned, roadmap
 ```
@@ -385,7 +450,7 @@ AGENTS.md                        # ⭐ project context, lessons learned, roadmap
 - Ticket detail → `app/(auth)/tickets/[ticketId]/page.tsx` + `ticket-actions-panel.tsx`
 - Slack actions → `lib/slack/handlers/actions.ts` + `app/api/slack/interactive/route.ts`
 - AI assist → `app/api/ai/suggest/route.ts` + `lib/ai/service.ts` + `lib/ai/suggest.ts`
-- DB schema → `supabase/migrations/001_*.sql` … `052_atomic_self_service_profile.sql`
+- DB schema → `supabase/migrations/001_*.sql` … `055_customer_membership_foundation.sql`
 
 ## Ticket Lifecycle
 

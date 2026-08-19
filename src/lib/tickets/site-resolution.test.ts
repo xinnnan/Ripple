@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { resolveSiteByCode } from "./create";
+import { resolveSiteByCode, resolveSiteBySlackChannel } from "./create";
 
 function makeClient(result: unknown) {
   const select = vi.fn();
@@ -60,6 +60,46 @@ describe("ticket site-code resolution", () => {
     });
     await expect(resolveSiteByCode(client, "ADI-INDY-001")).rejects.toThrow(
       "Site-code resolution failed"
+    );
+  });
+});
+
+describe("ticket Slack-channel resolution", () => {
+  it("uses the canonical active site selection rather than a stale mapping row", async () => {
+    const { client, select, eq, inFilter } = makeClient({
+      data: {
+        id: "11111111-1111-4111-8111-111111111111",
+        customer_id: "22222222-2222-4222-8222-222222222222",
+        slack_channel_id: "C123",
+        customer: { status: "active" },
+      },
+      error: null,
+    });
+
+    await expect(resolveSiteBySlackChannel(client, "C123")).resolves.toEqual({
+      id: "11111111-1111-4111-8111-111111111111",
+      customer_id: "22222222-2222-4222-8222-222222222222",
+      slack_channel_id: "C123",
+    });
+    expect(select).toHaveBeenCalledWith(
+      expect.stringContaining("customers!inner(status)")
+    );
+    expect(eq).toHaveBeenCalledWith("slack_channel_id", "C123");
+    expect(eq).toHaveBeenCalledWith("status", "active");
+    expect(inFilter).toHaveBeenCalledWith("customer.status", [
+      "active",
+      "trial",
+    ]);
+  });
+
+  it("contains channel-resolution database failures", async () => {
+    const { client } = makeClient({
+      data: null,
+      error: { code: "XX000", message: "private detail" },
+    });
+
+    await expect(resolveSiteBySlackChannel(client, "C123")).rejects.toThrow(
+      "Slack-channel site resolution failed"
     );
   });
 });

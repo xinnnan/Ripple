@@ -371,6 +371,11 @@ try {
     { role: "engineer" }
   );
   await expectUnauthorizedMutation(
+    "/api/admin/users/11111111-1111-4111-8111-111111111111/slack",
+    "PATCH",
+    { slack_user_id: "U012ABCDEF0" }
+  );
+  await expectUnauthorizedMutation(
     "/api/admin/users",
     "POST",
     {

@@ -5,6 +5,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   AdminUserMutationError,
   applyAdminUserPatch,
+  applyAdminUserSlackIdentity,
 } from "./mutations";
 
 const ACTOR_ID = "11111111-1111-4111-8111-111111111111";
@@ -60,6 +61,25 @@ describe("admin user mutation contract", () => {
       message: "Atomic admin user update failed",
       code: "55000",
     } satisfies Partial<AdminUserMutationError>);
+  });
+
+  it("sets or clears Slack identity through the dedicated atomic command", async () => {
+    const { client, rpc } = clientWithRpc({ data: USER_ID, error: null });
+
+    await expect(
+      applyAdminUserSlackIdentity({
+        supabase: client,
+        actorId: ACTOR_ID,
+        targetUserId: USER_ID,
+        slackUserId: "U012ABCDEF0",
+      })
+    ).resolves.toBe(USER_ID);
+
+    expect(rpc).toHaveBeenCalledWith("apply_admin_user_slack_identity", {
+      p_actor_id: ACTOR_ID,
+      p_target_user_id: USER_ID,
+      p_slack_user_id: "U012ABCDEF0",
+    });
   });
 });
 

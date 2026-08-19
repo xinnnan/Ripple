@@ -2,8 +2,10 @@ import { describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   applyTicketPatchWithSla,
+  InvalidSlackEventCommentReplayError,
   InvalidTicketCommentReplayError,
   InvalidTicketTransitionError,
+  recordSlackEventCommentWithSla,
   recordTicketCommentWithSla,
 } from "./mutations";
 
@@ -96,6 +98,53 @@ describe("ticket mutation RPC contracts", () => {
         idempotencyKey: "web:comment:attempt-1234",
       })
     ).rejects.toBeInstanceOf(InvalidTicketCommentReplayError);
+  });
+
+  it("captures already-delivered Slack messages through the no-echo command", async () => {
+    const { client, rpc } = clientWithRpc({
+      data: COMMENT_ID,
+      error: null,
+    });
+
+    await expect(
+      recordSlackEventCommentWithSla({
+        supabase: client,
+        ticketId: TICKET_ID,
+        actorId: ACTOR_ID,
+        body: "Reply written in the Slack ticket thread",
+        idempotencyKey: "slack:message-event:Ev0123456789",
+      })
+    ).resolves.toBe(COMMENT_ID);
+
+    expect(rpc).toHaveBeenCalledWith("record_slack_event_comment_atomic", {
+      p_input: {
+        ticket_id: TICKET_ID,
+        actor_id: ACTOR_ID,
+        body: "Reply written in the Slack ticket thread",
+        idempotency_key: "slack:message-event:Ev0123456789",
+      },
+    });
+  });
+
+  it("maps altered Slack event replay to a stable conflict", async () => {
+    const { client } = clientWithRpc({
+      data: null,
+      error: {
+        code: "22023",
+        message:
+          "Slack event idempotency key was already used for different input",
+      },
+    });
+
+    await expect(
+      recordSlackEventCommentWithSla({
+        supabase: client,
+        ticketId: TICKET_ID,
+        actorId: ACTOR_ID,
+        body: "Altered event",
+        idempotencyKey: "slack:message-event:Ev0123456789",
+      })
+    ).rejects.toBeInstanceOf(InvalidSlackEventCommentReplayError);
   });
 
   it("fails closed when the database command does not return an id", async () => {

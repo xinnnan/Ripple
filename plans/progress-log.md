@@ -6,14 +6,15 @@ meaningful change and before ending a work session. Newest entries go first.
 ## Current checkpoint
 
 - **Branch:** `codex/prd-v1-1-gap-closure`
-- **Active phase:** Phase 0 — Containment and reproducible baseline
-- **Active work item:** deploy and live-verify migration 052 after closing the
-  direct self-service profile-write and missing-audit boundary
-- **Last verified checkpoint commit:** `5333814` (`fix: show truthful system readiness`)
-- **Uncommitted work:** migration 052, strict authenticated profile API,
-  atomic mutation wrapper, responsive/accessibility profile UI, tests, and
-  records; inspect `git status` before committing
-- **Deployment gate:** migrations 001–051 are confirmed applied and
+- **Active phase:** Phase 1 — Authorization and domain foundation; Phase 0
+  hosted activation remains an external release gate
+- **Active work item:** P1-A additive customer-membership and site-assignment
+  authorization roots, compatibility backfill, and temporal policy primitives
+- **Last verified checkpoint commit:** `41c7a04` (`fix: close credentialed authorization gate`)
+- **Uncommitted work:** migration 055, shared authorization vocabularies and
+  fail-closed effective-window helpers, deterministic contracts, and rollout
+  documentation
+- **Deployment gate:** migrations 001–054 are confirmed applied and
   live-verified. Migration 044
   passed a 130-assertion disposable live matrix with zero residue. Migration
   045 passed a 110-assertion live matrix with zero residue. Migration 046
@@ -28,15 +29,51 @@ meaningful change and before ending a work session. Newest entries go first.
   Migration 051 passed a 57-assertion actor/ticket/replay/concurrency/
   settlement/cardinality/privilege live matrix with zero database/Auth residue
   and no AI provider request.
-  Migration 052 is implementation-complete and awaits application plus a
-  disposable live verification matrix before its application code deploys.
+  Migration 052 passed a 90-assertion direct-write/RPC-denial, normalization,
+  no-op, lifecycle, exact-audit, concurrency, and cleanup live matrix with zero
+  database/Auth residue.
+  Migration 053 passed a 173-assertion signed production-HTTP, mapping,
+  replay, 12-way concurrency, privilege, tenant-boundary, exact-cardinality,
+  no-echo, and cleanup live matrix with zero database/Auth residue.
+  Migration 054 passed a 326-assertion quarantine/shape/privilege/admin/
+  lifecycle/uniqueness/no-op/audit/concurrency live matrix with zero database/
+  Auth residue. A real signed-in admin API/UI set-clear flow added two exact
+  audit rows, passed desktop/mobile/Inter/overflow/control-size/console checks,
+  and its disposable Auth/profile/audit fixtures were fully removed.
+  Migrations 028–030 passed a combined 173-assertion service-only privilege,
+  creation/update, tenant/parent/lifecycle/constraint, exact-audit, rollback,
+  and 12-way concurrency live matrix with zero database/Auth residue.
+  Migration 031 passed a 175-assertion public-role/manager/tenant/target/site,
+  set-diff/role-preservation/omission/clear/no-op/exact-audit/rollback/12-way
+  concurrency live matrix with zero database/Auth residue.
+  Migration 032 passed a 430-assertion all-state-pair/parity/privilege/
+  invariant/rollback/legacy-compatibility/event/audit/SLA/outbox/12-way
+  concurrency live matrix with zero database/Auth residue.
+  Migration 033's current contract passed a 167-assertion privilege/constraint/
+  enqueue/claim/lease/checkpoint/delivery/retry/dead-letter/stale-recovery/
+  ordering/12-way concurrency live matrix with zero database/Auth residue.
+  Migration 034's raw command passed a 222-assertion privilege/payload/
+  lifecycle/SLA/actor/site/scope/normalization/numbering/timeline/audit/outbox/
+  rollback/12-way concurrency live matrix with zero database/Auth residue.
+  Migration 035 passed a 112-assertion public-role/actor/target/site/customer/
+  lifecycle/tenant/legacy-derivation/duplicate-rollback/role-preservation/
+  exact-audit/12-way-add-remove-concurrency live matrix with zero database/Auth
+  residue.
+  Migrations 036–037 passed a 500-assertion site-command privilege/actor/
+  customer/owner/site-lifecycle/input/normalization/default/ownership/audit/
+  no-op/Slack-mapping/rollback/12-way-concurrency live matrix with zero
+  database/Auth residue. Combined with the 028–031 matrices, all six repaired
+  migration-037 commands have live positive paths.
+  Migration 055 is additive and awaits application. It creates the PRD
+  customer-membership and tenant-bound site-assignment roots, snapshots current
+  compatibility access, and deliberately does not switch runtime reads.
   Production `CRON_SECRET` remains unset in this workspace.
-  Protected positive business probes for migrations 028–037 still require
-  staging fixtures
-- **External validation gate:** populate the gitignored credential fixture with six
-  dedicated staging accounts, two tenants, a decommissioned site/ticket, and
-  real internal artifact IDs; then run
-  `RIPPLE_E2E_REQUIRE_CREDENTIALS=1 npm run test:e2e:credentialed`
+- **External validation gate:** the complete credentialed matrix passed locally
+  against disposable live Supabase fixtures and the production Next build with
+  six accounts, two tenants, archived resources, internal artifacts, 54
+  fixture/cleanup assertions, and zero database/Auth residue. Materialize the
+  equivalent permanent fixture in the reviewer-protected `staging`
+  environment and run the hosted job before release.
 - **Hosted CI activation:** require the `Quality gates` check in branch
   protection; create a reviewer-protected `staging` environment with the
   `RIPPLE_E2E_FIXTURES_JSON` secret before manually enabling the credentialed
@@ -46,14 +83,15 @@ meaningful change and before ending a work session. Newest entries go first.
   database currently has zero linked Slack channels and zero recorded master
   messages, so read-only history/thread reconciliation awaits the first real
   target rather than posting a synthetic message to a customer channel
-- **Runtime verification debt:** when staging credentials become available,
-  test request creation/fulfillment, field-service create/update, and team
-  access positive/negative cases, including cross-site tickets, inactive
-  parts, foreign items, over-fulfillment, invalid/reversed dates, invalid
-  assignees, assignment-replacement rollback, cross-tenant team targets,
-  retained membership roles, and explicit access clearing. The credentialed
-  matrix now also carries real malformed-JSON 400 probes for ticket create,
-  ticket PATCH, ticket comments, and AI suggestions
+- **Runtime verification debt:** migrations 028–037 request/field-service/team/
+  ticket-transition/outbox/ticket creation, fulfillment, assignment, DATE,
+  access-set, admin membership/site administration, rollback, audit,
+  privilege, and concurrency cases are live-verified. The complete local
+  six-account/two-tenant browser/API/PostgREST/RPC/RLS/Storage matrix and all
+  four real malformed-JSON 400 probes are green. Remaining runtime evidence is
+  hosted protected execution, real password-recovery email/link consumption,
+  production provider/worker configuration, and first real Slack-thread
+  reconciliation.
 - **Support UX verification:** public pages and the real admin shell were
   reviewed at 1440×1000 and 390×844. A short-lived admin test identity was
   created for read-only protected-page visits and fully deleted afterward.
@@ -97,34 +135,873 @@ meaningful change and before ending a work session. Newest entries go first.
   through a disposable customer account: Inter, responsive fit, long-email
   wrapping, 44-pixel controls, edit/cancel, password visibility, accessible
   local validation, and zero console warnings/errors are green. No profile or
-  password mutation was sent while migration 052 remained pending, and the
+  password mutation was sent during the pre-deployment browser QA, and the
   disposable Auth/profile rows were fully removed.
-- **Exact next local step:** apply migration 052, then run its disposable live
-  command/audit/privilege/concurrency/rollback matrix before deploying the
-  dependent application code
+  The administrator Slack-identity form was reviewed through a disposable
+  real admin at 1280×900 and 390×844: Inter, bound help text, 44-pixel controls,
+  responsive fit, and post-fix console output are green. Browser QA exposed a
+  pre-existing user-detail failure caused by selecting `actor_full_name` from
+  the base audit table; user, customer, and site detail history now use the
+  enriched view. After deployment, a second disposable browser flow performed
+  an actual normalized set and clear at desktop/mobile widths with exact audit
+  evidence and zero residue.
+  The first complete credentialed browser run then verified five active login
+  roles, explicit inactive-account denial, navigation boundaries, cross-tenant
+  404s, external/internal attachment controls, and customer-safe/internal API
+  projections. It exposed and fixed the inactive-login message remount defect;
+  every rerun completed without browser authorization leakage.
+- **Exact next local step:** finish the full clean-install gate and commit P1-A,
+  then apply migration 055 and run its backfill/constraint/privilege/residue
+  matrix before any policy-resolver or runtime-read cutover.
 - **Primary plan:** [`plans/prd-v1.1-gap-closure-plan.md`](./prd-v1.1-gap-closure-plan.md)
 
-## Overall project status — 2026-08-12
+## Overall project status — 2026-08-17
 
 - Ripple has a meaningful Phase 1–4 support-platform foundation, and Phase 0
-  containment is substantially implemented through migration 052. Migrations
-  001–051 are deployed and live-verified; migration 052 awaits application and
-  live verification.
+  containment is substantially implemented through migration 054. Migrations
+  001–054 are deployed and live-verified. Migration 055 is an additive Phase 1
+  authorization-foundation deployment gate.
 - Against the full PRD v1.1 capability map, 17 domains remain
   **Partial** or **Unsafe/Partial** and seven remain **Absent**. No full PRD
   capability domain is yet honestly complete end to end.
-- The local deterministic baseline is green at 1,084 unit/contract tests, 41
+- The local deterministic baseline is green at 1,160 unit/contract tests, 42
   production HTTP smoke checks, a production build, zero-warning lint, and
-  zero known dependency vulnerabilities.
-- Phase 0 cannot be declared exited until the protected six-account/two-tenant
-  matrix and remaining migration 028–037 positive/rollback probes run in
-  staging, hosted branch protection and the reviewer-protected staging
-  environment are activated, and production worker/provider configuration is
+  zero known dependency vulnerabilities. The complete credentialed matrix also
+  passed locally against disposable live fixtures with zero residue.
+- Phase 0 cannot be declared exited until the credentialed matrix is repeated
+  in the reviewer-protected hosted staging environment, hosted branch
+  protection is activated, and production worker/provider configuration is
   completed.
 - The largest remaining product gaps are the PRD authorization kernel,
   queues/routing, business-calendar SLA clocks, remote support, appointments,
   assets/entitlements, search/knowledge, i18n, versioned external APIs, and
   production SRE/recovery evidence.
+
+## Session record — 2026-08-17 (P1-A membership authorization foundation)
+
+### Objective
+
+Create the first additive PRD authorization-kernel seam: independent
+user-to-customer memberships plus tenant-bound site assignments, while
+preserving every current runtime access path until a separately verified
+policy cutover.
+
+### Changes
+
+- Added migration 055 with independent organization roles, membership
+  invited/active/suspended/revoked lifecycle, OWN/SITE/CUSTOMER ticket scope,
+  stackable approval capabilities, effective windows, actor references,
+  optimistic versions, and retention-safe foreign keys.
+- Added customer IDs to site assignments and composite membership/site foreign
+  keys, making a cross-customer grant structurally impossible rather than
+  relying on a caller-side check.
+- Backfill derives one home membership plus any regular-customer retained-site
+  customer memberships. Legacy customer managers receive only their existing
+  home-customer organization scope; the migration does not invent access to a
+  second tenant.
+- Legacy owner/manager/member/viewer site roles map to
+  site_admin/site_admin/requester/viewer. Existing manager-wide CUSTOMER and
+  regular-customer SITE ticket visibility are retained as a compatibility
+  snapshot instead of silently tightening production behavior.
+- Every migrated membership and assignment writes explicit system audit
+  evidence in the same transaction. Both new tables enable RLS, expose no
+  anon/authenticated privileges, and are read only through the service role
+  until command and policy cutover work is ready.
+- Added shared TypeScript role/lifecycle/scope/capability vocabularies and a
+  start-inclusive, end-exclusive temporal predicate that fails closed for
+  invalid timestamps or inactive membership state.
+- Current `users.customer_id` and `site_members` are documented as
+  compatibility paths; migration 055 makes no runtime authorization change.
+- A read-only live preflight found 216 external profiles, 119 legacy site
+  assignments, 181 expected customer memberships, 119 expected new site
+  assignments, and zero orphan/unsupported-role anomalies. Thirty-five
+  external profiles have no legacy customer/site access and correctly receive
+  no new grant. Both destination tables are absent in the live PostgREST schema.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| Focused authorization contracts | Passed; 2 files, 10 tests |
+| Focused lint | Passed; no warnings/errors |
+| Read-only live backfill preflight | Passed; 181 membership + 119 assignment rows predicted, zero shape anomalies, destination tables absent |
+| `npm ci` | Passed; 533 packages installed from lockfile, 0 vulnerabilities |
+| `npm test` | Passed; 149 files, 1,160 tests |
+| `npm run lint` | Passed; no warnings/errors |
+| `npm run build` | Passed; optimized Next.js production build |
+| `npm run test:e2e` | Passed; 42 production HTTP checks; credentialed matrix skipped because its disposable secret fixture was removed after the separately recorded complete pass |
+| `npm audit --audit-level=low` | Passed; 0 vulnerabilities |
+| `git diff --check` | Passed |
+
+### Exact next step
+
+- Run the full pre-commit gate and commit P1-A. Migration 055 must then be
+  applied and live-verified before the policy resolver or any production read
+  is switched to the new authorization roots.
+
+## Session record — 2026-08-17 (P0-CB credentialed authorization gate)
+
+### Objective
+
+Run the committed six-account/two-tenant browser/API/PostgREST/RPC/RLS/Storage
+matrix end to end against the production Next build and disposable live
+Supabase fixtures, fix any real defects it exposes, and leave no test residue.
+
+### Evidence
+
+- Provisioned disposable admin, engineer, customer-manager, two cross-tenant
+  customers, and inactive users plus active/archived sites, tickets, and real
+  internal comment/attachment/event rows. The protected fixture lived only in
+  an OS temporary file.
+- All five active browser logins and the inactive-account denial passed. Admin,
+  engineer, manager, and customer navigation boundaries held; both cross-
+  tenant ticket pages returned 404.
+- External and internal attachment controls, customer-safe and complete
+  internal ticket API projections, admin/team/inactive API authorization, and
+  all four malformed-JSON parser branches passed through real HTTP requests.
+- Direct profile reads, tenant ownership, active/archived site scope, ticket
+  RLS, sensitive ticket columns, internal comments/attachments/events,
+  Storage objects, direct membership/SLA/rate-limit/AI-ledger access, AI RPC,
+  and inactive PostgREST access all honored their intended boundaries.
+- The run exposed a real same-component auth redirect defect: middleware sent
+  an inactive user back to `/login?account=inactive`, but client navigation
+  could preserve the login component and hide the explanation. Successful
+  sign-in now crosses the auth boundary with a full document navigation.
+- The run exposed that the internal ticket API projection omitted
+  `submitter_name` while returning the other internal contact/diagnostic
+  fields. The projection is now centralized and complete.
+- Two harness assumptions were repaired: attachment visibility targets its
+  stable element ID, and malformed JSON is sent as raw bytes because Playwright
+  otherwise serializes a string into valid JSON.
+- The corrected matrix passed completely. Fifty-four independent fixture and
+  cleanup assertions confirmed zero database/Auth residue, and the temporary
+  fixture/harness files were removed.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| Credentialed role/tenant matrix | Passed; complete browser/API/PostgREST/RPC/RLS/Storage and malformed-JSON coverage |
+| Disposable setup/cleanup | Passed; 54 assertions and zero database/Auth residue |
+| Focused regression tests | Passed; authentication settlement, internal read projection, and matrix transport contracts |
+| Focused lint/build | Passed during defect isolation and corrected reruns |
+| `npm ci` | Passed; 533 packages installed from lockfile, 0 vulnerabilities |
+| `npm test` | Passed; 147 files, 1,150 tests |
+| `npm run lint` | Passed; no warnings/errors |
+| `npm run build` | Passed; optimized Next.js production build |
+| `npm run test:e2e` | Passed; 42 production HTTP checks; fixture-file run skipped because the separate disposable live matrix had already passed and its secret fixture was removed |
+| `npm audit --audit-level=low` | Passed; 0 vulnerabilities |
+| `git diff --check` | Passed |
+
+### Exact next step
+
+- Run the full clean-install pre-commit gate, commit P0-CB, then begin the next
+  repository-local Phase 1 authorization-kernel closure. The hosted protected
+  fixture/workflow, branch protection, and provider/worker configuration remain
+  explicit operator gates.
+
+## Session record — 2026-08-17 (migrations 036–037 live verification)
+
+### Objective
+
+Retire the tenant-safe site-administration commands' protected positive,
+rollback, privilege, exact-audit, derived Slack-mapping, and concurrency debt
+on the current deployed schema.
+
+### Evidence
+
+- Anonymous and authenticated API roles could not invoke either command;
+  missing, non-admin, and inactive actors failed before business validation.
+- Create rejected malformed/extra/non-string inputs, invalid UUIDs, names,
+  codes, timezones, addresses, Slack IDs, lifecycle/project states, inactive or
+  missing customers, and missing/inactive/external owners without residue.
+- Minimal trial-customer and fully populated active-customer creates proved
+  migration 037's repaired default/null expressions, normalization, active
+  internal ownership, exact single create audit, and current Slack mapping.
+- Patch rejected customer reassignment, default-owner mutation, malformed/
+  unsupported fields, inactive/decommissioned sites, inactive parent tenants,
+  and invalid lifecycle/configuration values without row or audit changes.
+- A seven-field patch preserved customer/default-owner/creation identity,
+  normalized values, and wrote exactly one attributable audit per changed
+  field. An exact no-op added no audit or mapping; nullable clears wrote two
+  exact audits while retaining the historical Slack mapping.
+- Reusing a canonical Slack channel during create or patch failed with
+  `23505`; the site, audit, and derived mapping changes rolled back together.
+- Twelve simultaneous same-code creates produced one site and one audit with
+  eleven conflicts. Twelve identical simultaneous site patches all returned
+  successfully but produced only the seven first-change audits and one
+  derived mapping.
+- All disposable sites, mappings, audits, profiles, customers, and the real
+  Auth admin were removed; independent residue checks were empty. The first
+  run reached cleanup and exposed only a verifier assumption: deleted Auth
+  lookup returns `User not found` in this project. The cleanup assertion was
+  corrected and the complete matrix reran from a clean preflight.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| Migrations 036–037 live matrix | Passed; 500 privilege/lifecycle/input/default/ownership/audit/mapping/rollback/concurrency assertions |
+| Migration 037 repaired commands | Passed; site commands here plus positive 028–031 matrices cover all six repaired definitions |
+| Concurrency | Passed; 12 same-code creates committed once; 12 identical patches wrote one exact changed-field audit set |
+| Disposable cleanup | Passed; zero site/mapping/audit/profile/customer/Auth residue |
+| `npm ci` | Passed; 533 packages installed from lockfile, 0 vulnerabilities |
+| `npm test` | Passed; 147 files, 1,147 tests |
+| `npm run lint` | Passed; no warnings/errors |
+| `npm run build` | Passed; optimized Next.js production build |
+| `npm run test:e2e` | Passed; 42 production HTTP checks; credentialed matrix skipped because its fixture file is unset |
+| `npm audit --audit-level=low` | Passed; 0 vulnerabilities |
+| `git diff --check` | Passed |
+
+### Exact next step
+
+- Commit this verification record, then re-audit the remaining Phase 0 release
+  gates and select the highest-value repository-local closure.
+
+## Session record — 2026-08-17 (migration 035 live verification)
+
+### Objective
+
+Retire the atomic admin site-membership command's protected positive,
+rollback, privilege, audit, and concurrency debt.
+
+### Evidence
+
+- Anonymous and authenticated API roles could not invoke either membership
+  command; only the service role reached independent validation and
+  authorization.
+- Missing, inactive, and non-admin actors; missing, invited, inactive, and
+  manager targets; malformed roles; inactive/decommissioned sites; inactive
+  customers; and cross-tenant combinations all failed closed without effects.
+- Same-tenant add/remove operations preserved unrelated membership row IDs and
+  roles and committed exact attributable `joined`/`left` audit evidence.
+  Duplicate adds and missing repeated removes failed atomically.
+- Legacy users with a null `customer_id` derived their tenant from their first
+  valid active site. Existing same-tenant memberships remained intact;
+  cross-tenant history blocked a conflicting derivation; and a duplicate add
+  rolled back the provisional customer assignment and audit.
+- Twelve simultaneous identical adds produced one membership and one audit;
+  eleven callers received the unique-conflict result. Twelve simultaneous
+  removes produced one deletion and one audit; eleven callers received the
+  not-found result.
+- All disposable memberships, audits, profiles, sites, customers, and the real
+  Auth admin were removed; independent residue checks were empty.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| Migration 035 live matrix | Passed; 112 privilege/lifecycle/tenant/legacy/rollback/audit/concurrency assertions |
+| Concurrency | Passed; 12 identical adds and 12 identical removes each committed exactly once with one audit |
+| Disposable cleanup | Passed; zero membership/audit/profile/site/customer/Auth residue |
+| `npm ci` | Passed; 533 packages installed from lockfile, 0 vulnerabilities |
+| `npm test` | Passed; 147 files, 1,147 tests |
+| `npm run lint` | Passed; no warnings/errors |
+| `npm run build` | Passed; optimized Next.js production build |
+| `npm run test:e2e` | Passed; 42 production HTTP checks; credentialed matrix skipped because its fixture file is unset |
+| `npm audit --audit-level=low` | Passed; 0 vulnerabilities |
+| `git diff --check` | Passed |
+
+### Exact next step
+
+- Commit this verification record, then execute the combined migrations
+  036–037 disposable site-administration matrix.
+
+## Session record — 2026-08-17 (migration 034 live verification)
+
+### Objective
+
+Retire the raw atomic ticket-creation command's protected positive/rollback
+debt beneath migration 047's already-verified replay wrapper.
+
+### Evidence
+
+- Anonymous and authenticated API roles cannot invoke `create_ticket_atomic`;
+  only the service role reaches its independent validation and authorization.
+- Null/non-object/unknown fields, malformed identifiers/timestamps, missing or
+  mismatched customer/site, inactive lifecycle, foreign SLA, unsupported
+  source/request/severity/impact, invalid secure token, and bounded text/contact
+  failures all left the marked ticket count unchanged.
+- Null creators were accepted only for web and signed-Slack provenance.
+  Active internal creators could create across active tenants; customer
+  managers remained inside their organization; customers required an exact
+  active membership; inactive, missing, cross-tenant, unassigned, and non-web
+  external actors failed closed.
+- A fully populated guest web ticket trimmed/normalized optional fields,
+  retained its exact 64-character token and SLA timestamps, started New with a
+  sequence-backed number, and committed one creation event, one guest audit,
+  one Slack-master event, and one confirmation-email event at the same
+  timestamp. The raw command correctly created no replay-ledger row.
+- The null-actor signed-Slack path created only its required master event;
+  internal, manager, and assigned-customer positive paths persisted exact
+  actor and site scope with attributable audit evidence.
+- Reusing an existing secure token returned `23505`; the second ticket and all
+  child effects rolled back while the first ticket's exact event/audit/outbox
+  cardinality remained unchanged.
+- Twelve simultaneous independent raw creates returned twelve distinct UUIDs,
+  twelve unique sequence numbers/tokens, and exactly twelve tickets, creation
+  events, audits, and Slack-master events with no replay-ledger rows.
+- All disposable tickets, events, audits, outbox/replay rows, policies,
+  memberships, sites, customers, profiles, and the real Auth engineer were
+  removed; independent residue checks were empty.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| Migration 034 live matrix | Passed; 222 privilege/payload/lifecycle/SLA/scope/creation/effect/rollback/concurrency assertions |
+| Concurrency | Passed; 12 independent creates produced 12 unique sequence-backed tickets and exact child effects |
+| Disposable cleanup | Passed; zero ticket/event/audit/outbox/replay/policy/membership/site/customer/profile/Auth residue |
+| `npm ci` | Passed; 533 packages installed from lockfile, 0 vulnerabilities |
+| `npm test` | Passed; 147 files, 1,147 tests |
+| `npm run lint` | Passed; no warnings/errors |
+| `npm run build` | Passed; optimized Next.js production build |
+| `npm run test:e2e` | Passed; 42 production HTTP checks; credentialed matrix skipped because its fixture file is unset |
+| `npm audit --audit-level=low` | Passed; 0 vulnerabilities |
+| `git diff --check` | Passed |
+
+### Exact next step
+
+- Commit this verification record, then execute the migration 035 disposable
+  admin site-membership matrix.
+
+## Session record — 2026-08-17 (migration 033 live verification)
+
+### Objective
+
+Retire the protected outbox lifecycle debt against the current deployed schema,
+including migration 050's provider-attempt checkpoint, without claiming or
+settling existing production events.
+
+### Evidence
+
+- A read-only preflight confirmed no prior migration-033 fixtures and no
+  unrelated exhausted stale processing leases, avoiding the claim command's
+  intentional global stale-final cleanup side effect.
+- Anonymous and authenticated roles cannot read/write the outbox or invoke
+  claim, delivery, failure, or provider-checkpoint commands. Invalid claim
+  bounds/type and invalid table aggregate/event/status/attempt shapes failed
+  closed; duplicate idempotency keys returned `23505`.
+- Claiming selected only the exact aggregate's ready event, incremented the
+  attempt, minted a token and lease time, and would not reclaim a fresh lease.
+  Wrong-token checkpoint/delivery/failure calls were inert; the active token
+  recorded the provider boundary and settled exact delivery evidence once.
+- Retryable failures cleared the lease, retained attempt history and exact
+  result, truncated errors to 2,000 characters, and scheduled approximately
+  30- then 60-second exponential delays. Events were unavailable before their
+  retry time.
+- Non-retryable failures, failures at the maximum attempt, and abandoned final
+  stale leases became retained dead letters with exact diagnostics and no
+  further claim. A stale non-final lease rotated its token and incremented the
+  attempt, while a fresh lease remained untouched.
+- Claim ordering followed `available_at`; twelve simultaneous one-event claims
+  returned every fixture exactly once through `SKIP LOCKED`, with twelve unique
+  active leases.
+- Ticket severity, assignment, and resolution changes enqueued exactly three
+  master syncs, one Slack resolution reply, and one email resolution event.
+  A business-field no-op added nothing, and a rejected invalid transition
+  preserved the entire ticket and left no outbox row.
+- The first run stopped only because the verifier compared JSONB insertion key
+  order. PostgreSQL had persisted the exact delivery object with canonical key
+  order. The deep comparator was corrected, the failed run's fixtures were
+  cleaned, and the complete matrix passed from a clean preflight.
+- All disposable outbox/ticket/timeline/audit/customer/site/profile/Auth data
+  was removed; independent residue checks were empty.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| Migration 033 live matrix | Passed; 167 privilege/constraint/enqueue/claim/lease/checkpoint/settlement/retry/dead-letter/concurrency assertions |
+| Concurrency | Passed; 12 simultaneous claims returned 12 distinct events and exact leases |
+| Backoff/dead letter | Passed; ~30s/~60s retry windows plus terminal, exhausted, and stale-final retention |
+| Disposable cleanup | Passed; zero outbox/ticket/event/audit/customer/site/profile/Auth residue |
+| `npm ci` | Passed; 533 packages installed from lockfile, 0 vulnerabilities |
+| `npm test` | Passed; 147 files, 1,147 tests |
+| `npm run lint` | Passed; no warnings/errors |
+| `npm run build` | Passed; optimized Next.js production build |
+| `npm run test:e2e` | Passed; 42 production HTTP checks; credentialed matrix skipped because its fixture file is unset |
+| `npm audit --audit-level=low` | Passed; 0 vulnerabilities |
+| `git diff --check` | Passed |
+
+### Exact next step
+
+- Commit this verification record, then execute the migration 034 disposable
+  atomic ticket-creation matrix.
+
+## Session record — 2026-08-17 (migration 032 live verification)
+
+### Objective
+
+Retire the remaining protected positive-transition debt and prove that the
+database state machine, atomic mutation command, and application transition
+table remain exact under rollback and concurrency.
+
+### Evidence
+
+- Anonymous and authenticated API roles cannot invoke either the SQL truth
+  helper or the atomic ticket-patch command, and authenticated direct ticket
+  updates remain denied without changing the row.
+- The service-only SQL helper and the database trigger matched the application
+  transition table for all 64 current/next status pairs. All 19 changed legal
+  edges committed and all 37 illegal edges returned `23514` with their original
+  status intact; eight same-state updates were accepted as no-ops.
+- The direct transition matrix enqueued exactly 19 master-sync and four
+  resolution-reply events—only for successful changed edges—with exact old/new
+  payloads.
+- Invalid New-to-Resolved, ownerless Assigned, owner removal from Assigned,
+  resolution without a summary, and clearing an existing Resolved summary each
+  rolled back ticket fields, `updated_at`, timeline, audit, and outbox together.
+- Intentionally inconsistent historical Assigned/Resolved fixtures accepted
+  unrelated severity/internal-summary edits without silently repairing or
+  worsening their missing invariants; each produced only its exact audit/event/
+  outbox effects.
+- Twelve identical concurrent New-to-Assigned saves all returned the ticket,
+  settled on one owner/state, did not satisfy First Response, and produced one
+  status event/audit, one owner event/audit, and one master-sync event.
+- The allowed Assigned-to-Resolved-to-Closed-to-Reopened-to-In-Progress chain
+  persisted exact resolved/closed timestamps, status and SLA-achieved events,
+  changed-field audits, resolution delivery work, and future-SLA non-breach.
+- The verifier's first run expected invalid null truth-helper inputs to return
+  literal `false`; PostgreSQL correctly returned null through three-valued
+  logic. Because ticket status columns are non-null and the trigger cannot see
+  null, the assertion was corrected to require that invalid/null inputs are
+  never `true`. The failed run cleaned its fixtures; a preflight proved zero
+  prior residue before the complete successful rerun.
+- All 72 disposable tickets, their events/audits/outbox rows, the site,
+  customer, engineer profile, and real Auth identity were removed; independent
+  residue checks were empty.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| Migration 032 live matrix | Passed; 430 privilege/parity/transition/invariant/rollback/legacy/effect/concurrency assertions |
+| State matrix | Passed; all 64 SQL helper and trigger decisions matched TypeScript |
+| Concurrency | Passed; 12 identical assignments created one exact mutation effect set |
+| Disposable cleanup | Passed; zero ticket/event/audit/outbox/customer/site/profile/Auth residue |
+| `npm ci` | Passed; 533 packages installed from lockfile, 0 vulnerabilities |
+| `npm test` | Passed; 147 files, 1,147 tests |
+| `npm run lint` | Passed; no warnings/errors |
+| `npm run build` | Passed; optimized Next.js production build |
+| `npm run test:e2e` | Passed; 42 production HTTP checks; credentialed matrix skipped because its fixture file is unset |
+| `npm audit --audit-level=low` | Passed; 0 vulnerabilities |
+| `git diff --check` | Passed |
+
+### Exact next step
+
+- Commit this verification record, then execute the migration 033 disposable
+  outbox lifecycle matrix.
+
+## Session record — 2026-08-17 (migration 031 live verification)
+
+### Objective
+
+Retire the protected positive/rollback debt for the atomic customer-team
+profile and site-access command without touching existing tenant rows.
+
+### Evidence
+
+- Anonymous and authenticated API roles cannot execute
+  `apply_team_member_patch`; only the service role reaches the command, which
+  then independently requires an active customer manager in an active/trial
+  organization.
+- Missing and cross-tenant targets, manager targets, foreign/inactive/
+  decommissioned sites, malformed UUIDs, duplicate or oversized site sets,
+  unsupported fields/statuses, and invalid names all fail closed.
+- A positive profile and three-site save trimmed the name, updated status,
+  retained the existing `owner` and `viewer` membership rows/roles, added only
+  the new `member` row, and wrote exactly the three changed-field audits with
+  exact actor, target, tenant, and old/new evidence.
+- Omitting `site_ids` preserved the complete membership set and row IDs;
+  submitting the same reordered set was a no-op; submitting a subset removed
+  only omitted rows; and `[]` explicitly cleared access. No-op calls added no
+  audits.
+- Foreign, inactive, and decommissioned-site requests that also attempted a
+  profile change rolled back the profile, membership set, and audit together.
+- Twelve identical concurrent saves all returned the target ID, settled on one
+  exact profile/site state, preserved the retained owner role, inserted the
+  missing site once, and produced one audit per changed field rather than per
+  caller.
+- The disposable customers, sites, direct profiles, one real Auth identity,
+  memberships, and audits were all removed; independent residue checks were
+  empty.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| Migration 031 live matrix | Passed; 175 privilege/payload/lifecycle/tenant/set-diff/role/row-identity/no-op/audit/rollback/concurrency assertions |
+| Concurrency | Passed; 12 identical saves produced one final set and exactly two changed-field audits |
+| Disposable cleanup | Passed; zero customer/site/profile/membership/audit/Auth residue |
+| `npm ci` | Passed; 533 packages installed from lockfile, 0 vulnerabilities |
+| `npm test` | Passed; 147 files, 1,147 tests |
+| `npm run lint` | Passed; no warnings/errors |
+| `npm run build` | Passed; optimized Next.js production build |
+| `npm run test:e2e` | Passed; 42 production HTTP checks; credentialed matrix skipped because its fixture file is unset |
+| `npm audit --audit-level=low` | Passed; 0 vulnerabilities |
+| `git diff --check` | Passed |
+
+### Exact next step
+
+- Commit this verification record, then execute the migration 032 disposable
+  allowed-transition and invariant matrix.
+
+## Session record — 2026-08-17 (migrations 028–030 live verification)
+
+### Objective
+
+Retire the protected positive/rollback debt for atomic spare-part request and
+field-service transactions without touching existing tenant/business rows.
+
+### Evidence
+
+- Anonymous and authenticated callers cannot invoke the four service commands
+  or mint ticket/request/order numbers directly. Active internal attribution
+  is rechecked in each command; inactive/internal and customer actors fail
+  closed.
+- Spare-part request creation persisted the exact header, two owned items,
+  rounded prices, derived total, sequence number, and one attributable audit
+  row. Cross-site/cross-tenant tickets, inactive or duplicate parts, and
+  unknown fields left no parent residue.
+- Approval and fulfillment committed header, approval attribution, owned item,
+  and exact changed-field audits together. Cross-request items,
+  over-fulfillment, duplicate items, and direct table-bound violations rolled
+  back completely. Twelve identical concurrent fulfillment updates produced
+  one final quantity and one new audit row.
+- Field-service creation persisted the exact calendar dates, estimates,
+  ticket/site, sequence, two engineer roles, and one attributable audit row.
+  Cross-site/cross-tenant tickets, reversed/invalid dates, non-engineer and
+  duplicate assignees left no parent residue.
+- Field-service patch replaced the full engineer set and committed operational
+  fields plus exact changed-field audit rows. Invalid replacement assignees,
+  reversed dates, and direct schedule-bound violations rolled back. Completion
+  attribution/timestamp/report persisted, and twelve identical concurrent
+  hour updates produced one final value and one new audit row.
+- The temporary verifier's first cleanup attempted customer deletion before
+  deleting the disposable user profiles. The foreign key correctly blocked
+  it; after the profiles were removed, the two exact remaining customer rows
+  were identified and deleted. Cleanup order was corrected and the complete
+  matrix was rerun successfully from scratch with zero residue.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| Migrations 028–030 live matrix | Passed; 173 privilege/create/update/tenant/parent/lifecycle/constraint/audit/rollback/concurrency assertions |
+| Concurrency | Passed; independent 12-way exact request-fulfillment and field-service-hour updates each produced one changed-field audit |
+| Disposable cleanup | Passed after corrected rerun; zero request/order/item/assignment/ticket/site/part/customer/profile/audit/Auth residue |
+| `npm ci` | Passed; 533 packages installed from lockfile, 0 vulnerabilities |
+| `npm test` | Passed; 147 files, 1,147 tests |
+| `npm run lint` | Passed; no warnings/errors |
+| `npm run build` | Passed; optimized Next.js production build |
+| `npm run test:e2e` | Passed; 42 production HTTP checks; credentialed matrix skipped because its fixture file is unset |
+| `npm audit --audit-level=low` | Passed; 0 vulnerabilities |
+| `git diff --check` | Passed |
+
+### Exact next step
+
+- Commit this verification record, then execute the migration 031 disposable
+  team-access matrix.
+
+## Session record — 2026-08-17 (migration 054 live verification)
+
+### Objective
+
+Confirm the repaired migration deployed completely, prove the administrator
+Slack-identity command under real Supabase authorization/concurrency, exercise
+the actual signed-in API/form, and leave no disposable data.
+
+### Evidence
+
+- Migration rollout quarantined exactly 19 impossible `U_HANDLER_*` values to
+  NULL with 19 exact `system` audit rows. All 19 Auth identities and profiles
+  remain, and all 19 retained ticket ownerships remain.
+- The command is deployed and service-only. Anonymous and authenticated RPC
+  execution, authenticated direct Slack-field writes, non-admin actors,
+  missing/invalid targets, invalid IDs, inactive targets, and duplicate
+  ownership all failed closed without mutation or audit residue.
+- Normalized set, exact no-op, clear, and blank-null no-op semantics matched
+  the contract with exact attributable audit cardinality.
+- Twelve concurrent exact commands against one target produced one mapping and
+  one audit row. Twelve targets competing for one ID produced one winner,
+  eleven `23505` conflicts, one mapping, and one audit row.
+- A disposable real administrator signed in through `/login`, opened the real
+  user-detail form, set lowercase `u054brow01` as canonical `U054BROW01`, and
+  cleared it. The API returned the visible success states and the database
+  retained exactly the expected two admin-attributed audit rows.
+- Desktop and 390×844 checks confirmed Inter, no horizontal overflow, 44-pixel
+  input/button targets, and zero browser warnings/errors.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| Migration 054 live matrix | Passed; 326 quarantine/command/privilege/lifecycle/uniqueness/audit/concurrency/cleanup assertions |
+| Signed-in API/UI mutation | Passed; canonical set + clear with exactly two attributable audit rows |
+| Responsive browser | Passed at desktop and 390×844; Inter, no overflow, 44-pixel controls, zero warnings/errors |
+| Disposable cleanup | Passed; zero live matrix or browser profile/audit/Auth residue |
+| `npm ci` | Passed from the lockfile; install audit reported 0 vulnerabilities |
+| `npm test` | Passed; 147 files, 1,147 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed on Next.js 15.5.22; Slack-identity API route emitted |
+| `npm run test:e2e` | Passed; 42 production HTTP checks; protected credentialed matrix skipped because its fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+
+### Exact next step
+
+- Run the full pre-commit gate, commit this rollout record, then start the
+  disposable migration 028–037 positive/rollback verification campaign.
+
+## Session record — 2026-08-16 (migration 054 invalid-legacy rollback)
+
+### Finding
+
+- The first migration 054 application stopped with `22023` before the command,
+  constraint, or audit normalization could commit. A service-role probe
+  confirmed `apply_admin_user_slack_identity` is absent (`PGRST202`), so the
+  transaction rolled back rather than leaving a partial deployment.
+- Read-only inspection found 19 non-null mappings, all synthetic
+  `U_HANDLER_*` values from July handler fixtures. Their `_`/`-` characters
+  make them impossible Slack member IDs under the provider contract. All 19
+  have Auth rows and retained ticket ownership, so deleting those users or
+  their operational history is outside this migration's scope.
+
+### Repair
+
+- Migration 054 now transactionally sets only invalid legacy mappings to NULL
+  and records one system audit row per user with the old value and explicit
+  `invalid_provider_id_shape` reason. Valid mappings still normalize safely;
+  valid identities that become ambiguous after normalization still abort for
+  operator resolution.
+- No live data was mutated during diagnosis. The repaired migration and its
+  updated contracts passed the complete pre-commit gate before retry.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| Rollback probe | Passed; RPC absent with `PGRST202`, proving no partial function deployment |
+| Legacy inspection | Passed; 19/19 non-null values are impossible synthetic `U_HANDLER_*` IDs; no valid mapping requires preservation |
+| Focused migration contracts | Passed; 1 file, 8 tests |
+| `npm ci` | Passed from lockfile; install audit reported 0 vulnerabilities |
+| `npm test` | Passed; 147 files, 1,147 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed on Next.js 15.5.22 |
+| `npm run test:e2e` | Passed; 42 production HTTP checks; protected credentialed matrix skipped because its fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+
+## Session record — 2026-08-13 (P0-CA / administrator-managed Slack identities)
+
+### Objective
+
+Close the operational prerequisite introduced by signed Slack reply capture:
+give administrators a safe product workflow to set or clear the unique Slack
+identity used for attribution and authorization.
+
+### Changes
+
+- Added migration 054 with legacy-value preflight and canonicalization,
+  provider-ID shape enforcement, shared user-mutation serialization, active
+  administrator and target lifecycle checks, exact no-op handling, uniqueness,
+  and transactionally bound audit evidence.
+- Added a strict administrator-only API and RPC wrapper. Actor identity is
+  session-derived, malformed/extra input is rejected, and expected command
+  failures map to stable 400/403/404/409 responses without leaking internals.
+- Added a dedicated accessible Slack identity form to the administrator user
+  detail instead of mixing integration state into general profile/role writes.
+  The field normalizes to uppercase, supports explicit unlinking, explains how
+  to find the provider member ID, and is disabled for inactive users.
+- Browser QA found and fixed a pre-existing server-rendering defect across the
+  user, customer, and site detail pages: enriched actor display names now come
+  from `audit_logs_with_actor`, not the base `audit_logs` table.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| Focused contracts | Passed; 5 files, 38 tests |
+| Focused lint | Passed; zero warnings |
+| Production build | Passed on Next.js 15.5.22; new API route emitted |
+| Desktop browser | Passed at 1280×900; labelled empty form, Inter, 44-pixel controls, no horizontal overflow |
+| Mobile browser | Passed at 390×844; responsive field/help/action with no horizontal overflow |
+| Post-fix browser diagnostics | Passed; zero fresh warnings/errors |
+| Browser mutation containment | Passed; no Slack identity write before migration 054 |
+| Disposable data cleanup | Passed; zero Auth/profile/audit residue |
+| `npm ci` | Passed from lockfile; install audit reported 0 vulnerabilities |
+| `npm test` | Passed; 147 files, 1,146 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed on Next.js 15.5.22 |
+| `npm run test:e2e` | Passed; 42 production HTTP checks, including unauthenticated Slack-identity mutation denial; protected credentialed matrix skipped because its fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+
+### Remaining gate
+
+- Apply migration 054, then run live command, privilege, uniqueness, no-op,
+  lifecycle, concurrency, audit-cardinality, and cleanup probes before the API
+  and form can be considered deployment-ready.
+
+## Session record — 2026-08-13 (migration 053 live verification)
+
+### Objective
+
+Verify the deployed Slack ticket-thread boundary through the signed production
+HTTP route and prove replay, tenant, mapping, audit, SLA, and delivery evidence
+under disposable live data.
+
+### Evidence
+
+- Site insertion and channel reassignment transactionally materialized exactly
+  one current operational mapping while retaining the prior mapping as
+  historical receipt evidence. Same-site duplicate mappings and cross-site
+  current-channel reuse both failed with `23505`.
+- A non-null Slack actor identity could belong to exactly one Ripple user.
+  Anonymous and authenticated clients could neither execute the capture
+  command nor read/write its forced-RLS ledger; invalid service input also
+  produced no receipt or comment.
+- Signed bot, stale-channel, unknown-thread, unlinked-actor, and inactive-actor
+  events were acknowledged without writes. A uniquely linked but cross-site
+  actor failed closed with a generic HTTP error and no tenant data mutation.
+- The first valid signed event committed one normalized customer-visible Slack
+  comment, one replay receipt, one timeline row, and one exact audit row. Exact
+  replay returned the first durable result; altered reuse was contained without
+  changing the original body or creating a Slack retry storm.
+- Twelve concurrent signed HTTP deliveries of one independent event all
+  succeeded and collapsed to one comment/receipt. Across the two unique events,
+  comment, receipt, timeline, and audit cardinality was exactly two.
+- Customer-authored replies did not claim First Response or breach future SLA
+  targets. No `ticket.slack_comment_reply` outbox event was created, proving the
+  inbound message cannot echo back to Slack.
+- Cleanup removed the disposable customer, sites, mappings, messages, ticket,
+  memberships, users, Auth identity, comments, ledgers, timeline/audit rows,
+  and outbox evidence with zero residue.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| Migration 053 live matrix | Passed; 173 signed-ingress/mapping/replay/concurrency/privilege/tenant/cardinality/SLA/no-echo/cleanup assertions |
+| Concurrent delivery | Passed; 12 signed production HTTP requests produced exactly one durable comment and receipt |
+| Cleanup | Passed; zero database/Auth residue |
+| Dependency advisory response | Gate discovered GHSA-2v37-7h3g-55p8; compatible `nanoid` override advanced from 3.3.17 to 3.3.18 before commit |
+| `npm ci` | Passed from updated lockfile; install reported 0 vulnerabilities |
+| `npm test` | Passed; 143 files, 1,115 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build and type check |
+| `npm run test:e2e` | Passed; all 41 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+
+### Result
+
+Migration 053 is deployed and live-verified. P0-BZ is closed; continue with the
+next highest-value repository-local Phase 0 gap.
+
+## Session record — 2026-08-13 (P0-BZ / Slack ticket-thread capture)
+
+### Objective
+
+Close the explicit Slack Events no-op so human replies under ticket master
+cards become durable Ripple comments without cross-site ambiguity, duplicate
+capture, or an outbound echo loop.
+
+### Implementation
+
+- Replaced the signed Events endpoint's discard branch with a bounded parser
+  that ignores bot/app/edited/root/unsupported messages and captures only human
+  thread replies with a stable Slack `event_id`.
+- Resolves the current active site channel, exact master-message receipt, and
+  one active linked Ripple actor before any write. Missing mappings are safe
+  no-ops; database/ambiguous mapping failures fail closed with bounded logs.
+- Added migration 053's forced-RLS, service-only event receipt ledger and
+  row-serialized atomic command. Exact retries return the first comment;
+  altered reuse fails closed; the existing comment/SLA/timeline/audit command
+  commits the message without a Slack outbox echo because Slack already
+  delivered it.
+- Made `sites.slack_channel_id` uniquely own each current Slack channel and
+  each non-null `users.slack_user_id` uniquely identify one Ripple actor,
+  transactionally materialized its per-site operational mapping, deduplicated
+  equivalent mapping rows while repointing historical message receipts, and
+  retained old site mappings as delivery history.
+- Changed slash-command/site resolution and outbound master/thread delivery to
+  require the canonical active site/customer channel. Stale mapping rows and
+  caller-supplied stale channel overrides no longer authorize ingress or
+  delivery.
+- Added 31 signed-route, parser, replay, migration, site-resolution, mutation,
+  and outbound-delivery contracts, bringing the deterministic suite to 1,115.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| Focused Slack event/migration/mutation/delivery tests | Passed; 53 tests |
+| Focused lint | Passed; zero warnings |
+| Focused production build | Passed; Next.js 15.5.22 production build and type check |
+| `npm ci` | Passed from lockfile; install reported 0 vulnerabilities |
+| `npm test` | Passed; 143 files, 1,115 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build and type check |
+| `npm run test:e2e` | Passed; all 41 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+
+### Result
+
+P0-BZ is implementation-complete and migration-first. Apply migration 053 and
+run its disposable mapping/replay/concurrency/cardinality/privilege/no-echo
+matrix before deploying the dependent Slack ingress and delivery code.
+
+## Session record — 2026-08-13 (migration 052 live verification)
+
+### Objective
+
+Verify the deployed atomic self-service profile boundary across public
+privilege denial, normalization, lifecycle, exact audit, serialized
+concurrency, and complete disposable-fixture cleanup.
+
+### Evidence
+
+- A disposable confirmed customer identity proved authenticated direct
+  `full_name` and unsupported `avatar_url` writes are denied and leave the row
+  unchanged. Anonymous and authenticated clients also cannot execute the
+  service-only command.
+- Missing/null actors, overlong names, control-character phone values, and an
+  inactive actor returned the intended stable database codes without profile
+  or audit changes.
+- One normalized name/phone command returned only the minimal receipt and
+  committed exactly two self-service audit rows with exact actor, role,
+  entity, before/after, source, and command evidence. Exact no-op replay added
+  no audit row.
+- Twelve concurrent unique-phone commands all succeeded under the row lock,
+  produced exactly twelve distinct phone audit rows, and formed one serialized
+  transition chain from the prior value to the final committed value.
+- The matrix passed **90 assertions**. Cleanup removed the disposable Auth
+  identity, public profile, and all command audit rows with zero residue.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| Migration 052 live matrix | Passed; 90 direct-write/RPC-denial, validation, lifecycle, exact-audit, concurrency, and cleanup assertions |
+| Public direct writes | Name/avatar writes denied with no row effect |
+| Concurrent commands | 12/12 committed; exact serialized audit chain |
+| Cleanup | Zero Auth, profile, or command-audit residue |
+| `npm ci` | Passed from lockfile; install reported 0 vulnerabilities |
+| `npm test` | Passed; 140 files, 1,084 tests |
+| `npm run lint` | Passed; zero warnings |
+| `npm run build` | Passed; Next.js 15.5.22 production build and type check |
+| `npm run test:e2e` | Passed; all 41 production HTTP checks; credentialed matrix explicitly skipped because its protected fixture is unset |
+| `npm audit` | Passed; 0 known vulnerabilities |
+| `git diff --check` | Passed |
+
+### Result
+
+Migrations 001–052 are deployed and live-verified. P0-BY is closed; continue
+with the highest-value remaining repository-local Phase 0 closure while the
+protected staging and production provider/worker gates remain separate.
 
 ## Session record — 2026-08-12 (P0-BY / atomic self-service profile)
 
@@ -163,9 +1040,9 @@ password flow or responsive Profile experience.
   mobile 390×844 Profile flows. Edit/cancel, password visibility, mismatched-
   password validation, Inter, no-overflow behavior, long-email wrapping, and
   minimum control targets passed with zero console warnings/errors.
-- No profile or password write was sent because migration 052 is still the
-  migration-first gate. The disposable Auth identity and profile were fully
-  deleted with no retained test row.
+- No profile or password write was sent during pre-deployment browser QA. The
+  disposable Auth identity and profile were fully deleted with no retained
+  test row.
 
 ### Verification
 
@@ -182,9 +1059,9 @@ password flow or responsive Profile experience.
 
 ### Result
 
-P0-BY is implementation-complete and migration-first. Apply migration 052 and
-run its disposable command/audit/privilege/concurrency/rollback matrix before
-deploying the dependent application code.
+P0-BY was implementation-complete and migration-first at this checkpoint. The
+subsequent 2026-08-13 live matrix confirms migration 052 is deployed and the
+boundary is closed.
 
 ## Session record — 2026-08-12 (P0-BX / truthful system readiness)
 

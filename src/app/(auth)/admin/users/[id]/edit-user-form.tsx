@@ -16,6 +16,7 @@ interface UserData {
   status: string;
   customer_id: string | null;
   phone: string | null;
+  slack_user_id: string | null;
   created_at: string;
 }
 
@@ -24,7 +25,13 @@ export function EditUserForm({ user }: { user: UserData }) {
   const [role, setRole] = useState(user.role);
   const [status, setStatus] = useState(user.status);
   const [saving, setSaving] = useState(false);
+  const [slackUserId, setSlackUserId] = useState(user.slack_user_id || "");
+  const [slackSaving, setSlackSaving] = useState(false);
   const [message, setMessage] = useState<{
+    type: "success" | "error";
+    text: string;
+  } | null>(null);
+  const [slackMessage, setSlackMessage] = useState<{
     type: "success" | "error";
     text: string;
   } | null>(null);
@@ -66,6 +73,46 @@ export function EditUserForm({ user }: { user: UserData }) {
       });
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleSlackSave(e: React.FormEvent) {
+    e.preventDefault();
+    if (slackSaving || isInactive) return;
+    setSlackSaving(true);
+    setSlackMessage(null);
+
+    try {
+      const normalizedSlackUserId = slackUserId.trim().toUpperCase();
+      const res = await fetch(`/api/admin/users/${user.id}/slack`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          slack_user_id: normalizedSlackUserId || null,
+        }),
+      });
+
+      await assertClientMutationResponse(
+        res,
+        "Failed to update Slack identity"
+      );
+      setSlackUserId(normalizedSlackUserId);
+      setSlackMessage({
+        type: "success",
+        text: normalizedSlackUserId
+          ? "Slack identity linked successfully"
+          : "Slack identity cleared successfully",
+      });
+    } catch (err) {
+      setSlackMessage({
+        type: "error",
+        text: clientMutationErrorMessage(
+          err,
+          "Slack identity update is temporarily unavailable. Please retry."
+        ),
+      });
+    } finally {
+      setSlackSaving(false);
     }
   }
 
@@ -202,6 +249,78 @@ export function EditUserForm({ user }: { user: UserData }) {
           className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
         >
           {saving ? "Saving..." : "Save Changes"}
+        </button>
+      </form>
+
+      <div className="my-6 border-t border-border" />
+
+      <form
+        aria-busy={slackSaving}
+        onSubmit={handleSlackSave}
+        className="space-y-4"
+      >
+        <div>
+          <h3 className="text-sm font-semibold text-foreground">
+            Slack identity
+          </h3>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Link this account so signed Slack ticket replies and internal
+            actions can be attributed and authorized. In Slack, open the
+            member profile, choose More, then copy the member ID.
+          </p>
+        </div>
+
+        {slackMessage && (
+          <div
+            role={slackMessage.type === "error" ? "alert" : "status"}
+            className={`rounded-lg border px-4 py-3 text-sm ${
+              slackMessage.type === "success"
+                ? "border-green-200 bg-green-50 text-green-800"
+                : "border-red-200 bg-red-50 text-red-800"
+            }`}
+          >
+            {slackMessage.text}
+          </div>
+        )}
+
+        <div>
+          <label
+            htmlFor="admin-user-slack-id"
+            className="block text-sm font-medium text-foreground mb-1"
+          >
+            Slack User ID
+          </label>
+          <input
+            id="admin-user-slack-id"
+            type="text"
+            autoComplete="off"
+            inputMode="text"
+            spellCheck={false}
+            value={slackUserId}
+            onChange={(e) => setSlackUserId(e.target.value.toUpperCase())}
+            minLength={9}
+            maxLength={50}
+            pattern="[UW][A-Z0-9]{8,49}"
+            placeholder="U012ABCDEF0"
+            aria-describedby="admin-user-slack-id-help"
+            disabled={slackSaving || isInactive}
+            className="min-h-11 w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-sm uppercase text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary disabled:opacity-50"
+          />
+          <p
+            id="admin-user-slack-id-help"
+            className="mt-1 text-xs text-muted-foreground"
+          >
+            IDs start with U or W. Clear the field and save to unlink it. One
+            Slack identity can belong to only one Ripple user.
+          </p>
+        </div>
+
+        <button
+          type="submit"
+          disabled={slackSaving || isInactive}
+          className="min-h-11 rounded-lg border border-border bg-background px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-50"
+        >
+          {slackSaving ? "Saving..." : "Save Slack Identity"}
         </button>
       </form>
     </div>

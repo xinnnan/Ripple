@@ -89,7 +89,7 @@ export async function PATCH(
     if (error instanceof AdminSiteMutationError) {
       if (error.code === "23505") {
         return NextResponse.json(
-          { error: "Site code already exists" },
+          { error: "Site code or Slack channel is already in use" },
           { status: 409 }
         );
       }

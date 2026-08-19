@@ -1,9 +1,15 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 // @ts-ignore -- the production runner is an intentional native ESM script.
 import {
   loadCredentialedFixtures,
   validateCredentialedFixtures,
 } from "../../scripts/credentialed-role-matrix.mjs";
+
+const matrixSource = readFileSync(
+  "scripts/credentialed-role-matrix.mjs",
+  "utf8"
+);
 
 function validFixture() {
   return {
@@ -52,6 +58,11 @@ function validFixture() {
 }
 
 describe("credentialed role matrix fixture", () => {
+  it("sends raw malformed JSON instead of a serialized string value", () => {
+    expect(matrixSource).toContain('data: Buffer.from("{")');
+    expect(matrixSource).not.toContain('data: "{"');
+  });
+
   it("normalizes a complete two-tenant fixture without exposing secrets", () => {
     const fixture = validateCredentialedFixtures(validFixture());
     expect(fixture.baseUrl).toBe("https://ripple-staging.example.com");
