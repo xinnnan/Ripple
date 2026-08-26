@@ -8,13 +8,12 @@ meaningful change and before ending a work session. Newest entries go first.
 - **Branch:** `codex/prd-v1-1-gap-closure`
 - **Active phase:** Phase 1 — Authorization and domain foundation; Phase 0
   hosted activation remains an external release gate
-- **Active work item:** P1-A additive customer-membership and site-assignment
-  authorization roots, compatibility backfill, and temporal policy primitives
-- **Last verified checkpoint commit:** `41c7a04` (`fix: close credentialed authorization gate`)
-- **Uncommitted work:** migration 055, shared authorization vocabularies and
-  fail-closed effective-window helpers, deterministic contracts, and rollout
-  documentation
-- **Deployment gate:** migrations 001–054 are confirmed applied and
+- **Active work item:** P1-CA atomic compatibility-to-canonical authorization
+  synchronization
+- **Last verified checkpoint:** migration 056's seven-command atomic
+  synchronization bridge is committed under `feat: synchronize customer
+  authorization writes`; 34 deterministic contracts and every local gate pass
+- **Deployment gate:** migrations 001–055 are confirmed applied and
   live-verified. Migration 044
   passed a 130-assertion disposable live matrix with zero residue. Migration
   045 passed a 110-assertion live matrix with zero residue. Migration 046
@@ -64,9 +63,15 @@ meaningful change and before ending a work session. Newest entries go first.
   no-op/Slack-mapping/rollback/12-way-concurrency live matrix with zero
   database/Auth residue. Combined with the 028–031 matrices, all six repaired
   migration-037 commands have live positive paths.
-  Migration 055 is additive and awaits application. It creates the PRD
-  customer-membership and tenant-bound site-assignment roots, snapshots current
-  compatibility access, and deliberately does not switch runtime reads.
+  Migration 055 passed a 7,437-assertion exact-backfill/role/lifecycle/scope/
+  effective-window/tenant/audit/constraint/privilege/cleanup live matrix.
+  Its 181 customer memberships and 119 site assignments exactly match the
+  compatibility sources, and all disposable authorization, tenant, site,
+  Auth, and profile rows were removed. The P1-B resolver then matched all 181
+  memberships and 119 assignments across 368 live customer/site compatibility
+  decisions. Runtime reads deliberately remain on the compatibility model
+  pending canonical synchronized writes and a later shadow-read cutover.
+  Migration 056 is the current unapplied deployment gate.
   Production `CRON_SECRET` remains unset in this workspace.
 - **External validation gate:** the complete credentialed matrix passed locally
   against disposable live Supabase fixtures and the production Next build with
@@ -150,21 +155,75 @@ meaningful change and before ending a work session. Newest entries go first.
   404s, external/internal attachment controls, and customer-safe/internal API
   projections. It exposed and fixed the inactive-login message remount defect;
   every rerun completed without browser authorization leakage.
-- **Exact next local step:** finish the full clean-install gate and commit P1-A,
-  then apply migration 055 and run its backfill/constraint/privilege/residue
-  matrix before any policy-resolver or runtime-read cutover.
+- **Exact next local step:** apply migration 056 and execute its disposable
+  live synchronization/rollback/concurrency/privilege matrix before P1-CB.
 - **Primary plan:** [`plans/prd-v1.1-gap-closure-plan.md`](./prd-v1.1-gap-closure-plan.md)
 
-## Overall project status — 2026-08-17
+## Session record — 2026-08-19 (P1-CA authorization synchronization)
+
+### Objective
+
+Prevent migration 055's canonical authorization snapshot from becoming stale
+after the next production team/admin access change, without switching runtime
+reads or enabling multi-customer authoring the compatibility model cannot
+represent.
+
+### Changes
+
+- Added migration 056 with an internal service-owner synchronizer that derives
+  one user's complete compatibility graph under a global bridge lock plus
+  stable target, membership, and assignment row locks.
+- Preserved membership and assignment identities, approval capabilities, and
+  historical rows. New or changed state is versioned and gets one attributable
+  full-snapshot audit; exact no-ops do not change timestamps, versions, or
+  audit cardinality.
+- Mapped active/invited compatibility profiles directly and suspended every
+  other lifecycle. Removed grants are closed rather than deleted; reactivation
+  starts a new effective interval after lock acquisition, and future-dated
+  rows can be safely revoked without violating strict window constraints.
+- Renamed and revoked the prior implementations, then restored the exact public
+  signatures as service-role-only wrappers that execute the verified legacy
+  command and canonical synchronization in one transaction.
+- Covered all seven current access-mutating commands: team patch, admin site
+  add/remove, admin user patch, bulk user deactivation, team provisioning, and
+  aggregate customer archival. A repository-wide write inventory confirmed
+  that site archival intentionally preserves historical assignments and is
+  enforced through resource lifecycle in the policy resolver.
+- Kept the dormant resolver out of production routes. This bridge makes the
+  canonical model a synchronized mirror only; P1-CB must replace it before
+  canonical multi-customer authoring or policy cutover.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| Focused migration contracts | Passed; 1 new file, 34 tests |
+| `npm ci` | Passed; 533 packages installed from lockfile, 0 vulnerabilities |
+| Full `npm test` integration pass | Passed; 152 files, 1,217 tests |
+| `npm run lint` | Passed; no warnings/errors |
+| `npm run build` | Passed; optimized production build and type validation |
+| `npm run test:e2e` | Passed; all 42 production HTTP checks; credentialed fixture intentionally absent after its separately recorded complete pass |
+| `npm audit --audit-level=low` | Passed; 0 vulnerabilities |
+| `git diff --check` | Passed |
+| Migration 056 live matrix | Blocked until operator application |
+
+### Exact next step
+
+- Commit migration 056. After operator application, run a disposable live
+  matrix over create/update/no-op/remove/reactivate/deactivate/archive,
+  rollback, audit, privilege, residue, and concurrent access paths.
+
+## Overall project status — 2026-08-19
 
 - Ripple has a meaningful Phase 1–4 support-platform foundation, and Phase 0
   containment is substantially implemented through migration 054. Migrations
-  001–054 are deployed and live-verified. Migration 055 is an additive Phase 1
-  authorization-foundation deployment gate.
+  001–055 are deployed and live-verified, the additive Phase 1 authorization
+  roots and dormant policy resolver are ready, and migration 056 is awaiting
+  deployment after its local gate.
 - Against the full PRD v1.1 capability map, 17 domains remain
   **Partial** or **Unsafe/Partial** and seven remain **Absent**. No full PRD
   capability domain is yet honestly complete end to end.
-- The local deterministic baseline is green at 1,160 unit/contract tests, 42
+- The local deterministic baseline is green at 1,217 unit/contract tests, 42
   production HTTP smoke checks, a production build, zero-warning lint, and
   zero known dependency vulnerabilities. The complete credentialed matrix also
   passed locally against disposable live fixtures with zero residue.
@@ -176,6 +235,122 @@ meaningful change and before ending a work session. Newest entries go first.
   queues/routing, business-calendar SLA clocks, remote support, appointments,
   assets/entitlements, search/knowledge, i18n, versioned external APIs, and
   production SRE/recovery evidence.
+
+## Session record — 2026-08-19 (P1-B read-only authorization policy)
+
+### Objective
+
+Implement the first executable PRD customer authorization formula over the
+deployed membership and site-assignment roots, prove compatibility against live
+data, and keep every production route on the legacy model until writes are
+synchronized.
+
+### Changes
+
+- Added a pure evaluator for customer/site/ticket read and management, ticket
+  creation/commenting, and approval decisions. Every outcome is a typed allow
+  receipt or an explicit denial reason.
+- Intersected active actor and customer lifecycle, active/effective membership,
+  organization action capability, ticket visibility scope, tenant-bound and
+  effective site assignment, site role, assignment object-scope override,
+  object participation, content visibility, and stacked approver capability.
+- Organization admins require effective CUSTOMER scope to bypass per-site
+  assignments. Other roles are capped at site scope; viewer actions remain
+  read-only. Explicit requester SITE scope preserves migration-055 read
+  compatibility rather than silently forcing the suggested OWN default.
+- Inactive/decommissioned sites retain customer-visible historical reads but
+  reject management, new tickets, comments, and approvals.
+- Added strict pre-query UUID/object validation, bounded actor lists, persisted
+  vocabulary/shape checks, generic database-read failures with code/name-only
+  diagnostics, explicit field projections, and customer filters on membership,
+  site, and assignment reads. The server adapter takes the trusted authenticated
+  actor separately from the resource request, preventing a future route from
+  accepting actor identity in caller-controlled payload data.
+- Added a service-only injected resolver plus convenience wrapper. A repository
+  import scan confirms no production page, API, Slack handler, or compatibility
+  scope helper consumes it yet.
+- Identified the next cutover gate: current team/admin workflows still mutate
+  only `users.customer_id` and `site_members`; canonical writes must synchronize
+  both models transactionally before shadow reads can be meaningful.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| Focused authorization contracts | Passed; 2 new files, 23 tests |
+| Exhaustive matrices | Passed; every organization role/action, site role/action, and role/scope/assignment-override intersection |
+| Live read-only compatibility parity | Passed; 181 memberships, 119 assignments, 368 exact customer/site decisions; no writes |
+| `npm ci` | Passed; 533 packages installed from lockfile, 0 vulnerabilities |
+| Full `npm test` integration pass | Passed; 151 files, 1,183 tests |
+| `npm run lint` integration pass | Passed; no warnings/errors |
+| `npm run build` integration pass | Passed; optimized Next.js production build and type validation |
+| `npm run test:e2e` | Passed; 42 production HTTP checks; credentialed matrix skipped because its secret fixture is intentionally absent after the separately recorded complete pass |
+| `npm audit --audit-level=low` | Passed; 0 vulnerabilities |
+| `git diff --check` | Passed |
+| Production runtime imports | None; resolver remains dormant |
+
+### Exact next step
+
+- Run the required clean-install/E2E/audit pre-commit gate and commit P1-B.
+  Then implement P1-C's canonical, actor-guarded, versioned, exactly audited
+  membership and site-assignment commands with atomic compatibility updates.
+
+## Session record — 2026-08-19 (migration 055 live verification)
+
+### Objective
+
+Verify the deployed additive authorization foundation against the exact live
+compatibility sources before building a policy resolver or switching any
+production authorization read.
+
+### Evidence
+
+- Re-derived the complete expected backfill from 216 external profiles and 119
+  legacy `site_members` rows. The deployed result is exactly 181 independent
+  user/customer memberships and 119 tenant-bound site assignments; the 35
+  external profiles without legacy tenant/site access received no grant.
+- Every membership role, invited/active/suspended mapping, SITE/CUSTOMER ticket
+  scope, effective start, open end, version, empty default approval set, and
+  null migration actor field matched the migration oracle. Customer managers
+  received only their home-customer organization scope.
+- Every legacy owner/manager/member/viewer assignment mapped to
+  site_admin/site_admin/requester/viewer with its original effective start.
+  Membership, assignment, and site customer IDs matched exactly.
+- Each authorization row has exactly one system migration audit with matching
+  identity, tenant, role/scope, and source command metadata.
+- Anonymous and real signed-in authenticated clients were denied SELECT,
+  INSERT, UPDATE, and DELETE on both new tables. The effective Supabase
+  `service_role` retained mutation privileges through project default grants,
+  so disposable server-only rows exercised all declared role/lifecycle/scope/
+  capability/window/version checks, uniqueness, user/customer/composite
+  tenant foreign keys, restrict deletes, valid updates, and multi-customer
+  membership behavior.
+- Live cleanup confirmed that Auth deletion does not cascade to
+  `public.users`; the corrected cleanup order removed authorization children,
+  sites/customers, Auth identities, and mirrored profiles explicitly.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| Migration 055 live matrix | Passed; 7,437 assertions |
+| Backfill cardinality | Passed; 181 memberships + 119 assignments |
+| Backfill set/field equality | Passed; exact roles, lifecycle, scopes, windows, tenants, and audit evidence |
+| Privilege/constraint matrix | Passed; public roles denied and server-only integrity paths enforced |
+| Disposable cleanup | Passed; zero authorization, tenant, site, Auth, or profile residue |
+| `npm ci` | Passed; 533 packages installed from lockfile, 0 vulnerabilities |
+| `npm test` | Passed; 149 files, 1,160 tests |
+| `npm run lint` | Passed; no warnings/errors |
+| `npm run build` | Passed; optimized Next.js production build |
+| `npm run test:e2e` | Passed; 42 production HTTP checks; credentialed matrix skipped because its secret fixture is intentionally absent after the separately recorded complete pass |
+| `npm audit --audit-level=low` | Passed; 0 vulnerabilities |
+| `git diff --check` | Passed |
+
+### Exact next step
+
+- Run the required full pre-commit gate and commit this verification record.
+  Then implement P1-B's read-only policy resolver and exhaustive compatibility-
+  parity contracts without switching production reads yet.
 
 ## Session record — 2026-08-17 (P1-A membership authorization foundation)
 
@@ -205,8 +380,8 @@ policy cutover.
   snapshot instead of silently tightening production behavior.
 - Every migrated membership and assignment writes explicit system audit
   evidence in the same transaction. Both new tables enable RLS, expose no
-  anon/authenticated privileges, and are read only through the service role
-  until command and policy cutover work is ready.
+  anon/authenticated privileges, and remain service-only until command and
+  policy cutover work is ready.
 - Added shared TypeScript role/lifecycle/scope/capability vocabularies and a
   start-inclusive, end-exclusive temporal predicate that fails closed for
   invalid timestamps or inactive membership state.

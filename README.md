@@ -28,6 +28,11 @@ A Slack-native support portal for DropletAI Services. Centralises customer suppo
 - **Role-Based Access** — 4 roles (admin / engineer / customer_manager / customer) consolidated in `017_consolidate_roles.sql`.
 - **Tenant-Contained Site Access** — Admin membership add/remove commands lock,
   validate, and audit customer/site authorization atomically.
+- **Authorization Policy Kernel** — The additive multi-customer membership
+  model has a fail-closed read-only evaluator for role, lifecycle, effective
+  window, ticket scope, site assignment, object scope, visibility, and approval
+  capability decisions. Production reads remain on the compatibility model
+  until canonical writes synchronize both representations.
 - **Immutable Site Ownership** — Normal administration cannot move an
   established site or its service history across customer tenants.
 - **Atomic User Authorization Changes** — Admin profile, same-family role,
@@ -68,14 +73,14 @@ A Slack-native support portal for DropletAI Services. Centralises customer suppo
 | Layer | Tool |
 |-------|------|
 | Frontend | Next.js 15.5.22 (App Router) + React 19 + TypeScript + Tailwind CSS v4 + self-hosted Inter |
-| Database | Supabase Postgres (55 migrations, see `supabase/migrations/`) |
+| Database | Supabase Postgres (56 migrations, see `supabase/migrations/`) |
 | Auth | Supabase Auth (email + password + recovery) + new `sb_publishable_` / `sb_secret_` key format |
 | Storage | Supabase Storage — bucket `ripple-attachments`, **50 MB cap per file** |
 | Slack | `@slack/bolt` + `@slack/web-api` (runs inside Next.js API routes, no separate process) |
 | AI | **MiniMax AI** (OpenAI-compatible) — was OpenAI → Zhipu → MiniMax. **See "AI provider" section below.** |
 | Email | Resend (transactional: ticket confirmation, resolution notice) |
 | Validation | Zod (all API request bodies) |
-| Testing | Vitest (1,160 unit/contract tests) + 42-check production HTTP smoke + credentialed Playwright/API/RLS matrix |
+| Testing | Vitest (1,217 unit/contract tests) + 42-check production HTTP smoke + credentialed Playwright/API/RLS matrix |
 | Hosting | Vercel (serverless API routes) |
 
 ## Phases
@@ -110,7 +115,7 @@ cp .env.local.example .env.local
 
 ### Run database migrations
 
-Apply the SQL files in `supabase/migrations/` **in order** (001 → 054) via the Supabase SQL editor or `supabase db push`:
+Apply the SQL files in `supabase/migrations/` **in order** (001 → 055) via the Supabase SQL editor or `supabase db push`:
 
 ```
 001_create_customers.sql
@@ -172,18 +177,26 @@ Apply the SQL files in `supabase/migrations/` **in order** (001 → 054) via the
 
 Later migrations replace policies/functions and should be applied once in
 order. Migration `017` also performs role data updates and must not be re-run
-blindly. Migrations 001–054 are confirmed applied and live-verified as of
-2026-08-17. Migration 054 quarantined 19 unusable legacy mappings without
+blindly. Migrations 001–055 are confirmed applied and live-verified as of
+2026-08-19. Migration 054 quarantined 19 unusable legacy mappings without
 removing their Auth/profile/ticket history and adds the supported, atomic,
 audited admin workflow required to set or clear a unique Slack actor identity.
 It passed a 326-assertion live command/privilege/lifecycle/uniqueness/audit/
 concurrency matrix plus a real signed-in API/UI set-clear flow with zero
 disposable residue.
-Migration 055 is an additive authorization-foundation gate awaiting
-application. It creates multi-customer memberships and tenant-bound site
-assignments, backfills the legacy access paths with system audit evidence, and
-does not switch current runtime reads away from `users.customer_id` or
-`site_members`.
+Migration 055 is the deployed additive authorization foundation. It creates
+multi-customer memberships and tenant-bound site assignments, backfills the
+legacy access paths with system audit evidence, and does not switch current
+runtime reads away from `users.customer_id` or `site_members`. Its 7,437-
+assertion live matrix matched all 181 derived memberships and 119 legacy site
+assignments exactly, exercised constraints and effective privileges, and left
+zero disposable authorization, tenant, site, Auth, or profile rows. The
+read-only policy resolver also matched 368 live compatibility decisions; it is
+not wired into production routes. Migration 056 is the pending atomic
+compatibility bridge: it retains all seven current team/admin/customer-archive
+RPC contracts while synchronizing canonical role, lifecycle, scope, and site
+grants in the same transaction. Apply and live-verify 056 before shadow reads
+or any production policy cutover.
 Migrations 028–030 also passed a 173-assertion disposable live matrix covering
 atomic spare-part request and field-service create/update behavior, protected
 numbering, tenant/parent/lifecycle constraints, exact audit evidence, rollback,
@@ -336,7 +349,7 @@ gate.
 
 ### GitHub Actions
 
-`.github/workflows/ci.yml` runs the locked install, 1,160 unit/contract tests,
+`.github/workflows/ci.yml` runs the locked install, 1,217 unit/contract tests,
 lint, production build, 42-check HTTP E2E, and dependency audit for pull
 requests and pushes to `main`. GitHub-owned actions are pinned to full commit
 SHAs and the workflow has read-only repository permissions.
@@ -439,7 +452,7 @@ src/
 │   ├── ticket.ts                # ⭐ all ticket domain enums + labels
 │   └── spare-parts.ts
 └── middleware.ts                # ⭐ route guard + session refresh
-supabase/migrations/             # 001-055
+supabase/migrations/             # 001-056
 plans/                           # Architecture + phase planning docs
 AGENTS.md                        # ⭐ project context, lessons learned, roadmap
 ```

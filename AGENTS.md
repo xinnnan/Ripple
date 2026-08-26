@@ -2,7 +2,7 @@
 
 > DropletAI's Slack-native support portal. Lightweight ticket system, web portal, and AI-assisted troubleshooting for industrial automation deployments (AMR / AGV / conveyor / sortation / RCS / WCS).
 
-This file is the **single source of truth for project context** — read it before touching anything. It also serves as the lessons-learned notebook and progress tracker. Last updated 2026-08-13.
+This file is the **single source of truth for project context** — read it before touching anything. It also serves as the lessons-learned notebook and progress tracker. Last updated 2026-08-19.
 
 ---
 
@@ -17,9 +17,12 @@ This file is the **single source of truth for project context** — read it befo
 - **External users** (customers): customer admins (manage their org's team + sites) + regular customers (submit + view their tickets)
 
 **Status** — Phase 1–4 foundation is present; PRD v1.1 gap closure and security
-containment are active on `codex/prd-v1-1-gap-closure`. Migrations 001–054 are
-deployed and live-verified; additive authorization-foundation migration 055 is
-the current deployment gate. `main` is live on Vercel.
+containment are active on `codex/prd-v1-1-gap-closure`. Migrations 001–055 are
+deployed and live-verified; the read-only authorization policy resolver and
+live compatibility parity are committed. Migration 056's atomic compatibility
+synchronization is the current deployment gate before canonical command APIs
+or shadow-read cutover.
+`main` is live on Vercel.
 
 ---
 
@@ -70,7 +73,9 @@ the current deployment gate. `main` is live on Vercel.
 │   │   └── page.tsx                     # Marketing landing
 │   ├── lib/
 │   │   ├── authorization/
-│   │   │   └── model.ts                    # PRD membership/scope vocabulary + temporal predicates
+│   │   │   ├── model.ts                 # PRD membership/scope vocabulary + temporal predicates
+│   │   │   ├── policy.ts                # Pure fail-closed customer policy decisions
+│   │   │   └── resolver.ts              # Explicit service-only authorization reads
 │   │   ├── roles.ts                     # ⭐ Role constants + helpers (single source)
 │   │   ├── utils.ts                     # cn, generateSecureToken, formatDate, COMMON_TIMEZONES
 │   │   ├── supabase/
@@ -113,7 +118,7 @@ the current deployment gate. `main` is live on Vercel.
 │   │   ├── ticket.ts                    # ⭐ All domain enums + labels
 │   │   └── spare-parts.ts               # ⭐ Spare parts + field service enums
 │   └── middleware.ts                    # ⭐ Route guard + session refresh
-├── supabase/migrations/                 # 001–055, apply in order
+├── supabase/migrations/                 # 001–056, apply in order
 ├── plans/                               # Architecture + phase planning docs
 │   ├── architecture.md
 │   ├── phase2-customer-auth-and-user-management.md
@@ -128,7 +133,7 @@ the current deployment gate. `main` is live on Vercel.
 
 **Where to look first** when debugging:
 - Auth/role issues → `src/middleware.ts`, `src/lib/roles.ts`, `src/lib/supabase/auth-helpers.ts`
-- Authorization foundation → `src/lib/authorization/model.ts`, `supabase/migrations/055_customer_membership_foundation.sql`
+- Authorization foundation → `src/lib/authorization/model.ts`, `src/lib/authorization/policy.ts`, `src/lib/authorization/resolver.ts`, `supabase/migrations/055_customer_membership_foundation.sql`
 - Ticket creation flow → `src/app/api/tickets/route.ts` (POST), `src/app/(public)/submit/page.tsx`, `src/app/(auth)/tickets/create-ticket-modal.tsx`
 - Ticket detail UI → `src/app/(auth)/tickets/[ticketId]/page.tsx` (server) + `ticket-actions-panel.tsx` (client)
 - Slack ticket creation → `src/app/api/slack/command/ticket/route.ts` + `src/lib/slack/blocks/ticket-form.ts`
@@ -177,9 +182,9 @@ const isInternal = role ? INTERNAL_ROLES.includes(role) : email ? isInternalEmai
 
 ## 5. Database Schema (Supabase)
 
-55 migrations, to be applied in order. Migrations 001–054 are confirmed
-applied and live-verified as of 2026-08-17; migration 055 awaits application
-and live backfill verification. Key tables:
+56 migrations, to be applied in order. Migrations 001–055 are confirmed
+applied and live-verified as of 2026-08-19; migration 056 awaits application
+and live synchronization verification. Key tables:
 
 | Table | Purpose | Notes |
 |---|---|---|
@@ -187,7 +192,7 @@ and live backfill verification. Key tables:
 | `sites` | Customer locations | `site_code` (unique), `slack_channel_id`, `project_status`; migration 036 makes customer ownership immutable through normal admin updates and makes create/update audit atomic. Migration 037 repairs its SQL-expression runtime defect; the current commands passed a 500-assertion live matrix |
 | `users` | All users (internal + external) | `role` (4 values, see §4), `customer_id`, `slack_user_id`; migration 038 makes same-family admin PATCH/deactivation serialized and transactionally audited. Migration 039 stops trusting signup role metadata and adds atomic admin/team provisioning finalizers. Migration 052 moves name/phone self-service behind a row-locked audited command and passed a 90-assertion live matrix. Migration 053 makes non-null Slack actor identities unique and passed a 173-assertion signed-ingress matrix. Migration 054 quarantines unusable legacy IDs with system audit, rejects ambiguous valid ownership, adds canonical Slack-ID shape enforcement, and adds a service-only, row-locked, exactly audited admin mapping command. It passed a 326-assertion live matrix plus real signed-in API/UI set-clear verification with zero disposable residue |
 | `site_members` | User ↔ Site (M:N) | Customers join via this; customer_manager bypasses. Migration 035 adds tenant-contained, transactionally audited admin add/remove commands. Migration 045 removes the legacy direct authenticated write path; its 110-assertion live matrix is green |
-| `customer_memberships` / `customer_site_assignments` | Additive PRD authorization roots | Migration 055 snapshots legacy home-tenant and retained-site access into independent customer memberships and tenant-bound site assignments with roles, lifecycle, effective windows, ticket scopes, approval capabilities, optimistic versions, composite tenant foreign keys, system migration audit, and service-only access. Runtime reads remain on the compatibility model until a later policy cutover; application and live verification are pending |
+| `customer_memberships` / `customer_site_assignments` | Additive PRD authorization roots | Migration 055 snapshots legacy home-tenant and retained-site access into independent customer memberships and tenant-bound site assignments with roles, lifecycle, effective windows, ticket scopes, approval capabilities, optimistic versions, composite tenant foreign keys, system migration audit, and service-only access. Its 7,437-assertion live backfill/constraint/privilege/tenant/audit matrix passed with exactly 181 memberships, 119 assignments, and zero disposable residue. The read-only policy resolver passed 368 live compatibility decisions. Migration 056 wraps all seven current access-mutating team/admin/customer-archive commands so canonical identities and approval capabilities are preserved, lifecycle/role/scope/site changes are versioned and exactly audited, removed grants retain closed history, and legacy plus canonical changes roll back together. It awaits deployment and live verification; runtime reads remain on the compatibility model |
 | `tickets` | Core ticket entity | `ticket_no` (RPL-XXXXXX), `secure_token` (32-byte hex), `severity` (P1–P4), 8-state `status`, response/resolution due/achieved/breached timestamps; migration 027 column-limits direct authenticated SELECT |
 | `ticket_creation_requests` | Service-only ticket-create replay ledger | Migration 047 serializes source/request keys, returns the first durable receipt for exact retries, and rejects altered reuse; its 42-assertion replay/concurrency/privilege live matrix is green |
 | `ticket_comment_requests` | Service-only ticket-comment replay ledger | Migration 048 serializes source/request keys, returns the first durable comment for exact retries, rejects altered reuse, and transactionally binds customer-visible comments to one Slack-reply outbox event; its 69-assertion replay/concurrency/cardinality/privilege live matrix is green |
@@ -324,7 +329,7 @@ npm run dev
 - `npm run build` — production build
 - `npm run start` — production server
 - `npm run lint` — direct ESLint CLI across the repository; warnings fail the gate
-- `npm test` — Vitest unit/contract suite (1,160 tests)
+- `npm test` — Vitest unit/contract suite (1,217 tests)
 - `npm run test:e2e` — 42-check production HTTP smoke plus optional credentialed Playwright/API/RLS matrix; requires a successful build
 - `npm run test:e2e:credentialed` — real six-account/two-tenant matrix; set `RIPPLE_E2E_FIXTURES_FILE`
 - `npm run test:e2e:install-browser` — install the pinned Chromium runtime
@@ -1600,6 +1605,70 @@ JSON string, so it does not exercise a route's JSON-parser failure. Use
 assertions to stable control IDs: a page-wide `select` search matched both the
 comment and attachment visibility controls and produced a false failure.
 
+### Explicit grants do not narrow inherited service-role privileges
+Found 2026-08-19 while live-verifying migration 055. The migration revokes all
+new authorization-table access from `PUBLIC`, `anon`, and `authenticated`, then
+explicitly grants `service_role` SELECT. The connected Supabase project also
+has default privileges that already give `service_role` mutation access to new
+tables, so the explicit SELECT grant did not make that role read-only. Public
+API roles were correctly denied; the server-only role could exercise the live
+CHECK, unique, composite-foreign-key, restrict-delete, and update paths.
+
+Auth cleanup exposed a separate boundary: deleting `auth.users` does not
+remove the mirrored `public.users` row in this project. Disposable live tests
+must clean the authorization children first, then Auth, then the application
+profile, and prove every layer is empty.
+
+**Lesson:** PostgreSQL privilege verification must test the effective role,
+not infer it from the latest `GRANT` statement. If a table must be service-read-
+only, explicitly revoke service mutations too. Cross-schema identity cleanup
+must be ordered and residue-checked rather than assuming a cascade.
+
+### Authorization snapshots are not a cutover plan
+Found 2026-08-19 while building the first policy resolver over migration 055.
+The additive backfill is exact, but existing team and administrator commands
+still write the compatibility columns and tables. A resolver can therefore be
+correct for the snapshot and become stale after the next legacy access change.
+
+The P1-B evaluator returns typed allow/deny decisions, validates UUIDs before
+service-role reads, intersects organization role, membership scope, effective
+site assignment, object scope, lifecycle, and visibility, and contains database
+diagnostics. It deliberately has no production consumer. Its deterministic
+matrix covers every role/action and role/scope/assignment intersection; a
+read-only live audit matched all 181 memberships and 119 assignments across
+368 current customer/site decisions.
+
+**Lesson:** land a new authorization model in three separately verified seams:
+exact snapshot, synchronized canonical writes, then shadow-read parity and
+cutover. Never switch reads merely because the initial backfill and pure policy
+tests are green, and return explicit denial reasons so fail-closed behavior is
+testable rather than hidden in a boolean.
+
+### Compatibility synchronization must inventory aggregate lifecycle commands
+Found 2026-08-19 while building migration 056. The obvious authorization
+writes were the team patch, admin site-membership, admin user patch,
+deactivation, and team-provisioning RPCs. A repository-wide mutation inventory
+also found `archive_customers()`: one aggregate command decommissions sites and
+deactivates every external user in the tenant. Wrapping only the user-named
+commands would leave canonical membership lifecycle stale after customer
+archive even though ordinary user administration appeared synchronized.
+
+Migration 056 keeps the established service RPC signatures, makes their prior
+implementations unreachable, and calls the verified legacy mutation followed
+by one internal canonical-graph synchronizer in the same transaction. The
+synchronizer takes its effective boundary timestamp only after locks are held,
+preserves row identities and approval capabilities, versions only real
+changes, closes rather than deletes history, and safely closes future-dated
+windows without violating the strict effective-time constraint. Canonical-only
+multi-customer authoring must not begin while this compatibility-derived bridge
+is active, because a later legacy mutation intentionally reconciles the full
+canonical graph back to compatibility state.
+
+**Lesson:** inventory writes by changed authorization columns and aggregate
+lifecycle effects, not by route or RPC name. During a staged model migration,
+make the temporary source of truth explicit and replace the bridge before
+enabling capabilities the compatibility model cannot represent.
+
 ---
 
 ## 10. Current State & Roadmap
@@ -2227,7 +2296,7 @@ npm audit
 ```
 
 **Apply a new migration:**
-1. Create `supabase/migrations/056_xxx.sql` (next number)
+1. Create `supabase/migrations/057_xxx.sql` (next number)
 2. Test locally: `supabase db reset` (drops + re-applies all)
 3. Apply to prod via Supabase SQL editor
 4. Document in this file's §5 + §10
