@@ -22,6 +22,10 @@ meaningful change and before ending a work session. Newest entries go first.
   against real data, deploy this branch so the application uses the new
   commands, set `CRON_SECRET` so the daily worker can auto-close tickets and
   drain the outbox, and verify the Resend sender domain.
+- **End-to-end (2026-10-06):** against a production build on the seeded local
+  stack, the credentialed role/tenant matrix passed 82 checks (it exposed and
+  fixed a false-positive comment-shape assertion that only passed before on
+  empty fixtures) and the new `test:e2e:workflows` passed 23 mutating checks.
 - **External gates unchanged:** hosted CI branch protection, protected
   staging fixture, MiniMax key, first real Slack-thread reconciliation.
 - **Exact next step:** merge the `claude/production-readiness` PR so the

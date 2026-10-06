@@ -358,6 +358,14 @@ npm run dev
 supabase start            # or `supabase db reset` to rebuild from scratch
 npm run verify:db         # rollback-only SQL matrices in supabase/verification
 npm run seed:local        # loopback-only QA accounts for every role
+# Production build against the local stack (public env is inlined at build):
+#   export NEXT_PUBLIC_SUPABASE_URL / _PUBLISHABLE_KEY / SUPABASE_SECRET_KEY
+#   from `supabase status -o env`, blank provider keys, then
+#   npm run build && npx next start -p 3002
+RIPPLE_E2E_REQUIRE_CREDENTIALS=1 \
+  RIPPLE_E2E_FIXTURES_FILE=scripts/credentialed-role-matrix.local.json \
+  npm run test:e2e:credentialed   # 82 read-only role/tenant checks
+npm run test:e2e:workflows        # 23 mutating workflow checks (reseed first)
 ```
 Run the app against the local stack by overriding env inline (process env
 wins over `.env`), and blank provider keys so nothing reaches real Slack,
@@ -372,7 +380,8 @@ Resend, or MiniMax: see `.claude/launch.json` `ripple-local` or set
 - `npm run lint` — direct ESLint CLI across the repository; warnings fail the gate
 - `npm test` — Vitest 4 unit/contract suite (1,390 tests)
 - `npm run verify:db` — local database verification matrices (95 assertions)
-- `npm run seed:local` — idempotent local QA fixtures (refuses non-loopback URLs)
+- `npm run seed:local` — idempotent local QA fixtures (refuses non-loopback URLs); also writes the gitignored `scripts/credentialed-role-matrix.local.json`
+- `npm run test:e2e:workflows` — local-only mutating workflow E2E (downloads, update email, auto-return, reopen, guest reply, approval); run after `seed:local` against a production build served on port 3002
 - `npm run test:e2e` — 42-check production HTTP smoke plus optional credentialed Playwright/API/RLS matrix; requires a successful build
 - `npm run test:e2e:credentialed` — real six-account/two-tenant matrix; set `RIPPLE_E2E_FIXTURES_FILE`
 - `npm run test:e2e:install-browser` — install the pinned Chromium runtime
