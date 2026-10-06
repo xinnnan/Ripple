@@ -1,17 +1,15 @@
 import type { Metadata } from "next";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { rateLimit, getClientIp } from "@/lib/rate-limit";
-import {
-  buildRateLimitBucketKey,
-  consumeDistributedRateLimit,
-  getRetryAfterSeconds,
-} from "@/lib/distributed-rate-limit";
+import { getClientIp } from "@/lib/rate-limit";
 import { headers } from "next/headers";
+import { STATUS_LABELS, SEVERITY_LABELS, IMPACT_LABELS } from "@/types/ticket";
+import { formatDate, resolveSiteTimezone } from "@/lib/utils";
+import { consumePublicTicketLimit } from "@/lib/tickets/public-access";
+import { isCustomerReopenable } from "@/lib/tickets/status";
+import Link from "next/link";
+import { GuestReplyForm } from "./guest-reply-form";
 
 export const dynamic = "force-dynamic";
-import { STATUS_LABELS, SEVERITY_LABELS, IMPACT_LABELS } from "@/types/ticket";
-import { formatDate } from "@/lib/utils";
-import Link from "next/link";
 
 export const metadata: Metadata = { title: "Ticket status" };
 
@@ -20,8 +18,6 @@ interface Props {
   searchParams: Promise<{ token?: string }>;
 }
 
-const PUBLIC_TICKET_LIMIT = 30;
-const PUBLIC_TICKET_WINDOW_MS = 60_000;
 const PUBLIC_EVENT_TYPES = [
   "ticket_created",
   "status_changed",
@@ -55,6 +51,16 @@ function PublicTicketMessage({
   );
 }
 
+interface PublicComment {
+  id: string;
+  body: string;
+  created_at: string;
+  author:
+    | { full_name: string; role: string }
+    | { full_name: string; role: string }[]
+    | null;
+}
+
 function singleRelation<T>(value: T | T[] | null | undefined): T | undefined {
   return Array.isArray(value) ? value[0] : value ?? undefined;
 }
@@ -71,25 +77,6 @@ export default async function TicketViewPage({ params, searchParams }: Props) {
   // migration 046's command keeps the boundary effective across serverless
   // instances and cold starts. The token still remains the authorization
   // proof for the ticket itself.
-  const hdrs = await headers();
-  const ip = getClientIp(hdrs);
-  const rl = rateLimit({
-    key: `t-page:${ip}`,
-    limit: PUBLIC_TICKET_LIMIT,
-    windowMs: PUBLIC_TICKET_WINDOW_MS,
-  });
-  if (!rl.allowed) {
-    return (
-      <PublicTicketMessage
-        title="Too Many Requests"
-        message={`You have exceeded the rate limit for ticket lookups. Please try again in ${Math.max(
-          1,
-          Math.ceil((rl.resetAt - Date.now()) / 1000)
-        )} seconds.`}
-      />
-    );
-  }
-
   if (!token) {
     return (
       <PublicTicketMessage
@@ -100,21 +87,22 @@ export default async function TicketViewPage({ params, searchParams }: Props) {
     );
   }
 
+  // The token is the authorization proof; the shared limiter (process-local
+  // shedding plus migration 046's distributed bucket) caps probing at
+  // 30/min/IP across serverless instances and fails closed.
+  const ip = getClientIp(await headers());
   const supabase = createAdminClient();
   try {
-    const distributedLimit = await consumeDistributedRateLimit({
+    const limit = await consumePublicTicketLimit({
       supabase,
-      bucketKey: buildRateLimitBucketKey("ticket-view", ip),
-      limit: PUBLIC_TICKET_LIMIT,
-      windowSeconds: PUBLIC_TICKET_WINDOW_MS / 1000,
+      purpose: "ticket-view",
+      clientIp: ip,
     });
-    if (!distributedLimit.allowed) {
+    if (!limit.allowed) {
       return (
         <PublicTicketMessage
           title="Too Many Requests"
-          message={`You have exceeded the rate limit for ticket lookups. Please try again in ${getRetryAfterSeconds(
-            distributedLimit.resetAt
-          )} seconds.`}
+          message={`You have exceeded the rate limit for ticket lookups. Please try again in ${limit.retryAfterSeconds} seconds.`}
         />
       );
     }
@@ -148,8 +136,9 @@ export default async function TicketViewPage({ params, searchParams }: Props) {
       customer_visible_summary,
       created_at,
       resolved_at,
+      closed_at,
       customer:customers!inner(name),
-      site:sites!inner(site_name),
+      site:sites!inner(site_name, timezone),
       owner:users!tickets_owner_id_fkey(full_name)
     `
     )
@@ -181,11 +170,14 @@ export default async function TicketViewPage({ params, searchParams }: Props) {
   const customer = singleRelation(ticket.customer);
   const site = singleRelation(ticket.site);
   const owner = singleRelation(ticket.owner);
+  const timezone = resolveSiteTimezone(ticket.site);
+  const canReopen = isCustomerReopenable(ticket.status, ticket.closed_at);
+  const acceptsReplies = ticket.status !== "closed" || canReopen;
 
   const [commentsResult, attachmentsResult, eventsResult] = await Promise.all([
     supabase
       .from("ticket_comments")
-      .select("id, body, created_at, author:users(full_name)")
+      .select("id, body, created_at, author:users(full_name, role)")
       .eq("ticket_id", ticket.id)
       .eq("visibility", "customer")
       .order("created_at", { ascending: true }),
@@ -298,24 +290,58 @@ export default async function TicketViewPage({ params, searchParams }: Props) {
                 </p>
               ) : (
                 <div className="space-y-4">
-                  {comments.map((comment: { id: string; body: string; created_at: string; author: { full_name: string }[] }) => (
-                    <div key={comment.id} className="border-l-2 border-primary/30 pl-4">
-                      <div className="flex items-center gap-2 mb-1">
+                  {comments.map((comment: PublicComment) => {
+                    const author = singleRelation(comment.author);
+                    const isStaff =
+                      author?.role === "admin" || author?.role === "engineer";
+                    return (
+                    <div
+                      key={comment.id}
+                      className={
+                        isStaff
+                          ? "border-l-2 border-primary/40 pl-4"
+                          : "border-l-2 border-slate-300 pl-4"
+                      }
+                    >
+                      <div className="mb-1 flex flex-wrap items-center gap-2">
                         <span className="text-xs font-medium text-foreground">
-                          {comment.author?.[0]?.full_name || "Support Team"}
+                          {author ? author.full_name : "Ticket submitter"}
                         </span>
+                        {isStaff && (
+                          <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
+                            DropletAI
+                          </span>
+                        )}
                         <span className="text-xs text-muted-foreground">
-                          {formatDate(comment.created_at)}
+                          {formatDate(comment.created_at, timezone)}
                         </span>
                       </div>
                       <p className="text-sm text-muted-foreground whitespace-pre-wrap">
                         {comment.body}
                       </p>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
+
+            {acceptsReplies ? (
+              <GuestReplyForm
+                ticketNo={ticket.ticket_no}
+                token={token}
+                canReopen={canReopen}
+                awaitingCustomer={ticket.status === "waiting_customer"}
+              />
+            ) : (
+              <div className="rounded-xl border border-border p-6 text-sm text-muted-foreground">
+                This ticket is closed. If the problem has returned,{" "}
+                <Link href="/submit" className="font-medium text-primary hover:text-primary/80">
+                  submit a new ticket
+                </Link>{" "}
+                and mention {ticket.ticket_no}.
+              </div>
+            )}
 
             {/* Attachments */}
             {attachments && attachments.length > 0 && (
@@ -342,10 +368,14 @@ export default async function TicketViewPage({ params, searchParams }: Props) {
                           d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"
                         />
                       </svg>
-                      <div>
-                        <p className="text-sm font-medium text-foreground">
+                      <div className="min-w-0">
+                        <a
+                          href={`/api/public/tickets/${encodeURIComponent(ticket.ticket_no)}/attachments/${att.id}?token=${encodeURIComponent(token)}`}
+                          className="block break-all text-sm font-medium text-primary underline-offset-2 hover:underline"
+                        >
                           {att.file_name}
-                        </p>
+                          <span className="sr-only"> (download)</span>
+                        </a>
                         <p className="text-xs text-muted-foreground">
                           {(att.file_size / 1024).toFixed(1)} KB
                         </p>
@@ -426,14 +456,14 @@ export default async function TicketViewPage({ params, searchParams }: Props) {
                 <div>
                   <dt className="text-xs text-muted-foreground">Created</dt>
                   <dd className="text-sm font-medium text-foreground">
-                    {formatDate(ticket.created_at)}
+                    {formatDate(ticket.created_at, timezone)}
                   </dd>
                 </div>
                 {ticket.resolved_at && (
                   <div>
                     <dt className="text-xs text-muted-foreground">Resolved</dt>
                     <dd className="text-sm font-medium text-foreground">
-                      {formatDate(ticket.resolved_at)}
+                      {formatDate(ticket.resolved_at, timezone)}
                     </dd>
                   </div>
                 )}
@@ -452,7 +482,7 @@ export default async function TicketViewPage({ params, searchParams }: Props) {
                         <div className="mt-1 h-2 w-2 rounded-full bg-primary flex-shrink-0" />
                         <div>
                           <p className="text-xs text-muted-foreground">
-                            {formatDate(event.created_at)}
+                            {formatDate(event.created_at, timezone)}
                           </p>
                           <p className="text-xs text-foreground">
                             {event.event_type === "ticket_created" && "Ticket created"}

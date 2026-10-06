@@ -56,3 +56,17 @@ export function ticketStatusAcceptsAssignment(
 ): boolean {
   return status !== "resolved" && status !== "closed";
 }
+
+/** Matches migration 058: customers may reopen within 30 days of closure. */
+export const CUSTOMER_REOPEN_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
+
+export function isCustomerReopenable(
+  status: TicketStatus | string,
+  closedAt: string | null | undefined,
+  now = Date.now()
+): boolean {
+  if (status === "resolved") return true;
+  if (status !== "closed" || !closedAt) return false;
+  const closed = Date.parse(closedAt);
+  return Number.isFinite(closed) && now - closed <= CUSTOMER_REOPEN_WINDOW_MS;
+}

@@ -7,7 +7,9 @@ const {
   createAdminClientMock,
   recordCommentMock,
   dispatchOutboxMock,
+  reopenMock,
 } = vi.hoisted(() => ({
+  reopenMock: vi.fn(),
   getAuthUserMock: vi.fn(),
   getUserScopeMock: vi.fn(),
   createAdminClientMock: vi.fn(),
@@ -34,6 +36,12 @@ vi.mock("@/lib/tickets/mutations", async (importOriginal) => {
   >();
   return { ...actual, recordTicketCommentWithSla: recordCommentMock };
 });
+vi.mock("@/lib/tickets/customer-replies", async (importOriginal) => {
+  const actual = await importOriginal<
+    typeof import("@/lib/tickets/customer-replies")
+  >();
+  return { ...actual, reopenTicketAsCustomer: reopenMock };
+});
 vi.mock("@/lib/tickets/outbox", () => ({
   dispatchTicketOutboxBestEffort: dispatchOutboxMock,
 }));
@@ -41,6 +49,7 @@ vi.mock("@/lib/tickets/outbox", () => ({
 import { POST } from "./tickets/[ticketId]/comments/route";
 import { InvalidTicketCommentReplayError } from "@/lib/tickets/mutations";
 import { TICKET_IDEMPOTENCY_KEY_HEADER } from "@/lib/tickets/idempotency";
+import { TicketNotReopenableError } from "@/lib/tickets/customer-replies";
 
 const USER_ID = "11111111-1111-4111-8111-111111111111";
 const TICKET_ID = "22222222-2222-4222-8222-222222222222";
@@ -260,5 +269,70 @@ describe("ticket comment route settlement", () => {
       { code: "PGRST116" }
     );
     consoleError.mockRestore();
+  });
+});
+
+describe("customer reopen through the comments route", () => {
+  function asCustomer() {
+    getAuthUserMock.mockResolvedValue({ userId: USER_ID, role: "customer", isInternal: false });
+    getUserScopeMock.mockResolvedValue({
+      userId: USER_ID,
+      role: "customer",
+      isInternal: false,
+      siteIds: [SITE_ID],
+    });
+  }
+
+  it("reopens through the atomic customer command, not the plain comment", async () => {
+    asCustomer();
+    reopenMock.mockResolvedValue(COMMENT_ID);
+
+    const response = await POST(
+      request({ body: "  Jam is back  ", reopen: true }, false, "browser-key-123456"),
+      context()
+    );
+
+    expect(response.status).toBe(201);
+    expect(reopenMock).toHaveBeenCalledWith({
+      supabase: expect.anything(),
+      ticketId: TICKET_ID,
+      actorId: USER_ID,
+      body: "Jam is back",
+      idempotencyKey: "browser-key-123456",
+    });
+    expect(recordCommentMock).not.toHaveBeenCalled();
+    expect(dispatchOutboxMock).toHaveBeenCalledWith({ aggregateId: TICKET_ID });
+  });
+
+  it("explains when a ticket can no longer be reopened", async () => {
+    asCustomer();
+    reopenMock.mockRejectedValue(new TicketNotReopenableError());
+
+    const response = await POST(
+      request({ body: "Again", reopen: true }, false, "browser-key-123456"),
+      context()
+    );
+
+    expect(response.status).toBe(409);
+    expect((await response.json()).error).toMatch(/can no longer be reopened/);
+  });
+
+  it("keeps internal users on the status controls", async () => {
+    const response = await POST(
+      request({ body: "Reopen", reopen: true }, false, "browser-key-123456"),
+      context()
+    );
+    expect(response.status).toBe(400);
+    expect(reopenMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects reopen keys longer than the reply ledger allows", async () => {
+    asCustomer();
+    const response = await POST(
+      request({ body: "Again", reopen: true }, false, "k".repeat(181)),
+      context()
+    );
+    expect(response.status).toBe(400);
+    expect(reopenMock).not.toHaveBeenCalled();
   });
 });

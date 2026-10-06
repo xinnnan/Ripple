@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { hasValidCronAuthorization } from "@/lib/cron-auth";
 import { dispatchTicketOutbox } from "@/lib/tickets/outbox";
+import { closeStaleResolvedTickets } from "@/lib/tickets/auto-close";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -31,11 +33,28 @@ export async function GET(request: NextRequest) {
     );
   }
 
+  // Lifecycle first: closures enqueue Slack card syncs that this run then
+  // delivers. A lifecycle failure must never block notification delivery.
+  let autoClosed: number | null = null;
+  try {
+    autoClosed = await closeStaleResolvedTickets(createAdminClient());
+  } catch (error) {
+    console.error(
+      "[outbox/dispatch] auto-close failed:",
+      error instanceof Error ? error.message : "unknown"
+    );
+  }
+
   try {
     const summary = await dispatchTicketOutbox({ limit: 50 });
-    return NextResponse.json(summary, {
-      headers: { "cache-control": "no-store" },
-    });
+    return NextResponse.json(
+      {
+        ...summary,
+        autoClosed,
+        ...(autoClosed === null ? { autoCloseError: true } : {}),
+      },
+      { headers: { "cache-control": "no-store" } }
+    );
   } catch (error) {
     console.error(
       "[outbox/dispatch] worker failed:",

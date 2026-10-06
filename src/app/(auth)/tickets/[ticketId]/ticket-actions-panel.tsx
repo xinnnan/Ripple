@@ -48,6 +48,8 @@ interface TicketActionsPanelProps {
   isInternal: boolean;
   currentCustomerVisibleSummary: string | null;
   currentInternalSummary: string | null;
+  /** Customer accounts: resolved, or closed within the 30-day window. */
+  canCustomerReopen?: boolean;
 }
 
 export function TicketActionsPanel({
@@ -61,6 +63,7 @@ export function TicketActionsPanel({
   isInternal,
   currentCustomerVisibleSummary,
   currentInternalSummary,
+  canCustomerReopen = false,
 }: TicketActionsPanelProps) {
   const [status, setStatus] = useState<TicketStatus>(currentStatus);
   const [severity, setSeverity] = useState<Severity>(currentSeverity);
@@ -344,15 +347,36 @@ export function TicketActionsPanel({
         />
       )}
 
-      {/* Customer: read-only ticket info (no action) */}
-      {!isInternal && (
-        <div className="rounded-xl border border-border p-6">
-          <h2 className="text-sm font-semibold text-foreground mb-2">Need to update?</h2>
-          <p className="text-sm text-muted-foreground mb-3">
-            Add a comment below to share new info with the team, or upload
-            attachments.
+      {/* Customer guidance */}
+      {!isInternal && currentStatus === "waiting_customer" && (
+        <div
+          role="status"
+          className="rounded-xl border border-amber-200 bg-amber-50 p-6"
+        >
+          <h2 className="mb-2 text-sm font-semibold text-amber-900">
+            We&rsquo;re waiting on your reply
+          </h2>
+          <p className="text-sm text-amber-900/80">
+            Answer in the comment box below. Your reply goes straight back to
+            the engineer working this ticket.
           </p>
         </div>
+      )}
+      {!isInternal &&
+        currentStatus !== "waiting_customer" &&
+        !canCustomerReopen && (
+          <div className="rounded-xl border border-border p-6">
+            <h2 className="mb-2 text-sm font-semibold text-foreground">
+              Need to update?
+            </h2>
+            <p className="text-sm text-muted-foreground">
+              Add a comment below to share new information with the team, or
+              upload attachments.
+            </p>
+          </div>
+        )}
+      {!isInternal && canCustomerReopen && (
+        <ReopenTicketCard ticketId={ticketId} />
       )}
 
       {/* Add Comment */}
@@ -360,6 +384,106 @@ export function TicketActionsPanel({
 
       {/* Upload Attachment */}
       <AttachmentUpload ticketId={ticketId} isInternal={isInternal} />
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Customer reopen
+// ---------------------------------------------------------------------------
+
+function ReopenTicketCard({ ticketId }: { ticketId: string }) {
+  const [reason, setReason] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const router = useRouter();
+  const [refreshing, startRefresh] = useTransition();
+  const busy = submitting || refreshing;
+  const attemptRef = useRef<{ fingerprint: string; key: string } | null>(null);
+
+  async function handleReopen(e: React.FormEvent) {
+    e.preventDefault();
+    const normalizedReason = reason.trim();
+    if (busy) return;
+    if (!normalizedReason) {
+      setError("Tell the team what is still wrong so they can pick it up.");
+      return;
+    }
+    setSubmitting(true);
+    setError(null);
+    try {
+      const requestBody = JSON.stringify({
+        body: normalizedReason,
+        reopen: true,
+      });
+      if (attemptRef.current?.fingerprint !== requestBody) {
+        attemptRef.current = {
+          fingerprint: requestBody,
+          key: generateTicketIdempotencyKey(),
+        };
+      }
+      const res = await fetch(`/api/tickets/${ticketId}/comments`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          [TICKET_IDEMPOTENCY_KEY_HEADER]: attemptRef.current.key,
+        },
+        body: requestBody,
+      });
+      await assertClientMutationResponse(res, "Failed to reopen ticket");
+      attemptRef.current = null;
+      setReason("");
+      startRefresh(() => router.refresh());
+    } catch (err) {
+      setError(
+        clientMutationErrorMessage(
+          err,
+          "Reopening is temporarily unavailable. Please retry."
+        )
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="rounded-xl border border-border p-6">
+      <h2 className="mb-2 text-sm font-semibold text-foreground">
+        Not fixed?
+      </h2>
+      <p className="mb-3 text-sm text-muted-foreground">
+        Reopen this ticket and tell the team what is still happening. Comments
+        alone will not reopen it.
+      </p>
+      <form aria-busy={busy} onSubmit={handleReopen} className="space-y-3">
+        <label htmlFor="ticket-reopen-reason" className="sr-only">
+          What is still wrong
+        </label>
+        <textarea
+          id="ticket-reopen-reason"
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+          rows={3}
+          maxLength={TICKET_COMMENT_MAX_LENGTH}
+          disabled={busy}
+          aria-invalid={error ? true : undefined}
+          aria-describedby={error ? "ticket-reopen-error" : undefined}
+          placeholder="What is still wrong?"
+          className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+        />
+        {error && (
+          <p id="ticket-reopen-error" role="alert" className="text-xs text-red-600">
+            {error}
+          </p>
+        )}
+        <button
+          type="submit"
+          disabled={busy}
+          className="min-h-11 w-full rounded-lg bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {busy ? "Reopening…" : "Reopen ticket"}
+        </button>
+      </form>
     </div>
   );
 }

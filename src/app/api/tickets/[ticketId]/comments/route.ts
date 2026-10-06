@@ -8,6 +8,13 @@ import {
   recordTicketCommentWithSla,
 } from "@/lib/tickets/mutations";
 import { dispatchTicketOutboxBestEffort } from "@/lib/tickets/outbox";
+import {
+  CustomerReplyForbiddenError,
+  InvalidCustomerReplyReplayError,
+  normalizeCustomerReplyKey,
+  reopenTicketAsCustomer,
+  TicketNotReopenableError,
+} from "@/lib/tickets/customer-replies";
 import { z } from "zod";
 import {
   EXTERNAL_TICKET_COMMENT_SELECT,
@@ -30,6 +37,8 @@ const createCommentSchema = z.object({
   // handler for the full reasoning.
   body: z.string().trim().min(1).max(TICKET_COMMENT_MAX_LENGTH),
   visibility: z.enum(["customer", "internal"]).default("customer"),
+  /** Customer accounts only: reopen a resolved (or recently closed) ticket. */
+  reopen: z.literal(true).optional(),
 }).strict();
 
 export async function GET(
@@ -190,18 +199,44 @@ export async function POST(
     // timeline, audit entry, first-response milestone, and customer-visible
     // Slack event commit together. Only a human, internal-authored,
     // customer-visible response can satisfy the milestone.
-    const commentId = await recordTicketCommentWithSla({
-      supabase,
-      ticketId: (ticket as { id: string }).id,
-      actorId: authorId,
-      body: data.body,
-      visibility: safeVisibility,
-      // The route, not the caller, owns attribution. A browser request cannot
-      // claim to be a Slack or email message.
-      source: "web",
-      isAutomated: false,
-      idempotencyKey,
-    });
+    let commentId: string;
+    if (data.reopen) {
+      // Engineers reopen through the status controls; this path is the
+      // customer's "this is not fixed" action with a required reason.
+      if (isInternal) {
+        return NextResponse.json(
+          { error: "Use the ticket status controls to reopen" },
+          { status: 400, headers: { "Cache-Control": "private, no-store" } }
+        );
+      }
+      const replyKey = normalizeCustomerReplyKey(idempotencyKey);
+      if (!replyKey) {
+        return NextResponse.json(
+          { error: "Invalid Idempotency-Key header" },
+          { status: 400, headers: { "Cache-Control": "private, no-store" } }
+        );
+      }
+      commentId = await reopenTicketAsCustomer({
+        supabase,
+        ticketId: (ticket as { id: string }).id,
+        actorId: authorId,
+        body: data.body,
+        idempotencyKey: replyKey,
+      });
+    } else {
+      commentId = await recordTicketCommentWithSla({
+        supabase,
+        ticketId: (ticket as { id: string }).id,
+        actorId: authorId,
+        body: data.body,
+        visibility: safeVisibility,
+        // The route, not the caller, owns attribution. A browser request
+        // cannot claim to be a Slack or email message.
+        source: "web",
+        isAutomated: false,
+        idempotencyKey,
+      });
+    }
 
     // Migration 048 commits one customer-visible Slack reply event with the
     // comment. Immediate delivery is best-effort; the leased worker retains
@@ -253,7 +288,22 @@ export async function POST(
       }
     );
   } catch (error) {
-    if (error instanceof InvalidTicketCommentReplayError) {
+    if (error instanceof TicketNotReopenableError) {
+      return NextResponse.json(
+        { error: error.message },
+        { status: 409, headers: { "Cache-Control": "private, no-store" } }
+      );
+    }
+    if (error instanceof CustomerReplyForbiddenError) {
+      return NextResponse.json(
+        { error: error.message },
+        { status: 403, headers: { "Cache-Control": "private, no-store" } }
+      );
+    }
+    if (
+      error instanceof InvalidTicketCommentReplayError ||
+      error instanceof InvalidCustomerReplyReplayError
+    ) {
       return NextResponse.json(
         { error: error.message },
         {

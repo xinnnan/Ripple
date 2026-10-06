@@ -94,6 +94,10 @@ function dependencies(overrides: Partial<{
       sent: true,
       id: "email-1",
     }),
+    sendTicketUpdate: vi.fn().mockResolvedValue({
+      sent: true,
+      id: "email-update-1",
+    }),
   };
 }
 
@@ -386,6 +390,64 @@ describe("ticket notification outbox delivery", () => {
       },
     });
     expect(deps.sendTicketResolved).not.toHaveBeenCalled();
+  });
+});
+
+describe("customer update email delivery", () => {
+  it("emails the comment and flags tickets waiting on the customer", async () => {
+    const deps = dependencies();
+    const waiting = { ...ticket(), status: "waiting_customer" as const };
+
+    await expect(
+      deliverTicketOutboxEvent(
+        event("ticket.email_customer_update", {
+          comment_id: "77777777-7777-4777-8777-777777777777",
+          body: "Which firmware version is installed?",
+        }),
+        waiting,
+        {},
+        deps
+      )
+    ).resolves.toMatchObject({ delivered: true });
+
+    expect(deps.sendTicketUpdate).toHaveBeenCalledWith({
+      to: "operator@example.com",
+      ticketNo: "RPL-000123",
+      title: "AMR stopped",
+      secureToken: "secure-token",
+      message: "Which firmware version is installed?",
+      awaitingCustomer: true,
+      idempotencyKey: `ripple-outbox/${EVENT_ID}`,
+    });
+  });
+
+  it.each([{}, { body: "" }, { body: 42 }, { body: "x".repeat(10_001) }])(
+    "terminally rejects invalid payload #%#",
+    async (payload) => {
+      const deps = dependencies();
+      await expect(
+        deliverTicketOutboxEvent(
+          event("ticket.email_customer_update", payload),
+          ticket(),
+          {},
+          deps
+        )
+      ).resolves.toMatchObject({ delivered: false, retryable: false });
+      expect(deps.sendTicketUpdate).not.toHaveBeenCalled();
+    }
+  );
+
+  it("skips when the ticket has no submitter email", async () => {
+    const deps = dependencies();
+    await expect(
+      deliverTicketOutboxEvent(
+        event("ticket.email_customer_update", { body: "Update" }),
+        ticket(null),
+        {},
+        deps
+      )
+    ).resolves.toMatchObject({ delivered: true, result: { outcome: "skipped" } });
+    expect(deps.sendTicketUpdate).not.toHaveBeenCalled();
   });
 });
 

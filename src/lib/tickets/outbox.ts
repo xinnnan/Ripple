@@ -10,6 +10,7 @@ import {
 import {
   sendTicketConfirmation,
   sendTicketResolved,
+  sendTicketUpdate,
   type SendResult,
 } from "@/lib/email/send";
 import type { Ticket } from "@/types/ticket";
@@ -21,6 +22,7 @@ export const TICKET_OUTBOX_EVENT_TYPES = [
   "ticket.slack_comment_reply",
   "ticket.slack_resolution_reply",
   "ticket.email_resolution",
+  "ticket.email_customer_update",
 ] as const;
 
 export type TicketOutboxEventType =
@@ -70,6 +72,7 @@ interface TicketOutboxDeliveryDependencies {
   postMasterThreadReply: typeof postMasterThreadReply;
   sendTicketConfirmation: typeof sendTicketConfirmation;
   sendTicketResolved: typeof sendTicketResolved;
+  sendTicketUpdate: typeof sendTicketUpdate;
 }
 
 const defaultDeliveryDependencies: TicketOutboxDeliveryDependencies = {
@@ -78,6 +81,7 @@ const defaultDeliveryDependencies: TicketOutboxDeliveryDependencies = {
   postMasterThreadReply,
   sendTicketConfirmation,
   sendTicketResolved,
+  sendTicketUpdate,
 };
 
 function slackDecision(
@@ -312,6 +316,48 @@ export async function deliverTicketOutboxEvent(
           title: ticket.title,
           secureToken: ticket.secure_token,
           resolutionSummary: summary,
+          idempotencyKey: `ripple-outbox/${event.id}`,
+        })
+      );
+    }
+
+    case "ticket.email_customer_update": {
+      const message = event.payload.body;
+      if (
+        typeof message !== "string" ||
+        message.trim().length < 1 ||
+        message.length > 10_000
+      ) {
+        return {
+          delivered: false,
+          retryable: false,
+          error: "Customer update email payload is invalid",
+          result: {
+            provider: "resend",
+            outcome: "failed",
+            reason: "invalid_payload",
+          },
+        };
+      }
+      if (!ticket.submitter_email) {
+        return {
+          delivered: true,
+          result: {
+            provider: "resend",
+            outcome: "skipped",
+            reason: "no_recipient",
+          },
+        };
+      }
+      return emailDecision(
+        await dependencies.sendTicketUpdate({
+          to: ticket.submitter_email,
+          ticketNo: ticket.ticket_no,
+          title: ticket.title,
+          secureToken: ticket.secure_token,
+          message,
+          // Read at delivery time so the subject reflects the current state.
+          awaitingCustomer: ticket.status === "waiting_customer",
           idempotencyKey: `ripple-outbox/${event.id}`,
         })
       );

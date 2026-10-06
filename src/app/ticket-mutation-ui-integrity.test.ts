@@ -55,7 +55,9 @@ describe("ticket mutation UI integrity", () => {
   });
 
   it("locks detail mutations through route refresh and binds their controls", () => {
-    expect(actionsPanel.match(/const busy =/g)).toHaveLength(4);
+    // Update, resolve, customer reopen, comment, and attachment forms.
+    expect(actionsPanel.match(/const busy =/g)).toHaveLength(5);
+    expect(actionsPanel).toContain('htmlFor="ticket-reopen-reason"');
     expect(actionsPanel).toContain("if (busy) return");
     expect(actionsPanel).toContain('htmlFor="ticket-update-status"');
     expect(actionsPanel).toContain('htmlFor="resolve-customer-summary"');

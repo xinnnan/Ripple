@@ -31,6 +31,11 @@ vi.mock("@/lib/distributed-rate-limit", () => ({
 vi.mock("@/lib/supabase/admin", () => ({
   createAdminClient: () => ({ from: fromMock }),
 }));
+vi.mock("./guest-reply-form", () => ({
+  GuestReplyForm: (props: Record<string, unknown>) => (
+    <div data-testid="guest-reply-form" data-props={JSON.stringify(props)} />
+  ),
+}));
 
 import TicketViewPage from "./page";
 
@@ -83,5 +88,110 @@ describe("public ticket view boundary", () => {
     expect(html).toContain("temporarily unavailable");
     expect(html).not.toContain("private detail");
     expect(fromMock).not.toHaveBeenCalled();
+  });
+});
+
+function chain(result: { data: unknown; error: unknown }) {
+  const builder = Promise.resolve(result) as Promise<typeof result> &
+    Record<string, unknown>;
+  for (const method of ["select", "eq", "in", "order"]) {
+    builder[method] = vi.fn(() => builder);
+  }
+  builder.maybeSingle = vi.fn(() => Promise.resolve(result));
+  return builder;
+}
+
+function ticketRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "44444444-4444-4444-8444-444444444444",
+    ticket_no: "RPL-000046",
+    title: "Sorter jam",
+    description: "Line 3 stopped",
+    status: "waiting_customer",
+    severity: "P2",
+    impact: null,
+    asset_id: null,
+    area: null,
+    customer_visible_summary: null,
+    created_at: "2026-10-05T15:00:00Z",
+    resolved_at: null,
+    closed_at: null,
+    customer: { name: "Acme" },
+    site: { site_name: "Indy DC", timezone: "America/Chicago" },
+    owner: { full_name: "Dana Engineer" },
+    ...overrides,
+  };
+}
+
+function mockTicket(ticket: Record<string, unknown>) {
+  const results: Record<string, { data: unknown; error: unknown }> = {
+    tickets: { data: ticket, error: null },
+    ticket_comments: {
+      data: [
+        { id: "c1", body: "Please send logs", created_at: "2026-10-05T16:00:00Z", author: { full_name: "Dana Engineer", role: "engineer" } },
+        { id: "c2", body: "Logs attached", created_at: "2026-10-05T17:00:00Z", author: null },
+        { id: "c3", body: "Me too", created_at: "2026-10-05T18:00:00Z", author: { full_name: "Casey Customer", role: "customer" } },
+      ],
+      error: null,
+    },
+    ticket_attachments: {
+      data: [{ id: "a1", file_name: "fault.log", file_type: "text/plain", file_size: 2048, created_at: "2026-10-05T17:00:00Z" }],
+      error: null,
+    },
+    ticket_events: { data: [], error: null },
+  };
+  fromMock.mockImplementation((table: string) => chain(results[table]));
+}
+
+describe("public ticket conversation", () => {
+  it("labels authors by relationship, not by array index", async () => {
+    mockTicket(ticketRow());
+    const html = await renderPage();
+
+    expect(html).toContain("Dana Engineer");
+    expect(html).toContain("DropletAI");
+    expect(html).toContain("Ticket submitter");
+    expect(html).toContain("Casey Customer");
+    expect(html).not.toContain(">Support Team<");
+  });
+
+  it("shows times in the site timezone", async () => {
+    mockTicket(ticketRow());
+    expect(await renderPage()).toMatch(/CDT|CST/);
+  });
+
+  it("links attachments to the token-gated download route", async () => {
+    mockTicket(ticketRow());
+    const html = await renderPage();
+    expect(html).toContain(
+      `href="/api/public/tickets/RPL-000046/attachments/a1?token=${"a".repeat(64)}"`
+    );
+  });
+
+  it("offers a reply form that knows the ticket is waiting on the customer", async () => {
+    mockTicket(ticketRow());
+    const html = await renderPage();
+    const props = JSON.parse(
+      html.match(/data-props="([^"]+)"/)![1].replace(/&quot;/g, '"')
+    );
+    expect(props).toEqual({
+      ticketNo: "RPL-000046",
+      token: "a".repeat(64),
+      canReopen: false,
+      awaitingCustomer: true,
+    });
+  });
+
+  it("offers reopen on resolved tickets", async () => {
+    mockTicket(ticketRow({ status: "resolved", resolved_at: "2026-10-04T12:00:00Z" }));
+    const html = await renderPage();
+    expect(html).toContain("&quot;canReopen&quot;:true");
+  });
+
+  it("points long-closed tickets to a new request instead of a reply form", async () => {
+    mockTicket(ticketRow({ status: "closed", closed_at: "2026-01-01T00:00:00Z" }));
+    const html = await renderPage();
+    expect(html).not.toContain("guest-reply-form");
+    expect(html).toContain('href="/submit"');
   });
 });
