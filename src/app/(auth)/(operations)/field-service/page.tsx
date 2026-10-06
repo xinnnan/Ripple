@@ -58,7 +58,7 @@ export default async function FieldServicePage() {
       engineers:field_service_engineers(engineer_id, role, engineer:users(id, full_name))
     `)
     .order("created_at", { ascending: false });
-  assertPageQueriesSucceeded("admin/field-service-list", ordersResult);
+  assertPageQueriesSucceeded("operations/field-service-list", ordersResult);
   const orders = ordersResult.data;
 
   const typedOrders = (orders || []) as unknown as FieldServiceRow[];
@@ -73,7 +73,7 @@ export default async function FieldServicePage() {
           </p>
         </div>
         <Link
-          href="/admin/field-service/create"
+          href="/field-service/create"
           className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
         >
           + New Service Order
@@ -112,7 +112,7 @@ export default async function FieldServicePage() {
                   <tr key={order.id} className="hover:bg-muted/30 transition-colors">
                     <td className="p-3">
                       <Link
-                        href={`/admin/field-service/${order.id}`}
+                        href={`/field-service/${order.id}`}
                         className="text-xs font-mono font-medium text-primary hover:text-primary/80"
                       >
                         {order.order_no}

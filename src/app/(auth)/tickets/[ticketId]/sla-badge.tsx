@@ -1,3 +1,4 @@
+import { formatDate } from "@/lib/utils";
 import { computeSLAState, type SLAStatus } from "@/lib/sla";
 import type { TicketStatus, Severity } from "@/types/ticket";
 
@@ -10,6 +11,8 @@ interface SLABadgeProps {
   resolved_at: string | null;
   first_response_breached_at: string | null;
   resolution_breached_at: string | null;
+  /** Ticket site timezone; display never follows the server host. */
+  timezone: string;
 }
 
 function formatDelta(min: number | null): string {
@@ -110,7 +113,7 @@ export function SLABadge(props: SLABadgeProps) {
         )}
       {state.status === "met" && props.first_response_at && (
         <p className="text-xs mt-1 text-blue-700">
-          First response at {new Date(props.first_response_at).toLocaleString()}
+          First response at {formatDate(props.first_response_at, props.timezone)}
         </p>
       )}
     </div>

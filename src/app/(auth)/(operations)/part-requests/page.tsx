@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { formatDate, resolveSiteTimezone } from "@/lib/utils";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { SPR_STATUS_LABELS, SPR_STATUS_COLORS, SPR_PRIORITY_LABELS } from "@/types/spare-parts";
 import Link from "next/link";
@@ -15,7 +16,10 @@ interface PartRequestRow {
   priority: string;
   total_cost: number | null;
   created_at: string;
-  site: { id: string; site_name: string; site_code: string }[] | { id: string; site_name: string; site_code: string } | null;
+  site:
+    | { id: string; site_name: string; site_code: string; timezone: string }[]
+    | { id: string; site_name: string; site_code: string; timezone: string }
+    | null;
   ticket: { id: string; ticket_no: string; title: string }[] | { id: string; ticket_no: string; title: string } | null;
   requester: { id: string; full_name: string }[] | { id: string; full_name: string } | null;
   items: { quantity: number }[];
@@ -40,13 +44,13 @@ export default async function PartRequestsPage() {
     .from("spare_part_requests")
     .select(`
       id, request_no, status, priority, total_cost, created_at,
-      site:sites(id, site_name, site_code),
+      site:sites(id, site_name, site_code, timezone),
       ticket:tickets(id, ticket_no, title),
       requester:users!spare_part_requests_requested_by_fkey(id, full_name),
       items:spare_part_request_items(quantity)
     `)
     .order("created_at", { ascending: false });
-  assertPageQueriesSucceeded("admin/part-request-list", requestsResult);
+  assertPageQueriesSucceeded("operations/part-request-list", requestsResult);
   const requests = requestsResult.data;
 
   const typedRequests = (requests || []) as unknown as PartRequestRow[];
@@ -61,7 +65,7 @@ export default async function PartRequestsPage() {
           </p>
         </div>
         <Link
-          href="/admin/part-requests/create"
+          href="/part-requests/create"
           className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
         >
           + New Request
@@ -100,7 +104,7 @@ export default async function PartRequestsPage() {
                   <tr key={req.id} className="hover:bg-muted/30 transition-colors">
                     <td className="p-3">
                       <Link
-                        href={`/admin/part-requests/${req.id}`}
+                        href={`/part-requests/${req.id}`}
                         className="text-xs font-mono font-medium text-primary hover:text-primary/80"
                       >
                         {req.request_no}
@@ -141,7 +145,7 @@ export default async function PartRequestsPage() {
                     </td>
                     <td className="p-3">
                       <span className="text-xs text-muted-foreground">
-                        {new Date(req.created_at).toLocaleDateString()}
+                        {formatDate(req.created_at, resolveSiteTimezone(req.site))}
                       </span>
                     </td>
                   </tr>

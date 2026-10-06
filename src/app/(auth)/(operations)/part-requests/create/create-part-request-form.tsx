@@ -231,7 +231,7 @@ export function CreatePartRequestForm({
       );
 
       startNavigation(() => {
-        router.push("/admin/part-requests");
+        router.push("/part-requests");
         router.refresh();
       });
     } catch (caught) {

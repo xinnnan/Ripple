@@ -47,6 +47,11 @@ const primaryItems: NavItem[] = [
   { href: "/tickets", label: "Tickets", icon: Ticket },
 ];
 
+const operationsItems: NavItem[] = [
+  { href: "/field-service", label: "Field Service", icon: Wrench },
+  { href: "/part-requests", label: "Part Requests", icon: ClipboardList },
+];
+
 const adminItems: NavItem[] = [
   {
     href: "/admin/customers-sites",
@@ -56,12 +61,6 @@ const adminItems: NavItem[] = [
   { href: "/admin/users", label: "Users", icon: Users },
   { href: "/admin/spare-parts", label: "Spare Parts", icon: Package },
   { href: "/admin/inventory", label: "Inventory", icon: Boxes },
-  {
-    href: "/admin/part-requests",
-    label: "Part Requests",
-    icon: ClipboardList,
-  },
-  { href: "/admin/field-service", label: "Field Service", icon: Wrench },
   { href: "/admin/sla-policies", label: "SLA Policies", icon: Clock3 },
   { href: "/admin/audit", label: "Audit Log", icon: FileClock },
 ];
@@ -166,6 +165,15 @@ export function AppShell({
           <NavGroup
             label="Workspace"
             items={roleItems}
+            pathname={pathname}
+            onNavigate={() => setMobileOpen(false)}
+          />
+        )}
+
+        {isInternal && (
+          <NavGroup
+            label="Operations"
+            items={operationsItems}
             pathname={pathname}
             onNavigate={() => setMobileOpen(false)}
           />

@@ -27,7 +27,7 @@ export default async function CreateFieldServicePage() {
       .order("full_name"),
   ]);
   assertPageQueriesSucceeded(
-    "admin/field-service-create-options",
+    "operations/field-service-create-options",
     sitesResult,
     engineersResult
   );

@@ -2,13 +2,23 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import type { SPRStatus } from "@/types/spare-parts";
+import { canTransitionSparePartRequest } from "@/lib/spare-parts/status";
 
 interface PartRequestActionsProps {
   requestId: string;
-  status: string;
+  status: SPRStatus;
+  /** Approval commits spend and is reserved for administrators. */
+  canApprove: boolean;
 }
 
-export function PartRequestActions({ requestId, status }: PartRequestActionsProps) {
+export function PartRequestActions({
+  requestId,
+  status,
+  canApprove,
+}: PartRequestActionsProps) {
+  const can = (next: SPRStatus) =>
+    status !== next && canTransitionSparePartRequest(status, next);
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -56,7 +66,12 @@ export function PartRequestActions({ requestId, status }: PartRequestActionsProp
         </p>
       )}
       <div className="space-y-2">
-        {status === "requested" && (
+        {can("approved") && !canApprove && (
+          <p className="rounded-lg bg-muted/60 px-3 py-2 text-sm text-muted-foreground">
+            Awaiting administrator approval.
+          </p>
+        )}
+        {can("approved") && canApprove && (
           <button
             type="button"
             onClick={() => updateStatus("approved")}
@@ -66,7 +81,7 @@ export function PartRequestActions({ requestId, status }: PartRequestActionsProp
             Approve Request
           </button>
         )}
-        {status === "approved" && (
+        {can("shipped") && (
           <button
             type="button"
             onClick={() => updateStatus("shipped")}
@@ -76,7 +91,7 @@ export function PartRequestActions({ requestId, status }: PartRequestActionsProp
             Mark as Shipped
           </button>
         )}
-        {status === "shipped" && (
+        {can("delivered") && (
           <button
             type="button"
             onClick={() => updateStatus("delivered")}
@@ -86,7 +101,7 @@ export function PartRequestActions({ requestId, status }: PartRequestActionsProp
             Confirm Delivery
           </button>
         )}
-        {(status === "requested" || status === "approved") && (
+        {can("cancelled") && (
           <button
             type="button"
             onClick={() => updateStatus("cancelled")}

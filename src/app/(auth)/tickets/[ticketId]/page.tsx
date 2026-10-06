@@ -400,7 +400,7 @@ export default async function TicketDetailPage({ params }: Props) {
               </h2>
               {isInternal && (
                 <Link
-                  href={`/admin/part-requests/create?ticket_id=${ticket.id}`}
+                  href={`/part-requests/create?ticket_id=${ticket.id}`}
                   className="text-xs font-medium text-primary hover:text-primary/80"
                 >
                   + New Request
@@ -433,7 +433,7 @@ export default async function TicketDetailPage({ params }: Props) {
                   return isInternal ? (
                     <Link
                       key={req.id}
-                      href={`/admin/part-requests/${req.id}`}
+                      href={`/part-requests/${req.id}`}
                       className="flex items-center justify-between p-3 hover:bg-muted/50 transition-colors"
                     >
                       {content}
@@ -459,7 +459,7 @@ export default async function TicketDetailPage({ params }: Props) {
               </h2>
               {isInternal && (
                 <Link
-                  href={`/admin/field-service/create?ticket_id=${ticket.id}`}
+                  href={`/field-service/create?ticket_id=${ticket.id}`}
                   className="text-xs font-medium text-primary hover:text-primary/80"
                 >
                   + New Service Order
@@ -493,7 +493,7 @@ export default async function TicketDetailPage({ params }: Props) {
                   return isInternal ? (
                     <Link
                       key={order.id as string}
-                      href={`/admin/field-service/${order.id as string}`}
+                      href={`/field-service/${order.id as string}`}
                       className="flex items-center justify-between p-3 hover:bg-muted/50 transition-colors"
                     >
                       {content}
@@ -525,6 +525,7 @@ export default async function TicketDetailPage({ params }: Props) {
             resolved_at={ticket.resolved_at as string | null}
             first_response_breached_at={ticket.first_response_breached_at as string | null}
             resolution_breached_at={ticket.resolution_breached_at as string | null}
+            timezone={userTimezone}
           />
           <div className="rounded-xl border border-border p-6 space-y-3">
             <h2 className="text-sm font-semibold text-foreground">Details</h2>

@@ -1,5 +1,6 @@
 "use client";
 
+import { formatDate } from "@/lib/utils";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -247,7 +248,7 @@ export function UsersTable({
                   </td>
                   <td className="p-3">
                     <span className="text-xs text-muted-foreground">
-                      {new Date(u.created_at).toLocaleDateString()}
+                      {formatDate(u.created_at)}
                     </span>
                   </td>
                   <td className="p-3 text-right">

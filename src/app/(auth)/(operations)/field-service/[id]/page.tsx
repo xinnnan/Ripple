@@ -58,14 +58,14 @@ export default async function FieldServiceDetailPage({ params }: { params: Promi
     `)
     .eq("id", id)
     .maybeSingle();
-  assertPageQueriesSucceeded("admin/field-service-detail", orderResult);
+  assertPageQueriesSucceeded("operations/field-service-detail", orderResult);
   const order = orderResult.data;
 
   if (!order) {
     return (
       <div className="p-8 text-center">
         <p className="text-muted-foreground">Field service order not found.</p>
-        <Link href="/admin/field-service" className="text-primary mt-2 inline-block">Back to Field Service</Link>
+        <Link href="/field-service" className="text-primary mt-2 inline-block">Back to Field Service</Link>
       </div>
     );
   }
@@ -81,7 +81,7 @@ export default async function FieldServiceDetailPage({ params }: { params: Promi
     <div className="p-8">
       <div className="mb-8">
         <div className="flex items-center gap-2 text-sm text-muted-foreground mb-2">
-          <Link href="/admin/field-service" className="hover:text-foreground">Field Service</Link>
+          <Link href="/field-service" className="hover:text-foreground">Field Service</Link>
           <span>/</span>
           <span className="text-foreground">{o.order_no}</span>
         </div>

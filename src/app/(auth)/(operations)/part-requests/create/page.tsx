@@ -26,7 +26,7 @@ export default async function CreatePartRequestPage() {
       .order("part_name"),
   ]);
   assertPageQueriesSucceeded(
-    "admin/part-request-create-options",
+    "operations/part-request-create-options",
     sitesResult,
     partsResult
   );

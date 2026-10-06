@@ -6,7 +6,7 @@ const root = process.cwd();
 const fieldServiceActions = readFileSync(
   join(
     root,
-    "src/app/(auth)/admin/field-service/[id]/field-service-actions.tsx"
+    "src/app/(auth)/(operations)/field-service/[id]/field-service-actions.tsx"
   ),
   "utf8"
 );

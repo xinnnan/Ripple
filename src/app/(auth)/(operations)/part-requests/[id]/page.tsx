@@ -1,6 +1,13 @@
 import type { Metadata } from "next";
+import { getAuthUser } from "@/lib/supabase/auth-helpers";
+import { formatDate, resolveSiteTimezone } from "@/lib/utils";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { SPR_STATUS_LABELS, SPR_STATUS_COLORS, SPR_PRIORITY_LABELS } from "@/types/spare-parts";
+import {
+  SPR_STATUS_LABELS,
+  SPR_STATUS_COLORS,
+  SPR_PRIORITY_LABELS,
+  type SPRStatus,
+} from "@/types/spare-parts";
 import Link from "next/link";
 import { PartRequestActions } from "./part-request-actions";
 import { parseUuidRouteId } from "@/lib/request-identifiers";
@@ -32,7 +39,10 @@ interface SPRDetail {
   delivered_at: string | null;
   shipping_carrier: string | null;
   shipping_tracking: string | null;
-  site: { site_name: string } | { site_name: string }[] | null;
+  site:
+    | { site_name: string; timezone: string }
+    | { site_name: string; timezone: string }[]
+    | null;
   ticket: { ticket_no: string } | { ticket_no: string }[] | null;
   requester: { full_name: string } | { full_name: string }[] | null;
   approver: { full_name: string } | { full_name: string }[] | null;
@@ -53,7 +63,7 @@ export default async function PartRequestDetailPage({ params }: { params: Promis
     .from("spare_part_requests")
     .select(`
       *,
-      site:sites(site_name),
+      site:sites(site_name, timezone),
       ticket:tickets(ticket_no),
       requester:users!spare_part_requests_requested_by_fkey(full_name),
       approver:users!spare_part_requests_approved_by_fkey(full_name),
@@ -61,14 +71,14 @@ export default async function PartRequestDetailPage({ params }: { params: Promis
     `)
     .eq("id", id)
     .maybeSingle();
-  assertPageQueriesSucceeded("admin/part-request-detail", requestResult);
+  assertPageQueriesSucceeded("operations/part-request-detail", requestResult);
   const request = requestResult.data;
 
   if (!request) {
     return (
       <div className="p-8 text-center">
         <p className="text-muted-foreground">Part request not found.</p>
-        <Link href="/admin/part-requests" className="text-primary mt-2 inline-block">Back to Requests</Link>
+        <Link href="/part-requests" className="text-primary mt-2 inline-block">Back to Requests</Link>
       </div>
     );
   }
@@ -78,13 +88,16 @@ export default async function PartRequestDetailPage({ params }: { params: Promis
   const ticket = getField(req.ticket);
   const requester = getField(req.requester);
   const approver = getField(req.approver);
+  const timezone = resolveSiteTimezone(req.site);
+  const viewer = await getAuthUser();
+  const canApprove = !("error" in viewer) && viewer.role === "admin";
   const statusColor = SPR_STATUS_COLORS[req.status as keyof typeof SPR_STATUS_COLORS] || "bg-gray-100 text-gray-800";
 
   return (
     <div className="p-8">
       <div className="mb-8">
         <div className="flex items-center gap-2 text-sm text-muted-foreground mb-2">
-          <Link href="/admin/part-requests" className="hover:text-foreground">Part Requests</Link>
+          <Link href="/part-requests" className="hover:text-foreground">Part Requests</Link>
           <span>/</span>
           <span className="text-foreground">{req.request_no}</span>
         </div>
@@ -185,7 +198,7 @@ export default async function PartRequestDetailPage({ params }: { params: Promis
               </div>
               <div className="flex justify-between">
                 <dt className="text-muted-foreground">Created</dt>
-                <dd className="text-foreground">{new Date(req.created_at).toLocaleDateString()}</dd>
+                <dd className="text-foreground">{formatDate(req.created_at, timezone)}</dd>
               </div>
             </dl>
           </div>
@@ -204,16 +217,20 @@ export default async function PartRequestDetailPage({ params }: { params: Promis
               </div>
               <div className="flex justify-between">
                 <dt className="text-muted-foreground">Shipped</dt>
-                <dd className="text-foreground">{req.shipped_at ? new Date(req.shipped_at).toLocaleDateString() : "—"}</dd>
+                <dd className="text-foreground">{req.shipped_at ? formatDate(req.shipped_at, timezone) : "—"}</dd>
               </div>
               <div className="flex justify-between">
                 <dt className="text-muted-foreground">Delivered</dt>
-                <dd className="text-foreground">{req.delivered_at ? new Date(req.delivered_at).toLocaleDateString() : "—"}</dd>
+                <dd className="text-foreground">{req.delivered_at ? formatDate(req.delivered_at, timezone) : "—"}</dd>
               </div>
             </dl>
           </div>
 
-          <PartRequestActions requestId={id} status={req.status} />
+          <PartRequestActions
+            requestId={id}
+            status={req.status as SPRStatus}
+            canApprove={canApprove}
+          />
         </div>
       </div>
     </div>

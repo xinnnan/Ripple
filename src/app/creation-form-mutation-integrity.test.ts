@@ -6,14 +6,14 @@ const root = process.cwd();
 const fieldServiceForm = readFileSync(
   join(
     root,
-    "src/app/(auth)/admin/field-service/create/create-field-service-form.tsx"
+    "src/app/(auth)/(operations)/field-service/create/create-field-service-form.tsx"
   ),
   "utf8"
 );
 const partRequestForm = readFileSync(
   join(
     root,
-    "src/app/(auth)/admin/part-requests/create/create-part-request-form.tsx"
+    "src/app/(auth)/(operations)/part-requests/create/create-part-request-form.tsx"
   ),
   "utf8"
 );

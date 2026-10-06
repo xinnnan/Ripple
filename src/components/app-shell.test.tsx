@@ -55,3 +55,25 @@ describe("application shell settings navigation", () => {
     expect(html).toContain('href="/profile"');
   });
 });
+
+describe("application shell operations navigation", () => {
+  it.each([
+    { role: "admin" as const, isAdmin: true },
+    { role: "engineer" as const },
+  ])("gives $role users field service and part requests", ({ role, isAdmin }) => {
+    const html = renderShell({ role, isAdmin, isInternal: true });
+    expect(html).toContain("Operations");
+    expect(html).toContain('href="/field-service"');
+    expect(html).toContain('href="/part-requests"');
+    expect(html).not.toContain('href="/admin/field-service"');
+  });
+
+  it.each([
+    { role: "customer_manager" as const, isManager: true },
+    { role: "customer" as const },
+  ])("hides operations from $role users", ({ role, isManager }) => {
+    const html = renderShell({ role, isManager });
+    expect(html).not.toContain('href="/field-service"');
+    expect(html).not.toContain('href="/part-requests"');
+  });
+});

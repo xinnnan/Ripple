@@ -10,6 +10,8 @@ const PROTECTED_ROUTES = [
   "/profile",
   "/admin",
   "/team",
+  "/field-service",
+  "/part-requests",
 ];
 
 // Routes that should redirect to dashboard if already logged in
@@ -20,7 +22,7 @@ const AUTH_ROUTES = ["/login", "/signup"];
 // gets bounced to /dashboard, not a half-rendered admin shell.
 //
 // /admin/*   → admin only
-// /settings  → internal only (admin + engineer)
+// /settings, /field-service, /part-requests → internal only (admin + engineer)
 // /team      → customer_manager only (regular customers have
 //               site_members; managers have org-wide view)
 // /sites     → customer + customer_manager (not internal)
@@ -31,7 +33,7 @@ const AUTH_ROUTES = ["/login", "/signup"];
 // A page that doesn't add its own check still fails closed because
 // of these middleware gates.
 const ADMIN_ONLY_PREFIXES = ["/admin"];
-const INTERNAL_ONLY_PREFIXES = ["/settings"];
+const INTERNAL_ONLY_PREFIXES = ["/settings", "/field-service", "/part-requests"];
 const CM_ONLY = new Set(["/team"]);
 const NON_INTERNAL = new Set(["/sites"]);
 
@@ -230,6 +232,8 @@ export const config = {
     "/profile/:path*",
     "/admin/:path*",
     "/team/:path*",
+    "/field-service/:path*",
+    "/part-requests/:path*",
     "/login",
     "/signup",
   ],

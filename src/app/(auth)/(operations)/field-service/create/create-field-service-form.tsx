@@ -166,7 +166,7 @@ export function CreateFieldServiceForm({
       );
 
       startNavigation(() => {
-        router.push("/admin/field-service");
+        router.push("/field-service");
         router.refresh();
       });
     } catch (err) {

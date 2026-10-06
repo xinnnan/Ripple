@@ -10,8 +10,8 @@ const { createAdminClient } = vi.hoisted(() => ({
 
 vi.mock("@/lib/supabase/admin", () => ({ createAdminClient }));
 
-import CreateFieldServicePage from "@/app/(auth)/admin/field-service/create/page";
-import CreatePartRequestPage from "@/app/(auth)/admin/part-requests/create/page";
+import CreateFieldServicePage from "@/app/(auth)/(operations)/field-service/create/page";
+import CreatePartRequestPage from "@/app/(auth)/(operations)/part-requests/create/page";
 
 interface QueryError {
   code?: string;
@@ -162,7 +162,7 @@ describe("admin creation-page read integrity", () => {
   it("keeps part-request submission unavailable without required options", () => {
     const formSource = readFileSync(
       new URL(
-        "./(auth)/admin/part-requests/create/create-part-request-form.tsx",
+        "./(auth)/(operations)/part-requests/create/create-part-request-form.tsx",
         import.meta.url
       ),
       "utf8"
@@ -177,7 +177,7 @@ describe("admin creation-page read integrity", () => {
   it("keeps field-service submission unavailable without an active site", () => {
     const formSource = readFileSync(
       new URL(
-        "./(auth)/admin/field-service/create/create-field-service-form.tsx",
+        "./(auth)/(operations)/field-service/create/create-field-service-form.tsx",
         import.meta.url
       ),
       "utf8"

@@ -12,6 +12,21 @@ const nextConfig: NextConfig = {
   images: {
     remotePatterns: buildImageRemotePatterns(supabaseUrl),
   },
+  async redirects() {
+    // Operations moved out of the admin-only section so engineers can use it.
+    return [
+      {
+        source: "/admin/field-service/:path*",
+        destination: "/field-service/:path*",
+        permanent: true,
+      },
+      {
+        source: "/admin/part-requests/:path*",
+        destination: "/part-requests/:path*",
+        permanent: true,
+      },
+    ];
+  },
   async headers() {
     return buildSecurityHeaderRules({ supabaseUrl, isDevelopment });
   },
