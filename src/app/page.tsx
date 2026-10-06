@@ -2,7 +2,6 @@ import Image from "next/image";
 import Link from "next/link";
 import {
   ArrowRight,
-  Bot,
   Check,
   ClipboardCheck,
   Clock3,
@@ -10,6 +9,7 @@ import {
   MapPin,
   MessageSquareText,
   PackageCheck,
+  Reply,
   ShieldCheck,
   Wrench,
 } from "lucide-react";
@@ -69,10 +69,10 @@ const capabilities = [
     icon: PackageCheck,
   },
   {
-    title: "Ripple Assist",
+    title: "Reply from anywhere",
     description:
-      "Internal AI-assisted troubleshooting helps engineers organize evidence and next checks.",
-    icon: Bot,
+      "Answer questions, share files, or reopen a ticket from your account or your tracking link.",
+    icon: Reply,
   },
 ];
 

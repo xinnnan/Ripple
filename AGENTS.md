@@ -37,7 +37,7 @@ behaviour verification is pending. `main` is live on Vercel.
 | Auth | **Supabase Auth** (email + password + recovery) | `@supabase/ssr` cookie flow; `handle_new_user()` trigger mirrors `auth.users` → `public.users` |
 | Storage | **Supabase Storage** | Bucket `ripple-attachments`, 50MB cap per file |
 | Slack | **@slack/bolt** + **@slack/web-api** | Bolt runs inside Next.js API routes (no separate process) |
-| AI | **MiniMax AI** (OpenAI-compatible) | Was OpenAI → Zhipu (BigModel GLM-4.7-FlashX) → now MiniMax. Model `M2.7-highspeed`. **Note:** base URL `https://api.minimax.chat/v1/` looks suspicious (not a known major LLM endpoint) — verify before deploy. See §9. |
+| AI | **Removed 2026-10-06** (product decision) | Ripple Assist UI, `/api/ai/suggest`, Slack assist actions, and `src/lib/ai` were deleted; the `ai_suggestions` tables remain in the schema unused |
 | Email | **Resend** | Transactional ticket confirmation and resolution notices |
 | Async delivery | **Postgres outbox + Vercel Cron** | Request-path fast drain plus lease/retry/dead-letter recovery |
 | Validation | **Zod** | All API request bodies |
@@ -93,11 +93,6 @@ behaviour verification is pending. `main` is live on Vercel.
 │   │   │   ├── app.ts                   # Bolt instance
 │   │   │   ├── blocks/                  # Block Kit builders
 │   │   │   └── handlers/                # action + view submission handlers
-│   │   ├── ai/
-│   │   │   ├── prompt.ts                # ⭐ System prompts (safety rules embedded)
-│   │   │   ├── suggest.ts               # OpenAI-compatible client wrapper
-│   │   │   ├── service.ts               # Paid-call quota/replay orchestration
-│   │   │   └── idempotency.ts           # Durable AI request receipt commands
 │   │   ├── tickets/
 │   │   │   ├── outbox.ts                # ⭐ Durable ticket delivery worker
 │   │   │   ├── customer-replies.ts      # Guest reply + customer reopen commands
@@ -151,7 +146,6 @@ behaviour verification is pending. `main` is live on Vercel.
 - Slack ticket creation → `src/app/api/slack/command/ticket/route.ts` + `src/lib/slack/blocks/ticket-form.ts`
 - Slack ticket-thread capture → `src/app/api/slack/events/route.ts` + `src/lib/slack/handlers/events.ts`
 - Slack actor identity mapping → `src/app/(auth)/admin/users/[id]/edit-user-form.tsx` + `src/app/api/admin/users/[id]/slack/route.ts`
-- AI assist → `src/app/api/ai/suggest/route.ts` + `src/lib/ai/service.ts` + `src/lib/ai/suggest.ts`
 - DB schema → `supabase/migrations/001_*.sql` … `055_customer_membership_foundation.sql`
 
 ---
@@ -393,9 +387,6 @@ NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=   # new sb_publishable_ format
 SUPABASE_SECRET_KEY=                    # new sb_secret_ format (was SERVICE_ROLE_KEY)
 SLACK_BOT_TOKEN=
 SLACK_SIGNING_SECRET=
-MINIMAX_API_KEY=
-MINIMAX_BASE_URL=https://api.minimax.chat/v1/
-MINIMAX_MODEL=M2.7-highspeed
 RESEND_API_KEY=                         # optional until sender domain is verified
 EMAIL_FROM=support@dropletai.services
 NEXT_PUBLIC_APP_URL=
@@ -1995,7 +1986,7 @@ resume work; this section remains the broader historical summary.
 | ✅ Closed | Attachments could not be downloaded | `/api/attachments/[id]`, `/api/public/tickets/[ticketNo]/attachments/[id]` | Authorized 60-second forced-download redirects for internal, customer, and guest viewers |
 | ✅ Closed | Engineers could not reach field service or part requests | `src/app/(auth)/(operations)` | Internal gate + nav; `/admin/*` redirects; part-request approval admin-only in UI, API, and migration 057 |
 | ✅ Closed | Customer conversation dead ends | migration 058, comments API, share page | Auto-return, reopen, guest replies, update emails, auto-close |
-| 🟡 Med | MiniMax AI key invalid (`401 invalid api key (2049)`). | `.env` `MINIMAX_API_KEY` | Mock fallback is in place; real AI works once key is fixed. Provider URL `https://api.minimax.chat/v1/` resolves and returns proper error responses, so the gateway is real — just the key is wrong. |
+| ✅ Closed | MiniMax AI key invalid | — | AI feature removed 2026-10-06; no provider key is needed |
 | 🟡 Med | Resend sender domain `dropletai.services` not verified | `src/lib/email/send.ts` | Email send returns `send_failed` until domain is verified at resend.com/domains. Ticket creation still works. |
 | ✅ Closed | Unsafe enabled email configuration | `src/lib/config/readiness.ts`, `src/lib/config/public-app-url.ts`, `src/lib/email/config.ts` | Commit `a991bbd` distinguishes disabled/ready/not-ready email, requires safe provider/sender/public-origin configuration, and enforces it before provider I/O |
 | ✅ Closed | Transactional email interpolation safety | `src/lib/email/send.ts` | Commit `92a3d87` escapes all dynamic HTML fields, encodes link components, rejects non-HTTP(S) origins, and strips subject control characters with adversarial contracts |

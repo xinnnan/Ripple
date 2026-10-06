@@ -717,11 +717,6 @@ async function runBrowserAndApiMatrix(browser, fixture) {
       `/api/tickets/${tenantA.activeTicketId}/comments`,
       "POST"
     );
-    await expectMalformedJson(
-      sessions.engineer.context,
-      "/api/ai/suggest",
-      "POST"
-    );
 
     await getJson(sessions.admin.context, "/api/admin/audit?limit=1", 200);
     await getJson(sessions.engineer.context, "/api/admin/audit?limit=1", 403);

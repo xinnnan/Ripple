@@ -31,7 +31,6 @@ const server = spawn(
       SLACK_BOT_TOKEN: "",
       SLACK_SIGNING_SECRET: "",
       RESEND_API_KEY: "",
-      MINIMAX_API_KEY: "",
       NEXT_PUBLIC_APP_URL: baseUrl,
     },
     stdio: ["ignore", "pipe", "pipe"],

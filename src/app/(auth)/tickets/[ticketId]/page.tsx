@@ -12,7 +12,6 @@ import { SPR_STATUS_LABELS, SPR_STATUS_COLORS, FSO_STATUS_LABELS, FSO_STATUS_COL
 import { formatDate, formatFileSize, resolveSiteTimezone, singleRelation } from "@/lib/utils";
 import { isCustomerReopenable } from "@/lib/tickets/status";
 import Link from "next/link";
-import { AIAssistButton } from "./ai-assist-button";
 import { TicketActionsPanel } from "./ticket-actions-panel";
 import { SLABadge } from "./sla-badge";
 import { getUserScope, scopeTickets } from "@/lib/supabase/scope";
@@ -24,7 +23,6 @@ import {
   INTERNAL_TICKET_DETAIL_PART_REQUEST_SELECT,
   INTERNAL_TICKET_DETAIL_SELECT,
   TICKET_DETAIL_ATTACHMENT_SELECT,
-  TICKET_DETAIL_AI_SUGGESTION_SELECT,
   TICKET_DETAIL_COMMENT_SELECT,
   TICKET_DETAIL_EVENT_SELECT,
   TICKET_DETAIL_FIELD_SERVICE_SELECT,
@@ -173,18 +171,6 @@ export default async function TicketDetailPage({ params }: Props) {
         .order("full_name")
     : Promise.resolve({ data: [], error: null });
 
-  // Fetch AI suggestions — internal-only. The AI panel shows
-  // troubleshooting notes, customer-reply drafts, and our
-  // mock-fallback text ("Ripple Assist is offline..."), none of
-  // which should leak to customer-role viewers.
-  const aiSuggestionsPromise = isInternal
-    ? supabase
-        .from("ai_suggestions")
-        .select(TICKET_DETAIL_AI_SUGGESTION_SELECT)
-        .eq("ticket_id", ticket.id)
-        .order("created_at", { ascending: false })
-    : Promise.resolve({ data: null, error: null });
-
   // Fetch linked spare part requests
   const partRequestSelect: string = isInternal
     ? INTERNAL_TICKET_DETAIL_PART_REQUEST_SELECT
@@ -207,7 +193,6 @@ export default async function TicketDetailPage({ params }: Props) {
     attachmentsResult,
     eventsResult,
     ownersResult,
-    aiSuggestionsResult,
     partRequestsResult,
     fieldServiceOrdersResult,
   ] = await Promise.all([
@@ -215,7 +200,6 @@ export default async function TicketDetailPage({ params }: Props) {
     attachmentsQuery,
     eventsPromise,
     ownersPromise,
-    aiSuggestionsPromise,
     partRequestsPromise,
     fieldServiceOrdersPromise,
   ]);
@@ -225,7 +209,6 @@ export default async function TicketDetailPage({ params }: Props) {
     attachmentsResult,
     eventsResult,
     ownersResult,
-    aiSuggestionsResult,
     partRequestsResult,
     fieldServiceOrdersResult
   );
@@ -233,7 +216,6 @@ export default async function TicketDetailPage({ params }: Props) {
   const attachments = attachmentsResult.data;
   const events = eventsResult.data;
   const availableOwners = ownersResult.data || [];
-  const aiSuggestions = aiSuggestionsResult.data;
   const partRequests = partRequestsResult.data as unknown as
     | TicketPartRequestRow[]
     | null;
@@ -274,7 +256,6 @@ export default async function TicketDetailPage({ params }: Props) {
           </div>
           <h1 className="break-words text-2xl font-bold text-foreground">{ticket.title}</h1>
         </div>
-        {isInternal && <AIAssistButton ticketId={ticket.id} />}
       </div>
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
@@ -367,36 +348,6 @@ export default async function TicketDetailPage({ params }: Props) {
                     {att.visibility === "internal" && (
                       <span className="text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">Internal</span>
                     )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* AI Suggestions */}
-          {aiSuggestions && aiSuggestions.length > 0 && (
-            <div className="rounded-xl border border-blue-200 bg-blue-50 p-6">
-              <h2 className="text-sm font-semibold text-blue-800 mb-4">
-                🤖 Ripple Assist Suggestions ({aiSuggestions.length})
-              </h2>
-              <div className="space-y-4">
-                {aiSuggestions.map((sug: { id: string; suggestion_type: string; output_text: string; confidence_level: string; model_name: string; created_at: string }) => (
-                  <div key={sug.id} className="border border-blue-200 rounded-lg p-4 bg-white">
-                    <div className="mb-2 flex flex-wrap items-center gap-2">
-                      <span className="text-xs font-medium text-blue-700">{sug.suggestion_type}</span>
-                      <span className="text-xs text-muted-foreground">via {sug.model_name}</span>
-                      <span className="text-xs text-muted-foreground">{formatDate(sug.created_at, userTimezone)}</span>
-                      {sug.confidence_level && (
-                        <span className={`text-xs px-1.5 py-0.5 rounded ${
-                          sug.confidence_level === "high" ? "bg-green-100 text-green-700" :
-                          sug.confidence_level === "low" ? "bg-red-100 text-red-700" :
-                          "bg-yellow-100 text-yellow-700"
-                        }`}>
-                          {sug.confidence_level}
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-sm text-foreground whitespace-pre-wrap">{sug.output_text}</p>
                   </div>
                 ))}
               </div>

@@ -14,10 +14,6 @@ const actionsPanel = readFileSync(
   "src/app/(auth)/tickets/[ticketId]/ticket-actions-panel.tsx",
   "utf8"
 );
-const aiAssist = readFileSync(
-  "src/app/(auth)/tickets/[ticketId]/ai-assist-button.tsx",
-  "utf8"
-);
 
 describe("ticket mutation UI integrity", () => {
   it("keeps authenticated creation settled without timed full reloads", () => {
@@ -46,12 +42,11 @@ describe("ticket mutation UI integrity", () => {
   });
 
   it("contains returned and unexpected ticket action failures", () => {
-    for (const source of [publicSubmit, createModal, actionsPanel, aiAssist]) {
+    for (const source of [publicSubmit, createModal, actionsPanel]) {
       expect(source).toContain("clientMutationErrorMessage");
       expect(source).not.toContain("err instanceof Error ? err.message");
     }
     expect(actionsPanel).toContain("assertClientMutationResponse");
-    expect(aiAssist).toContain("readClientJsonResponse");
   });
 
   it("locks detail mutations through route refresh and binds their controls", () => {
@@ -67,12 +62,5 @@ describe("ticket mutation UI integrity", () => {
     expect(actionsPanel).toContain("TICKET_SUMMARY_MAX_LENGTH");
     expect(actionsPanel).toContain("commentAttemptRef");
     expect(actionsPanel).toContain("TICKET_IDEMPOTENCY_KEY_HEADER");
-  });
-
-  it("validates AI response shape and exposes accessible request state", () => {
-    expect(aiAssist).toContain("if (loading) return");
-    expect(aiAssist).toContain('aria-controls="ripple-assist-panel"');
-    expect(aiAssist).toContain("aria-busy={loading}");
-    expect(aiAssist).toContain('role="alert"');
   });
 });
