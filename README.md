@@ -73,14 +73,14 @@ A Slack-native support portal for DropletAI Services. Centralises customer suppo
 | Layer | Tool |
 |-------|------|
 | Frontend | Next.js 15.5.22 (App Router) + React 19 + TypeScript + Tailwind CSS v4 + self-hosted Inter |
-| Database | Supabase Postgres (56 migrations, see `supabase/migrations/`) |
+| Database | Supabase Postgres (59 migrations, 000–058, see `supabase/migrations/`) |
 | Auth | Supabase Auth (email + password + recovery) + new `sb_publishable_` / `sb_secret_` key format |
 | Storage | Supabase Storage — bucket `ripple-attachments`, **50 MB cap per file** |
 | Slack | `@slack/bolt` + `@slack/web-api` (runs inside Next.js API routes, no separate process) |
 | AI | **MiniMax AI** (OpenAI-compatible) — was OpenAI → Zhipu → MiniMax. **See "AI provider" section below.** |
 | Email | Resend (transactional: ticket confirmation, resolution notice) |
 | Validation | Zod (all API request bodies) |
-| Testing | Vitest (1,217 unit/contract tests) + 42-check production HTTP smoke + credentialed Playwright/API/RLS matrix |
+| Testing | Vitest (1,390 unit/contract tests) + 42-check production HTTP smoke + local database matrices (`npm run verify:db`) + credentialed Playwright/API/RLS matrix |
 | Hosting | Vercel (serverless API routes) |
 
 ## Phases
@@ -115,7 +115,7 @@ cp .env.local.example .env.local
 
 ### Run database migrations
 
-Apply the SQL files in `supabase/migrations/` **in order** (001 → 055) via the Supabase SQL editor or `supabase db push`:
+Apply the SQL files in `supabase/migrations/` **in order** (000 → 058) via the Supabase SQL editor or `supabase db push`. `000` enables pgvector and is a no-op where it already exists:
 
 ```
 001_create_customers.sql
@@ -173,6 +173,23 @@ Apply the SQL files in `supabase/migrations/` **in order** (001 → 055) via the
 053_replay_safe_slack_thread_capture.sql
 054_atomic_admin_slack_identity.sql
 055_customer_membership_foundation.sql
+056_synchronize_customer_authorization.sql
+057_guard_spare_part_request_workflow.sql
+058_customer_support_loop.sql
+```
+
+**Pending production deployment (2026-10-05):** 056, 057, and 058. They build
+from scratch on local Supabase and pass `npm run verify:db`. 057 enforces the
+part-request workflow and admin-only approval; 058 adds customer reply
+auto-return, customer/guest reopen, guest replies, engineer update emails,
+and the 7-day auto-close run by the protected cron.
+
+### Local database (optional, recommended for migration work)
+
+```bash
+supabase start         # builds 000 → 058 locally on ports 553xx
+npm run verify:db      # rollback-only verification matrices
+npm run seed:local     # loopback-only QA accounts for every role
 ```
 
 Later migrations replace policies/functions and should be applied once in
@@ -281,9 +298,7 @@ raw event old values and non-public event types are not retrieved.
 
 ### Enable pgvector (for AI features)
 
-```sql
-CREATE EXTENSION IF NOT EXISTS vector;
-```
+Migration `000_enable_required_extensions.sql` enables it; no manual step.
 
 ### Start the development server
 
@@ -299,7 +314,8 @@ npm run lint       # Direct ESLint CLI (0 warnings/errors required)
 npm run build      # Next.js production build (0 errors)
 npm test           # Vitest unit/contract tests
 npm run test:e2e   # Production HTTP smoke + optional credentialed matrix
-npm audit          # 0 known dependency vulnerabilities required
+npm audit --omit=dev  # 0 production advisories required (CI also blocks criticals)
+npm run verify:db  # local migration matrices (requires `supabase start`)
 ```
 
 The production server exposes two non-cacheable operational probes:
@@ -349,7 +365,7 @@ gate.
 
 ### GitHub Actions
 
-`.github/workflows/ci.yml` runs the locked install, 1,217 unit/contract tests,
+`.github/workflows/ci.yml` runs the locked install, 1,390 unit/contract tests,
 lint, production build, 42-check HTTP E2E, and dependency audit for pull
 requests and pushes to `main`. GitHub-owned actions are pinned to full commit
 SHAs and the workflow has read-only repository permissions.
@@ -452,7 +468,7 @@ src/
 │   ├── ticket.ts                # ⭐ all ticket domain enums + labels
 │   └── spare-parts.ts
 └── middleware.ts                # ⭐ route guard + session refresh
-supabase/migrations/             # 001-056
+supabase/migrations/             # 000-058
 plans/                           # Architecture + phase planning docs
 AGENTS.md                        # ⭐ project context, lessons learned, roadmap
 ```

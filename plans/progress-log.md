@@ -5,6 +5,29 @@ meaningful change and before ending a work session. Newest entries go first.
 
 ## Current checkpoint
 
+- **Branch:** `claude/production-readiness` (from `main` at `8b9b4fb`)
+- **Active phase:** Production readiness of the current feature set (scope
+  decision 2026-10-05: ship current product; PRD v1.1 domains deferred).
+  Plan: [`production-readiness-plan.md`](./production-readiness-plan.md)
+- **Last verified checkpoint:** `a7b1d2c`. `npm ci` (npm 10), 1,390 Vitest
+  tests, zero-warning lint, production build, 42-check HTTP smoke,
+  `npm audit --omit=dev` = 0, full-tree critical audit clean, and
+  `npm run verify:db` (95 assertions) all pass. Authenticated browser QA
+  covered engineer, customer, other-tenant customer, and guest flows against
+  a seeded local stack at 1024 px and 375 px with no horizontal overflow and
+  no unexpected console errors.
+- **Deployment gate:** apply migrations 056, 057, 058 to production in order
+  (000 is a no-op where pgvector exists), then repeat the 057/058 behaviour
+  checks against production-shaped data. Set `CRON_SECRET` so the daily
+  worker can auto-close tickets and drain the outbox. Verify the Resend
+  sender domain so update/resolution emails send.
+- **External gates unchanged:** hosted CI branch protection, protected
+  staging fixture, MiniMax key, first real Slack-thread reconciliation.
+- **Exact next step:** open a PR from `claude/production-readiness`, apply
+  migrations 056–058 in production, then run the credentialed matrix.
+
+## Previous checkpoint (2026-08-19, superseded)
+
 - **Branch:** `codex/prd-v1-1-gap-closure`
 - **Active phase:** Phase 1 — Authorization and domain foundation; Phase 0
   hosted activation remains an external release gate
@@ -158,6 +181,45 @@ meaningful change and before ending a work session. Newest entries go first.
 - **Exact next local step:** apply migration 056 and execute its disposable
   live synchronization/rollback/concurrency/privilege matrix before P1-CB.
 - **Primary plan:** [`plans/prd-v1.1-gap-closure-plan.md`](./prd-v1.1-gap-closure-plan.md)
+
+## Session record — 2026-10-05 (production-readiness audit and completion)
+
+### Objective
+
+Audit frontend, backend, security, and UX against best practice, then make
+the current product production-ready for customers and internal engineers.
+
+### Findings and changes
+
+| Area | Finding | Resolution |
+|---|---|---|
+| Dependencies | 18 advisories incl. critical Next.js RCE; two more published same day | Next 15.5.27, Vitest 4, overrides; CI audits prod at zero + full tree for criticals (`44b1459`, `a7b1d2c`) |
+| Environment | Fresh DB failed at migration 009 (pgvector); smoke script broke on paths with spaces | Migration 000, local Supabase config, bootstrap test (`0d5c334`, `44b1459`) |
+| Production config | No CSP/HSTS/frame/nosniff headers, no robots, no root error boundary, open `*.supabase.co` image proxy | `security-headers.ts`, `robots.ts`, `global-error.tsx` (`258afbb`) |
+| Auth | Middleware signed users out on transient profile-read errors | 503 + session kept (`258afbb`) |
+| Guest UX | "Track this ticket" always showed Access Denied | Shared share-link builder (`258afbb`) |
+| Engineer UX | No access to field service/part requests; thin dashboard; no unassigned filter | Operations pages, ops dashboard, `owner=unassigned` (`258afbb`, `80d0555`) |
+| Integrity | Part requests could skip approval or be revived | Migration 057 trigger + admin-only approval (`80d0555`) |
+| Files | Attachments could not be downloaded at all | Signed-URL download routes (`46fd913`) |
+| Customer loop | Replies parked in Waiting on Customer; no reopen; guests could not reply; no update emails; no auto-close | Migration 058 + APIs + UI (`46fd913`) |
+| Rendering | Ticket list/detail/share showed blank customer/site/owner/author | `singleRelation` + repository guard test (`5586c1f`) |
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| Unit/contract | 1,390 passed (168 files) |
+| Lint / build | Passed; Next generated route types clean |
+| HTTP smoke | 42 checks passed |
+| Audit | Production 0; full-tree criticals 0; dev-only `braces` residual |
+| Database | 000–058 rebuild from scratch; 95 matrix assertions; 12-way concurrency for guest replies and auto-return; zero residue |
+| Browser | Engineer, customer, other-tenant customer, guest; desktop and 375 px |
+
+### Not done / follow-ups
+
+- Production application of 056–058 and their live checks (user action).
+- 34 latent test-file type errors under TS 5.9 (no production impact).
+- Optimistic concurrency, PRD v1.1 domains, i18n remain roadmap items.
 
 ## Session record — 2026-08-19 (P1-CA authorization synchronization)
 

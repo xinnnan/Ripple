@@ -2,7 +2,7 @@
 
 > DropletAI's Slack-native support portal. Lightweight ticket system, web portal, and AI-assisted troubleshooting for industrial automation deployments (AMR / AGV / conveyor / sortation / RCS / WCS).
 
-This file is the **single source of truth for project context** — read it before touching anything. It also serves as the lessons-learned notebook and progress tracker. Last updated 2026-08-19.
+This file is the **single source of truth for project context** — read it before touching anything. It also serves as the lessons-learned notebook and progress tracker. Last updated 2026-10-05.
 
 ---
 
@@ -16,13 +16,14 @@ This file is the **single source of truth for project context** — read it befo
 - **Internal users** (DropletAI staff): admins + field/solution engineers
 - **External users** (customers): customer admins (manage their org's team + sites) + regular customers (submit + view their tickets)
 
-**Status** — Phase 1–4 foundation is present; PRD v1.1 gap closure and security
-containment are active on `codex/prd-v1-1-gap-closure`. Migrations 001–055 are
-deployed and live-verified; the read-only authorization policy resolver and
-live compatibility parity are committed. Migration 056's atomic compatibility
-synchronization is the current deployment gate before canonical command APIs
-or shadow-read cutover.
-`main` is live on Vercel.
+**Status** — Production-readiness pass complete on `claude/production-readiness`
+(2026-10-05, see `plans/production-readiness-plan.md`). Product scope decision:
+ship the current feature set; PRD v1.1 domains stay on the roadmap.
+Migrations 001–055 are deployed and live-verified. Migrations 000 and 056–058
+build cleanly from scratch on local Supabase and pass `npm run verify:db`
+(95 assertions plus 12-way concurrency); they are the current production
+deployment gate (apply in order 056, 057, 058; 000 is a no-op where pgvector
+already exists). `main` is live on Vercel.
 
 ---
 
@@ -52,6 +53,9 @@ or shadow-read cutover.
 │   ├── app/
 │   │   ├── (public)/                    # No-auth: login, recovery/reset, submit
 │   │   ├── (auth)/                      # Auth-required, sidebar layout
+│   │   │   ├── (operations)/            # Internal (admin + engineer) gate
+│   │   │   │   ├── field-service/       # Dispatch list/create/detail
+│   │   │   │   └── part-requests/       # Request list/create/detail (approve = admin)
 │   │   │   ├── dashboard/               # 3 variants: internal / customer_manager / customer
 │   │   │   ├── tickets/                 # List + [id] detail + create modal
 │   │   │   ├── sites/                   # Customer-facing: "My Sites"
@@ -65,9 +69,10 @@ or shadow-read cutover.
 │   │   │       ├── users/               # CRUD (admin-internal)
 │   │   │       ├── spare-parts/         # Catalog CRUD
 │   │   │       ├── inventory/           # Per-site stock administration
-│   │   │       ├── part-requests/       # Part request workflow
-│   │   │       └── field-service/       # Field service dispatch
+│   │   │       └── (field-service and part-requests moved to (operations); /admin/* redirects)
 │   │   ├── api/                         # All REST routes (see §4)
+│   │   │   ├── attachments/[id]/        # Authorized signed-URL download redirect
+│   │   │   └── public/tickets/[ticketNo]/ # Token-gated guest replies + downloads
 │   │   ├── auth/                        # callback, logout
 │   │   ├── layout.tsx                   # Root
 │   │   └── page.tsx                     # Marketing landing
@@ -77,6 +82,7 @@ or shadow-read cutover.
 │   │   │   ├── policy.ts                # Pure fail-closed customer policy decisions
 │   │   │   └── resolver.ts              # Explicit service-only authorization reads
 │   │   ├── roles.ts                     # ⭐ Role constants + helpers (single source)
+│   │   ├── security-headers.ts          # CSP/HSTS/robots headers used by next.config.ts
 │   │   ├── utils.ts                     # cn, generateSecureToken, formatDate, COMMON_TIMEZONES
 │   │   ├── supabase/
 │   │   │   ├── client.ts                # Browser client
@@ -93,7 +99,10 @@ or shadow-read cutover.
 │   │   │   ├── service.ts               # Paid-call quota/replay orchestration
 │   │   │   └── idempotency.ts           # Durable AI request receipt commands
 │   │   ├── tickets/
-│   │   │   └── outbox.ts                # ⭐ Durable ticket delivery worker
+│   │   │   ├── outbox.ts                # ⭐ Durable ticket delivery worker
+│   │   │   ├── customer-replies.ts      # Guest reply + customer reopen commands
+│   │   │   ├── public-access.ts         # Share-token validation + public rate limits
+│   │   │   └── auto-close.ts            # 7-day resolved auto-close (cron)
 │   │   ├── files/
 │   │   │   ├── attachment-validation.ts # Content/type/path validation
 │   │   │   └── attachment-mutations.ts  # Atomic metadata command wrapper
@@ -118,7 +127,10 @@ or shadow-read cutover.
 │   │   ├── ticket.ts                    # ⭐ All domain enums + labels
 │   │   └── spare-parts.ts               # ⭐ Spare parts + field service enums
 │   └── middleware.ts                    # ⭐ Route guard + session refresh
-├── supabase/migrations/                 # 001–056, apply in order
+├── supabase/migrations/                 # 000–058, apply in order
+├── supabase/verification/               # Rollback-only SQL matrices (npm run verify:db)
+├── supabase/config.toml                 # Local stack on ports 553xx (supabase start)
+├── scripts/seed-local-qa.mjs            # Loopback-only QA fixtures (npm run seed:local)
 ├── plans/                               # Architecture + phase planning docs
 │   ├── architecture.md
 │   ├── phase2-customer-auth-and-user-management.md
@@ -150,8 +162,8 @@ Roles were **consolidated from 7 → 4** in `017_consolidate_roles.sql` (commit 
 
 | Role | Old name(s) | Scope | Sidebar shows |
 |---|---|---|---|
-| `admin` | `internal_admin` | Full system access | Dashboard, Tickets, Admin section, System Status, Profile |
-| `engineer` | `internal_service_manager`, `internal_engineer`, `internal_solution_engineer` | All tickets, technical views | Dashboard, Tickets, System Status, Profile |
+| `admin` | `internal_admin` | Full system access; only role that approves part requests | Dashboard, Tickets, Operations, Admin section, System Status, Profile |
+| `engineer` | `internal_service_manager`, `internal_engineer`, `internal_solution_engineer` | All tickets, technical views, field service, part requests (no approval) | Dashboard, Tickets, Operations (Field Service, Part Requests), System Status, Profile |
 | `customer_manager` | `customer_admin` | All sites + tickets **under their `customer_id`** + manage their team | Dashboard, Tickets, My Sites, **Team**, Profile |
 | `customer` | `customer_user`, `guest` | Only `site_members` rows they own | Dashboard, Tickets, My Sites, Profile |
 
@@ -182,9 +194,10 @@ const isInternal = role ? INTERNAL_ROLES.includes(role) : email ? isInternalEmai
 
 ## 5. Database Schema (Supabase)
 
-56 migrations, to be applied in order. Migrations 001–055 are confirmed
-applied and live-verified as of 2026-08-19; migration 056 awaits application
-and live synchronization verification. Key tables:
+59 migrations (000–058), to be applied in order. Migrations 001–055 are
+confirmed applied and live-verified as of 2026-08-19. Migrations 000 and
+056–058 build from scratch and pass the local verification matrices; they
+await production application. Key tables:
 
 | Table | Purpose | Notes |
 |---|---|---|
@@ -209,6 +222,15 @@ and live synchronization verification. Key tables:
 | `sla_policies` | Default/customer SLA targets | Migration 041 derives scope shape, orders response/resolution targets, serializes create/update/delete, protects default/referenced rows, and commits exact audit evidence atomically; its 35-assertion live matrix is green. Migration 045 removes the legacy direct admin write path; its 110-assertion live matrix is green |
 | `spare_parts` / `spare_part_inventory` / `spare_part_requests` / `spare_part_request_items` | Phase 3 catalog + per-site stock + request workflow | `request_no` SPR-XXXX; migration 042 makes catalog create/update transactionally audited with normalized case-folded identity, bounded shape, nonnegative price, and no-op preservation. Migration 043 adds guarded atomic stock upsert/PATCH, ordered quantity bounds, active-parent checks, exact audit evidence, and increase-only restock timestamps; its 72-assertion live matrix is green |
 | `field_service_orders` / `field_service_engineers` | Phase 3 dispatch | `order_no` FSO-XXXX, M:N engineers |
+| `ticket_customer_reply_requests` | Service-only replay ledger for guest replies and customer reopen | Migration 058; keys 16–180 chars, exact replay returns the first comment, altered reuse fails closed |
+
+Migration 057 adds a `BEFORE UPDATE OF status` trigger on `spare_part_requests`
+(requested → approved|cancelled, approved → shipped|cancelled, shipped →
+delivered; approval requires an active admin `approved_by`). Migration 058
+wraps the web and Slack-thread comment commands (customer reply auto-returns
+Waiting-on-Customer tickets; engineer updates on non-Slack tickets enqueue
+`ticket.email_customer_update`), adds customer/guest reopen (resolved, or
+closed ≤30 days), and `close_stale_resolved_tickets_atomic` (7 quiet days).
 
 **Auto-numbering** — sequence-backed RPCs allocate `ticket_no` (RPL-XXXXXX),
 `request_no` (SPR-XXXX), and `order_no` (FSO-XXXX). Migration 029 restricts
@@ -242,10 +264,17 @@ data updates and must not be re-run blindly.
    └──────────── reopened ◀──────────────┘
 ```
 Sources: `slack` (via `/ticket` modal), `web` (public form or authed modal), `email`, `internal`.
+
+Customer loop (migration 058): a customer or guest reply on `waiting_customer`
+returns an owned ticket to `in_progress`; customers and guests can reopen
+`resolved` tickets (or `closed` within 30 days) with a required reason; the
+cron closes `resolved` tickets after 7 days without customer activity.
 Files: `src/types/ticket.ts:16` (status enum), `plans/architecture.md:436` (state diagram).
 
 ### 6.2 Spare part request lifecycle
-`requested → approved → shipped → delivered | cancelled`
+`requested → approved → shipped → delivered | cancelled` (database-guarded by
+migration 057; approval is admin-only, cancellation allowed from requested or
+approved)
 Files: `src/types/spare-parts.ts:88`, `plans/phase3-spare-parts-and-field-service.md:313`.
 
 ### 6.3 Field service order lifecycle
@@ -316,20 +345,34 @@ if ("error" in auth) return NextResponse.json({ error: auth.error }, { status: a
 
 ### Setup
 ```bash
-npm install
+npm ci
 cp .env.local.example .env.local   # fill in real values
-# Run migrations in Supabase SQL editor (or `supabase db push` if using CLI):
-#   001 → 055 in order
-# Enable pgvector: CREATE EXTENSION IF NOT EXISTS vector;
+# Production: run migrations in the Supabase SQL editor in order (000 → 058).
+# Local: `supabase start` builds 000 → 058 on ports 553xx (another local
+# project may already own the default 543xx ports).
 npm run dev
 ```
+
+### Local verification stack
+```bash
+supabase start            # or `supabase db reset` to rebuild from scratch
+npm run verify:db         # rollback-only SQL matrices in supabase/verification
+npm run seed:local        # loopback-only QA accounts for every role
+```
+Run the app against the local stack by overriding env inline (process env
+wins over `.env`), and blank provider keys so nothing reaches real Slack,
+Resend, or MiniMax: see `.claude/launch.json` `ripple-local` or set
+`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, and
+`SUPABASE_SECRET_KEY` from `supabase status -o env`.
 
 ### Scripts
 - `npm run dev` — Next.js dev server (port 3000)
 - `npm run build` — production build
 - `npm run start` — production server
 - `npm run lint` — direct ESLint CLI across the repository; warnings fail the gate
-- `npm test` — Vitest unit/contract suite (1,217 tests)
+- `npm test` — Vitest 4 unit/contract suite (1,390 tests)
+- `npm run verify:db` — local database verification matrices (95 assertions)
+- `npm run seed:local` — idempotent local QA fixtures (refuses non-loopback URLs)
 - `npm run test:e2e` — 42-check production HTTP smoke plus optional credentialed Playwright/API/RLS matrix; requires a successful build
 - `npm run test:e2e:credentialed` — real six-account/two-tenant matrix; set `RIPPLE_E2E_FIXTURES_FILE`
 - `npm run test:e2e:install-browser` — install the pinned Chromium runtime
@@ -363,7 +406,10 @@ CRON_SECRET=                           # long server-only outbox worker token
 - `npm run lint` must pass
 - `npm run build` must pass (0 errors)
 - `npm run test:e2e` must pass before every commit
-- `npm audit` must report 0 known vulnerabilities
+- `npm audit --omit=dev` must report 0 known vulnerabilities (CI also blocks
+  any critical advisory in the full tree; dev-only `braces` ≤3.0.3 under
+  `eslint-config-next` has no published fix and is the only accepted residual)
+- `npm run verify:db` must pass for any migration change
 - Manual e2e flow per `plans/e2e-audit-and-test-plan.md` for any change touching ticket creation, auth, or admin
 
 ---
@@ -1669,6 +1715,66 @@ lifecycle effects, not by route or RPC name. During a staged model migration,
 make the temporary source of truth explicit and replace the bridge before
 enabling capabilities the compatibility model cannot represent.
 
+### Supabase relation shape bugs hide behind mocked tests
+Found 2026-10-05 during authenticated browser QA on a seeded local stack.
+The ticket list, ticket detail, and public share page read many-to-one embeds
+(`customer`, `site`, `owner`, comment `author`) as arrays (`?.[0]`). At runtime
+those embeds are objects, so every customer, site, owner, and comment author
+rendered blank or "Unknown", and assigned tickets showed "Unassigned". Unit
+tests passed because their fixtures used the wrong (array) shape.
+
+**Lesson:** normalize relations with `singleRelation()` and write fixtures in
+the runtime shape. `src/lib/relation-shape-guard.test.ts` now rejects
+array-indexed relation reads repository-wide. Mock-heavy suites need a real
+browser pass against real data before a release.
+
+### Upload without download is not a file feature
+Found 2026-10-05. Attachments were validated, stored, and listed, but no
+route ever served them, so engineers could not open customer evidence.
+Serverless responses cap near 4.5 MB while attachments reach 50 MB, so
+`/api/attachments/[id]` and the guest share-link route authorize, then
+redirect to a 60-second forced-download Storage URL; invisible files are 404.
+
+**Lesson:** exercise each user journey end to end (submit → engineer opens
+the file), not each endpoint in isolation.
+
+### Approval rules need a guarded state machine underneath
+Found 2026-10-05 while giving engineers Operations pages. Migration 028 made
+part-request updates atomic but allowed any status change, so "admin-only
+approval" would have been bypassable by moving requested → shipped directly.
+Migration 057 adds a trigger-enforced truth table and an active-admin approver
+check for every writer.
+
+**Lesson:** a permission on a transition is meaningless unless the state
+machine forbids skipping that transition. Guard both in the database.
+
+### Fresh environments must build from the migration chain alone
+Found 2026-10-05: `supabase db reset` failed at migration 009 because pgvector
+had only ever been enabled by hand. `000_enable_required_extensions.sql` sorts
+first and is a no-op where the extension exists. Migrations 001–058 now build
+from scratch; `src/lib/migration-bootstrap.test.ts` guards the ordering.
+
+**Lesson:** a migration set that only works on the one database it grew up on
+is not a disaster-recovery plan. Rebuild from scratch in CI or locally before
+each release.
+
+### Transient read failures must not revoke sessions
+Found 2026-10-05: middleware treated any failed profile read as "account
+missing" and called `signOut()`, so a database blip would sign every active
+user out. It now returns a no-store 503 with `Retry-After` and keeps the
+session; only a successful read that finds no active profile revokes it.
+
+### Dependency advisories land daily
+The 2026-08 zero-vulnerability baseline had become 18 advisories (one critical
+Next.js RCE) by 2026-10-05, and two more (proxy-addr critical, source-map-js
+high) were published the same afternoon. npm 10.9.2's arborist crashes
+(`edgesOut` null) when swapping Vitest 3 → 4 peer sets; npm 11 resolves the
+lockfile, which npm 10 `npm ci` then installs cleanly.
+
+**Lesson:** audit immediately before every merge, not only when dependencies
+change. Keep production dependencies at zero; track unfixable dev-only
+advisories explicitly instead of disabling the gate.
+
 ---
 
 ## 10. Current State & Roadmap
@@ -1856,9 +1962,30 @@ resume work; this section remains the broader historical summary.
   durable receipts, bringing the suite to 996 tests; then live-verified both
   operational replay commands with 134 assertions and zero residue.
 
+- **Production-readiness pass** (2026-10-05, `claude/production-readiness`,
+  commits `44b1459`–`a7b1d2c`): patched the critical Next.js RCE and 19 other
+  advisories (Vitest 4); added CSP/HSTS/robots/noindex security headers, a
+  root error boundary, and restricted the image optimizer; fixed middleware
+  sign-out on transient errors, the broken guest "Track this ticket" link,
+  blank customer/site/owner/author relations on ticket list/detail/share
+  pages, missing attachment downloads, and the part-request approval bypass
+  (migration 057); gave engineers internal Operations pages and an
+  operations dashboard; completed the customer loop (migration 058: reply
+  auto-return, customer/guest reopen, guest replies, engineer update emails,
+  7-day auto-close); made fresh environments build (migration 000); added
+  local Supabase verification (`verify:db`, 95 assertions) and QA seeding.
+  1,390 unit/contract tests.
+
 ### Known issues / open work
 | Priority | Item | Where | Notes |
 |---|---|---|---|
+| 🔴 Deploy | Migrations 056, 057, 058 (and no-op 000) not yet applied to production | `supabase/migrations/` | Apply in order through the SQL editor, then run the equivalent live checks; `npm run verify:db` passes locally (95 assertions) and replies/auto-return were 12-way concurrency checked |
+| 🟡 Configure | Daily cron now also auto-closes resolved tickets | `vercel.json`, `/api/internal/outbox/dispatch` | Requires `CRON_SECRET`; a 5–15 minute schedule (Vercel Pro or external scheduler) would also tighten outbox retry latency |
+| 🟢 Low | 34 latent type errors in test files only (Node `File` vs DOM `File` under TS 5.9) | `src/**/*.test.ts` | `next build` type-checks app code cleanly; add a `tsc --noEmit` gate after fixing test typings |
+| 🟢 Low | Dev-only `braces` ≤3.0.3 advisory has no published fix | `eslint-config-next` → `fast-glob` | Lint-time only on repository-authored globs; CI audits production with zero tolerance and the full tree for criticals |
+| ✅ Closed | Attachments could not be downloaded | `/api/attachments/[id]`, `/api/public/tickets/[ticketNo]/attachments/[id]` | Authorized 60-second forced-download redirects for internal, customer, and guest viewers |
+| ✅ Closed | Engineers could not reach field service or part requests | `src/app/(auth)/(operations)` | Internal gate + nav; `/admin/*` redirects; part-request approval admin-only in UI, API, and migration 057 |
+| ✅ Closed | Customer conversation dead ends | migration 058, comments API, share page | Auto-return, reopen, guest replies, update emails, auto-close |
 | 🟡 Med | MiniMax AI key invalid (`401 invalid api key (2049)`). | `.env` `MINIMAX_API_KEY` | Mock fallback is in place; real AI works once key is fixed. Provider URL `https://api.minimax.chat/v1/` resolves and returns proper error responses, so the gateway is real — just the key is wrong. |
 | 🟡 Med | Resend sender domain `dropletai.services` not verified | `src/lib/email/send.ts` | Email send returns `send_failed` until domain is verified at resend.com/domains. Ticket creation still works. |
 | ✅ Closed | Unsafe enabled email configuration | `src/lib/config/readiness.ts`, `src/lib/config/public-app-url.ts`, `src/lib/email/config.ts` | Commit `a991bbd` distinguishes disabled/ready/not-ready email, requires safe provider/sender/public-origin configuration, and enforces it before provider I/O |
@@ -1913,7 +2040,7 @@ resume work; this section remains the broader historical summary.
 | ✅ Verified | Migration 045 direct-write boundary | `supabase/migrations/045_restrict_direct_application_writes.sql` | Applied 2026-08-01; 110 live assertions covered all 22 command-owned tables, historical membership/SLA bypasses, profile continuity/protection, five minting RPCs, real admin APIs, exact audit evidence, scope continuity, and zero residue |
 | 🟡 Med | File-service malware/quarantine and durable reconciliation are incomplete | `src/lib/files/attachment-validation.ts`, `/api/upload` | Content/type/path validation and safe cross-system compensation are present; add malware scanning, quarantine/release, checksums, retention, and an operator queue for ambiguous outcomes |
 | 🟡 Med | Vercel recovery cron runs daily for plan compatibility | `vercel.json` | Request-path dispatch is immediate; use a supported 1–5 minute schedule or external scheduler when the production Vercel plan permits |
-| 🟢 Low | Slack `events` route doesn't route customer messages to a ticket comment yet | `src/app/api/slack/events/route.ts` | Sprint 3 — bidirectional thread sync (SLK-008) |
+| ✅ Closed | Slack `events` route doesn't route customer messages to a ticket comment yet | `src/app/api/slack/events/route.ts` | Migration 053 captures signed thread replies; migration 058 gives them the same auto-return effects as web replies |
 | ✅ Local / 🟡 Hosted | Credentialed role/tenant matrix | `scripts/credentialed-role-matrix.mjs` | The complete matrix passed locally on 2026-08-17 against disposable live fixtures across six accounts, two tenants, archived resources, internal artifacts, malformed JSON, PostgREST/RPC/RLS/Storage boundaries, 54 fixture/cleanup assertions, and zero residue; create the permanent reviewer-protected staging fixture and run the hosted job |
 | 🟡 Activate | Hosted quality workflow and protected staging job are not activated yet | `.github/workflows/ci.yml` | After pushing, require `Quality gates`; create a reviewer-protected `staging` environment and add only `RIPPLE_E2E_FIXTURES_JSON` there |
 
@@ -2296,7 +2423,7 @@ npm audit
 ```
 
 **Apply a new migration:**
-1. Create `supabase/migrations/057_xxx.sql` (next number)
+1. Create `supabase/migrations/059_xxx.sql` (next number)
 2. Test locally: `supabase db reset` (drops + re-applies all)
 3. Apply to prod via Supabase SQL editor
 4. Document in this file's §5 + §10
