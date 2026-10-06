@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
@@ -6,6 +7,8 @@ import { CreateUserForm } from "./create-user-form";
 import { ADMIN_ROLES } from "@/lib/roles";
 import { UsersTable } from "./users-table";
 import { assertPageQueriesSucceeded } from "@/lib/server-page-query";
+
+export const metadata: Metadata = { title: "Users" };
 
 export const dynamic = "force-dynamic";
 
@@ -33,10 +36,11 @@ export default async function AdminUsersPage() {
 
   const admin = createAdminClient();
 
-  const usersResult = await admin
-    .from("users")
-    .select(
-      `
+  const [usersResult, customersResult, sitesResult] = await Promise.all([
+    admin
+      .from("users")
+      .select(
+        `
       id,
       email,
       full_name,
@@ -45,10 +49,26 @@ export default async function AdminUsersPage() {
       created_at,
       site_members(site_id, sites(site_name, site_code))
     `
-    )
-    .order("created_at", { ascending: false })
-    .limit(100);
-  assertPageQueriesSucceeded("admin/user-list", usersResult);
+      )
+      .order("created_at", { ascending: false })
+      .limit(100),
+    admin
+      .from("customers")
+      .select("id, name")
+      .in("status", ["active", "trial"])
+      .order("name"),
+    admin
+      .from("sites")
+      .select("id, site_name, site_code, customer_id")
+      .eq("status", "active")
+      .order("site_name"),
+  ]);
+  assertPageQueriesSucceeded(
+    "admin/user-list",
+    usersResult,
+    customersResult,
+    sitesResult
+  );
   const users = usersResult.data;
 
   const typedUsers = (users || []) as unknown as React.ComponentProps<typeof UsersTable>["users"];
@@ -59,12 +79,15 @@ export default async function AdminUsersPage() {
         <div>
           <h1 className="text-2xl font-bold text-foreground">User Management</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Manage user accounts and site access
+            Invite customers to their company portal and manage DropletAI staff
           </p>
         </div>
       </div>
 
-      <CreateUserForm />
+      <CreateUserForm
+        customers={customersResult.data ?? []}
+        sites={sitesResult.data ?? []}
+      />
 
       <div className="mt-6">
         <UsersTable users={typedUsers} currentUserId={authUser.id} />

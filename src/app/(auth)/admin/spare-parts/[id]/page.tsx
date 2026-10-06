@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { SparePartForm } from "../spare-part-form";
 import Link from "next/link";
@@ -5,6 +6,8 @@ import { notFound } from "next/navigation";
 import type { SparePart } from "@/types/spare-parts";
 import { parseUuidRouteId } from "@/lib/request-identifiers";
 import { assertPageQueriesSucceeded } from "@/lib/server-page-query";
+
+export const metadata: Metadata = { title: "Spare part" };
 
 export const dynamic = "force-dynamic";
 

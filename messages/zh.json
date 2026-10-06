@@ -1,0 +1,980 @@
+{
+  "labels": {
+    "status": {
+      "new": "新建",
+      "assigned": "已分配",
+      "in_progress": "处理中",
+      "waiting_customer": "等待客户回复",
+      "waiting_droplet": "等待 DropletAI 处理",
+      "resolved": "已解决",
+      "closed": "已关闭",
+      "reopened": "已重新打开"
+    },
+    "severity": {
+      "P1": "P1 — 紧急",
+      "P2": "P2 — 高",
+      "P3": "P3 — 一般",
+      "P4": "P4 — 低"
+    },
+    "impact": {
+      "safety": "存在安全隐患",
+      "production_stopped": "生产已停止",
+      "production_slowed": "生产速度下降",
+      "single_asset": "单台设备受影响",
+      "no_impact": "无生产影响"
+    },
+    "requestType": {
+      "incident": "故障事件",
+      "service_request": "服务请求",
+      "question": "咨询",
+      "change_request": "变更请求",
+      "parts_rma": "备件 / RMA",
+      "deployment_issue": "部署问题",
+      "training_documentation": "培训 / 文档"
+    },
+    "projectStatus": {
+      "pre_signoff": "验收前",
+      "in_warranty": "保修期内",
+      "full_coverage": "全面保障",
+      "essential_coverage": "基础保障",
+      "out_of_service": "服务已终止"
+    },
+    "role": {
+      "admin": "管理员",
+      "engineer": "工程师",
+      "customer_manager": "客户经理",
+      "customer": "客户用户"
+    },
+    "userStatus": {
+      "active": "已启用",
+      "inactive": "已停用",
+      "invited": "已邀请"
+    },
+    "source": {
+      "slack": "Slack",
+      "web": "网页",
+      "email": "电子邮件",
+      "internal": "内部"
+    },
+    "partRequestStatus": {
+      "requested": "已申请",
+      "approved": "已批准",
+      "shipped": "已发货",
+      "delivered": "已送达",
+      "cancelled": "已取消"
+    },
+    "fieldServiceStatus": {
+      "scheduled": "已排期",
+      "in_progress": "进行中",
+      "completed": "已完成",
+      "cancelled": "已取消"
+    },
+    "serviceType": {
+      "repair": "维修",
+      "installation": "安装",
+      "inspection": "检查",
+      "commissioning": "调试",
+      "training": "培训",
+      "emergency": "紧急",
+      "maintenance": "维护"
+    },
+    "memberRole": {
+      "owner": "所有者",
+      "manager": "管理者",
+      "member": "成员",
+      "viewer": "查看者"
+    }
+  },
+  "landing": {
+    "heroImageAlt": "工业设施内整齐排列的自主移动机器人",
+    "eyebrow": "服务运营，全面互联",
+    "title": "让您的自动化系统持续运转。",
+    "lead": "只需报告一次问题，即可结合正确的站点与运营背景进行分派，并全程跟进每一条更新，直至问题解决。",
+    "submitCta": "提交支持请求",
+    "signInCta": "登录以跟踪工单",
+    "noAccount": "没有账户？您仍可使用站点代码提交。",
+    "highlights": {
+      "channels": {
+        "title": "Slack + 网页",
+        "description": "通过 /ticket 或支持门户创建"
+      },
+      "siteAware": {
+        "title": "按站点识别",
+        "description": "将每个问题关联到对应的部署环境"
+      },
+      "timeline": {
+        "title": "统一时间线",
+        "description": "状态、更新、备件与现场服务全部关联"
+      }
+    },
+    "how": {
+      "eyebrow": "更清晰的支持交接",
+      "title": "从首次报告到问题解决，全程留档",
+      "lead": "Ripple 为客户和服务团队提供一份共享的运营记录，无需把每次沟通都塞进另一张电子表格。",
+      "steps": {
+        "site": {
+          "title": "确认站点",
+          "description": "使用为您的部署分配的站点代码，确保请求关联到正确的客户和设施信息。"
+        },
+        "impact": {
+          "title": "描述影响",
+          "description": "告诉我们什么停止了运行、何时开始，以及哪些设备或流程受到影响。可附上照片、日志或视频。"
+        },
+        "track": {
+          "title": "跟踪处理进度",
+          "description": "在一个工单中查看状态、负责人、工程师更新、备件申请和现场服务动态。"
+        }
+      }
+    },
+    "prepare": {
+      "eyebrow": "更快、更有效的分诊",
+      "title": "为工程师提供有力的起点。",
+      "lead": "一份简洁且包含运营背景的报告，比一条缺少设备或影响信息的长消息更有价值。",
+      "checklist": {
+        "site": "站点代码及受影响区域",
+        "asset": "设备或资产编号",
+        "impact": "对运营和安全的影响",
+        "started": "问题开始出现的时间",
+        "evidence": "错误信息、照片、视频或日志",
+        "tried": "已尝试的处理措施"
+      },
+      "cta": "开始结构化报告",
+      "severityEyebrow": "谨慎选择影响程度",
+      "severityTitle": "严重级别应反映运营影响，而非情绪。",
+      "severity": {
+        "P1": "存在安全隐患或生产已停止",
+        "P2": "严重性能下降或紧急运营风险",
+        "P3": "影响有限，且有临时解决方案",
+        "P4": "咨询、培训或计划内改进"
+      }
+    },
+    "record": {
+      "eyebrow": "不只是工单收件箱",
+      "title": "贯穿整个工作的一份服务记录。",
+      "lead": "同一个支持案例可以协调软件排查、硬件证据、备件和现场服务，同时不丢失最初的客户背景信息。",
+      "capabilities": {
+        "triage": {
+          "title": "结构化分诊",
+          "description": "严重级别和生产影响字段帮助服务团队确定响应的优先级。"
+        },
+        "collaboration": {
+          "title": "工程协作",
+          "description": "客户可见的更新与内部技术备注让每次交接都紧密衔接。"
+        },
+        "parts": {
+          "title": "备件协调",
+          "description": "将备件申请及其履约进度直接关联到支持案例。"
+        },
+        "reply": {
+          "title": "随时随地回复",
+          "description": "通过您的账户或跟踪链接回答问题、共享文件或重新打开工单。"
+        }
+      }
+    },
+    "channels": {
+      "slackTitle": "使用您的 Slack Connect 频道",
+      "slackBody": "在您的站点频道中运行 <code>/ticket</code>，无需离开 Slack 即可创建结构化请求。如果您的站点频道尚未连接，请联系您的 DropletAI 客户代表。",
+      "webTitle": "通过网页提交——无需账户",
+      "webBody": "使用您部署的站点代码即可通过网页提交。如果您不知道站点代码，请咨询您的客户代表，或发送邮件至 <email>support@dropletai.services</email>。"
+    },
+    "closing": {
+      "eyebrow": "随时为您服务",
+      "title": "从站点开始，我们让工作始终紧密衔接。",
+      "cta": "提交工单"
+    }
+  },
+  "common": {
+    "language": "语言",
+    "languageSaveFailed": "已在此设备上切换语言，但无法保存到您的账户。",
+    "brand": "Ripple",
+    "byDropletAI": "由 DropletAI 提供",
+    "homeAriaLabel": "Ripple 支持首页",
+    "signIn": "登录",
+    "signOut": "退出登录",
+    "submitTicket": "提交工单",
+    "submitShort": "提交",
+    "supportEmail": "support@dropletai.services",
+    "cancel": "取消",
+    "close": "关闭",
+    "retry": "重试",
+    "save": "保存",
+    "loading": "加载中…",
+    "back": "返回",
+    "goHome": "返回首页",
+    "goToDashboard": "前往仪表板",
+    "download": "下载",
+    "notAvailable": "—"
+  },
+  "publicHeader": {
+    "navLabel": "主导航",
+    "howItWorks": "使用流程",
+    "whatToInclude": "需提供的信息",
+    "supportChannels": "支持渠道"
+  },
+  "publicFooter": {
+    "brand": "Ripple · 由 DropletAI 提供",
+    "tagline": "面向工业自动化部署的服务协调平台——从首次报告到工程响应、备件和现场作业。",
+    "copyright": "© {year} DropletAI Services。保留所有权利。"
+  },
+  "authErrors": {
+    "loginGeneric": "无法登录，请重试。",
+    "loginInvalidCredentials": "电子邮件或密码不正确。",
+    "loginRateLimited": "登录尝试次数过多，请等待几分钟后再试。",
+    "recoveryGeneric": "目前无法发送恢复邮件，请重试。",
+    "recoveryRateLimited": "请求过于频繁，请等待几分钟后再试。",
+    "resetGeneric": "无法更新您的密码，请申请新的恢复链接。",
+    "resetRateLimited": "密码尝试次数过多，请等待几分钟或申请新的恢复链接。"
+  },
+  "login": {
+    "metaTitle": "登录",
+    "supportHome": "支持首页",
+    "eyebrow": "客户与服务团队入口",
+    "title": "欢迎回来。",
+    "lead": "登录以跟进工单动态、管理站点访问权限，并与 DropletAI 服务团队协作。",
+    "inactive": "此账户已停用或被暂停。请联系 Ripple 管理员获取访问权限。",
+    "callbackFailed": "该登录或恢复链接无效或已过期。请申请新链接后重试。",
+    "signoutFailed": "无法确认已退出登录。如在共享设备上，请关闭此浏览器后重试。",
+    "passwordUpdatedPartial": "您的密码已更新，此设备已退出登录。无法确认其他会话的状态；如需撤销这些会话，请联系支持团队。",
+    "passwordUpdated": "您的密码已更新。请使用新密码登录。",
+    "logoutPartial": "此设备已退出登录，但无法确认其他会话的状态。如需撤销这些会话，请联系支持团队。",
+    "email": "工作邮箱",
+    "emailPlaceholder": "name@company.com",
+    "password": "密码",
+    "forgotPassword": "忘记密码？",
+    "passwordPlaceholder": "请输入密码",
+    "showPassword": "显示密码",
+    "hidePassword": "隐藏密码",
+    "submit": "登录",
+    "submitting": "正在登录…",
+    "noAccessTitle": "没有门户访问权限？",
+    "noAccessBody": "您可以<submit>无需账户直接提交工单</submit>，或联系您的 DropletAI 客户代表获取访问权限。",
+    "copyright": "© {year} DropletAI Services 版权所有",
+    "imageAlt": "工业设施内的自主移动机器人",
+    "asideTitle": "每一次支持交接，共享同一份运营记录。",
+    "asideBody": "让客户背景、工程更新、备件动态和现场服务协调始终与同一请求关联。"
+  },
+  "emails": {
+    "brand": "Ripple Support",
+    "brandSub": "DropletAI Services",
+    "copyright": "© {year} DropletAI Services。保留所有权利。",
+    "noReply": "请勿直接回复此邮件，回复内容不会被处理。",
+    "labels": {
+      "ticketId": "工单编号",
+      "customer": "客户",
+      "site": "站点",
+      "issue": "问题"
+    },
+    "confirmation": {
+      "subject": "[{ticketNo}] 支持工单已创建 — {title}",
+      "heading": "您的支持工单已创建",
+      "trackIntro": "您可以随时查看工单状态：",
+      "button": "查看工单状态",
+      "closing": "我们的团队已收到通知，将尽快回复。如属紧急问题，请直接联系您的站点支持渠道。"
+    },
+    "resolved": {
+      "subject": "[{ticketNo}] 工单已解决 — {title}",
+      "heading": "✅ 您的工单已解决",
+      "summaryTitle": "解决方案摘要",
+      "button": "查看完整详情",
+      "closing": "如问题未完全解决，您可以在 30 天内从工单页面重新打开工单，或提交新工单。"
+    },
+    "update": {
+      "subjectAction": "[{ticketNo}] 需要您的回复 — {title}",
+      "subjectUpdate": "[{ticketNo}] 新的更新 — {title}",
+      "headingAction": "您的工单正在等待您的回复",
+      "headingUpdate": "您的工单有新的更新",
+      "messageTitle": "来自 DropletAI 团队的消息",
+      "button": "查看并回复",
+      "closing": "请在工单页面回复，以便相关工程师及时看到。"
+    },
+    "passwordReset": {
+      "subject": "重置您的 Ripple 密码",
+      "heading": "重置您的密码",
+      "body": "我们收到了重置您 Ripple 账户密码的请求。请使用下方按钮设置新密码。该链接将在一小时后失效，且仅可使用一次。",
+      "button": "设置新密码",
+      "ignore": "如果这不是您本人的操作，请忽略此邮件，您的密码不会被更改。"
+    },
+    "invitation": {
+      "subject": "您已受邀加入 Ripple 支持门户",
+      "heading": "欢迎使用 Ripple，{name}",
+      "body": "{inviter} 邀请您加入 {company} 支持门户。您可以使用 Ripple 提交支持请求、跟进处理进度，并与 DropletAI 服务团队沟通。",
+      "button": "设置密码",
+      "expiry": "此链接将在一小时后失效，且仅可使用一次。如链接已失效，请在登录页面点击“忘记密码？”，并输入此邮箱地址。",
+      "signInHint": "设置密码后，请前往 {url} 登录。"
+    }
+  },
+  "forgotPassword": {
+    "metaTitle": "重置密码",
+    "eyebrow": "账户恢复",
+    "title": "重置您的密码。",
+    "lead": "请输入您在 Ripple 中使用的工作邮箱。如果该邮箱对应某个账户，我们将发送一个限时有效的恢复链接。",
+    "noAccessTitle": "已无法访问该邮箱？",
+    "noAccessBody": "请联系您的 DropletAI 客户代表，或发送邮件至 <email>support@dropletai.services</email>。",
+    "submittedTitle": "请查收邮件",
+    "submittedBody": "如果 <strong>{email}</strong> 对应某个账户，恢复链接已发出。再次申请前，请先检查垃圾邮件文件夹。",
+    "sendAnother": "重新发送链接",
+    "formTitle": "链接应发送到哪里？",
+    "formHint": "恢复链接有时效限制，且仅可使用一次。",
+    "email": "工作邮箱",
+    "emailPlaceholder": "name@company.com",
+    "submit": "发送恢复链接",
+    "submitting": "正在发送…",
+    "backToSignIn": "返回登录"
+  },
+  "resetPassword": {
+    "metaTitle": "设置新密码",
+    "tooShort": "请至少使用 12 个字符。",
+    "mismatch": "两次输入的密码不一致。",
+    "checking": "正在验证您的恢复链接…",
+    "unavailableTitle": "无法验证此恢复链接。",
+    "unavailableBody": "身份验证服务暂时不可用。请先重试，再考虑申请新链接。",
+    "tryAgain": "重试",
+    "invalidTitle": "此恢复链接无效或已过期。",
+    "invalidBody": "恢复链接有时效限制且仅可使用一次。请申请新链接以继续。",
+    "requestNew": "申请新链接",
+    "cleanupTitle": "您的密码已更新，但退出登录需要处理。",
+    "cleanupBody": "我们无法确认此恢复会话已结束。请勿再次更新密码。请尝试退出登录；如此消息再次出现，请联系 DropletAI 支持团队。",
+    "signOut": "退出登录",
+    "contactSupport": "联系支持团队",
+    "eyebrow": "保护您的账户",
+    "title": "设置新密码。",
+    "lead": "请使用一个未在其他服务中使用过的独立密码。",
+    "newPassword": "新密码",
+    "showPassword": "显示新密码",
+    "hidePassword": "隐藏新密码",
+    "confirmPassword": "确认新密码",
+    "ruleLength": "至少 12 个字符",
+    "ruleUnique": "仅用于您的 Ripple 账户",
+    "submit": "更新密码",
+    "submitting": "正在更新密码…"
+  },
+  "invitationNotice": {
+    "sent": "邀请已发送至 {email}。该链接仅可使用一次且会过期；对方随时可以在登录页面使用“忘记密码？”。",
+    "emailDisabled": "未配置邮件发送，因此未发送邀请。",
+    "sendFailed": "邀请邮件发送失败。",
+    "linkFailed": "无法创建登录链接。",
+    "shareLink": "请私下将此一次性链接分享给 {email}。该链接仅可使用一次且会过期。",
+    "noLink": "请稍后重试，或联系 DropletAI 支持团队。",
+    "linkLabel": "一次性登录链接",
+    "copy": "复制链接",
+    "copied": "已复制"
+  },
+  "team": {
+    "metaTitle": "团队",
+    "title": "团队",
+    "subtitle": "管理您组织的团队成员及站点访问权限。",
+    "stats": {
+      "total": "成员总数",
+      "active": "已启用",
+      "managers": "客户经理",
+      "customers": "客户用户"
+    },
+    "emptyTitle": "暂无团队成员",
+    "emptyDescription": "添加贵组织的第一位成员。对方将能够为您分配的站点提交和跟踪工单。",
+    "columns": {
+      "name": "姓名",
+      "email": "电子邮件",
+      "role": "角色",
+      "sites": "站点",
+      "status": "状态",
+      "joined": "加入时间",
+      "actions": "操作"
+    },
+    "noSites": "无站点",
+    "organizationWide": "全组织",
+    "edit": "编辑",
+    "add": {
+      "open": "+ 添加团队成员",
+      "heading": "添加团队成员",
+      "email": "电子邮件 *",
+      "fullName": "姓名 *",
+      "phone": "电话",
+      "language": "语言",
+      "languageHint": "用于发送给对方的邮件。对方可随时更改。",
+      "setup": "登录设置",
+      "setupInvite": "发送邀请邮件，由对方设置密码（推荐）",
+      "setupPassword": "设置临时密码",
+      "passwordLabel": "临时密码",
+      "passwordPlaceholder": "至少 12 个字符",
+      "sites": "站点 *",
+      "sitesHint": "对方只能为您选择的站点提交和跟进工单。",
+      "noSitesAvailable": "暂无可用站点。",
+      "submitInvite": "添加并邀请",
+      "submitPassword": "添加团队成员",
+      "creating": "正在添加…",
+      "createdWithPassword": "已使用您设置的临时密码添加 {email}。请私下告知对方；对方可在“个人资料”中更改密码。",
+      "chooseSite": "请至少选择一个站点，以便对方提交工单。",
+      "passwordTooShort": "临时密码至少需要 12 个字符。",
+      "emailExists": "该邮箱已注册账户。如对方应加入您的团队，请联系 DropletAI 支持团队。",
+      "failed": "无法添加团队成员，请重试。"
+    },
+    "member": {
+      "metaTitle": "团队成员",
+      "back": "← 返回团队",
+      "title": "编辑团队成员",
+      "subtitle": "更新 {name} 的个人资料和站点访问权限。",
+      "notFound": "未找到该团队成员。",
+      "email": "电子邮件",
+      "role": "角色",
+      "fullName": "姓名",
+      "status": "状态",
+      "siteAccess": "站点访问权限",
+      "noSitesAvailable": "暂无可用站点。",
+      "inactiveNotice": "此账户已停用，仅可查看。如需重新启用，请联系 DropletAI 支持团队。",
+      "save": "保存更改",
+      "saving": "正在保存…",
+      "saved": "团队成员已更新。",
+      "failed": "无法更新团队成员，请重试。"
+    }
+  },
+  "nav": {
+    "dashboard": "仪表板",
+    "tickets": "工单",
+    "mySites": "我的站点",
+    "team": "团队",
+    "fieldService": "现场服务",
+    "partRequests": "备件申请",
+    "customersSites": "客户与站点",
+    "users": "用户",
+    "spareParts": "备件",
+    "inventory": "库存",
+    "slaPolicies": "SLA 策略",
+    "auditLog": "审计日志",
+    "systemStatus": "系统状态",
+    "profile": "个人资料",
+    "signOut": "退出登录",
+    "workspace": "工作区",
+    "operations": "运营",
+    "administration": "系统管理",
+    "tagline": "支持门户",
+    "openNavigation": "打开导航",
+    "closeNavigation": "关闭导航",
+    "closeNavigationOverlay": "关闭导航遮罩",
+    "applicationNavigation": "应用导航"
+  },
+  "submit": {
+    "metaTitle": "提交支持请求",
+    "eyebrow": "结构化支持受理",
+    "eyebrowShort": "支持受理",
+    "title": "提交支持请求",
+    "intro": "请提供足够的站点、设备和影响信息，便于服务团队直接开始分诊，无需再额外询问。",
+    "steps": {
+      "site": "确认您的站点",
+      "impact": "描述运营影响",
+      "evidence": "附上有用的证据"
+    },
+    "account": {
+      "checking": "正在检查您的账户",
+      "checkFailed": "账户检查失败",
+      "checkingBody": "请稍候，我们正在确定加载您已分配的站点还是访客提交表单。",
+      "statusUnknown": "无法确定您的账户状态。请在提交前重试。",
+      "detailsUnavailable": "您的账户信息暂时不可用，请重试。",
+      "notAvailable": "当前登录的账户不可用。",
+      "tryAgain": "重试",
+      "signOut": "退出登录"
+    },
+    "sections": {
+      "you": "您的信息",
+      "issue": "问题详情",
+      "attachments": "附件"
+    },
+    "fields": {
+      "site": "站点代码 *",
+      "siteSelect": "选择站点…",
+      "siteNone": "暂无可用的活跃站点",
+      "siteNoneHelp": "此账户未分配任何活跃站点。提交前请联系您的客户管理员或 DropletAI 支持团队。",
+      "siteCodePlaceholder": "例如：ADI-INDY-001",
+      "siteCodeTitle": "仅可使用字母、数字和连字符。",
+      "siteChecking": "正在检查…",
+      "siteNotFound": "未找到该站点代码，请检查后重试。",
+      "siteThrottled": "检查次数过多，请等待一分钟后重试。",
+      "siteUnavailable": "站点验证暂时不可用，请重试。",
+      "name": "您的姓名 *",
+      "email": "电子邮件 *",
+      "phone": "电话",
+      "title": "问题标题 *",
+      "titlePlaceholder": "例如：AMR-03 未完成配送任务",
+      "requestType": "请求类型 *",
+      "severity": "严重级别 *",
+      "impact": "生产影响 *",
+      "select": "请选择…",
+      "asset": "设备 / 资产编号",
+      "assetPlaceholder": "例如：AMR-03、Charger-01",
+      "area": "区域 / 流程",
+      "areaPlaceholder": "例如：收货区、线边、装卸码头",
+      "description": "描述 *",
+      "descriptionPlaceholder": "请详细描述问题：发生了什么？何时开始？造成了什么影响？"
+    },
+    "files": {
+      "upload": "点击上传",
+      "types": "JPEG/PNG/GIF/WebP、MP4/MOV、PDF、UTF-8 文本、CSV/日志或 Excel（每个文件最大 50MB）",
+      "tooMany": "最多可选择 {max} 个附件。",
+      "badSize": "{name} 的大小必须介于 1 字节到 50MB 之间。",
+      "badName": "附件名称必须为 3–255 个安全字符。"
+    },
+    "actions": {
+      "submit": "提交支持请求",
+      "submitting": "正在提交…",
+      "checkingSite": "正在检查站点…",
+      "cancel": "取消"
+    },
+    "errors": {
+      "incomplete": "提交前请填写所有必填的工单字段。",
+      "failed": "工单提交失败，请重试。",
+      "unconfirmed": "工单可能已创建成功，但暂时无法确认。重试前请联系支持团队或查看您的工单列表。",
+      "unavailable": "工单提交暂时不可用。请检查网络连接后重试。",
+      "rateLimited": "请求过于频繁，请等待一分钟后重试。",
+      "invalidSite": "该站点不可用。请检查站点代码后重试。"
+    },
+    "success": {
+      "title": "支持请求已提交",
+      "body": "您的请求已进入 DropletAI 支持队列。",
+      "ticketId": "工单编号",
+      "track": "跟踪此工单",
+      "another": "继续提交",
+      "attachmentsFailed": "{count, plural, one {# 个附件上传失败。} other {# 个附件上传失败。}}请打开工单重试。",
+      "saveHint": "请保存工单编号和跟踪链接。如果您的组织已配置邮件发送，我们也会发送确认邮件。"
+    }
+  },
+  "profile": {
+    "metaTitle": "个人资料",
+    "title": "个人资料",
+    "subtitle": "管理您的账户设置",
+    "loadFailedTitle": "无法加载个人资料",
+    "unavailable": "账户数据暂时不可用，请重试。",
+    "sessionEnded": "您的会话已结束，请重新登录。",
+    "notAvailable": "此账户不可用。",
+    "tryAgain": "重试",
+    "signIn": "登录",
+    "email": "电子邮件",
+    "emailManaged": "由 DropletAI 管理",
+    "role": "角色",
+    "fullName": "姓名",
+    "phone": "电话",
+    "notSet": "未设置",
+    "edit": "编辑个人资料",
+    "save": "保存更改",
+    "saving": "正在保存…",
+    "cancel": "取消",
+    "saved": "个人资料已更新。",
+    "saveFailed": "无法更新您的个人资料，请重试。",
+    "errors": {
+      "nameRequired": "请填写姓名。",
+      "nameTooLong": "姓名不得超过 200 个字符。",
+      "nameInvalid": "姓名包含无效字符。",
+      "phoneTooLong": "电话不得超过 50 个字符。",
+      "phoneInvalid": "电话包含无效字符。"
+    },
+    "language": {
+      "title": "语言",
+      "body": "用于本门户以及我们发送给您的邮件。"
+    },
+    "password": {
+      "title": "修改密码",
+      "body": "请至少使用 12 个字符。建议使用密码管理器生成的独立密码。",
+      "new": "新密码",
+      "newPlaceholder": "至少 12 个字符",
+      "confirm": "确认新密码",
+      "confirmPlaceholder": "再次输入新密码",
+      "show": "显示密码",
+      "hide": "隐藏密码",
+      "submit": "更新密码",
+      "submitting": "正在更新…",
+      "tooShort": "密码至少需要 12 个字符。",
+      "mismatch": "两次输入的密码不一致。",
+      "updated": "密码已更新。",
+      "failed": "无法更新您的密码，请重试。"
+    }
+  },
+  "createTicket": {
+    "title": "提交新工单",
+    "close": "关闭工单表单",
+    "created": "工单已创建",
+    "view": "查看工单",
+    "done": "完成",
+    "site": "站点 *",
+    "loadingSites": "正在加载站点…",
+    "selectedSite": "客户：{customer} | 站点：{site}",
+    "noSitesHelp": "您的账户未分配任何活跃站点。请联系您的客户经理或 DropletAI 支持团队。",
+    "sitesUnavailable": "站点选项暂时不可用，请重试。",
+    "retrySites": "重新加载站点",
+    "type": "类型 *",
+    "impact": "影响 *",
+    "asset": "设备 / 资产",
+    "assetPlaceholder": "例如：AMR-03",
+    "areaPlaceholder": "例如：拣货 A 区",
+    "descriptionPlaceholder": "请详细描述问题…",
+    "chooseSite": "请选择站点。",
+    "incomplete": "提交前请填写必填的工单字段。",
+    "failed": "工单创建失败。",
+    "unconfirmed": "工单可能已创建成功，但暂时无法确认。重试前请刷新工单列表。",
+    "unavailable": "工单创建暂时不可用，请重试。",
+    "submit": "提交工单",
+    "submitting": "正在提交…",
+    "rateLimited": "请求过于频繁，请等待一分钟后重试。"
+  },
+  "pagination": {
+    "previous": "‹ 上一页",
+    "next": "下一页 ›",
+    "label": "分页"
+  },
+  "ticketList": {
+    "metaTitle": "工单",
+    "title": "工单",
+    "subtitleInternal": "所有客户和站点的支持工单",
+    "subtitleCustomer": "您的支持工单",
+    "newTicket": "+ 提交工单",
+    "exportCsv": "导出 CSV",
+    "filters": {
+      "quick": "快速筛选：",
+      "all": "全部",
+      "search": "搜索",
+      "searchPlaceholder": "工单编号或标题…",
+      "severity": "严重级别",
+      "customer": "客户",
+      "allCustomers": "全部客户",
+      "site": "站点",
+      "allSites": "全部站点",
+      "owner": "负责人",
+      "allOwners": "全部负责人",
+      "unassigned": "未分配",
+      "created": "创建时间",
+      "allTime": "全部时间",
+      "last7": "最近 7 天",
+      "last30": "最近 30 天",
+      "last90": "最近 90 天",
+      "sla": "SLA",
+      "slaAll": "全部",
+      "slaBreached": "⚠ 已超时",
+      "slaBreaching": "即将超时",
+      "slaOnTrack": "进度正常",
+      "slaNone": "无 SLA",
+      "clear": "清除",
+      "noResults": "无结果",
+      "showing": "显示第 {start}–{end} 条，共 {total, plural, one {# 个工单} other {# 个工单}}"
+    },
+    "invalidFilters": "一个或多个工单筛选条件无效。请清除筛选条件后重试。",
+    "clearFilters": "清除筛选条件",
+    "columns": {
+      "ticket": "工单",
+      "severity": "严重级别",
+      "title": "标题",
+      "customerSite": "客户 / 站点",
+      "status": "状态",
+      "owner": "负责人",
+      "created": "创建时间"
+    },
+    "empty": {
+      "title": "没有匹配的工单",
+      "filtered": "请尝试调整或清除上方的筛选条件。",
+      "internal": "新创建的工单将显示在这里。",
+      "customer": "您提交的工单将显示在这里。",
+      "submit": "提交工单"
+    }
+  },
+  "ticketDetail": {
+    "metaTitle": "工单",
+    "notFound": "未找到工单",
+    "back": "← 返回工单列表",
+    "description": "描述",
+    "resolutionSummary": "解决方案摘要",
+    "internalSummary": "内部摘要",
+    "comments": "评论（{count}）",
+    "noComments": "暂无评论。",
+    "submitter": "工单提交人",
+    "via": "通过 {source}",
+    "internal": "内部",
+    "attachments": "附件（{count}）",
+    "download": "（下载）",
+    "partRequests": "备件申请（{count}）",
+    "newPartRequest": "+ 新建申请",
+    "noPartRequests": "此工单未关联任何备件申请。",
+    "items": "{count, plural, one {# 项} other {# 项}}",
+    "fieldService": "现场服务单（{count}）",
+    "newFieldService": "+ 新建服务单",
+    "noFieldService": "此工单未关联任何现场服务单。",
+    "details": "详情",
+    "customer": "客户",
+    "site": "站点",
+    "type": "类型",
+    "severity": "严重级别",
+    "impact": "影响",
+    "asset": "资产",
+    "area": "区域",
+    "source": "来源",
+    "owner": "负责人",
+    "unassigned": "未分配",
+    "submitterLabel": "提交人",
+    "created": "创建时间",
+    "resolved": "解决时间",
+    "closed": "关闭时间",
+    "timesShownIn": "所有时间均以 {timezone} 显示",
+    "activity": "活动记录",
+    "timesIn": "时间以 {timezone} 显示",
+    "by": "操作人：{name}",
+    "events": {
+      "ticket_created": "工单已创建",
+      "status_changed": "状态：{from} → {to}",
+      "owner_assigned": "已分配负责人",
+      "severity_changed": "严重级别：{from} → {to}",
+      "comment_added": "已添加评论（{visibility}）",
+      "attachment_added": "附件：{name}"
+    }
+  },
+  "sla": {
+    "prefix": "SLA：{label}",
+    "on_track": "进度正常",
+    "response_breached": "响应已超时",
+    "resolution_breached": "解决已超时",
+    "met": "SLA 已达成",
+    "not_applicable": "无 SLA",
+    "nextMilestone": "距下一个节点还有",
+    "firstResponseLate": "首次响应超时 {delta}",
+    "responseDueAgo": "响应已于 {delta} 前到期",
+    "resolvedLate": "解决超时 {delta}",
+    "resolutionDueAgo": "解决已于 {delta} 前到期",
+    "resolutionMissed": "未达成解决节点",
+    "firstResponseAt": "首次响应时间：{time}",
+    "duration": {
+      "seconds": "{n} 秒",
+      "minutes": "{n} 分钟",
+      "hours": "{h} 小时",
+      "hoursMinutes": "{h} 小时 {m} 分钟",
+      "days": "{d} 天",
+      "daysHours": "{d} 天 {h} 小时"
+    }
+  },
+  "ticketActions": {
+    "update": {
+      "title": "更新工单",
+      "status": "状态",
+      "severity": "严重级别",
+      "owner": "负责人",
+      "unassigned": "— 未分配 —",
+      "selectOwner": "— 选择负责人 —",
+      "me": "（我）",
+      "saving": "正在保存…",
+      "save": "保存更改",
+      "noChanges": "无更改",
+      "ownerRequired": "已分配或处理中的工单必须选择负责人。",
+      "failed": "工单更新暂时不可用，请重试。",
+      "quickActions": "快捷操作",
+      "assignToMe": "分配给我",
+      "markInProgress": "标记为处理中",
+      "reopen": "重新打开工单"
+    },
+    "guidance": {
+      "waitingTitle": "我们正在等待您的回复",
+      "waitingBody": "请在下方评论框中回复。您的回复将直接发送给处理此工单的工程师。",
+      "updateTitle": "需要补充信息？",
+      "updateBody": "在下方添加评论，向团队分享新信息，或上传附件。"
+    },
+    "reopen": {
+      "title": "问题未解决？",
+      "body": "重新打开此工单，并告诉团队仍存在什么问题。仅添加评论不会重新打开工单。",
+      "label": "仍存在的问题",
+      "placeholder": "仍存在什么问题？",
+      "required": "请告诉团队仍存在什么问题，以便他们继续处理。",
+      "failed": "重新打开功能暂时不可用，请重试。",
+      "submit": "重新打开工单",
+      "submitting": "正在重新打开…"
+    },
+    "resolve": {
+      "resolutionTitle": "解决方案",
+      "resolveTitle": "解决工单",
+      "resolvedBody": "此工单已标记为已解决。您可以通过上方的快捷操作重新打开，或在下方更新解决方案摘要。",
+      "openBody": "将工单标记为已解决，并填写客户可见的说明。",
+      "edit": "编辑解决方案",
+      "resolveTicket": "解决 {ticketNo}",
+      "close": "关闭",
+      "customerSummary": "客户可见摘要",
+      "customerSummaryHelp": "我们做了什么？客户需要了解什么？此内容将显示在公开视图和客户的仪表板中。",
+      "customerSummaryPlaceholder": "例如：已重启 AMR-03 车队并重新注册到 WCS。生产已于 14:32 恢复。",
+      "internalSummary": "内部摘要",
+      "internalOptional": "（可选，仅内部可见）",
+      "internalSummaryHelp": "根本原因、已尝试的措施，以及再次发生时的处理方法。仅 DropletAI 工程师可见。",
+      "internalSummaryPlaceholder": "例如：根本原因是网络短暂中断后 WCS 握手状态失效。修复：重新注册车队，无需更新固件。",
+      "required": "解决工单时必须填写客户可见摘要。",
+      "failed": "工单解决功能暂时不可用，请重试。",
+      "cancel": "取消",
+      "submit": "标记为已解决",
+      "submitting": "正在处理…"
+    },
+    "comment": {
+      "title": "添加评论",
+      "label": "评论",
+      "placeholderInternal": "撰写评论（除非标记为内部，否则客户可见）",
+      "placeholderCustomer": "给支持团队留言",
+      "visibility": "评论可见性",
+      "customerVisible": "👥 客户可见",
+      "internalOnly": "🔒 仅内部可见",
+      "customerNote": "评论对 DropletAI 支持团队可见",
+      "added": "评论已添加",
+      "failed": "评论提交暂时不可用，请重试。",
+      "submit": "添加评论",
+      "submitting": "正在添加…"
+    },
+    "attachment": {
+      "title": "上传附件",
+      "visibility": "可见性：",
+      "customerVisible": "客户可见",
+      "internalOnly": "仅内部可见",
+      "badSize": "请选择大小介于 1 字节到 50MB 之间的文件。",
+      "badName": "请选择名称安全且长度为 3 到 255 个字符的文件。",
+      "uploaded": "{name} 已上传",
+      "failed": "附件上传暂时不可用，请重试。",
+      "choose": "选择文件",
+      "uploading": "正在上传…",
+      "types": "最大 50MB。支持 JPEG/PNG/GIF/WebP、MP4/MOV、PDF、UTF-8 文本或 Excel。"
+    }
+  },
+  "share": {
+    "metaTitle": "工单状态",
+    "headerLabel": "工单状态",
+    "accessDenied": "拒绝访问",
+    "tokenRequired": "需要有效的访问令牌才能查看此工单。",
+    "tooManyRequests": "请求过于频繁",
+    "rateLimited": "您的工单查询次数已超出限制。请在 {seconds} 秒后重试。",
+    "unavailableTitle": "工单查询不可用",
+    "unavailable": "工单查询暂时不可用，请稍后重试。",
+    "notFoundTitle": "未找到工单",
+    "notFound": "此工单可能不存在，或您的访问链接无效。",
+    "goHome": "返回首页",
+    "description": "描述",
+    "resolutionSummary": "解决方案摘要",
+    "updates": "更新与评论",
+    "noUpdates": "暂无更新。我们的团队正在处理您的工单。",
+    "submitter": "工单提交人",
+    "closedNotice": "此工单已关闭。如问题再次出现，请<link>提交新工单</link>并注明 {ticketNo}。",
+    "attachments": "附件",
+    "download": "（下载）",
+    "details": "工单详情",
+    "customer": "客户",
+    "site": "站点",
+    "status": "状态",
+    "severity": "严重级别",
+    "impact": "影响",
+    "equipment": "设备",
+    "area": "区域 / 流程",
+    "owner": "负责人",
+    "pendingAssignment": "待分配",
+    "created": "创建时间",
+    "resolved": "解决时间",
+    "timeline": "活动时间线",
+    "eventCreated": "工单已创建",
+    "eventStatus": "状态 → {status}",
+    "eventAssigned": "已分配工程师",
+    "copyright": "© {year} DropletAI Services。保留所有权利。"
+  },
+  "guestReply": {
+    "waitingTitle": "团队正在等待您的回复",
+    "title": "回复团队",
+    "body": "您的消息将添加到此工单，并直接发送给处理该工单的工程师。",
+    "label": "您的回复",
+    "placeholder": "分享答复、最新情况或仍存在的问题",
+    "empty": "发送前请先填写消息。",
+    "reopenLabel": "问题未解决——重新打开工单",
+    "reopenHelp": "如不勾选此项，您的消息会被添加，但工单仍保持已解决状态。",
+    "counter": "{count} / {max}",
+    "reopened": "工单已重新打开，团队已收到您的消息。",
+    "sent": "回复已发送，团队已收到您的消息。",
+    "failed": "回复功能暂时不可用，请重试。",
+    "rateLimited": "回复过于频繁，请等待几分钟后重试。",
+    "sending": "正在发送…",
+    "reopenAndSend": "重新打开并发送",
+    "send": "发送回复"
+  },
+  "accessDenied": {
+    "restricted": "访问受限。",
+    "returned": "已为您返回仪表板。",
+    "admin": "该页面仅限管理员访问。",
+    "internal": "该页面仅限 DropletAI 员工访问。",
+    "cm": "团队管理仅限客户经理使用。",
+    "external": "“我的站点”仅适用于客户账户。请改用“工单”或“客户与站点”。"
+  },
+  "dashboard": {
+    "metaTitle": "仪表板",
+    "title": "仪表板",
+    "viewAll": "查看全部 →",
+    "allTickets": "全部工单 →",
+    "noTicketsYet": "暂无工单。",
+    "unknownSite": "未知站点",
+    "unknownCustomer": "未知客户",
+    "recentTickets": "最近的工单",
+    "internal": {
+      "eyebrow": "服务运营",
+      "subtitle": "实时查看所有客户站点的 DropletAI 支持工作。",
+      "openQueue": "未解决工单队列",
+      "openTickets": "未解决工单",
+      "openTicketsHint": "所有尚未解决的工单",
+      "urgent": "未解决的 P1 / P2",
+      "urgentHint": "紧急和高严重级别",
+      "unassigned": "未分配",
+      "unassignedHint": "等待分配负责人",
+      "breached": "SLA 已超时",
+      "breachedHint": "已超过目标时间的未解决工单",
+      "myOpen": "我的未解决工单",
+      "myOpenHint": "{count} 个已分配给您，最早到期的排在前面",
+      "nothingAssigned": "目前没有分配给您的工单。<link>领取一个未分配的工单</link>。",
+      "recentlyCreated": "最近创建",
+      "slaBreached": "SLA 已超时",
+      "resolveBy": "需在 {time} 前解决",
+      "noTarget": "无解决目标时间"
+    },
+    "manager": {
+      "subtitle": "贵组织支持活动概览。",
+      "sites": "站点",
+      "openTickets": "未解决工单",
+      "urgent": "未解决的 P1 / P2",
+      "team": "团队成员",
+      "attention": "需要关注的站点",
+      "attentionHint": "按未解决工单数排序",
+      "open": "未解决",
+      "allSites": "全部站点",
+      "noSites": "未找到站点。",
+      "noTickets": "暂无工单。<link>提交请求</link>即可开始。"
+    },
+    "customer": {
+      "subtitle": "欢迎回来！以下是您的支持活动概览。",
+      "mySites": "我的站点",
+      "totalTickets": "工单总数",
+      "noSitesTitle": "您尚未被分配任何站点",
+      "noSitesBody": "请让您的客户经理为您分配站点，或联系您的 DropletAI 客户代表进行设置。",
+      "noTicketsTitle": "暂无工单",
+      "noTicketsBody": "您提交的工单将显示在这里，方便您跟踪进度。",
+      "submit": "提交工单"
+    }
+  },
+  "sites": {
+    "metaTitle": "我的站点",
+    "title": "我的站点",
+    "subtitle": "您可以提交和跟踪支持工单的站点",
+    "managerEmptyTitle": "贵组织暂无站点",
+    "managerEmptyBody": "贵组织暂无活跃站点。请联系您的 DropletAI 客户代表进行设置。",
+    "emptyTitle": "暂未为您分配站点",
+    "emptyBody": "您目前无权访问任何站点。请让您的客户经理为您分配站点。",
+    "customer": "客户",
+    "timezone": "时区",
+    "yourRole": "您的角色",
+    "viewTickets": "查看工单 →",
+    "newTicket": "提交工单"
+  },
+  "errorPage": {
+    "title": "出错了",
+    "body": "发生了意外错误。您可以重试，或返回仪表板。",
+    "reference": "参考编号：{digest}",
+    "retry": "重试",
+    "dashboard": "前往仪表板"
+  },
+  "notFound": {
+    "title": "页面未找到",
+    "body": "您要查找的页面不存在或已被移动。",
+    "home": "首页",
+    "dashboard": "前往仪表板"
+  },
+  "forbidden": {
+    "title": "您没有访问权限",
+    "body": "您的账户无权查看此页面。如果您认为有误，请联系您的管理员。",
+    "back": "返回仪表板"
+  }
+}

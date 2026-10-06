@@ -5,6 +5,37 @@ meaningful change and before ending a work session. Newest entries go first.
 
 ## Current checkpoint
 
+- **Branch:** `claude/production-readiness` (PR xinnnan/Ripple#11)
+- **Active phase:** ship the core customer journey (decision 2026-10-06):
+  invite → sign in → raise ticket → follow/reply → resolution, in English,
+  Spanish, Simplified Chinese, and Korean. AI assist removed (`16268da`).
+  Customers belong to one company; staff see all customers.
+- **This checkpoint adds:** migration 059 (account/ticket locales, audited
+  `set_user_locale_atomic`, admin customer onboarding command); admin creation
+  of customer managers and site-bound customers; invitations with localized
+  one-time set-password links (link handed to the inviter when email is off);
+  admin "Send sign-in link"; manager team invitations; localized password
+  reset sent by Ripple; next-intl across every customer-facing page and email;
+  account-language adoption on new devices; mobile language button.
+- **Last verified:** 1,432 Vitest tests (incl. four-language catalog parity),
+  zero-warning lint, production build, `npm run verify:db` 131 assertions,
+  credentialed role/tenant matrix, and 38-check `test:e2e:workflows`
+  (admin + manager invitations, Spanish set-password → sign-in → ticket,
+  cross-company denial) on a production build against the seeded local
+  stack; browser QA in es/zh/ko at desktop and 375 px with no overflow.
+- **Deployment gate:** apply migration 059 to production **before** deploying
+  this branch. Then set `CRON_SECRET`, verify the Resend sender domain (until
+  then invitations return a copyable link instead of sending email), raise
+  Supabase's email OTP expiry to 24 h, and run the production checks for
+  057–059.
+- **Open:** native-speaker review of es/zh/ko copy; hosted CI branch
+  protection and protected staging fixture; first real Slack-thread
+  reconciliation.
+- **Exact next step:** apply 059 in the Supabase SQL editor, merge PR #11,
+  then invite one real customer per language and walk the journey.
+
+## Previous checkpoint (2026-08-19, superseded)
+
 - **Branch:** `codex/prd-v1-1-gap-closure`
 - **Active phase:** Phase 1 — Authorization and domain foundation; Phase 0
   hosted activation remains an external release gate
@@ -158,6 +189,45 @@ meaningful change and before ending a work session. Newest entries go first.
 - **Exact next local step:** apply migration 056 and execute its disposable
   live synchronization/rollback/concurrency/privilege matrix before P1-CB.
 - **Primary plan:** [`plans/prd-v1.1-gap-closure-plan.md`](./prd-v1.1-gap-closure-plan.md)
+
+## Session record — 2026-10-05 (production-readiness audit and completion)
+
+### Objective
+
+Audit frontend, backend, security, and UX against best practice, then make
+the current product production-ready for customers and internal engineers.
+
+### Findings and changes
+
+| Area | Finding | Resolution |
+|---|---|---|
+| Dependencies | 18 advisories incl. critical Next.js RCE; two more published same day | Next 15.5.27, Vitest 4, overrides; CI audits prod at zero + full tree for criticals (`44b1459`, `a7b1d2c`) |
+| Environment | Fresh DB failed at migration 009 (pgvector); smoke script broke on paths with spaces | Migration 000, local Supabase config, bootstrap test (`0d5c334`, `44b1459`) |
+| Production config | No CSP/HSTS/frame/nosniff headers, no robots, no root error boundary, open `*.supabase.co` image proxy | `security-headers.ts`, `robots.ts`, `global-error.tsx` (`258afbb`) |
+| Auth | Middleware signed users out on transient profile-read errors | 503 + session kept (`258afbb`) |
+| Guest UX | "Track this ticket" always showed Access Denied | Shared share-link builder (`258afbb`) |
+| Engineer UX | No access to field service/part requests; thin dashboard; no unassigned filter | Operations pages, ops dashboard, `owner=unassigned` (`258afbb`, `80d0555`) |
+| Integrity | Part requests could skip approval or be revived | Migration 057 trigger + admin-only approval (`80d0555`) |
+| Files | Attachments could not be downloaded at all | Signed-URL download routes (`46fd913`) |
+| Customer loop | Replies parked in Waiting on Customer; no reopen; guests could not reply; no update emails; no auto-close | Migration 058 + APIs + UI (`46fd913`) |
+| Rendering | Ticket list/detail/share showed blank customer/site/owner/author | `singleRelation` + repository guard test (`5586c1f`) |
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| Unit/contract | 1,390 passed (168 files) |
+| Lint / build | Passed; Next generated route types clean |
+| HTTP smoke | 42 checks passed |
+| Audit | Production 0; full-tree criticals 0; dev-only `braces` residual |
+| Database | 000–058 rebuild from scratch; 95 matrix assertions; 12-way concurrency for guest replies and auto-return; zero residue |
+| Browser | Engineer, customer, other-tenant customer, guest; desktop and 375 px |
+
+### Not done / follow-ups
+
+- Production application of 056–058 and their live checks (user action).
+- 34 latent test-file type errors under TS 5.9 (no production impact).
+- Optimistic concurrency, PRD v1.1 domains, i18n remain roadmap items.
 
 ## Session record — 2026-08-19 (P1-CA authorization synchronization)
 

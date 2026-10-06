@@ -3,6 +3,10 @@ import { defineConfig } from "vitest/config";
 import path from "path";
 
 export default defineConfig({
+  // Next.js requires tsconfig `jsx: "preserve"`; tests still need compiled JSX.
+  oxc: {
+    jsx: { runtime: "automatic" },
+  },
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
@@ -12,5 +16,6 @@ export default defineConfig({
     environment: "node",
     include: ["src/**/*.{test,spec}.{ts,tsx}"],
     globals: true,
+    setupFiles: ["./src/test/setup-i18n.tsx"],
   },
 });

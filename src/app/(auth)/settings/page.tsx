@@ -1,7 +1,7 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import {
-  Bot,
   CheckCircle2,
   Clock3,
   Database,
@@ -14,6 +14,8 @@ import {
 } from "lucide-react";
 import { getConfigurationReadiness } from "@/lib/config/readiness";
 import { requireInternal } from "@/lib/supabase/auth-helpers";
+
+export const metadata: Metadata = { title: "System status" };
 
 type ReadinessStatus = "ready" | "not_ready" | "disabled";
 
@@ -137,18 +139,6 @@ export default async function SettingsPage() {
           : checks.email === "disabled"
           ? "Email is intentionally disabled. Core ticket and Slack workflows remain available."
           : "Email is enabled but its provider key, sender, or public application origin is invalid.",
-    },
-    {
-      name: "Ripple Assist",
-      purpose: "AI-assisted summaries and troubleshooting",
-      status: checks.ai,
-      icon: Bot,
-      detail:
-        checks.ai === "ready"
-          ? "The provider key, endpoint, and model pass configuration checks. Authentication and response quality are not tested here."
-          : checks.ai === "disabled"
-          ? "The AI provider is disabled. Ripple Assist returns clearly labelled offline guidance without blocking ticket work."
-          : "AI is enabled but one or more provider settings are invalid. Ripple Assist will degrade to offline guidance.",
     },
   ];
 

@@ -1,5 +1,6 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
+import { LOCALE_TAGS, isLocale } from "@/i18n/config";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -19,11 +20,12 @@ export function formatTicketNo(num: number): string {
 
 export function formatDate(
   date: Date | string,
-  timezone?: string
+  timezone?: string,
+  locale?: string
 ): string {
   const d = typeof date === "string" ? new Date(date) : date;
   const tz = timezone || "UTC";
-  return d.toLocaleDateString("en-US", {
+  return d.toLocaleDateString(isLocale(locale) ? LOCALE_TAGS[locale] : "en-US", {
     year: "numeric",
     month: "short",
     day: "numeric",
@@ -128,4 +130,11 @@ export function slugify(text: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/(^-|-$)/g, "");
+}
+
+/** Human-readable attachment size; bytes stay exact below 1 KB. */
+export function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }

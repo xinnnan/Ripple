@@ -72,6 +72,14 @@ describe("ticket export filters", () => {
     );
   });
 
+  it("accepts the unassigned owner bucket used by the list page", () => {
+    const parsed = parseTicketExportFilters(
+      new URLSearchParams({ owner: "unassigned" })
+    );
+    expect(parsed.success).toBe(true);
+    if (parsed.success) expect(parsed.data.ownerId).toBe("unassigned");
+  });
+
   it("rejects conflicting owner aliases", () => {
     expect(
       parseTicketExportFilters(

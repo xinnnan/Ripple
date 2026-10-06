@@ -1,8 +1,11 @@
+import type { Metadata } from "next";
+import { getLocale, getTranslations } from "next-intl/server";
+import { useLocale, useTranslations } from "next-intl";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { redirect } from "next/navigation";
-import { STATUS_LABELS } from "@/types/ticket";
-import { PROJECT_STATUS_LABELS, PROJECT_STATUS_COLORS } from "@/types/ticket";
+import type { TicketStatus } from "@/types/ticket";
+import { PROJECT_STATUS_COLORS } from "@/types/ticket";
 import {
   formatDate,
   resolveSiteTimezone,
@@ -12,6 +15,31 @@ import { isCustomerManager, isInternalUser } from "@/lib/roles";
 import Link from "next/link";
 import type { UserRole } from "@/types/ticket";
 import { assertPageQueriesSucceeded } from "@/lib/server-page-query";
+import {
+  buildParams,
+  type TicketFiltersState,
+} from "../tickets/ticket-filters.shared";
+import {
+  AccessDeniedNotice,
+  parseDeniedReason,
+  type DeniedReason,
+} from "./access-denied-notice";
+
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("dashboard");
+  return { title: t("metaTitle") };
+}
+
+async function dashboardText() {
+  const [t, labels, locale] = await Promise.all([
+    getTranslations("dashboard"),
+    getTranslations("labels"),
+    getLocale(),
+  ]);
+  const label = (group: string, value: string | null | undefined) =>
+    value && labels.has(`${group}.${value}`) ? labels(`${group}.${value}`) : value ?? "";
+  return { t, label, locale };
+}
 
 export const dynamic = "force-dynamic";
 
@@ -35,7 +63,14 @@ interface OpenTicketBySiteRow {
     | null;
 }
 
-export default async function DashboardPage() {
+interface DashboardPageProps {
+  searchParams?: Promise<{ denied?: string | string[] }>;
+}
+
+export default async function DashboardPage({
+  searchParams,
+}: DashboardPageProps) {
+  const denied = parseDeniedReason((await searchParams)?.denied);
   const supabase = await createClient();
 
   const {
@@ -62,182 +97,367 @@ export default async function DashboardPage() {
   const isManager = role ? isCustomerManager(role) : false;
 
   if (isInternal) {
-    return <InternalDashboard />;
+    return <InternalDashboard userId={authUser.id} denied={denied} />;
   } else if (isManager && customerId) {
-    return <CustomerManagerDashboard userId={authUser.id} customerId={customerId} />;
+    return (
+      <CustomerManagerDashboard
+        userId={authUser.id}
+        customerId={customerId}
+        denied={denied}
+      />
+    );
   } else {
-    return <CustomerDashboard userId={authUser.id} />;
+    return <CustomerDashboard userId={authUser.id} denied={denied} />;
   }
 }
 
-async function InternalDashboard() {
-  const supabase = createAdminClient();
+const OPEN_TICKET_STATUSES: TicketStatus[] = [
+  "new",
+  "assigned",
+  "in_progress",
+  "waiting_customer",
+  "waiting_droplet",
+  "reopened",
+];
 
-  const [openTickets, p1p2Tickets, unassignedTickets, recentTickets] =
-    await Promise.all([
-      supabase
-        .from("tickets")
-        .select("id", { count: "exact", head: true })
-        .in("status", [
-          "new",
-          "assigned",
-          "in_progress",
-          "waiting_customer",
-          "waiting_droplet",
-          "reopened",
-        ]),
-      supabase
-        .from("tickets")
-        .select("id", { count: "exact", head: true })
-        .in("severity", ["P1", "P2"])
-        .in("status", [
-          "new",
-          "assigned",
-          "in_progress",
-          "waiting_customer",
-          "waiting_droplet",
-          "reopened",
-        ]),
-      supabase
-        .from("tickets")
-        .select("id", { count: "exact", head: true })
-        .is("owner_id", null)
-        .in("status", ["new", "assigned", "reopened"]),
-      supabase
-        .from("tickets")
-        .select(
-          `
-          ticket_no, title, severity, status, created_at,
-          customer:customers(name),
-          site:sites(site_name, timezone)
-        `
-        )
-        .order("created_at", { ascending: false })
-        .limit(10),
-    ]);
+interface InternalQueueTicket {
+  ticket_no: string;
+  title: string;
+  severity: string;
+  status: string;
+  resolve_due_at?: string | null;
+  sla_breached?: boolean | null;
+  created_at?: string;
+  customer: { name: string }[] | { name: string } | null;
+  site:
+    | { site_name: string; timezone: string }[]
+    | { site_name: string; timezone: string }
+    | null;
+}
+
+function ticketListHref(filters: Partial<TicketFiltersState>) {
+  return `/tickets${buildParams({ page: 1, ...filters })}`;
+}
+
+async function InternalDashboard({
+  userId,
+  denied,
+}: {
+  userId: string;
+  denied: DeniedReason | null;
+}) {
+  const supabase = createAdminClient();
+  const { t } = await dashboardText();
+  const ticketSummary = `
+    ticket_no, title, severity, status, resolve_due_at, sla_breached, created_at,
+    customer:customers(name),
+    site:sites(site_name, timezone)
+  `;
+
+  const [
+    openTickets,
+    urgentTickets,
+    unassignedTickets,
+    breachedTickets,
+    myTickets,
+    recentTickets,
+  ] = await Promise.all([
+    supabase
+      .from("tickets")
+      .select("id", { count: "exact", head: true })
+      .in("status", OPEN_TICKET_STATUSES),
+    supabase
+      .from("tickets")
+      .select("id", { count: "exact", head: true })
+      .in("severity", ["P1", "P2"])
+      .in("status", OPEN_TICKET_STATUSES),
+    supabase
+      .from("tickets")
+      .select("id", { count: "exact", head: true })
+      .is("owner_id", null)
+      .in("status", OPEN_TICKET_STATUSES),
+    supabase
+      .from("tickets")
+      .select("id", { count: "exact", head: true })
+      .eq("sla_breached", true)
+      .in("status", OPEN_TICKET_STATUSES),
+    supabase
+      .from("tickets")
+      .select(ticketSummary, { count: "exact" })
+      .eq("owner_id", userId)
+      .in("status", OPEN_TICKET_STATUSES)
+      .order("resolve_due_at", { ascending: true, nullsFirst: false })
+      .limit(8),
+    supabase
+      .from("tickets")
+      .select(ticketSummary)
+      .order("created_at", { ascending: false })
+      .limit(8),
+  ]);
   assertPageQueriesSucceeded(
     "dashboard/internal",
     openTickets,
-    p1p2Tickets,
+    urgentTickets,
     unassignedTickets,
+    breachedTickets,
+    myTickets,
     recentTickets
   );
 
   const stats = [
     {
-      label: "Open Tickets",
+      label: t("internal.openTickets"),
       value: openTickets.count ?? 0,
-      color: "text-blue-600",
+      hint: t("internal.openTicketsHint"),
+      href: ticketListHref({ status: OPEN_TICKET_STATUSES }),
+      accent: "bg-slate-900",
     },
     {
-      label: "P1/P2 Active",
-      value: p1p2Tickets.count ?? 0,
-      color: "text-red-600",
+      label: t("internal.urgent"),
+      value: urgentTickets.count ?? 0,
+      hint: t("internal.urgentHint"),
+      href: ticketListHref({
+        status: OPEN_TICKET_STATUSES,
+        severity: ["P1", "P2"],
+      }),
+      accent: "bg-red-600",
     },
     {
-      label: "Unassigned",
+      label: t("internal.unassigned"),
       value: unassignedTickets.count ?? 0,
-      color: "text-amber-600",
+      hint: t("internal.unassignedHint"),
+      href: ticketListHref({
+        status: OPEN_TICKET_STATUSES,
+        owner_id: "unassigned",
+      }),
+      accent: "bg-amber-500",
+    },
+    {
+      label: t("internal.breached"),
+      value: breachedTickets.count ?? 0,
+      hint: t("internal.breachedHint"),
+      href: ticketListHref({ status: OPEN_TICKET_STATUSES, sla: "breached" }),
+      accent: "bg-rose-700",
     },
   ];
+  const mine = (myTickets.data ?? []) as InternalQueueTicket[];
+  const recent = (recentTickets.data ?? []) as InternalQueueTicket[];
 
   return (
     <div className="p-5 sm:p-8">
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Internal overview of all support activity.
-        </p>
+      <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-primary">
+            {t("internal.eyebrow")}
+          </p>
+          <h1 className="mt-1 text-2xl font-bold text-foreground">{t("title")}</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {t("internal.subtitle")}
+          </p>
+        </div>
+        <Link
+          href={ticketListHref({ status: OPEN_TICKET_STATUSES })}
+          className="inline-flex min-h-11 items-center justify-center rounded-xl bg-slate-950 px-4 text-sm font-semibold text-white transition hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+        >
+          {t("internal.openQueue")}
+        </Link>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+      <AccessDeniedNotice reason={denied} />
+
+      <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {stats.map((stat) => (
-          <div key={stat.label} className="rounded-xl border border-border p-6">
-            <p className="text-sm text-muted-foreground">{stat.label}</p>
-            <p className={`text-3xl font-bold mt-1 ${stat.color}`}>
+          <Link
+            key={stat.label}
+            href={stat.href}
+            className="group relative overflow-hidden rounded-xl border border-border bg-white p-5 transition hover:border-slate-300 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          >
+            <span
+              aria-hidden="true"
+              className={`absolute inset-y-0 left-0 w-1 ${stat.accent}`}
+            />
+            <p className="text-sm font-medium text-muted-foreground">
+              {stat.label}
+            </p>
+            <p className="mt-2 text-3xl font-bold tabular-nums text-foreground">
               {stat.value}
             </p>
-          </div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {stat.hint}
+              <span
+                aria-hidden="true"
+                className="ml-1 inline-block transition group-hover:translate-x-0.5"
+              >
+                →
+              </span>
+            </p>
+          </Link>
         ))}
       </div>
 
-      {/* Recent Tickets */}
-      <div className="rounded-xl border border-border">
-        <div className="p-6 border-b border-border flex items-center justify-between">
-          <h2 className="text-base font-semibold text-foreground">
-            Recent Tickets
-          </h2>
-          <Link
-            href="/tickets"
-            className="text-sm font-medium text-primary hover:text-primary/80"
-          >
-            View all →
-          </Link>
-        </div>
-        {recentTickets.data?.length === 0 ? (
-          <div className="p-6 text-center text-sm text-muted-foreground">
-            No tickets yet.
+      <div className="grid gap-6 lg:grid-cols-5">
+        <section
+          aria-labelledby="my-open-tickets"
+          className="rounded-xl border border-border bg-white lg:col-span-3"
+        >
+          <div className="flex items-center justify-between gap-3 border-b border-border p-5">
+            <div>
+              <h2
+                id="my-open-tickets"
+                className="text-base font-semibold text-foreground"
+              >
+                {t("internal.myOpen")}
+              </h2>
+              <p className="text-xs text-muted-foreground">
+                {t("internal.myOpenHint", { count: myTickets.count ?? mine.length })}
+              </p>
+            </div>
+            <Link
+              href={ticketListHref({
+                status: OPEN_TICKET_STATUSES,
+                owner_id: userId,
+              })}
+              className="text-sm font-medium text-primary hover:text-primary/80"
+            >
+              {t("viewAll")}
+            </Link>
           </div>
-        ) : (
-          <div className="divide-y divide-border">
-            {recentTickets.data?.map(
-              (ticket: {
-                ticket_no: string;
-                title: string;
-                severity: string;
-                status: string;
-                created_at: string;
-                customer: { name: string }[] | { name: string } | null;
-                site:
-                  | { site_name: string; timezone: string }[]
-                  | { site_name: string; timezone: string }
-                  | null;
-              }) => (
-                <Link
-                  key={ticket.ticket_no}
-                  href={`/tickets/${ticket.ticket_no}`}
-                  className="grid gap-3 p-4 transition-colors hover:bg-muted/50 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
-                >
-                  <div className="min-w-0 sm:flex sm:items-center sm:gap-4">
-                    <span className="mb-1 block shrink-0 text-xs font-mono text-muted-foreground sm:mb-0 sm:w-24">
-                      {ticket.ticket_no}
-                    </span>
-                    <div className="min-w-0">
-                      <p className="break-words text-sm font-medium text-foreground">
-                        {ticket.title}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {singleRelation(ticket.customer)?.name || "Unknown"},{" "}
-                        {singleRelation(ticket.site)?.site_name || "Unknown Site"}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center justify-between gap-3 sm:justify-end sm:gap-4">
-                    <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-blue-50 text-blue-700">
-                      {STATUS_LABELS[ticket.status as keyof typeof STATUS_LABELS] || ticket.status}
-                    </span>
-                    <span className="text-right text-xs text-muted-foreground sm:w-28">
-                      {formatDate(
-                        ticket.created_at,
-                        resolveSiteTimezone(ticket.site)
-                      )}
-                    </span>
-                  </div>
-                </Link>
-              )
-            )}
+          {mine.length === 0 ? (
+            <div className="p-6 text-sm text-muted-foreground">
+              {t.rich("internal.nothingAssigned", {
+                link: (chunks) => (
+                  <Link
+                    href={ticketListHref({
+                      status: OPEN_TICKET_STATUSES,
+                      owner_id: "unassigned",
+                    })}
+                    className="font-medium text-primary hover:text-primary/80"
+                  >
+                    {chunks}
+                  </Link>
+                ),
+              })}
+            </div>
+          ) : (
+            <ul className="divide-y divide-border">
+              {mine.map((ticket) => (
+                <QueueRow key={ticket.ticket_no} ticket={ticket} showDue />
+              ))}
+            </ul>
+          )}
+        </section>
+
+        <section
+          aria-labelledby="recent-tickets"
+          className="rounded-xl border border-border bg-white lg:col-span-2"
+        >
+          <div className="flex items-center justify-between gap-3 border-b border-border p-5">
+            <h2
+              id="recent-tickets"
+              className="text-base font-semibold text-foreground"
+            >
+              {t("internal.recentlyCreated")}
+            </h2>
+            <Link
+              href="/tickets"
+              className="text-sm font-medium text-primary hover:text-primary/80"
+            >
+              {t("allTickets")}
+            </Link>
           </div>
-        )}
+          {recent.length === 0 ? (
+            <div className="p-6 text-sm text-muted-foreground">
+              {t("noTicketsYet")}
+            </div>
+          ) : (
+            <ul className="divide-y divide-border">
+              {recent.map((ticket) => (
+                <QueueRow key={ticket.ticket_no} ticket={ticket} />
+              ))}
+            </ul>
+          )}
+        </section>
       </div>
     </div>
+  );
+}
+
+function QueueRow({
+  ticket,
+  showDue = false,
+}: {
+  ticket: InternalQueueTicket;
+  showDue?: boolean;
+}) {
+  const t = useTranslations("dashboard");
+  const labels = useTranslations("labels");
+  const locale = useLocale();
+  const site = singleRelation(ticket.site);
+  const timezone = resolveSiteTimezone(ticket.site);
+  const severityLabel = labels.has(`severity.${ticket.severity}`)
+    ? labels(`severity.${ticket.severity}`)
+    : ticket.severity;
+  return (
+    <li>
+      <Link
+        href={`/tickets/${ticket.ticket_no}`}
+        className="block p-4 transition-colors hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:outline-none"
+      >
+        <div className="flex flex-wrap items-center gap-2">
+          <span
+            title={severityLabel}
+            className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-[11px] font-bold severity-${ticket.severity}`}
+          >
+            {ticket.severity}
+          </span>
+          <span className="font-mono text-xs text-muted-foreground">
+            {ticket.ticket_no}
+          </span>
+          <span
+            className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium status-${ticket.status}`}
+          >
+            {labels.has(`status.${ticket.status}`)
+              ? labels(`status.${ticket.status}`)
+              : ticket.status}
+          </span>
+          {showDue && ticket.sla_breached && (
+            <span className="inline-flex items-center rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-semibold text-rose-700">
+              {t("internal.slaBreached")}
+            </span>
+          )}
+        </div>
+        <p className="mt-1.5 break-words text-sm font-medium text-foreground">
+          {ticket.title}
+        </p>
+        <p className="mt-0.5 text-xs text-muted-foreground">
+          {singleRelation(ticket.customer)?.name || t("unknownCustomer")} ·{" "}
+          {site?.site_name || t("unknownSite")} ·{" "}
+          {showDue
+            ? ticket.resolve_due_at
+              ? t("internal.resolveBy", {
+                  time: formatDate(ticket.resolve_due_at, timezone, locale),
+                })
+              : t("internal.noTarget")
+            : ticket.created_at
+              ? formatDate(ticket.created_at, timezone, locale)
+              : ""}
+        </p>
+      </Link>
+    </li>
   );
 }
 
 /**
  * Customer Manager Dashboard — sees all sites and tickets under their customer.
  */
-async function CustomerManagerDashboard({ customerId }: { userId: string; customerId: string }) {
+async function CustomerManagerDashboard({
+  customerId,
+  denied,
+}: {
+  userId: string;
+  customerId: string;
+  denied: DeniedReason | null;
+}) {
   const supabase = createAdminClient();
 
   // Get all sites under this customer
@@ -348,6 +568,8 @@ async function CustomerManagerDashboard({ customerId }: { userId: string; custom
     .sort((a, b) => b.count - a.count)
     .slice(0, 5);
 
+  const { t, label, locale } = await dashboardText();
+
   // Get team members count
   const teamCountResult = await supabase
     .from("users")
@@ -362,35 +584,36 @@ async function CustomerManagerDashboard({ customerId }: { userId: string; custom
 
   return (
     <div className="p-5 sm:p-8">
+      <AccessDeniedNotice reason={denied} />
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
+        <h1 className="text-2xl font-bold text-foreground">{t("title")}</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Overview of your organization’s support activity.
+          {t("manager.subtitle")}
         </p>
       </div>
 
       {/* Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-8">
         <div className="rounded-xl border border-border p-6">
-          <p className="text-sm text-muted-foreground">Sites</p>
+          <p className="text-sm text-muted-foreground">{t("manager.sites")}</p>
           <p className="text-3xl font-bold mt-1 text-blue-600">
             {sites?.length ?? 0}
           </p>
         </div>
         <div className="rounded-xl border border-border p-6">
-          <p className="text-sm text-muted-foreground">Open Tickets</p>
+          <p className="text-sm text-muted-foreground">{t("manager.openTickets")}</p>
           <p className="text-3xl font-bold mt-1 text-amber-600">
             {openCount}
           </p>
         </div>
         <div className="rounded-xl border border-border p-6">
-          <p className="text-sm text-muted-foreground">P1 / P2 Active</p>
+          <p className="text-sm text-muted-foreground">{t("manager.urgent")}</p>
           <p className="text-3xl font-bold mt-1 text-red-600">
             {p1p2Count}
           </p>
         </div>
         <div className="rounded-xl border border-border p-6">
-          <p className="text-sm text-muted-foreground">Team Members</p>
+          <p className="text-sm text-muted-foreground">{t("manager.team")}</p>
           <p className="text-3xl font-bold mt-1 text-purple-600">
             {teamCount ?? 0}
           </p>
@@ -402,10 +625,10 @@ async function CustomerManagerDashboard({ customerId }: { userId: string; custom
         <div className="rounded-xl border border-border mb-8">
           <div className="p-6 border-b border-border flex items-center justify-between">
             <h2 className="text-base font-semibold text-foreground">
-              Sites needing attention
+              {t("manager.attention")}
             </h2>
             <span className="text-xs text-muted-foreground">
-              by open ticket count
+              {t("manager.attentionHint")}
             </span>
           </div>
           <div className="divide-y divide-border">
@@ -428,7 +651,7 @@ async function CustomerManagerDashboard({ customerId }: { userId: string; custom
                     {s.count}
                   </span>
                   <span className="text-xs text-muted-foreground">
-                    open
+                    {t("manager.open")}
                   </span>
                 </div>
               </Link>
@@ -440,25 +663,24 @@ async function CustomerManagerDashboard({ customerId }: { userId: string; custom
       {/* Sites */}
       <div className="rounded-xl border border-border mb-8">
         <div className="p-6 border-b border-border flex items-center justify-between">
-          <h2 className="text-base font-semibold text-foreground">All Sites</h2>
+          <h2 className="text-base font-semibold text-foreground">{t("manager.allSites")}</h2>
           <Link
             href="/sites"
             className="text-sm font-medium text-primary hover:text-primary/80"
           >
-            View all →
+            {t("viewAll")}
           </Link>
         </div>
         {(!sites || sites.length === 0) ? (
           <div className="p-6 text-center text-sm text-muted-foreground">
-            No sites found.
+            {t("manager.noSites")}
           </div>
         ) : (
           <div className="divide-y divide-border">
             {sites.map((site) => {
               const statusColor =
                 PROJECT_STATUS_COLORS[site.project_status as keyof typeof PROJECT_STATUS_COLORS] || "bg-gray-100 text-gray-800";
-              const statusLabel =
-                PROJECT_STATUS_LABELS[site.project_status as keyof typeof PROJECT_STATUS_LABELS] || site.project_status;
+              const statusLabel = label("projectStatus", site.project_status);
               return (
                 <div key={site.id} className="flex items-center justify-between p-4">
                   <div>
@@ -478,21 +700,23 @@ async function CustomerManagerDashboard({ customerId }: { userId: string; custom
       {/* Recent Tickets */}
       <div className="rounded-xl border border-border">
         <div className="p-6 border-b border-border flex items-center justify-between">
-          <h2 className="text-base font-semibold text-foreground">Recent Tickets</h2>
+          <h2 className="text-base font-semibold text-foreground">{t("recentTickets")}</h2>
           <Link
             href="/tickets"
             className="text-sm font-medium text-primary hover:text-primary/80"
           >
-            View all →
+            {t("viewAll")}
           </Link>
         </div>
         {recentTickets.length === 0 ? (
           <div className="p-6 text-center text-sm text-muted-foreground">
-            No tickets yet.{" "}
-            <Link href="/submit" className="text-primary hover:text-primary/80">
-              Submit a request
-            </Link>{" "}
-            to get started.
+            {t.rich("manager.noTickets", {
+              link: (chunks) => (
+                <Link href="/submit" className="text-primary hover:text-primary/80">
+                  {chunks}
+                </Link>
+              ),
+            })}
           </div>
         ) : (
           <div className="divide-y divide-border">
@@ -509,18 +733,19 @@ async function CustomerManagerDashboard({ customerId }: { userId: string; custom
                   <div className="min-w-0">
                     <p className="break-words text-sm font-medium text-foreground">{ticket.title}</p>
                     <p className="text-xs text-muted-foreground">
-                      {singleRelation(ticket.site)?.site_name || "Unknown Site"}
+                      {singleRelation(ticket.site)?.site_name || t("unknownSite")}
                     </p>
                   </div>
                 </div>
                 <div className="flex items-center justify-between gap-3 sm:justify-end sm:gap-4">
                   <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-blue-50 text-blue-700">
-                    {STATUS_LABELS[ticket.status as keyof typeof STATUS_LABELS] || ticket.status}
+                    {label("status", ticket.status)}
                   </span>
                   <span className="text-right text-xs text-muted-foreground sm:w-28">
                     {formatDate(
                       ticket.created_at,
-                      resolveSiteTimezone(ticket.site)
+                      resolveSiteTimezone(ticket.site),
+                      locale
                     )}
                   </span>
                 </div>
@@ -533,7 +758,13 @@ async function CustomerManagerDashboard({ customerId }: { userId: string; custom
   );
 }
 
-async function CustomerDashboard({ userId }: { userId: string }) {
+async function CustomerDashboard({
+  userId,
+  denied,
+}: {
+  userId: string;
+  denied: DeniedReason | null;
+}) {
   const supabase = createAdminClient();
 
   // Membership rows are retained for history. Resolve them through current
@@ -637,31 +868,34 @@ async function CustomerDashboard({ userId }: { userId: string }) {
     totalCount = totalCountRes.count ?? 0;
   }
 
+  const { t, label, locale } = await dashboardText();
+
   return (
     <div className="p-5 sm:p-8">
+      <AccessDeniedNotice reason={denied} />
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
+        <h1 className="text-2xl font-bold text-foreground">{t("title")}</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Welcome back! Here is an overview of your support activity.
+          {t("customer.subtitle")}
         </p>
       </div>
 
       {/* Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
         <div className="rounded-xl border border-border p-6">
-          <p className="text-sm text-muted-foreground">My Sites</p>
+          <p className="text-sm text-muted-foreground">{t("customer.mySites")}</p>
           <p className="text-3xl font-bold mt-1 text-blue-600">
             {sites.length}
           </p>
         </div>
         <div className="rounded-xl border border-border p-6">
-          <p className="text-sm text-muted-foreground">Open Tickets</p>
+          <p className="text-sm text-muted-foreground">{t("manager.openTickets")}</p>
           <p className="text-3xl font-bold mt-1 text-amber-600">
             {openCount}
           </p>
         </div>
         <div className="rounded-xl border border-border p-6">
-          <p className="text-sm text-muted-foreground">Total Tickets</p>
+          <p className="text-sm text-muted-foreground">{t("customer.totalTickets")}</p>
           <p className="text-3xl font-bold mt-1 text-green-600">
             {totalCount}
           </p>
@@ -671,12 +905,12 @@ async function CustomerDashboard({ userId }: { userId: string }) {
       {/* My Sites */}
       <div className="rounded-xl border border-border mb-8">
         <div className="p-6 border-b border-border flex items-center justify-between">
-          <h2 className="text-base font-semibold text-foreground">My Sites</h2>
+          <h2 className="text-base font-semibold text-foreground">{t("customer.mySites")}</h2>
           <Link
             href="/sites"
             className="text-sm font-medium text-primary hover:text-primary/80"
           >
-            View all →
+            {t("viewAll")}
           </Link>
         </div>
         {sites.length === 0 ? (
@@ -688,11 +922,10 @@ async function CustomerDashboard({ userId }: { userId: string }) {
               </svg>
             </div>
             <h3 className="text-sm font-semibold text-foreground mb-1">
-              No sites assigned to you yet
+              {t("customer.noSitesTitle")}
             </h3>
             <p className="text-sm text-muted-foreground max-w-sm mx-auto">
-              Ask your Customer Manager to assign you to a site, or contact
-              your DropletAI Account Manager to get set up.
+              {t("customer.noSitesBody")}
             </p>
           </div>
         ) : (
@@ -702,10 +935,7 @@ async function CustomerDashboard({ userId }: { userId: string }) {
                 PROJECT_STATUS_COLORS[
                   site.project_status as keyof typeof PROJECT_STATUS_COLORS
                 ] || "bg-gray-100 text-gray-800";
-              const statusLabel =
-                PROJECT_STATUS_LABELS[
-                  site.project_status as keyof typeof PROJECT_STATUS_LABELS
-                ] || site.project_status;
+              const statusLabel = label("projectStatus", site.project_status);
 
               return (
                 <div
@@ -738,13 +968,13 @@ async function CustomerDashboard({ userId }: { userId: string }) {
       <div className="rounded-xl border border-border">
         <div className="p-6 border-b border-border flex items-center justify-between">
           <h2 className="text-base font-semibold text-foreground">
-            Recent Tickets
+            {t("recentTickets")}
           </h2>
           <Link
             href="/tickets"
             className="text-sm font-medium text-primary hover:text-primary/80"
           >
-            View all →
+            {t("viewAll")}
           </Link>
         </div>
         {recentTickets.length === 0 ? (
@@ -755,17 +985,16 @@ async function CustomerDashboard({ userId }: { userId: string }) {
               </svg>
             </div>
             <h3 className="text-sm font-semibold text-foreground mb-1">
-              No tickets yet
+              {t("customer.noTicketsTitle")}
             </h3>
             <p className="text-sm text-muted-foreground max-w-sm mx-auto mb-4">
-              When you submit a ticket, it will appear here so you can track
-              its progress.
+              {t("customer.noTicketsBody")}
             </p>
             <Link
               href="/submit"
               className="inline-block rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
             >
-              Submit a ticket
+              {t("customer.submit")}
             </Link>
           </div>
         ) : (
@@ -785,20 +1014,19 @@ async function CustomerDashboard({ userId }: { userId: string }) {
                       {ticket.title}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      {singleRelation(ticket.site)?.site_name || "Unknown Site"}
+                      {singleRelation(ticket.site)?.site_name || t("unknownSite")}
                     </p>
                   </div>
                 </div>
                 <div className="flex items-center justify-between gap-3 sm:justify-end sm:gap-4">
                   <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-blue-50 text-blue-700">
-                    {STATUS_LABELS[
-                      ticket.status as keyof typeof STATUS_LABELS
-                    ] || ticket.status}
+                    {label("status", ticket.status)}
                   </span>
                   <span className="text-right text-xs text-muted-foreground sm:w-28">
                     {formatDate(
                       ticket.created_at,
-                      resolveSiteTimezone(ticket.site)
+                      resolveSiteTimezone(ticket.site),
+                      locale
                     )}
                   </span>
                 </div>

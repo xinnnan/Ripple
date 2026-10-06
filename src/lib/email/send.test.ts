@@ -2,6 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   buildTicketConfirmationEmail,
   buildTicketResolvedEmail,
+  buildTicketUpdateEmail,
+  buildPasswordResetEmail,
+  buildInvitationEmail,
   sendTicketConfirmation,
 } from "./send";
 
@@ -81,6 +84,73 @@ describe("transactional email rendering", () => {
       ticketNo
     );
     expect(link.searchParams.get("token")).toBe(secureToken);
+  });
+
+  it("escapes engineer updates and links to the reply-capable share page", () => {
+    const email = buildTicketUpdateEmail({
+      to: "operator@example.com",
+      ticketNo: "RPL-000123",
+      secureToken: "a".repeat(64),
+      title: "Sorter <b>offline</b>",
+      message: "Please send <script>alert(1)</script>\nthe fault log",
+      awaitingCustomer: false,
+    });
+
+    expect(email.subject).toBe("[RPL-000123] New update — Sorter <b>offline</b>");
+    expect(email.html).not.toContain("<script>");
+    expect(email.html).toContain("Please send &lt;script&gt;alert(1)&lt;/script&gt;");
+    expect(email.html).toContain("white-space: pre-wrap");
+    const link = ticketLink(email.html);
+    expect(link.pathname).toBe("/t/RPL-000123");
+    expect(link.searchParams.get("token")).toBe("a".repeat(64));
+  });
+
+  it("flags updates that need the customer's answer", () => {
+    const email = buildTicketUpdateEmail({
+      to: "operator@example.com",
+      ticketNo: "RPL-000123",
+      secureToken: "a".repeat(64),
+      title: "Sorter offline",
+      message: "Which firmware version is installed?",
+      awaitingCustomer: true,
+    });
+
+    expect(email.subject).toBe("[RPL-000123] Action needed — Sorter offline");
+    expect(email.html).toContain("waiting on your reply");
+  });
+
+  it("never asks customers to reply to an unmonitored mailbox", () => {
+    const resolved = buildTicketResolvedEmail({
+      to: "operator@example.com",
+      ticketNo: "RPL-000123",
+      secureToken: "a".repeat(64),
+      title: "Sorter offline",
+      resolutionSummary: "Fixed",
+    });
+    expect(resolved.html).not.toMatch(/respond to this email/i);
+    expect(resolved.html).toContain("reopen it from your ticket page");
+  });
+
+  it("escapes invitation values and links to the one-time setup URL", () => {
+    const email = buildInvitationEmail({
+      to: "new@example.com",
+      link: "https://support.example.com/auth/callback?token_hash=abc&type=recovery&next=/reset-password",
+      name: "<b>Ana</b>",
+      inviter: "Morgan",
+      company: "Acme & Co",
+    });
+    expect(email.subject).toBe("You're invited to Ripple Support");
+    expect(email.html).toContain("Welcome to Ripple, &lt;b&gt;Ana&lt;/b&gt;");
+    expect(email.html).toContain("Acme &amp; Co");
+    expect(email.html).toContain("token_hash=abc&amp;type=recovery");
+  });
+
+  it("renders account emails in the recipient's language and falls back to English", () => {
+    const link = "https://support.example.com/auth/callback?token_hash=x&type=recovery";
+    expect(buildPasswordResetEmail({ to: "a@example.com", link, locale: "fr" }).subject).toBe(
+      "Reset your Ripple password"
+    );
+    expect(buildPasswordResetEmail({ to: "a@example.com", link }).html).toContain('lang="en"');
   });
 
   it("removes every ASCII control character from provider subjects", () => {

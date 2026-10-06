@@ -28,10 +28,16 @@ export interface SparePartRequestCreateItem {
   notes?: string | null;
 }
 
+/** Workflow outcomes migration 057's guard trigger can report. */
+export type SparePartRequestFailureKind =
+  | "invalid_transition"
+  | "approval_forbidden";
+
 export class SparePartRequestMutationError extends Error {
   constructor(
     message: string,
-    readonly code?: string
+    readonly code?: string,
+    readonly kind?: SparePartRequestFailureKind
   ) {
     super(message);
     this.name = "SparePartRequestMutationError";
@@ -73,11 +79,31 @@ export async function applySparePartRequestPatch(args: {
   if (error || typeof data !== "string") {
     throw new SparePartRequestMutationError(
       "Atomic spare part request update failed",
-      error?.code
+      error?.code,
+      classifySparePartRequestFailure(error)
     );
   }
 
   return data;
+}
+
+function classifySparePartRequestFailure(
+  error: { code?: string; message?: string } | null
+): SparePartRequestFailureKind | undefined {
+  const message = error?.message ?? "";
+  if (
+    error?.code === "23514" &&
+    message.startsWith("Invalid spare part request status transition")
+  ) {
+    return "invalid_transition";
+  }
+  if (
+    error?.code === "42501" &&
+    message === "Spare part request approval requires an administrator"
+  ) {
+    return "approval_forbidden";
+  }
+  return undefined;
 }
 
 /**

@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
+import {
+  LOCALE_COOKIE,
+  LOCALE_COOKIE_MAX_AGE_SECONDS,
+  isLocale,
+} from "@/i18n/config";
 
 // Routes that require authentication
 const PROTECTED_ROUTES = [
@@ -10,6 +15,8 @@ const PROTECTED_ROUTES = [
   "/profile",
   "/admin",
   "/team",
+  "/field-service",
+  "/part-requests",
 ];
 
 // Routes that should redirect to dashboard if already logged in
@@ -20,7 +27,7 @@ const AUTH_ROUTES = ["/login", "/signup"];
 // gets bounced to /dashboard, not a half-rendered admin shell.
 //
 // /admin/*   → admin only
-// /settings  → internal only (admin + engineer)
+// /settings, /field-service, /part-requests → internal only (admin + engineer)
 // /team      → customer_manager only (regular customers have
 //               site_members; managers have org-wide view)
 // /sites     → customer + customer_manager (not internal)
@@ -31,7 +38,7 @@ const AUTH_ROUTES = ["/login", "/signup"];
 // A page that doesn't add its own check still fails closed because
 // of these middleware gates.
 const ADMIN_ONLY_PREFIXES = ["/admin"];
-const INTERNAL_ONLY_PREFIXES = ["/settings"];
+const INTERNAL_ONLY_PREFIXES = ["/settings", "/field-service", "/part-requests"];
 const CM_ONLY = new Set(["/team"]);
 const NON_INTERNAL = new Set(["/sites"]);
 
@@ -79,11 +86,23 @@ export async function middleware(request: NextRequest) {
   // users cannot continue through an existing Supabase session.
   let profile: { role: string; status: string } | null = null;
   if (user && (isProtected || isAuthRoute)) {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("users")
       .select("role, status")
       .eq("id", user.id)
       .maybeSingle();
+
+    if (error) {
+      // A failed read proves nothing about the account. Revoking the session
+      // here would sign every user out during a transient database blip, so
+      // fail closed for this request only and keep the session intact.
+      console.error("[middleware] profile read failed:", {
+        code: (error as { code?: string }).code || "UNKNOWN",
+      });
+      if (isAuthRoute) return supabaseResponse;
+      return accountServiceUnavailable(supabaseResponse);
+    }
+
     profile = (data as { role: string; status: string } | null) ?? null;
 
     if (!profile || profile.status !== "active") {
@@ -106,11 +125,39 @@ export async function middleware(request: NextRequest) {
     }
   }
 
+  // A device that has never chosen a language adopts the account's language,
+  // so a customer invited in Spanish sees Spanish wherever they sign in. The
+  // explicit switcher choice (the cookie) always wins afterwards. This read is
+  // best-effort: a failure only leaves the browser's language in place.
+  if (user && profile && isProtected && !request.cookies.has(LOCALE_COOKIE)) {
+    const { data: localeRow } = await supabase
+      .from("users")
+      .select("locale")
+      .eq("id", user.id)
+      .maybeSingle();
+    const accountLocale = (localeRow as { locale?: unknown } | null)?.locale;
+    if (isLocale(accountLocale)) {
+      request.cookies.set(LOCALE_COOKIE, accountLocale);
+      const withLocale = NextResponse.next({ request });
+      for (const cookie of supabaseResponse.cookies.getAll()) {
+        withLocale.cookies.set(cookie);
+      }
+      withLocale.cookies.set(LOCALE_COOKIE, accountLocale, {
+        path: "/",
+        maxAge: LOCALE_COOKIE_MAX_AGE_SECONDS,
+        sameSite: "lax",
+        secure: process.env.NODE_ENV === "production",
+      });
+      supabaseResponse = withLocale;
+    }
+  }
+
   // Redirect to login if not authenticated and trying to access protected route
   if (isProtected && !user) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
-    url.searchParams.set("next", pathname);
+    url.search = "";
+    url.searchParams.set("next", `${pathname}${request.nextUrl.search}`);
     return NextResponse.redirect(url);
   }
 
@@ -189,6 +236,25 @@ export async function middleware(request: NextRequest) {
   return supabaseResponse;
 }
 
+function accountServiceUnavailable(sessionResponse: NextResponse) {
+  const response = new NextResponse(
+    "Ripple is temporarily unable to verify your account. Please retry in a few seconds.",
+    {
+      status: 503,
+      headers: {
+        "content-type": "text/plain; charset=utf-8",
+        "cache-control": "no-store",
+        "retry-after": "5",
+      },
+    }
+  );
+  // Keep any refreshed session cookies so the retry stays signed in.
+  for (const cookie of sessionResponse.cookies.getAll()) {
+    response.cookies.set(cookie);
+  }
+  return response;
+}
+
 export const config = {
   matcher: [
     "/dashboard/:path*",
@@ -198,6 +264,8 @@ export const config = {
     "/profile/:path*",
     "/admin/:path*",
     "/team/:path*",
+    "/field-service/:path*",
+    "/part-requests/:path*",
     "/login",
     "/signup",
   ],

@@ -23,6 +23,7 @@ import {
   logIdentityReadFailure,
 } from "@/lib/supabase/auth-read";
 import { endAuthSessions } from "@/lib/auth/session-cleanup";
+import { useTranslations } from "next-intl";
 
 type RecoveryState =
   | "checking"
@@ -32,6 +33,8 @@ type RecoveryState =
   | "cleanup_failed";
 
 export default function ResetPasswordPage() {
+  const t = useTranslations("resetPassword");
+  const authErrors = useTranslations("authErrors");
   const router = useRouter();
   const [supabase] = useState(() => createClient());
   const [recoveryState, setRecoveryState] =
@@ -77,11 +80,11 @@ export default function ResetPasswordPage() {
     setError(null);
 
     if (password.length < 12) {
-      setError("Use at least 12 characters.");
+      setError(t("tooShort"));
       return;
     }
     if (password !== confirmPassword) {
-      setError("The passwords do not match.");
+      setError(t("mismatch"));
       return;
     }
 
@@ -94,7 +97,7 @@ export default function ResetPasswordPage() {
         if (!isAuthRateLimitError(updateError)) {
           logIdentityReadFailure("reset-password/update", updateError);
         }
-        setError(getResetPasswordErrorMessage(updateError));
+        setError(authErrors(getResetPasswordErrorMessage(updateError)));
         return;
       }
       passwordUpdated = true;
@@ -122,7 +125,7 @@ export default function ResetPasswordPage() {
       if (passwordUpdated) {
         setRecoveryState("cleanup_failed");
       } else {
-        setError(getResetPasswordErrorMessage(updateError));
+        setError(authErrors(getResetPasswordErrorMessage(updateError)));
       }
     } finally {
       setLoading(false);
@@ -144,7 +147,7 @@ export default function ResetPasswordPage() {
                 aria-hidden="true"
               />
               <p className="mt-4 text-sm text-slate-600">
-                Verifying your recovery link…
+                {t("checking")}
               </p>
             </div>
           ) : recoveryState === "unavailable" ? (
@@ -153,18 +156,17 @@ export default function ResetPasswordPage() {
                 <AlertCircle className="h-6 w-6" aria-hidden="true" />
               </span>
               <h1 className="mt-6 text-3xl font-semibold tracking-tight text-slate-950">
-                We could not verify this recovery link.
+                {t("unavailableTitle")}
               </h1>
               <p className="mt-3 text-sm leading-7 text-slate-600">
-                The authentication service is temporarily unavailable. Retry
-                before requesting another link.
+                {t("unavailableBody")}
               </p>
               <button
                 type="button"
                 onClick={() => void checkRecoverySession()}
                 className="mt-7 inline-flex rounded-xl bg-primary px-4 py-3 text-sm font-bold text-white hover:bg-primary/90"
               >
-                Try again
+                {t("tryAgain")}
               </button>
             </div>
           ) : recoveryState === "invalid" ? (
@@ -173,17 +175,16 @@ export default function ResetPasswordPage() {
                 <AlertCircle className="h-6 w-6" aria-hidden="true" />
               </span>
               <h1 className="mt-6 text-3xl font-semibold tracking-tight text-slate-950">
-                This recovery link is invalid or expired.
+                {t("invalidTitle")}
               </h1>
               <p className="mt-3 text-sm leading-7 text-slate-600">
-                Recovery links are time-limited and single-use. Request a new
-                one to continue.
+                {t("invalidBody")}
               </p>
               <Link
                 href="/forgot-password"
                 className="mt-7 inline-flex rounded-xl bg-primary px-4 py-3 text-sm font-bold text-white hover:bg-primary/90"
               >
-                Request a new link
+                {t("requestNew")}
               </Link>
             </div>
           ) : recoveryState === "cleanup_failed" ? (
@@ -192,12 +193,10 @@ export default function ResetPasswordPage() {
                 <AlertCircle className="h-6 w-6" aria-hidden="true" />
               </span>
               <h1 className="mt-6 text-3xl font-semibold tracking-tight text-slate-950">
-                Your password was updated, but sign-out needs attention.
+                {t("cleanupTitle")}
               </h1>
               <p className="mt-3 text-sm leading-7 text-slate-600">
-                We could not confirm that this recovery session ended. Do not
-                update the password again. Try signing out, then contact
-                DropletAI support if this message returns.
+                {t("cleanupBody")}
               </p>
               <div className="mt-7 flex flex-wrap gap-3">
                 <form action="/auth/logout" method="post">
@@ -205,14 +204,14 @@ export default function ResetPasswordPage() {
                     type="submit"
                     className="rounded-xl bg-primary px-4 py-3 text-sm font-bold text-white hover:bg-primary/90"
                   >
-                    Sign out
+                    {t("signOut")}
                   </button>
                 </form>
                 <a
                   href="mailto:support@dropletai.services"
                   className="rounded-xl border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
                 >
-                  Contact support
+                  {t("contactSupport")}
                 </a>
               </div>
             </div>
@@ -222,13 +221,13 @@ export default function ResetPasswordPage() {
                 <KeyRound className="h-6 w-6" aria-hidden="true" />
               </span>
               <p className="mt-6 text-sm font-bold uppercase tracking-[0.18em] text-primary">
-                Secure your account
+                {t("eyebrow")}
               </p>
               <h1 className="mt-3 text-3xl font-semibold tracking-tight text-slate-950">
-                Choose a new password.
+                {t("title")}
               </h1>
               <p className="mt-3 text-sm leading-7 text-slate-600">
-                Use a unique password that you do not use for another service.
+                {t("lead")}
               </p>
 
               {error && (
@@ -245,7 +244,7 @@ export default function ResetPasswordPage() {
                   htmlFor="new-password"
                   className="mb-2 block text-sm font-semibold text-slate-800"
                 >
-                  New password
+                  {t("newPassword")}
                 </label>
                 <div className="relative">
                   <input
@@ -263,7 +262,7 @@ export default function ResetPasswordPage() {
                     type="button"
                     onClick={() => setShowPassword((visible) => !visible)}
                     aria-label={
-                      showPassword ? "Hide new password" : "Show new password"
+                      showPassword ? t("hidePassword") : t("showPassword")
                     }
                     className="absolute inset-y-0 right-0 flex w-12 items-center justify-center rounded-r-xl text-slate-500 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
                   >
@@ -281,7 +280,7 @@ export default function ResetPasswordPage() {
                   htmlFor="confirm-password"
                   className="mb-2 block text-sm font-semibold text-slate-800"
                 >
-                  Confirm new password
+                  {t("confirmPassword")}
                 </label>
                 <input
                   id="confirm-password"
@@ -299,11 +298,11 @@ export default function ResetPasswordPage() {
               <div className="mt-5 rounded-xl bg-slate-50 p-4 text-sm text-slate-600">
                 <p className="flex items-center gap-2">
                   <Check className="h-4 w-4 text-primary" aria-hidden="true" />
-                  At least 12 characters
+                  {t("ruleLength")}
                 </p>
                 <p className="mt-2 flex items-center gap-2">
                   <Check className="h-4 w-4 text-primary" aria-hidden="true" />
-                  Unique to your Ripple account
+                  {t("ruleUnique")}
                 </p>
               </div>
 
@@ -312,7 +311,7 @@ export default function ResetPasswordPage() {
                 disabled={loading}
                 className="mt-6 flex h-12 w-full items-center justify-center rounded-xl bg-primary px-4 text-sm font-bold text-white transition hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {loading ? "Updating password…" : "Update password"}
+                {loading ? t("submitting") : t("submit")}
               </button>
             </form>
           ) : null}

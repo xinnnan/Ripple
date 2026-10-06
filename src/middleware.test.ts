@@ -74,3 +74,132 @@ describe("settings middleware authorization", () => {
     );
   });
 });
+
+describe("middleware profile availability", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  function clientWithProfileResult(result: {
+    data: unknown;
+    error: unknown;
+  }) {
+    const client = makeClient("admin");
+    const query = client.from() as Record<string, ReturnType<typeof vi.fn>>;
+    query.maybeSingle.mockResolvedValue(result);
+    createServerClient.mockReturnValue(client);
+    return client;
+  }
+
+  it("fails closed with 503 instead of revoking the session on a read error", async () => {
+    const client = clientWithProfileResult({
+      data: null,
+      error: { code: "57014", message: "canceling statement due to timeout" },
+    });
+
+    const response = await middleware(
+      new NextRequest("https://support.example.com/tickets")
+    );
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get("retry-after")).toBe("5");
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(await response.text()).not.toContain("canceling statement");
+    expect(client.auth.signOut).not.toHaveBeenCalled();
+  });
+
+  it("still renders sign-in pages when the profile read is unavailable", async () => {
+    const client = clientWithProfileResult({
+      data: null,
+      error: { code: "08006" },
+    });
+
+    const response = await middleware(
+      new NextRequest("https://support.example.com/login")
+    );
+
+    expect(response.headers.get("x-middleware-next")).toBe("1");
+    expect(client.auth.signOut).not.toHaveBeenCalled();
+  });
+
+  it("revokes the session when the profile is genuinely missing", async () => {
+    const client = clientWithProfileResult({ data: null, error: null });
+
+    const response = await middleware(
+      new NextRequest("https://support.example.com/tickets")
+    );
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe(
+      "https://support.example.com/login?account=inactive"
+    );
+    expect(client.auth.signOut).toHaveBeenCalledTimes(1);
+  });
+
+  it("preserves the requested query string in the sign-in continuation", async () => {
+    const client = makeClient("admin");
+    client.auth.getUser.mockResolvedValue({ data: { user: null }, error: null });
+    createServerClient.mockReturnValue(client);
+
+    const response = await middleware(
+      new NextRequest("https://support.example.com/tickets?status=new&page=2")
+    );
+
+    const location = new URL(response.headers.get("location") ?? "");
+    expect(location.pathname).toBe("/login");
+    expect(location.searchParams.get("next")).toBe("/tickets?status=new&page=2");
+  });
+});
+
+describe("middleware account language", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  function clientWithLocale(locale: unknown) {
+    const client = makeClient("customer");
+    const query = client.from() as Record<string, ReturnType<typeof vi.fn>>;
+    query.maybeSingle
+      .mockResolvedValueOnce({ data: { role: "customer", status: "active" }, error: null })
+      .mockResolvedValueOnce({ data: { locale }, error: null });
+    client.from.mockClear();
+    createServerClient.mockReturnValue(client);
+    return client;
+  }
+
+  it("adopts the account language on a device without a language choice", async () => {
+    clientWithLocale("es");
+
+    const response = await middleware(
+      new NextRequest("https://support.example.com/dashboard")
+    );
+
+    expect(response.headers.get("x-middleware-next")).toBe("1");
+    expect(response.cookies.get("NEXT_LOCALE")?.value).toBe("es");
+    // The page rendered by this request sees the new language too.
+    expect(response.headers.get("x-middleware-request-cookie")).toContain("NEXT_LOCALE=es");
+  });
+
+  it("keeps an explicit device choice and skips the extra read", async () => {
+    const client = clientWithLocale("es");
+
+    const response = await middleware(
+      new NextRequest("https://support.example.com/dashboard", {
+        headers: { cookie: "NEXT_LOCALE=ko" },
+      })
+    );
+
+    expect(response.cookies.get("NEXT_LOCALE")).toBeUndefined();
+    expect(client.from).toHaveBeenCalledTimes(1);
+  });
+
+  it("ignores unsupported stored values", async () => {
+    clientWithLocale("fr");
+
+    const response = await middleware(
+      new NextRequest("https://support.example.com/dashboard")
+    );
+
+    expect(response.cookies.get("NEXT_LOCALE")).toBeUndefined();
+  });
+});

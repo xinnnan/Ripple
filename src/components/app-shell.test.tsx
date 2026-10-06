@@ -4,7 +4,10 @@ import { describe, expect, it, vi } from "vitest";
 
 (globalThis as typeof globalThis & { React: typeof React }).React = React;
 
-vi.mock("next/navigation", () => ({ usePathname: () => "/dashboard" }));
+vi.mock("next/navigation", () => ({
+  usePathname: () => "/dashboard",
+  useRouter: () => ({ refresh: () => {} }),
+}));
 vi.mock("next/image", () => ({
   default: ({ alt }: { alt: string }) => (
     <span role="img" aria-label={alt || "Ripple"} />
@@ -53,5 +56,27 @@ describe("application shell settings navigation", () => {
     expect(html).not.toContain('href="/settings"');
     expect(html).not.toContain("System status");
     expect(html).toContain('href="/profile"');
+  });
+});
+
+describe("application shell operations navigation", () => {
+  it.each([
+    { role: "admin" as const, isAdmin: true },
+    { role: "engineer" as const },
+  ])("gives $role users field service and part requests", ({ role, isAdmin }) => {
+    const html = renderShell({ role, isAdmin, isInternal: true });
+    expect(html).toContain("Operations");
+    expect(html).toContain('href="/field-service"');
+    expect(html).toContain('href="/part-requests"');
+    expect(html).not.toContain('href="/admin/field-service"');
+  });
+
+  it.each([
+    { role: "customer_manager" as const, isManager: true },
+    { role: "customer" as const },
+  ])("hides operations from $role users", ({ role, isManager }) => {
+    const html = renderShell({ role, isManager });
+    expect(html).not.toContain('href="/field-service"');
+    expect(html).not.toContain('href="/part-requests"');
   });
 });

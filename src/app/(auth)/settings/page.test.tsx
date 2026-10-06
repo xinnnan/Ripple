@@ -56,7 +56,7 @@ describe("system readiness page", () => {
     expect(html).toContain("Slack");
     expect(html).toContain("Delivery recovery");
     expect(html).toContain("Email notifications");
-    expect(html).toContain("Ripple Assist");
+    expect(html).not.toContain("Ripple Assist");
     expect(html).toContain("Administrator next steps");
     expect(html).toContain('href="/admin/sites"');
     expect(html).toContain('href="/api/health/ready"');

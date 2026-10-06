@@ -2,7 +2,8 @@
 
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { useCallback, useMemo, useState, useTransition } from "react";
-import { STATUS_LABELS, type TicketStatus, type Severity } from "@/types/ticket";
+import { useTranslations } from "next-intl";
+import type { TicketStatus, Severity } from "@/types/ticket";
 import { cn } from "@/lib/utils";
 import {
   PAGE_SIZE,
@@ -34,6 +35,8 @@ export function TicketFilters({
   totalCount: number;
   onChange: (next: TicketFiltersState) => void;
 }) {
+  const t = useTranslations("ticketList.filters");
+  const labels = useTranslations("labels");
   const [searchInput, setSearchInput] = useState(filters.q || "");
   const [, startTransition] = useTransition();
 
@@ -84,7 +87,7 @@ export function TicketFilters({
       {/* Quick status pills */}
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-xs font-medium text-muted-foreground mr-1">
-          Quick:
+          {t("quick")}
         </span>
         <button
           onClick={() => update({ status: undefined })}
@@ -95,7 +98,7 @@ export function TicketFilters({
               : "border border-border text-muted-foreground hover:bg-accent"
           )}
         >
-          All
+          {t("all")}
         </button>
         {QUICK_STATUSES.map((s) => (
           <button
@@ -108,7 +111,7 @@ export function TicketFilters({
                 : "border border-border text-muted-foreground hover:bg-accent"
             )}
           >
-            {STATUS_LABELS[s]}
+            {labels(`status.${s}`)}
           </button>
         ))}
       </div>
@@ -118,7 +121,7 @@ export function TicketFilters({
         {/* Search */}
         <div className="min-w-0 sm:min-w-[200px] sm:flex-1">
           <label className="block text-xs font-medium text-muted-foreground mb-1">
-            Search
+            {t("search")}
           </label>
           <input
             type="text"
@@ -127,7 +130,7 @@ export function TicketFilters({
             onKeyDown={(e) => {
               if (e.key === "Enter") update({ q: searchInput.trim() || undefined });
             }}
-            placeholder="Ticket no. or title…"
+            placeholder={t("searchPlaceholder")}
             className="w-full rounded-lg border border-border px-3 py-1.5 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/20"
           />
         </div>
@@ -135,7 +138,7 @@ export function TicketFilters({
         {/* Severity */}
         <div>
           <label className="block text-xs font-medium text-muted-foreground mb-1">
-            Severity
+            {t("severity")}
           </label>
           <div className="flex gap-1">
             {(["P1", "P2", "P3", "P4"] as Severity[]).map((s) => (
@@ -159,7 +162,7 @@ export function TicketFilters({
         {options.canFilterByCustomer && (
           <div className="min-w-0">
             <label className="block text-xs font-medium text-muted-foreground mb-1">
-              Customer
+              {t("customer")}
             </label>
             <select
               value={filters.customer_id || ""}
@@ -171,7 +174,7 @@ export function TicketFilters({
               }
               className="w-full max-w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 sm:w-auto"
             >
-              <option value="">All customers</option>
+              <option value="">{t("allCustomers")}</option>
               {options.customers.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
@@ -185,7 +188,7 @@ export function TicketFilters({
         {options.sites.length > 0 && (
           <div className="min-w-0">
             <label className="block text-xs font-medium text-muted-foreground mb-1">
-              Site
+              {t("site")}
             </label>
             <select
               value={filters.site_id || ""}
@@ -194,7 +197,7 @@ export function TicketFilters({
               }
               className="w-full max-w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 sm:w-auto"
             >
-              <option value="">All sites</option>
+              <option value="">{t("allSites")}</option>
               {visibleSites.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.site_name} ({s.site_code})
@@ -208,7 +211,7 @@ export function TicketFilters({
         {options.canFilterByOwner && options.owners.length > 0 && (
           <div className="min-w-0">
             <label className="block text-xs font-medium text-muted-foreground mb-1">
-              Owner
+              {t("owner")}
             </label>
             <select
               value={filters.owner_id || ""}
@@ -217,7 +220,8 @@ export function TicketFilters({
               }
               className="w-full max-w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 sm:w-auto"
             >
-              <option value="">All owners</option>
+              <option value="">{t("allOwners")}</option>
+              <option value="unassigned">{t("unassigned")}</option>
               {options.owners.map((o) => (
                 <option key={o.id} value={o.id}>
                   {o.full_name}
@@ -230,7 +234,7 @@ export function TicketFilters({
         {/* Date range */}
         <div className="min-w-0">
           <label className="block text-xs font-medium text-muted-foreground mb-1">
-            Created
+            {t("created")}
           </label>
           <select
             value={filters.range || "all"}
@@ -240,10 +244,10 @@ export function TicketFilters({
             }}
             className="w-full max-w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 sm:w-auto"
           >
-            <option value="all">All time</option>
-            <option value="7d">Last 7 days</option>
-            <option value="30d">Last 30 days</option>
-            <option value="90d">Last 90 days</option>
+            <option value="all">{t("allTime")}</option>
+            <option value="7d">{t("last7")}</option>
+            <option value="30d">{t("last30")}</option>
+            <option value="90d">{t("last90")}</option>
           </select>
         </div>
 
@@ -252,7 +256,7 @@ export function TicketFilters({
         {options.canFilterByOwner && (
           <div className="min-w-0">
             <label className="block text-xs font-medium text-muted-foreground mb-1">
-              SLA
+              {t("sla")}
             </label>
             <select
               value={filters.sla || "all"}
@@ -262,11 +266,11 @@ export function TicketFilters({
               }}
               className="w-full max-w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 sm:w-auto"
             >
-              <option value="all">All</option>
-              <option value="breached">⚠ Breached</option>
-              <option value="breaching">Breaching soon</option>
-              <option value="on_track">On track</option>
-              <option value="no_sla">No SLA</option>
+              <option value="all">{t("slaAll")}</option>
+              <option value="breached">{t("slaBreached")}</option>
+              <option value="breaching">{t("slaBreaching")}</option>
+              <option value="on_track">{t("slaOnTrack")}</option>
+              <option value="no_sla">{t("slaNone")}</option>
             </select>
           </div>
         )}
@@ -282,7 +286,7 @@ export function TicketFilters({
             }}
             className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-accent transition-colors"
           >
-            Clear
+            {t("clear")}
           </button>
         )}
       </div>
@@ -290,10 +294,8 @@ export function TicketFilters({
       {/* Result count */}
       <p className="text-xs text-muted-foreground">
         {totalCount === 0
-          ? "No results"
-          : `Showing ${start}–${end} of ${totalCount} ticket${
-              totalCount === 1 ? "" : "s"
-            }`}
+          ? t("noResults")
+          : t("showing", { start, end, total: totalCount })}
       </p>
     </div>
   );

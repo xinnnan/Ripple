@@ -35,3 +35,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Local editor/agent launch config (machine-specific, may reference credentials)
+.claude/launch.json

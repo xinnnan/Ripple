@@ -5,6 +5,10 @@ const page = readFileSync(
   "src/app/(public)/t/[ticketId]/page.tsx",
   "utf8"
 );
+const publicAccess = readFileSync(
+  "src/lib/tickets/public-access.ts",
+  "utf8"
+);
 const uploadRoute = readFileSync("src/app/api/upload/route.ts", "utf8");
 
 describe("remaining public token boundaries", () => {
@@ -12,9 +16,12 @@ describe("remaining public token boundaries", () => {
     expect(uploadRoute).toContain(
       'buildRateLimitBucketKey("attachment-upload", guestIp)'
     );
-    expect(page).toContain('buildRateLimitBucketKey("ticket-view", ip)');
+    expect(page).toContain('purpose: "ticket-view"');
+    expect(publicAccess).toContain(
+      "buildRateLimitBucketKey(args.purpose, args.clientIp)"
+    );
     expect(uploadRoute).toContain("consumeDistributedRateLimit({");
-    expect(page).toContain("consumeDistributedRateLimit({");
+    expect(publicAccess).toContain("consumeDistributedRateLimit({");
   });
 
   it("keeps the public ticket projection explicit and customer-safe", () => {
@@ -29,7 +36,7 @@ describe("remaining public token boundaries", () => {
       expect(page).not.toContain(sensitiveField);
     }
     expect(page).toContain('customer:customers!inner(name)');
-    expect(page).toContain('site:sites!inner(site_name)');
+    expect(page).toContain('site:sites!inner(site_name, timezone)');
     expect(page).toContain('.eq("site.status", "active")');
     expect(page).toContain('.in("customer.status", ["active", "trial"])');
   });

@@ -134,6 +134,15 @@ export async function PATCH(
       return NextResponse.json({ error: "No fields to update" }, { status: 400 });
     }
 
+    // Approval commits spend. Migration 057 enforces this in the database;
+    // checking here gives engineers a clear answer without a round trip.
+    if (data.status === "approved" && auth.role !== "admin") {
+      return NextResponse.json(
+        { error: "Only administrators can approve part requests" },
+        { status: 403 }
+      );
+    }
+
     const { items, ...patch } = data;
     const admin = createAdminClient();
     let updatedRequestId: string;
@@ -147,6 +156,24 @@ export async function PATCH(
         items,
       });
     } catch (error) {
+      if (
+        error instanceof SparePartRequestMutationError &&
+        error.kind === "approval_forbidden"
+      ) {
+        return NextResponse.json(
+          { error: "Only administrators can approve part requests" },
+          { status: 403 }
+        );
+      }
+      if (
+        error instanceof SparePartRequestMutationError &&
+        error.kind === "invalid_transition"
+      ) {
+        return NextResponse.json(
+          { error: "This part request cannot move to that status" },
+          { status: 409 }
+        );
+      }
       if (
         error instanceof SparePartRequestMutationError &&
         error.code === "P0002"

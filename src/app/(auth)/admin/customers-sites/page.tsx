@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
@@ -6,6 +7,8 @@ import { CreateCustomerForm } from "../customers/create-customer-form";
 import { ADMIN_ROLES } from "@/lib/roles";
 import { CustomersSitesCards } from "./customers-sites-cards";
 import { assertPageQueriesSucceeded } from "@/lib/server-page-query";
+
+export const metadata: Metadata = { title: "Customers & sites" };
 
 export const dynamic = "force-dynamic";
 

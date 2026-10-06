@@ -21,8 +21,8 @@ vi.mock("@/lib/supabase/server", () => ({ createClient }));
 vi.mock("next/navigation", () => ({ notFound, redirect }));
 
 import AdminCustomerDetailPage from "@/app/(auth)/admin/customers/[id]/page";
-import FieldServiceDetailPage from "@/app/(auth)/admin/field-service/[id]/page";
-import PartRequestDetailPage from "@/app/(auth)/admin/part-requests/[id]/page";
+import FieldServiceDetailPage from "@/app/(auth)/(operations)/field-service/[id]/page";
+import PartRequestDetailPage from "@/app/(auth)/(operations)/part-requests/[id]/page";
 import AdminSiteDetailPage from "@/app/(auth)/admin/sites/[id]/page";
 import EditSLAPolicyPage from "@/app/(auth)/admin/sla-policies/[id]/page";
 import EditSparePartPage from "@/app/(auth)/admin/spare-parts/[id]/page";

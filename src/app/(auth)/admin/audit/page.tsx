@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { formatDate } from "@/lib/utils";
 import Link from "next/link";
@@ -7,6 +8,8 @@ import {
   ADMIN_AUDIT_ENTITIES,
   parseAdminAuditPageFilters,
 } from "@/lib/admin-list-filters";
+
+export const metadata: Metadata = { title: "Audit log" };
 
 export const dynamic = "force-dynamic";
 

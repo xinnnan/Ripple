@@ -1,10 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { useLocale, useTranslations } from "next-intl";
 import {
-  assertClientMutationResponse,
-  clientMutationErrorMessage,
+  clientMutationErrorCode,
+  readClientJsonResponse,
 } from "@/lib/http/client-mutation";
+import {
+  InvitationNotice,
+  parseInvitationResult,
+  type InvitationResult,
+} from "@/components/invitation-result";
+import { LOCALES, LOCALE_NAMES, isLocale, type Locale } from "@/i18n/config";
 
 interface SiteOption {
   id: string;
@@ -12,18 +20,33 @@ interface SiteOption {
   site_code: string;
 }
 
+const inputClass =
+  "w-full rounded-lg border border-border px-3 py-2 text-sm text-foreground bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary disabled:opacity-60";
+const labelClass = "block text-sm font-medium text-foreground mb-1";
+
 export function CreateTeamMemberForm({ sites }: { sites: SiteOption[] }) {
+  const t = useTranslations("team.add");
+  const common = useTranslations("common");
+  const currentLocale = useLocale();
+  const router = useRouter();
+  const [refreshing, startRefresh] = useTransition();
   const [expanded, setExpanded] = useState(false);
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
+  const [locale, setLocale] = useState<Locale>(
+    isLocale(currentLocale) ? currentLocale : "en"
+  );
+  const [setupMethod, setSetupMethod] = useState<"invite" | "password">("invite");
+  const [password, setPassword] = useState("");
   const [selectedSites, setSelectedSites] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState<{
-    type: "success" | "error";
-    text: string;
+  const [error, setError] = useState<string | null>(null);
+  const [created, setCreated] = useState<{
+    email: string;
+    invitation: InvitationResult | null;
   } | null>(null);
+  const busy = saving || refreshing;
 
   function toggleSite(siteId: string) {
     setSelectedSites((prev) =>
@@ -35,9 +58,18 @@ export function CreateTeamMemberForm({ sites }: { sites: SiteOption[] }) {
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
-    if (saving) return;
+    if (busy) return;
+    if (selectedSites.length === 0) {
+      setError(t("chooseSite"));
+      return;
+    }
+    if (setupMethod === "password" && password.length < 12) {
+      setError(t("passwordTooShort"));
+      return;
+    }
     setSaving(true);
-    setMessage(null);
+    setError(null);
+    setCreated(null);
     const submittedEmail = email.trim();
 
     try {
@@ -46,33 +78,27 @@ export function CreateTeamMemberForm({ sites }: { sites: SiteOption[] }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           email: submittedEmail,
-          password,
+          password: setupMethod === "password" ? password : undefined,
           full_name: fullName.trim(),
           phone: phone.trim() || undefined,
-          site_ids: selectedSites.length > 0 ? selectedSites : undefined,
+          site_ids: selectedSites,
+          locale,
         }),
       });
-
-      await assertClientMutationResponse(res, "Failed to create team member");
-
-      setMessage({
-        type: "success",
-        text: `Team member ${submittedEmail} created successfully`,
-      });
+      const body = await readClientJsonResponse(res, t("failed"));
+      setCreated({ email: submittedEmail, invitation: parseInvitationResult(body) });
       setEmail("");
       setPassword("");
       setFullName("");
       setPhone("");
       setSelectedSites([]);
-      setTimeout(() => window.location.reload(), 1000);
+      startRefresh(() => router.refresh());
     } catch (err) {
-      setMessage({
-        type: "error",
-        text: clientMutationErrorMessage(
-          err,
-          "Team-member creation is temporarily unavailable. Please retry."
-        ),
-      });
+      setError(
+        clientMutationErrorCode(err) === "USER_EMAIL_EXISTS"
+          ? t("emailExists")
+          : t("failed")
+      );
     } finally {
       setSaving(false);
     }
@@ -86,134 +112,103 @@ export function CreateTeamMemberForm({ sites }: { sites: SiteOption[] }) {
           onClick={() => setExpanded(true)}
           className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
         >
-          + Add Team Member
+          {t("open")}
         </button>
       </div>
     );
   }
 
   return (
-    <div className="mb-6 rounded-xl border border-border p-6">
+    <div className="mb-6 rounded-xl border border-border p-4 sm:p-6">
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-base font-semibold text-foreground">
-          Add Team Member
-        </h2>
+        <h2 className="text-base font-semibold text-foreground">{t("heading")}</h2>
         <button
           type="button"
           onClick={() => setExpanded(false)}
-          disabled={saving}
+          disabled={busy}
           className="text-sm text-muted-foreground hover:text-foreground transition-colors"
         >
-          Cancel
+          {common("close")}
         </button>
       </div>
 
-      {message && (
-        <div
-          role={message.type === "error" ? "alert" : "status"}
-          className={`mb-4 rounded-lg px-4 py-3 text-sm ${
-            message.type === "success"
-              ? "bg-green-50 text-green-800 border border-green-200"
-              : "bg-red-50 text-red-800 border border-red-200"
-          }`}
-        >
-          {message.text}
+      {created && (
+        <div className="mb-4">
+          {created.invitation ? (
+            <InvitationNotice email={created.email} invitation={created.invitation} />
+          ) : (
+            <p role="status" className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
+              {t("createdWithPassword", { email: created.email })}
+            </p>
+          )}
         </div>
       )}
+      {error && (
+        <p role="alert" className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+          {error}
+        </p>
+      )}
 
-      <form aria-busy={saving} onSubmit={handleCreate} className="space-y-4">
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+      <form aria-busy={busy} onSubmit={handleCreate} className="space-y-4">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
           <div>
-            <label
-              htmlFor="team-create-user-email"
-              className="block text-sm font-medium text-foreground mb-1"
-            >
-              Email *
+            <label htmlFor="team-create-user-email" className={labelClass}>
+              {t("email")}
             </label>
             <input
               id="team-create-user-email"
               type="email"
-              autoComplete="email"
+              autoComplete="off"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              disabled={saving}
+              disabled={busy}
               maxLength={320}
               placeholder="user@company.com"
-              className="w-full rounded-lg border border-border px-3 py-2 text-sm text-foreground bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+              className={inputClass}
             />
           </div>
           <div>
-            <label
-              htmlFor="team-create-user-password"
-              className="block text-sm font-medium text-foreground mb-1"
-            >
-              Password *
-            </label>
-            <input
-              id="team-create-user-password"
-              type="password"
-              autoComplete="new-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              disabled={saving}
-              minLength={12}
-              maxLength={128}
-              placeholder="At least 12 characters"
-              className="w-full rounded-lg border border-border px-3 py-2 text-sm text-foreground bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-            />
-          </div>
-        </div>
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          <div>
-            <label
-              htmlFor="team-create-user-name"
-              className="block text-sm font-medium text-foreground mb-1"
-            >
-              Full Name *
+            <label htmlFor="team-create-user-name" className={labelClass}>
+              {t("fullName")}
             </label>
             <input
               id="team-create-user-name"
               type="text"
-              autoComplete="name"
+              autoComplete="off"
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
               required
-              disabled={saving}
+              disabled={busy}
               maxLength={200}
-              placeholder="John Doe"
-              className="w-full rounded-lg border border-border px-3 py-2 text-sm text-foreground bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+              className={inputClass}
             />
           </div>
           <div>
-            <label
-              htmlFor="team-create-user-phone"
-              className="block text-sm font-medium text-foreground mb-1"
-            >
-              Phone
+            <label htmlFor="team-create-user-phone" className={labelClass}>
+              {t("phone")}
             </label>
             <input
               id="team-create-user-phone"
               type="tel"
-              autoComplete="tel"
+              autoComplete="off"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
-              disabled={saving}
+              disabled={busy}
               maxLength={50}
               placeholder="+1 (555) 000-0000"
-              className="w-full rounded-lg border border-border px-3 py-2 text-sm text-foreground bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+              className={inputClass}
             />
           </div>
         </div>
 
-        {/* Site Assignment */}
-        <fieldset disabled={saving}>
-          <legend className="block text-sm font-medium text-foreground mb-2">
-            Assign Sites
+        <fieldset disabled={busy}>
+          <legend className="block text-sm font-medium text-foreground mb-1">
+            {t("sites")}
           </legend>
+          <p className="mb-2 text-xs text-muted-foreground">{t("sitesHint")}</p>
           {sites.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No sites available.</p>
+            <p className="text-sm text-muted-foreground">{t("noSitesAvailable")}</p>
           ) : (
             <div className="flex flex-wrap gap-2">
               {sites.map((site) => (
@@ -221,7 +216,7 @@ export function CreateTeamMemberForm({ sites }: { sites: SiteOption[] }) {
                   key={site.id}
                   type="button"
                   onClick={() => toggleSite(site.id)}
-                  disabled={saving}
+                  disabled={busy}
                   aria-pressed={selectedSites.includes(site.id)}
                   className={`inline-flex items-center rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
                     selectedSites.includes(site.id)
@@ -236,12 +231,81 @@ export function CreateTeamMemberForm({ sites }: { sites: SiteOption[] }) {
           )}
         </fieldset>
 
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div>
+            <label htmlFor="team-create-user-locale" className={labelClass}>
+              {t("language")}
+            </label>
+            <select
+              id="team-create-user-locale"
+              value={locale}
+              onChange={(e) => setLocale(e.target.value as Locale)}
+              disabled={busy}
+              className={inputClass}
+            >
+              {LOCALES.map((value) => (
+                <option key={value} value={value}>
+                  {LOCALE_NAMES[value]}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-xs text-muted-foreground">{t("languageHint")}</p>
+          </div>
+          <fieldset disabled={busy}>
+            <legend className={labelClass}>{t("setup")}</legend>
+            <div className="space-y-2">
+              <label className="flex items-start gap-2 text-sm">
+                <input
+                  type="radio"
+                  name="team-setup-method"
+                  className="mt-1"
+                  checked={setupMethod === "invite"}
+                  onChange={() => setSetupMethod("invite")}
+                />
+                {t("setupInvite")}
+              </label>
+              <label className="flex items-start gap-2 text-sm">
+                <input
+                  type="radio"
+                  name="team-setup-method"
+                  className="mt-1"
+                  checked={setupMethod === "password"}
+                  onChange={() => setSetupMethod("password")}
+                />
+                {t("setupPassword")}
+              </label>
+              {setupMethod === "password" && (
+                <div>
+                  <label htmlFor="team-create-user-password" className="sr-only">
+                    {t("passwordLabel")}
+                  </label>
+                  <input
+                    id="team-create-user-password"
+                    type="password"
+                    autoComplete="new-password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    minLength={12}
+                    maxLength={128}
+                    placeholder={t("passwordPlaceholder")}
+                    className={inputClass}
+                  />
+                </div>
+              )}
+            </div>
+          </fieldset>
+        </div>
+
         <button
           type="submit"
-          disabled={saving}
+          disabled={busy}
           className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
         >
-          {saving ? "Creating..." : "Add Team Member"}
+          {saving
+            ? t("creating")
+            : setupMethod === "invite"
+              ? t("submitInvite")
+              : t("submitPassword")}
         </button>
       </form>
     </div>

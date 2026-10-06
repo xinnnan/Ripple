@@ -1,5 +1,8 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { SparePartForm } from "../spare-part-form";
+
+export const metadata: Metadata = { title: "New spare part" };
 
 export const dynamic = "force-dynamic";
 

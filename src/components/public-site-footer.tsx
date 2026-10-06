@@ -1,7 +1,11 @@
 import Image from "next/image";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
+import { LanguageSwitcher } from "@/components/language-switcher";
 
 export function PublicSiteFooter() {
+  const t = useTranslations("publicFooter");
+  const common = useTranslations("common");
   return (
     <footer className="border-t border-slate-200 bg-slate-950 text-slate-300">
       <div className="mx-auto grid max-w-7xl gap-8 px-6 py-10 md:grid-cols-[1fr_auto] md:items-end lg:px-8">
@@ -17,19 +21,19 @@ export function PublicSiteFooter() {
               height={34}
               className="rounded-xl bg-white"
             />
-            <span className="font-semibold text-white">Ripple by DropletAI</span>
+            <span className="font-semibold text-white">{t("brand")}</span>
           </Link>
           <p className="mt-4 max-w-xl text-sm leading-6 text-slate-400">
-            Service coordination for industrial automation deployments—from
-            first report through engineering response, parts, and field work.
+            {t("tagline")}
           </p>
         </div>
-        <div className="flex flex-wrap gap-x-6 gap-y-3 text-sm">
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-3 text-sm">
+          <LanguageSwitcher tone="dark" />
           <Link href="/submit" className="hover:text-white">
-            Submit a ticket
+            {common("submitTicket")}
           </Link>
           <Link href="/login" className="hover:text-white">
-            Sign in
+            {common("signIn")}
           </Link>
           <a
             href="mailto:support@dropletai.services"
@@ -41,7 +45,7 @@ export function PublicSiteFooter() {
       </div>
       <div className="border-t border-white/10">
         <div className="mx-auto max-w-7xl px-6 py-5 text-xs text-slate-500 lg:px-8">
-          © {new Date().getFullYear()} DropletAI Services. All rights reserved.
+          {t("copyright", { year: new Date().getFullYear() })}
         </div>
       </div>
     </footer>

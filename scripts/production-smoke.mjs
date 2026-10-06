@@ -1,18 +1,22 @@
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { setTimeout as delay } from "node:timers/promises";
+import { fileURLToPath } from "node:url";
 
 const port = Number(process.env.RIPPLE_E2E_PORT || 21000 + (process.pid % 10000));
 const host = "127.0.0.1";
 const baseUrl = `http://${host}:${port}`;
-const nextBin = new URL("../node_modules/next/dist/bin/next", import.meta.url);
+// fileURLToPath decodes percent-escapes so checkouts with spaces still work.
+const nextBin = fileURLToPath(
+  new URL("../node_modules/next/dist/bin/next", import.meta.url)
+);
 const output = [];
 
 const server = spawn(
   process.execPath,
-  [nextBin.pathname, "start", "--hostname", host, "--port", String(port)],
+  [nextBin, "start", "--hostname", host, "--port", String(port)],
   {
-    cwd: new URL("..", import.meta.url),
+    cwd: fileURLToPath(new URL("..", import.meta.url)),
     env: {
       ...process.env,
       NODE_ENV: "production",
@@ -27,7 +31,6 @@ const server = spawn(
       SLACK_BOT_TOKEN: "",
       SLACK_SIGNING_SECRET: "",
       RESEND_API_KEY: "",
-      MINIMAX_API_KEY: "",
       NEXT_PUBLIC_APP_URL: baseUrl,
     },
     stdio: ["ignore", "pipe", "pipe"],
@@ -57,9 +60,10 @@ async function waitForServer() {
   throw new Error(`Next.js did not become ready:\n${output.join("")}`);
 }
 
-async function expectPage(path, expectedText) {
+async function expectPage(path, expectedText, headers = {}) {
   const response = await fetch(`${baseUrl}${path}`, {
     redirect: "manual",
+    headers,
     signal: AbortSignal.timeout(5000),
   });
   const body = await response.text();
@@ -69,7 +73,8 @@ async function expectPage(path, expectedText) {
         `received ${response.status}`
     );
   }
-  process.stdout.write(`PASS page ${path}\n`);
+  const language = headers["accept-language"] ?? headers.cookie ?? "";
+  process.stdout.write(`PASS page ${path}${language ? ` (${language})` : ""}\n`);
 }
 
 async function expectHardDeleteDisabled(path, replacement) {
@@ -277,7 +282,16 @@ try {
   await expectPage("/login", "Welcome back.");
   await expectPage("/forgot-password", "Reset your password.");
   await expectPage("/submit", "Submit a Support Request");
-  await expectPage("/t/RPL-000000", "Access Denied");
+  await expectPage("/t/RPL-000000", "Access denied");
+  // Language: browser preference first, then an explicit choice cookie.
+  await expectPage("/", "Mantenga su automatización en marcha.", {
+    "accept-language": "es-MX,es;q=0.9,en;q=0.5",
+  });
+  await expectPage("/login", "欢迎回来。", { cookie: "NEXT_LOCALE=zh" });
+  await expectPage("/submit", "지원 요청 제출", {
+    "accept-language": "en-US",
+    cookie: "NEXT_LOCALE=ko",
+  });
   await expectHardDeleteDisabled(
     "/api/admin/customers/bulk-delete",
     "/api/admin/customers/bulk-archive"
@@ -457,7 +471,6 @@ try {
   await expectHealth("/api/health/live", 200, "live");
   await expectHealth("/api/health/ready", 503, "not_ready", {
     email: "disabled",
-    ai: "disabled",
   });
   await expectOutboxConfigurationDenial();
   await expectSlackConfigurationDenial(

@@ -1,8 +1,9 @@
+import type { Metadata } from "next";
+import { getLocale, getTranslations } from "next-intl/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getUserScope, scopeTickets, scopeSites } from "@/lib/supabase/scope";
 import { redirect } from "next/navigation";
-import { SEVERITY_LABELS, STATUS_LABELS, type Severity, type TicketStatus } from "@/types/ticket";
-import { formatDate } from "@/lib/utils";
+import { formatDate, resolveSiteTimezone, singleRelation } from "@/lib/utils";
 import Link from "next/link";
 import { TicketsPageHeader } from "./tickets-page-header";
 import { TableEmpty } from "@/components/empty-state";
@@ -11,13 +12,21 @@ import {
   parseFilters,
   parseTicketListFilters,
   buildParams,
+  UNASSIGNED_OWNER,
   type TicketFilterOptions,
 } from "./ticket-filters.shared";
 import { TicketListControls } from "./ticket-list-controls";
 import { buildTicketSearchFilter } from "@/lib/tickets/search-filter";
 import { assertPageQueriesSucceeded } from "@/lib/server-page-query";
 
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("ticketList");
+  return { title: t("metaTitle") };
+}
+
 export const dynamic = "force-dynamic";
+
+type Relation<T> = T | T[] | null;
 
 interface Props {
   searchParams: Promise<{
@@ -63,7 +72,7 @@ export default async function TicketsPage({ searchParams }: Props) {
         canFilterByCustomer: false,
         canFilterByOwner: false,
       },
-      "One or more ticket filters are invalid. Clear the filters and try again."
+      "invalid"
     );
   }
 
@@ -77,10 +86,10 @@ export default async function TicketsPage({ searchParams }: Props) {
       ticket_no, title, severity, status, request_type, created_at,
       sla_policy_id, sla_breached, first_response_due_at, resolve_due_at, first_response_at,
       customer:customers(id, name),
-      site:sites(id, site_name),
+      site:sites(id, site_name, timezone),
       owner:users!tickets_owner_id_fkey(id, full_name)
     `,
-      { count: "estimated" }
+      { count: "exact" }
     )
     .order("created_at", { ascending: false });
 
@@ -155,7 +164,10 @@ export default async function TicketsPage({ searchParams }: Props) {
         canFilterByOwner: false,
       });
     }
-    query = query.eq("owner_id", filters.owner_id);
+    query =
+      filters.owner_id === UNASSIGNED_OWNER
+        ? query.is("owner_id", null)
+        : query.eq("owner_id", filters.owner_id);
   }
   if (filters.q) {
     query = query.or(buildTicketSearchFilter(filters.q));
@@ -281,7 +293,7 @@ async function loadFilterOptions(
   };
 }
 
-function renderTicketsPage(
+async function renderTicketsPage(
   filters: ReturnType<typeof parseFilters>,
   tickets: {
     ticket_no: string;
@@ -290,15 +302,21 @@ function renderTicketsPage(
     status: string;
     request_type: string;
     created_at: string;
-    customer: { id?: string; name: string }[];
-    site: { id?: string; site_name: string }[];
-    owner: { id?: string; full_name: string }[];
+    // Many-to-one embeds arrive as objects; tolerate either shape.
+    customer: Relation<{ id?: string; name: string }>;
+    site: Relation<{ id?: string; site_name: string; timezone?: string }>;
+    owner: Relation<{ id?: string; full_name: string }>;
   }[],
   totalCount: number,
   isInternal: boolean,
   options: TicketFilterOptions,
-  filterError?: string
+  filterError?: "invalid"
 ) {
+  const [t, labels, locale] = await Promise.all([
+    getTranslations("ticketList"),
+    getTranslations("labels"),
+    getLocale(),
+  ]);
   const hasFilters = Boolean(
     filters.q ||
       (filters.status && filters.status.length > 0) ||
@@ -323,12 +341,12 @@ function renderTicketsPage(
           role="alert"
           className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive"
         >
-          <span>{filterError}</span>
+          <span>{t("invalidFilters")}</span>
           <Link
             href="/tickets"
             className="font-medium underline underline-offset-4"
           >
-            Clear filters
+            {t("clearFilters")}
           </Link>
         </div>
       )}
@@ -341,25 +359,25 @@ function renderTicketsPage(
           <thead>
             <tr className="border-b border-border bg-muted/50">
               <th className="text-left text-xs font-medium text-muted-foreground p-3">
-                Ticket
+                {t("columns.ticket")}
               </th>
               <th className="text-left text-xs font-medium text-muted-foreground p-3">
-                Severity
+                {t("columns.severity")}
               </th>
               <th className="text-left text-xs font-medium text-muted-foreground p-3">
-                Title
+                {t("columns.title")}
               </th>
               <th className="text-left text-xs font-medium text-muted-foreground p-3">
-                Customer / Site
+                {t("columns.customerSite")}
               </th>
               <th className="text-left text-xs font-medium text-muted-foreground p-3">
-                Status
+                {t("columns.status")}
               </th>
               <th className="text-left text-xs font-medium text-muted-foreground p-3">
-                Owner
+                {t("columns.owner")}
               </th>
               <th className="text-left text-xs font-medium text-muted-foreground p-3">
-                Created
+                {t("columns.created")}
               </th>
             </tr>
           </thead>
@@ -368,20 +386,20 @@ function renderTicketsPage(
               <TableEmpty
                 colSpan={7}
                 icon="ticket"
-                title="No tickets match"
+                title={t("empty.title")}
                 description={
                   hasFilters
-                    ? "Try adjusting the filters above or clearing them."
+                    ? t("empty.filtered")
                     : isInternal
-                    ? "When tickets are created they will appear here."
-                    : "When you submit a ticket, it will appear here."
+                    ? t("empty.internal")
+                    : t("empty.customer")
                 }
                 action={
                   hasFilters
-                    ? { label: "Clear filters", href: "/tickets" }
+                    ? { label: t("clearFilters"), href: "/tickets" }
                     : isInternal
                     ? undefined
-                    : { label: "Submit a ticket", href: "/submit" }
+                    : { label: t("empty.submit"), href: "/submit" }
                 }
               />
             ) : (
@@ -390,7 +408,7 @@ function renderTicketsPage(
                   key={ticket.ticket_no}
                   className="hover:bg-muted/30 transition-colors"
                 >
-                  <td className="p-3">
+                  <td className="whitespace-nowrap p-3">
                     <Link
                       href={`/tickets/${ticket.ticket_no}`}
                       className="text-xs font-mono font-medium text-primary hover:text-primary/80"
@@ -402,8 +420,9 @@ function renderTicketsPage(
                     <span
                       className={`severity-${ticket.severity} inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium`}
                     >
-                      {SEVERITY_LABELS[ticket.severity as Severity] ||
-                        ticket.severity}
+                      {labels.has(`severity.${ticket.severity}`)
+                        ? labels(`severity.${ticket.severity}`)
+                        : ticket.severity}
                     </span>
                   </td>
                   <td className="p-3">
@@ -413,28 +432,29 @@ function renderTicketsPage(
                   </td>
                   <td className="p-3">
                     <p className="text-sm text-foreground">
-                      {ticket.customer?.[0]?.name}
+                      {singleRelation(ticket.customer)?.name}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      {ticket.site?.[0]?.site_name}
+                      {singleRelation(ticket.site)?.site_name}
                     </p>
                   </td>
                   <td className="p-3">
                     <span
                       className={`status-${ticket.status} inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium`}
                     >
-                      {STATUS_LABELS[ticket.status as TicketStatus] ||
-                        ticket.status}
+                      {labels.has(`status.${ticket.status}`)
+                        ? labels(`status.${ticket.status}`)
+                        : ticket.status}
                     </span>
                   </td>
                   <td className="p-3">
                     <span className="text-sm text-muted-foreground">
-                      {ticket.owner?.[0]?.full_name || "—"}
+                      {singleRelation(ticket.owner)?.full_name || "—"}
                     </span>
                   </td>
                   <td className="p-3">
                     <span className="text-xs text-muted-foreground">
-                      {formatDate(ticket.created_at)}
+                      {formatDate(ticket.created_at, resolveSiteTimezone(ticket.site), locale)}
                     </span>
                   </td>
                 </tr>

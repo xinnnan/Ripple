@@ -6,27 +6,20 @@ const {
   requireInternalMock,
   applyTicketPatchMock,
   recordTicketCommentMock,
-  requestAiSuggestionMock,
   dispatchTicketOutboxMock,
   createAdminClientMock,
   MockInvalidTicketTransitionError,
-  MockAiSuggestionRateLimitError,
 } = vi.hoisted(() => {
   class InvalidTicketTransitionError extends Error {}
-  class AiSuggestionRateLimitError extends Error {
-    readonly retryAfterSeconds = 60;
-  }
 
   return {
     getAuthUserMock: vi.fn(),
     requireInternalMock: vi.fn(),
     applyTicketPatchMock: vi.fn(),
     recordTicketCommentMock: vi.fn(),
-    requestAiSuggestionMock: vi.fn(),
     dispatchTicketOutboxMock: vi.fn(),
     createAdminClientMock: vi.fn(),
     MockInvalidTicketTransitionError: InvalidTicketTransitionError,
-    MockAiSuggestionRateLimitError: AiSuggestionRateLimitError,
   };
 });
 
@@ -45,12 +38,7 @@ vi.mock("@/lib/tickets/mutations", () => ({
 vi.mock("@/lib/tickets/outbox", () => ({
   dispatchTicketOutboxBestEffort: dispatchTicketOutboxMock,
 }));
-vi.mock("@/lib/ai/service", () => ({
-  AiSuggestionRateLimitError: MockAiSuggestionRateLimitError,
-  requestAiSuggestion: requestAiSuggestionMock,
-}));
 
-import { POST as suggest } from "./ai/suggest/route";
 import { PATCH as patchTicket } from "./tickets/[ticketId]/route";
 import { POST as createComment } from "./tickets/[ticketId]/comments/route";
 
@@ -106,10 +94,6 @@ describe("malformed JSON mutation boundaries", () => {
           params()
         ),
     },
-    {
-      name: "AI suggestion",
-      call: () => suggest(malformedRequest("/api/ai/suggest", "POST")),
-    },
   ])("returns a stable 400 for $name", async ({ call }) => {
     const response = await call();
 
@@ -117,7 +101,6 @@ describe("malformed JSON mutation boundaries", () => {
     expect(await response.json()).toEqual({ error: "Invalid JSON body" });
     expect(applyTicketPatchMock).not.toHaveBeenCalled();
     expect(recordTicketCommentMock).not.toHaveBeenCalled();
-    expect(requestAiSuggestionMock).not.toHaveBeenCalled();
   });
 
   it("authorizes ticket patches before parsing the body", async () => {
@@ -143,10 +126,6 @@ describe("malformed JSON mutation boundaries", () => {
           malformedRequest(`/api/tickets/${TICKET_ID}/comments`, "POST"),
           params()
         ),
-    },
-    {
-      name: "AI suggestions",
-      call: () => suggest(malformedRequest("/api/ai/suggest", "POST")),
     },
   ])("authorizes $name before parsing the body", async ({ call }) => {
     getAuthUserMock.mockResolvedValueOnce({

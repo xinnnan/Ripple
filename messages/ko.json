@@ -1,0 +1,980 @@
+{
+  "labels": {
+    "status": {
+      "new": "신규",
+      "assigned": "배정됨",
+      "in_progress": "진행 중",
+      "waiting_customer": "고객 응답 대기",
+      "waiting_droplet": "DropletAI 처리 대기",
+      "resolved": "해결됨",
+      "closed": "종료됨",
+      "reopened": "다시 열림"
+    },
+    "severity": {
+      "P1": "P1 — 긴급",
+      "P2": "P2 — 높음",
+      "P3": "P3 — 보통",
+      "P4": "P4 — 낮음"
+    },
+    "impact": {
+      "safety": "안전 우려",
+      "production_stopped": "생산 중단",
+      "production_slowed": "생산 속도 저하",
+      "single_asset": "단일 장비 영향",
+      "no_impact": "생산 영향 없음"
+    },
+    "requestType": {
+      "incident": "장애",
+      "service_request": "서비스 요청",
+      "question": "문의",
+      "change_request": "변경 요청",
+      "parts_rma": "부품 / RMA",
+      "deployment_issue": "구축 문제",
+      "training_documentation": "교육 / 문서"
+    },
+    "projectStatus": {
+      "pre_signoff": "인수 승인 전",
+      "in_warranty": "보증 기간 중",
+      "full_coverage": "전체 지원",
+      "essential_coverage": "필수 지원",
+      "out_of_service": "서비스 종료"
+    },
+    "role": {
+      "admin": "관리자",
+      "engineer": "엔지니어",
+      "customer_manager": "고객 관리자",
+      "customer": "고객 사용자"
+    },
+    "userStatus": {
+      "active": "활성",
+      "inactive": "비활성",
+      "invited": "초대됨"
+    },
+    "source": {
+      "slack": "Slack",
+      "web": "웹",
+      "email": "이메일",
+      "internal": "내부"
+    },
+    "partRequestStatus": {
+      "requested": "요청됨",
+      "approved": "승인됨",
+      "shipped": "발송됨",
+      "delivered": "배송 완료",
+      "cancelled": "취소됨"
+    },
+    "fieldServiceStatus": {
+      "scheduled": "예정됨",
+      "in_progress": "진행 중",
+      "completed": "완료됨",
+      "cancelled": "취소됨"
+    },
+    "serviceType": {
+      "repair": "수리",
+      "installation": "설치",
+      "inspection": "점검",
+      "commissioning": "시운전",
+      "training": "교육",
+      "emergency": "긴급 출동",
+      "maintenance": "유지보수"
+    },
+    "memberRole": {
+      "owner": "소유자",
+      "manager": "매니저",
+      "member": "구성원",
+      "viewer": "조회자"
+    }
+  },
+  "landing": {
+    "heroImageAlt": "산업 시설 내부에 줄지어 서 있는 자율 이동 로봇",
+    "eyebrow": "연결된 서비스 운영",
+    "title": "자동화 설비가 멈추지 않도록.",
+    "lead": "문제는 한 번만 보고해 주세요. 올바른 사이트와 운영 맥락에 맞게 전달되며, 해결될 때까지 모든 업데이트를 확인할 수 있습니다.",
+    "submitCta": "지원 요청 제출",
+    "signInCta": "로그인하여 티켓 확인",
+    "noAccount": "계정이 없으신가요? 사이트 코드만으로도 제출할 수 있습니다.",
+    "highlights": {
+      "channels": {
+        "title": "Slack + 웹",
+        "description": "/ticket 명령이나 지원 포털에서 생성"
+      },
+      "siteAware": {
+        "title": "사이트 기반",
+        "description": "모든 문제를 해당 구축 현장의 맥락에 맞게 전달"
+      },
+      "timeline": {
+        "title": "하나의 타임라인",
+        "description": "상태, 업데이트, 부품, 방문 기록을 함께 연결"
+      }
+    },
+    "how": {
+      "eyebrow": "더 명확한 지원 인계",
+      "title": "첫 신호부터 문서화된 해결까지",
+      "lead": "Ripple은 모든 대화를 또 다른 스프레드시트로 옮기지 않고도 고객과 서비스 팀이 함께 보는 운영 기록을 제공합니다.",
+      "steps": {
+        "site": {
+          "title": "사이트 확인",
+          "description": "요청이 올바른 고객사와 시설 정보로 전달되도록 구축 현장에 부여된 사이트 코드를 사용해 주세요."
+        },
+        "impact": {
+          "title": "영향 설명",
+          "description": "무엇이 멈췄는지, 언제 시작되었는지, 어떤 장비나 공정이 영향을 받는지 알려 주세요. 사진, 로그 또는 동영상도 첨부할 수 있습니다."
+        },
+        "track": {
+          "title": "대응 추적",
+          "description": "상태, 담당자, 엔지니어 업데이트, 부품 요청, 현장 서비스 활동을 하나의 티켓에서 확인할 수 있습니다."
+        }
+      }
+    },
+    "prepare": {
+      "eyebrow": "더 빠르고 유용한 분류",
+      "title": "엔지니어가 바로 시작할 수 있도록 도와주세요.",
+      "lead": "장비나 영향 정보가 없는 긴 메시지보다 운영 맥락을 담은 간결한 보고가 더 유용합니다.",
+      "checklist": {
+        "site": "사이트 코드와 영향받는 구역",
+        "asset": "장비 또는 자산 식별자",
+        "impact": "운영 및 안전 영향",
+        "started": "증상이 시작된 시점",
+        "evidence": "오류 메시지, 사진, 동영상 또는 로그",
+        "tried": "이미 시도한 조치"
+      },
+      "cta": "구조화된 보고 시작",
+      "severityEyebrow": "영향을 신중하게 선택해 주세요",
+      "severityTitle": "심각도는 답답함이 아니라 운영 상황을 기준으로 정합니다.",
+      "severity": {
+        "P1": "안전 우려 또는 생산 중단",
+        "P2": "심각한 성능 저하 또는 긴급한 운영 위험",
+        "P3": "우회 방법이 있는 제한적 영향",
+        "P4": "문의, 교육 또는 계획된 개선"
+      }
+    },
+    "record": {
+      "eyebrow": "단순한 티켓 수신함 그 이상",
+      "title": "모든 작업을 하나의 서비스 기록으로.",
+      "lead": "하나의 지원 건에서 원래의 고객 맥락을 잃지 않고 소프트웨어 조사, 하드웨어 증거, 예비 부품, 현장 서비스를 함께 조율할 수 있습니다.",
+      "capabilities": {
+        "triage": {
+          "title": "구조화된 분류",
+          "description": "심각도와 생산 영향 항목을 통해 서비스 팀이 적절한 대응의 우선순위를 정할 수 있습니다."
+        },
+        "collaboration": {
+          "title": "엔지니어링 협업",
+          "description": "고객 공개 업데이트와 내부 기술 메모로 모든 인계가 끊김 없이 연결됩니다."
+        },
+        "parts": {
+          "title": "부품 조율",
+          "description": "예비 부품 요청과 처리 진행 상황을 지원 건에 직접 연결합니다."
+        },
+        "reply": {
+          "title": "어디서나 답장",
+          "description": "계정이나 추적 링크에서 질문에 답하고, 파일을 공유하고, 티켓을 다시 열 수 있습니다."
+        }
+      }
+    },
+    "channels": {
+      "slackTitle": "Slack Connect 채널 사용",
+      "slackBody": "사이트 채널에서 <code>/ticket</code>을 실행하면 Slack을 벗어나지 않고 구조화된 요청을 생성할 수 있습니다. 사이트 채널이 아직 연결되지 않았다면 DropletAI 어카운트 매니저에게 문의해 주세요.",
+      "webTitle": "웹에서 제출 — 계정은 선택 사항",
+      "webBody": "구축 현장의 사이트 코드로 웹에서 제출할 수 있습니다. 사이트 코드를 모르시면 어카운트 매니저에게 문의하거나 <email>support@dropletai.services</email>로 이메일을 보내 주세요."
+    },
+    "closing": {
+      "eyebrow": "준비되셨다면 시작해 보세요",
+      "title": "사이트부터 시작하세요. 작업은 저희가 연결해 드립니다.",
+      "cta": "티켓 제출"
+    }
+  },
+  "common": {
+    "language": "언어",
+    "languageSaveFailed": "이 기기에서는 언어가 변경되었지만 계정에 저장하지 못했습니다.",
+    "brand": "Ripple",
+    "byDropletAI": "DropletAI 제공",
+    "homeAriaLabel": "Ripple 지원 홈",
+    "signIn": "로그인",
+    "signOut": "로그아웃",
+    "submitTicket": "티켓 제출",
+    "submitShort": "제출",
+    "supportEmail": "support@dropletai.services",
+    "cancel": "취소",
+    "close": "닫기",
+    "retry": "재시도",
+    "save": "저장",
+    "loading": "불러오는 중…",
+    "back": "뒤로",
+    "goHome": "홈으로 이동",
+    "goToDashboard": "대시보드로 이동",
+    "download": "다운로드",
+    "notAvailable": "—"
+  },
+  "publicHeader": {
+    "navLabel": "주 메뉴",
+    "howItWorks": "이용 방법",
+    "whatToInclude": "포함할 내용",
+    "supportChannels": "지원 채널"
+  },
+  "publicFooter": {
+    "brand": "DropletAI의 Ripple",
+    "tagline": "최초 보고부터 엔지니어링 대응, 부품, 현장 작업까지—산업 자동화 구축 현장을 위한 서비스 조율 플랫폼입니다.",
+    "copyright": "© {year} DropletAI Services. 모든 권리 보유."
+  },
+  "authErrors": {
+    "loginGeneric": "로그인하지 못했습니다. 다시 시도해 주세요.",
+    "loginInvalidCredentials": "이메일 또는 비밀번호가 올바르지 않습니다.",
+    "loginRateLimited": "로그인 시도 횟수가 너무 많습니다. 몇 분 후에 다시 시도해 주세요.",
+    "recoveryGeneric": "지금은 복구 이메일을 보낼 수 없습니다. 다시 시도해 주세요.",
+    "recoveryRateLimited": "요청이 너무 많습니다. 몇 분 후에 다시 시도해 주세요.",
+    "resetGeneric": "비밀번호를 변경하지 못했습니다. 새 복구 링크를 요청해 주세요.",
+    "resetRateLimited": "비밀번호 시도 횟수가 너무 많습니다. 몇 분 기다리거나 새 복구 링크를 요청해 주세요."
+  },
+  "login": {
+    "metaTitle": "로그인",
+    "supportHome": "지원 홈",
+    "eyebrow": "고객 및 서비스 접속",
+    "title": "다시 오신 것을 환영합니다.",
+    "lead": "로그인하면 티켓 활동을 확인하고, 사이트 접근 권한을 관리하고, DropletAI 서비스 팀과 협업할 수 있습니다.",
+    "inactive": "이 계정은 비활성 또는 정지 상태입니다. 접근 권한이 필요하면 Ripple 관리자에게 문의해 주세요.",
+    "callbackFailed": "로그인 또는 복구 링크가 유효하지 않거나 만료되었습니다. 새 링크를 요청한 후 다시 시도해 주세요.",
+    "signoutFailed": "로그아웃을 확인하지 못했습니다. 공용 기기라면 브라우저를 닫은 후 다시 시도해 주세요.",
+    "passwordUpdatedPartial": "비밀번호가 변경되었으며 이 기기에서 로그아웃되었습니다. 다른 세션은 확인하지 못했습니다. 해당 세션을 해지해야 하면 지원팀에 문의해 주세요.",
+    "passwordUpdated": "비밀번호가 변경되었습니다. 새 비밀번호로 로그인해 주세요.",
+    "logoutPartial": "이 기기에서 로그아웃되었지만 다른 세션은 확인하지 못했습니다. 해당 세션을 해지해야 하면 지원팀에 문의해 주세요.",
+    "email": "업무용 이메일",
+    "emailPlaceholder": "name@company.com",
+    "password": "비밀번호",
+    "forgotPassword": "비밀번호를 잊으셨나요?",
+    "passwordPlaceholder": "비밀번호를 입력해 주세요",
+    "showPassword": "비밀번호 표시",
+    "hidePassword": "비밀번호 숨기기",
+    "submit": "로그인",
+    "submitting": "로그인 중…",
+    "noAccessTitle": "포털 접근 권한이 없으신가요?",
+    "noAccessBody": "<submit>계정 없이 티켓을 제출</submit>하거나, DropletAI 어카운트 매니저에게 접근 권한을 요청해 주세요.",
+    "copyright": "© {year} DropletAI Services. 모든 권리 보유.",
+    "imageAlt": "산업 시설 내부의 자율 이동 로봇",
+    "asideTitle": "모든 지원 인계를 위한 하나의 공유 운영 기록.",
+    "asideBody": "고객 맥락, 엔지니어링 업데이트, 부품 활동, 현장 서비스 조율을 하나의 요청에 연결해 관리합니다."
+  },
+  "emails": {
+    "brand": "Ripple Support",
+    "brandSub": "DropletAI Services",
+    "copyright": "© {year} DropletAI Services. 모든 권리 보유.",
+    "noReply": "이 이메일로 회신하셔도 확인되지 않습니다.",
+    "labels": {
+      "ticketId": "티켓 ID",
+      "customer": "고객사",
+      "site": "사이트",
+      "issue": "문제"
+    },
+    "confirmation": {
+      "subject": "[{ticketNo}] 지원 티켓이 생성되었습니다 — {title}",
+      "heading": "지원 티켓이 생성되었습니다",
+      "trackIntro": "언제든지 티켓 상태를 확인할 수 있습니다:",
+      "button": "티켓 상태 보기",
+      "closing": "담당 팀에 알림이 전달되었으며 곧 답변드리겠습니다. 긴급한 문제라면 사이트 지원 채널로 직접 연락해 주세요."
+    },
+    "resolved": {
+      "subject": "[{ticketNo}] 티켓이 해결되었습니다 — {title}",
+      "heading": "✅ 티켓이 해결되었습니다",
+      "summaryTitle": "해결 요약",
+      "button": "전체 내용 보기",
+      "closing": "문제가 완전히 해결되지 않았다면 30일 이내에 티켓 페이지에서 다시 열거나 새 티켓을 제출해 주세요."
+    },
+    "update": {
+      "subjectAction": "[{ticketNo}] 조치 필요 — {title}",
+      "subjectUpdate": "[{ticketNo}] 새 업데이트 — {title}",
+      "headingAction": "티켓이 회원님의 답변을 기다리고 있습니다",
+      "headingUpdate": "티켓에 새 업데이트가 있습니다",
+      "messageTitle": "DropletAI 팀의 메시지",
+      "button": "확인 및 답장",
+      "closing": "담당 엔지니어가 확인할 수 있도록 티켓 페이지에서 답장해 주세요."
+    },
+    "passwordReset": {
+      "subject": "Ripple 비밀번호 재설정",
+      "heading": "비밀번호 재설정",
+      "body": "Ripple 계정의 비밀번호 재설정 요청을 받았습니다. 아래 버튼을 눌러 새 비밀번호를 설정해 주세요. 이 링크는 1시간 후 만료되며 한 번만 사용할 수 있습니다.",
+      "button": "새 비밀번호 설정",
+      "ignore": "요청하지 않으셨다면 이 이메일을 무시하셔도 됩니다. 비밀번호는 변경되지 않습니다."
+    },
+    "invitation": {
+      "subject": "Ripple 지원 포털에 초대되었습니다",
+      "heading": "{name} 님, Ripple에 오신 것을 환영합니다",
+      "body": "{inviter} 님이 회원님을 {company} 지원 포털에 초대했습니다. Ripple에서 지원 요청을 제출하고, 진행 상황을 확인하고, DropletAI 서비스 팀과 소통할 수 있습니다.",
+      "button": "비밀번호 설정",
+      "expiry": "이 링크는 1시간 후 만료되며 한 번만 사용할 수 있습니다. 링크가 만료되면 로그인 페이지에서 이 이메일 주소로 “비밀번호를 잊으셨나요?”를 이용해 주세요.",
+      "signInHint": "비밀번호를 설정한 후 {url}에서 로그인해 주세요."
+    }
+  },
+  "forgotPassword": {
+    "metaTitle": "비밀번호 재설정",
+    "eyebrow": "계정 복구",
+    "title": "비밀번호를 재설정해 주세요.",
+    "lead": "Ripple에 등록된 업무용 이메일을 입력해 주세요. 일치하는 계정이 있으면 유효 시간이 제한된 복구 링크를 보내 드립니다.",
+    "noAccessTitle": "더 이상 접근할 수 없으신가요?",
+    "noAccessBody": "DropletAI 어카운트 매니저에게 문의하거나 <email>support@dropletai.services</email>로 이메일을 보내 주세요.",
+    "submittedTitle": "받은편지함을 확인해 주세요",
+    "submittedBody": "<strong>{email}</strong>에 해당하는 계정이 있으면 복구 링크가 발송됩니다. 다른 이메일을 요청하기 전에 스팸 또는 정크 메일함을 확인해 주세요.",
+    "sendAnother": "링크 다시 보내기",
+    "formTitle": "링크를 어디로 보내 드릴까요?",
+    "formHint": "복구 링크는 만료되며 한 번만 사용할 수 있습니다.",
+    "email": "업무용 이메일",
+    "emailPlaceholder": "name@company.com",
+    "submit": "복구 링크 보내기",
+    "submitting": "링크 보내는 중…",
+    "backToSignIn": "로그인으로 돌아가기"
+  },
+  "resetPassword": {
+    "metaTitle": "새 비밀번호 설정",
+    "tooShort": "12자 이상 입력해 주세요.",
+    "mismatch": "비밀번호가 일치하지 않습니다.",
+    "checking": "복구 링크를 확인하는 중…",
+    "unavailableTitle": "이 복구 링크를 확인할 수 없습니다.",
+    "unavailableBody": "인증 서비스를 일시적으로 사용할 수 없습니다. 새 링크를 요청하기 전에 다시 시도해 주세요.",
+    "tryAgain": "다시 시도",
+    "invalidTitle": "이 복구 링크는 유효하지 않거나 만료되었습니다.",
+    "invalidBody": "복구 링크는 유효 시간이 제한되며 한 번만 사용할 수 있습니다. 계속하려면 새 링크를 요청해 주세요.",
+    "requestNew": "새 링크 요청",
+    "cleanupTitle": "비밀번호는 변경되었지만 로그아웃 확인이 필요합니다.",
+    "cleanupBody": "이 복구 세션이 종료되었는지 확인하지 못했습니다. 비밀번호를 다시 변경하지 마세요. 로그아웃을 시도한 후에도 이 메시지가 다시 표시되면 DropletAI 지원팀에 문의해 주세요.",
+    "signOut": "로그아웃",
+    "contactSupport": "지원팀에 문의",
+    "eyebrow": "계정 보호",
+    "title": "새 비밀번호를 설정해 주세요.",
+    "lead": "다른 서비스에서 사용하지 않는 고유한 비밀번호를 사용해 주세요.",
+    "newPassword": "새 비밀번호",
+    "showPassword": "새 비밀번호 표시",
+    "hidePassword": "새 비밀번호 숨기기",
+    "confirmPassword": "새 비밀번호 확인",
+    "ruleLength": "12자 이상",
+    "ruleUnique": "Ripple 계정에만 사용하는 비밀번호",
+    "submit": "비밀번호 변경",
+    "submitting": "비밀번호 변경 중…"
+  },
+  "invitationNotice": {
+    "sent": "{email}(으)로 초대 이메일을 보냈습니다. 링크는 한 번만 사용할 수 있으며 만료됩니다. 로그인 페이지의 “비밀번호를 잊으셨나요?”는 언제든지 이용할 수 있습니다.",
+    "emailDisabled": "이메일 발송이 구성되지 않아 초대장을 보내지 않았습니다.",
+    "sendFailed": "초대 이메일을 보내지 못했습니다.",
+    "linkFailed": "로그인 링크를 생성하지 못했습니다.",
+    "shareLink": "이 일회용 링크를 {email} 님에게 비공개로 전달해 주세요. 링크는 한 번만 사용할 수 있으며 만료됩니다.",
+    "noLink": "나중에 다시 시도하거나 DropletAI 지원팀에 문의해 주세요.",
+    "linkLabel": "일회용 로그인 링크",
+    "copy": "링크 복사",
+    "copied": "복사됨"
+  },
+  "team": {
+    "metaTitle": "팀",
+    "title": "팀",
+    "subtitle": "조직의 팀원과 사이트 접근 권한을 관리합니다.",
+    "stats": {
+      "total": "전체 팀원",
+      "active": "활성",
+      "managers": "고객 관리자",
+      "customers": "고객 사용자"
+    },
+    "emptyTitle": "아직 팀원이 없습니다",
+    "emptyDescription": "조직의 첫 번째 팀원을 추가해 주세요. 추가된 팀원은 배정된 사이트의 티켓을 제출하고 추적할 수 있습니다.",
+    "columns": {
+      "name": "이름",
+      "email": "이메일",
+      "role": "역할",
+      "sites": "사이트",
+      "status": "상태",
+      "joined": "가입일",
+      "actions": "작업"
+    },
+    "noSites": "사이트 없음",
+    "organizationWide": "조직 전체",
+    "edit": "편집",
+    "add": {
+      "open": "+ 팀원 추가",
+      "heading": "팀원 추가",
+      "email": "이메일 *",
+      "fullName": "이름 *",
+      "phone": "전화번호",
+      "language": "언어",
+      "languageHint": "이메일 발송에 사용됩니다. 팀원이 언제든지 변경할 수 있습니다.",
+      "setup": "로그인 설정",
+      "setupInvite": "비밀번호 설정 초대 이메일 보내기(권장)",
+      "setupPassword": "임시 비밀번호 설정",
+      "passwordLabel": "임시 비밀번호",
+      "passwordPlaceholder": "12자 이상",
+      "sites": "사이트 *",
+      "sitesHint": "선택한 사이트에 대해서만 티켓을 제출하고 확인할 수 있습니다.",
+      "noSitesAvailable": "사용 가능한 사이트가 없습니다.",
+      "submitInvite": "추가 및 초대",
+      "submitPassword": "팀원 추가",
+      "creating": "추가 중…",
+      "createdWithPassword": "{email} 님이 설정하신 임시 비밀번호로 추가되었습니다. 비밀번호는 비공개로 전달해 주세요. 프로필에서 변경할 수 있습니다.",
+      "chooseSite": "티켓을 제출할 수 있도록 사이트를 하나 이상 선택해 주세요.",
+      "passwordTooShort": "임시 비밀번호는 12자 이상이어야 합니다.",
+      "emailExists": "해당 이메일로 이미 등록된 계정이 있습니다. 팀에 합류해야 하는 경우 DropletAI 지원팀에 문의해 주세요.",
+      "failed": "팀원을 추가하지 못했습니다. 다시 시도해 주세요."
+    },
+    "member": {
+      "metaTitle": "팀원",
+      "back": "← 팀으로 돌아가기",
+      "title": "팀원 편집",
+      "subtitle": "{name} 님의 프로필과 사이트 접근 권한을 업데이트합니다.",
+      "notFound": "팀원을 찾을 수 없습니다.",
+      "email": "이메일",
+      "role": "역할",
+      "fullName": "이름",
+      "status": "상태",
+      "siteAccess": "사이트 접근 권한",
+      "noSitesAvailable": "사용 가능한 사이트가 없습니다.",
+      "inactiveNotice": "이 계정은 비활성 상태이며 읽기 전용입니다. 다시 활성화하려면 DropletAI 지원팀에 문의해 주세요.",
+      "save": "변경 사항 저장",
+      "saving": "저장 중…",
+      "saved": "팀원 정보가 업데이트되었습니다.",
+      "failed": "팀원 정보를 업데이트하지 못했습니다. 다시 시도해 주세요."
+    }
+  },
+  "nav": {
+    "dashboard": "대시보드",
+    "tickets": "티켓",
+    "mySites": "내 사이트",
+    "team": "팀",
+    "fieldService": "현장 서비스",
+    "partRequests": "부품 요청",
+    "customersSites": "고객사 및 사이트",
+    "users": "사용자",
+    "spareParts": "예비 부품",
+    "inventory": "재고",
+    "slaPolicies": "SLA 정책",
+    "auditLog": "감사 로그",
+    "systemStatus": "시스템 상태",
+    "profile": "프로필",
+    "signOut": "로그아웃",
+    "workspace": "작업 공간",
+    "operations": "운영",
+    "administration": "관리",
+    "tagline": "지원 포털",
+    "openNavigation": "탐색 메뉴 열기",
+    "closeNavigation": "탐색 메뉴 닫기",
+    "closeNavigationOverlay": "탐색 메뉴 오버레이 닫기",
+    "applicationNavigation": "애플리케이션 탐색"
+  },
+  "submit": {
+    "metaTitle": "지원 요청 제출",
+    "eyebrow": "구조화된 지원 접수",
+    "eyebrowShort": "지원 접수",
+    "title": "지원 요청 제출",
+    "intro": "추가 질문 없이 바로 분류를 시작할 수 있도록 사이트, 장비, 영향에 대한 정보를 충분히 알려 주세요.",
+    "steps": {
+      "site": "사이트 확인",
+      "impact": "운영 영향 설명",
+      "evidence": "유용한 자료 첨부"
+    },
+    "account": {
+      "checking": "계정 확인 중",
+      "checkFailed": "계정 확인 실패",
+      "checkingBody": "배정된 사이트를 불러올지, 게스트 접수 양식을 표시할지 확인하고 있습니다. 잠시 기다려 주세요.",
+      "statusUnknown": "계정 상태를 확인하지 못했습니다. 제출하기 전에 다시 시도해 주세요.",
+      "detailsUnavailable": "계정 정보를 일시적으로 불러올 수 없습니다. 다시 시도해 주세요.",
+      "notAvailable": "로그인한 계정을 사용할 수 없습니다.",
+      "tryAgain": "다시 시도",
+      "signOut": "로그아웃"
+    },
+    "sections": {
+      "you": "요청자 정보",
+      "issue": "문제 상세",
+      "attachments": "첨부 파일"
+    },
+    "fields": {
+      "site": "사이트 코드 *",
+      "siteSelect": "사이트 선택...",
+      "siteNone": "사용 가능한 활성 사이트 없음",
+      "siteNoneHelp": "이 계정에 배정된 활성 사이트가 없습니다. 제출하기 전에 고객 관리자 또는 DropletAI 지원팀에 문의해 주세요.",
+      "siteCodePlaceholder": "예: ADI-INDY-001",
+      "siteCodeTitle": "영문자, 숫자, 하이픈만 사용해 주세요.",
+      "siteChecking": "확인 중...",
+      "siteNotFound": "사이트 코드를 찾을 수 없습니다. 확인 후 다시 시도해 주세요.",
+      "siteThrottled": "확인 요청이 너무 많습니다. 1분 후에 다시 시도해 주세요.",
+      "siteUnavailable": "사이트 확인 기능을 일시적으로 사용할 수 없습니다. 다시 시도해 주세요.",
+      "name": "이름 *",
+      "email": "이메일 *",
+      "phone": "전화번호",
+      "title": "문제 제목 *",
+      "titlePlaceholder": "예: AMR-03이 배송 미션을 완료하지 못함",
+      "requestType": "요청 유형 *",
+      "severity": "심각도 *",
+      "impact": "생산 영향 *",
+      "select": "선택...",
+      "asset": "장비 / 자산 ID",
+      "assetPlaceholder": "예: AMR-03, Charger-01",
+      "area": "구역 / 공정",
+      "areaPlaceholder": "예: 입고, 라인 사이드, 도크",
+      "description": "설명 *",
+      "descriptionPlaceholder": "문제를 자세히 설명해 주세요. 무슨 일이 있었나요? 언제 시작되었나요? 어떤 영향이 있나요?"
+    },
+    "files": {
+      "upload": "클릭하여 업로드",
+      "types": "JPEG/PNG/GIF/WebP, MP4/MOV, PDF, UTF-8 텍스트, CSV/로그 또는 Excel(파일당 최대 50MB)",
+      "tooMany": "첨부 파일은 최대 {max}개까지 선택할 수 있습니다.",
+      "badSize": "{name} 파일의 크기는 1바이트에서 50MB 사이여야 합니다.",
+      "badName": "첨부 파일 이름은 안전한 문자로 3–255자여야 합니다."
+    },
+    "actions": {
+      "submit": "지원 요청 제출",
+      "submitting": "제출 중...",
+      "checkingSite": "사이트 확인 중...",
+      "cancel": "취소"
+    },
+    "errors": {
+      "incomplete": "제출하기 전에 필수 티켓 항목을 모두 입력해 주세요.",
+      "failed": "티켓을 제출하지 못했습니다. 다시 시도해 주세요.",
+      "unconfirmed": "티켓이 생성되었을 수 있지만 확인할 수 없습니다. 다시 시도하기 전에 지원팀에 문의하거나 티켓 목록을 확인해 주세요.",
+      "unavailable": "티켓 제출을 일시적으로 사용할 수 없습니다. 연결 상태를 확인한 후 다시 시도해 주세요.",
+      "rateLimited": "요청이 너무 많습니다. 1분 후에 다시 시도해 주세요.",
+      "invalidSite": "해당 사이트를 사용할 수 없습니다. 사이트 코드를 확인한 후 다시 시도해 주세요."
+    },
+    "success": {
+      "title": "지원 요청이 제출되었습니다",
+      "body": "요청이 DropletAI 지원 대기열에 등록되었습니다.",
+      "ticketId": "티켓 ID",
+      "track": "이 티켓 추적",
+      "another": "다른 요청 제출",
+      "attachmentsFailed": "{count, plural, one {첨부 파일 #개를 업로드하지 못했습니다.} other {첨부 파일 #개를 업로드하지 못했습니다.}} 티켓을 열어 다시 시도해 주세요.",
+      "saveHint": "티켓 ID와 추적 링크를 저장해 두세요. 조직에 이메일 발송이 구성되어 있으면 확인 이메일도 보내 드립니다."
+    }
+  },
+  "profile": {
+    "metaTitle": "프로필",
+    "title": "프로필",
+    "subtitle": "계정 설정을 관리합니다",
+    "loadFailedTitle": "프로필을 불러올 수 없습니다",
+    "unavailable": "계정 데이터를 일시적으로 불러올 수 없습니다. 다시 시도해 주세요.",
+    "sessionEnded": "세션이 종료되었습니다. 다시 로그인해 주세요.",
+    "notAvailable": "이 계정을 사용할 수 없습니다.",
+    "tryAgain": "다시 시도",
+    "signIn": "로그인",
+    "email": "이메일",
+    "emailManaged": "DropletAI에서 관리",
+    "role": "역할",
+    "fullName": "이름",
+    "phone": "전화번호",
+    "notSet": "설정되지 않음",
+    "edit": "프로필 편집",
+    "save": "변경 사항 저장",
+    "saving": "저장 중…",
+    "cancel": "취소",
+    "saved": "프로필이 업데이트되었습니다.",
+    "saveFailed": "프로필을 업데이트할 수 없습니다. 다시 시도해 주세요.",
+    "errors": {
+      "nameRequired": "이름을 입력해 주세요.",
+      "nameTooLong": "이름은 200자 이하여야 합니다.",
+      "nameInvalid": "이름에 사용할 수 없는 문자가 포함되어 있습니다.",
+      "phoneTooLong": "전화번호는 50자 이하여야 합니다.",
+      "phoneInvalid": "전화번호에 사용할 수 없는 문자가 포함되어 있습니다."
+    },
+    "language": {
+      "title": "언어",
+      "body": "이 포털과 발송되는 이메일에 사용됩니다."
+    },
+    "password": {
+      "title": "비밀번호 변경",
+      "body": "12자 이상 사용해 주세요. 비밀번호 관리자로 생성한 고유한 비밀번호를 권장합니다.",
+      "new": "새 비밀번호",
+      "newPlaceholder": "12자 이상",
+      "confirm": "새 비밀번호 확인",
+      "confirmPlaceholder": "새 비밀번호 다시 입력",
+      "show": "비밀번호 표시",
+      "hide": "비밀번호 숨기기",
+      "submit": "비밀번호 변경",
+      "submitting": "변경 중…",
+      "tooShort": "비밀번호는 12자 이상이어야 합니다.",
+      "mismatch": "비밀번호가 일치하지 않습니다.",
+      "updated": "비밀번호가 변경되었습니다.",
+      "failed": "비밀번호를 변경할 수 없습니다. 다시 시도해 주세요."
+    }
+  },
+  "createTicket": {
+    "title": "새 티켓 제출",
+    "close": "티켓 양식 닫기",
+    "created": "티켓이 생성되었습니다",
+    "view": "티켓 보기",
+    "done": "완료",
+    "site": "사이트 *",
+    "loadingSites": "사이트 불러오는 중...",
+    "selectedSite": "고객사: {customer} | 사이트: {site}",
+    "noSitesHelp": "계정에 배정된 활성 사이트가 없습니다. 고객 관리자 또는 DropletAI 지원팀에 문의해 주세요.",
+    "sitesUnavailable": "사이트 목록을 일시적으로 불러올 수 없습니다. 다시 시도해 주세요.",
+    "retrySites": "사이트 다시 불러오기",
+    "type": "유형 *",
+    "impact": "영향 *",
+    "asset": "장비 / 자산",
+    "assetPlaceholder": "예: AMR-03",
+    "areaPlaceholder": "예: 피킹 구역 A",
+    "descriptionPlaceholder": "문제를 자세히 설명해 주세요...",
+    "chooseSite": "사이트를 선택해 주세요.",
+    "incomplete": "제출하기 전에 필수 티켓 항목을 입력해 주세요.",
+    "failed": "티켓을 생성하지 못했습니다.",
+    "unconfirmed": "티켓이 생성되었을 수 있지만 확인할 수 없습니다. 다시 시도하기 전에 티켓 목록을 새로 고쳐 주세요.",
+    "unavailable": "티켓 생성을 일시적으로 사용할 수 없습니다. 다시 시도해 주세요.",
+    "submit": "티켓 제출",
+    "submitting": "제출 중...",
+    "rateLimited": "요청이 너무 많습니다. 1분 후에 다시 시도해 주세요."
+  },
+  "pagination": {
+    "previous": "‹ 이전",
+    "next": "다음 ›",
+    "label": "페이지 탐색"
+  },
+  "ticketList": {
+    "metaTitle": "티켓",
+    "title": "티켓",
+    "subtitleInternal": "모든 고객사와 사이트의 지원 티켓",
+    "subtitleCustomer": "내 지원 티켓",
+    "newTicket": "+ 티켓 제출",
+    "exportCsv": "CSV 내보내기",
+    "filters": {
+      "quick": "빠른 필터:",
+      "all": "전체",
+      "search": "검색",
+      "searchPlaceholder": "티켓 번호 또는 제목…",
+      "severity": "심각도",
+      "customer": "고객사",
+      "allCustomers": "모든 고객사",
+      "site": "사이트",
+      "allSites": "모든 사이트",
+      "owner": "담당자",
+      "allOwners": "모든 담당자",
+      "unassigned": "미배정",
+      "created": "생성일",
+      "allTime": "전체 기간",
+      "last7": "최근 7일",
+      "last30": "최근 30일",
+      "last90": "최근 90일",
+      "sla": "SLA",
+      "slaAll": "전체",
+      "slaBreached": "⚠ 위반",
+      "slaBreaching": "위반 임박",
+      "slaOnTrack": "정상",
+      "slaNone": "SLA 없음",
+      "clear": "초기화",
+      "noResults": "결과 없음",
+      "showing": "티켓 {total, plural, one {#개} other {#개}} 중 {start}–{end}번째 표시"
+    },
+    "invalidFilters": "하나 이상의 티켓 필터가 유효하지 않습니다. 필터를 초기화한 후 다시 시도해 주세요.",
+    "clearFilters": "필터 초기화",
+    "columns": {
+      "ticket": "티켓",
+      "severity": "심각도",
+      "title": "제목",
+      "customerSite": "고객사 / 사이트",
+      "status": "상태",
+      "owner": "담당자",
+      "created": "생성일"
+    },
+    "empty": {
+      "title": "일치하는 티켓이 없습니다",
+      "filtered": "위의 필터를 조정하거나 초기화해 보세요.",
+      "internal": "티켓이 생성되면 여기에 표시됩니다.",
+      "customer": "티켓을 제출하면 여기에 표시됩니다.",
+      "submit": "티켓 제출"
+    }
+  },
+  "ticketDetail": {
+    "metaTitle": "티켓",
+    "notFound": "티켓을 찾을 수 없습니다",
+    "back": "← 티켓 목록으로",
+    "description": "설명",
+    "resolutionSummary": "해결 요약",
+    "internalSummary": "내부 요약",
+    "comments": "댓글 ({count})",
+    "noComments": "아직 댓글이 없습니다.",
+    "submitter": "티켓 제출자",
+    "via": "{source} 경유",
+    "internal": "내부",
+    "attachments": "첨부 파일 ({count})",
+    "download": "(다운로드)",
+    "partRequests": "예비 부품 요청 ({count})",
+    "newPartRequest": "+ 새 요청",
+    "noPartRequests": "이 티켓에 연결된 예비 부품 요청이 없습니다.",
+    "items": "{count, plural, one {품목 #개} other {품목 #개}}",
+    "fieldService": "현장 서비스 오더 ({count})",
+    "newFieldService": "+ 새 서비스 오더",
+    "noFieldService": "이 티켓에 연결된 현장 서비스 오더가 없습니다.",
+    "details": "상세 정보",
+    "customer": "고객사",
+    "site": "사이트",
+    "type": "유형",
+    "severity": "심각도",
+    "impact": "영향",
+    "asset": "장비",
+    "area": "구역",
+    "source": "접수 경로",
+    "owner": "담당자",
+    "unassigned": "미배정",
+    "submitterLabel": "제출자",
+    "created": "생성일",
+    "resolved": "해결일",
+    "closed": "종료일",
+    "timesShownIn": "모든 시간은 {timezone} 기준입니다",
+    "activity": "활동",
+    "timesIn": "{timezone} 기준 시간",
+    "by": "{name} 님",
+    "events": {
+      "ticket_created": "티켓 생성됨",
+      "status_changed": "상태: {from} → {to}",
+      "owner_assigned": "담당자 배정됨",
+      "severity_changed": "심각도: {from} → {to}",
+      "comment_added": "댓글 추가됨 ({visibility})",
+      "attachment_added": "첨부 파일: {name}"
+    }
+  },
+  "sla": {
+    "prefix": "SLA 상태: {label}",
+    "on_track": "정상 진행",
+    "response_breached": "응답 기한 위반",
+    "resolution_breached": "해결 기한 위반",
+    "met": "충족",
+    "not_applicable": "해당 없음",
+    "nextMilestone": "다음 마일스톤까지",
+    "firstResponseLate": "첫 응답 {delta} 지연",
+    "responseDueAgo": "응답 기한 {delta} 경과",
+    "resolvedLate": "{delta} 늦게 해결됨",
+    "resolutionDueAgo": "해결 기한 {delta} 경과",
+    "resolutionMissed": "해결 마일스톤을 달성하지 못했습니다",
+    "firstResponseAt": "첫 응답: {time}",
+    "duration": {
+      "seconds": "{n}초",
+      "minutes": "{n}분",
+      "hours": "{h}시간",
+      "hoursMinutes": "{h}시간 {m}분",
+      "days": "{d}일",
+      "daysHours": "{d}일 {h}시간"
+    }
+  },
+  "ticketActions": {
+    "update": {
+      "title": "티켓 업데이트",
+      "status": "상태",
+      "severity": "심각도",
+      "owner": "담당자",
+      "unassigned": "— 미배정 —",
+      "selectOwner": "— 담당자 선택 —",
+      "me": "(나)",
+      "saving": "저장 중…",
+      "save": "변경 사항 저장",
+      "noChanges": "변경 사항 없음",
+      "ownerRequired": "배정됨 또는 진행 중 상태의 티켓에는 담당자를 선택해 주세요.",
+      "failed": "티켓 업데이트를 일시적으로 사용할 수 없습니다. 다시 시도해 주세요.",
+      "quickActions": "빠른 작업",
+      "assignToMe": "나에게 배정",
+      "markInProgress": "진행 중으로 표시",
+      "reopen": "티켓 다시 열기"
+    },
+    "guidance": {
+      "waitingTitle": "회원님의 답변을 기다리고 있습니다",
+      "waitingBody": "아래 댓글 입력란에 답변해 주세요. 답변은 이 티켓을 처리 중인 엔지니어에게 바로 전달됩니다.",
+      "updateTitle": "추가로 알릴 내용이 있으신가요?",
+      "updateBody": "아래에 댓글을 추가해 팀에 새로운 정보를 공유하거나 첨부 파일을 업로드해 주세요."
+    },
+    "reopen": {
+      "title": "해결되지 않았나요?",
+      "body": "이 티켓을 다시 열고 아직 계속되는 문제를 팀에 알려 주세요. 댓글만으로는 티켓이 다시 열리지 않습니다.",
+      "label": "아직 남아 있는 문제",
+      "placeholder": "어떤 문제가 아직 남아 있나요?",
+      "required": "팀이 다시 처리할 수 있도록 아직 남아 있는 문제를 알려 주세요.",
+      "failed": "다시 열기를 일시적으로 사용할 수 없습니다. 다시 시도해 주세요.",
+      "submit": "티켓 다시 열기",
+      "submitting": "다시 여는 중…"
+    },
+    "resolve": {
+      "resolutionTitle": "해결",
+      "resolveTitle": "티켓 해결",
+      "resolvedBody": "이 티켓은 해결됨으로 표시되어 있습니다. 위의 빠른 작업에서 다시 열거나 아래에서 해결 요약을 업데이트할 수 있습니다.",
+      "openBody": "티켓을 해결됨으로 표시하고 고객에게 공개되는 설명을 작성합니다.",
+      "edit": "해결 내용 편집",
+      "resolveTicket": "{ticketNo} 해결",
+      "close": "닫기",
+      "customerSummary": "고객 공개 요약",
+      "customerSummaryHelp": "어떤 조치를 했나요? 고객이 알아야 할 내용은 무엇인가요? 공개 보기와 고객 대시보드에 표시됩니다.",
+      "customerSummaryPlaceholder": "예: AMR-03 플릿을 재부팅하고 WCS에 다시 등록했습니다. 14:32에 생산이 재개되었습니다.",
+      "internalSummary": "내부 요약",
+      "internalOptional": "(선택 사항, 내부 전용)",
+      "internalSummaryHelp": "근본 원인, 시도한 조치, 재발 시 대응 방법을 기록합니다. DropletAI 엔지니어에게만 표시됩니다.",
+      "internalSummaryPlaceholder": "예: 근본 원인은 네트워크 순단 이후 갱신되지 않은 WCS 핸드셰이크였습니다. 조치: 플릿을 다시 등록했으며 펌웨어 변경은 필요하지 않았습니다.",
+      "required": "티켓을 해결하려면 고객 공개 요약을 입력해야 합니다.",
+      "failed": "티켓 해결을 일시적으로 사용할 수 없습니다. 다시 시도해 주세요.",
+      "cancel": "취소",
+      "submit": "해결됨으로 표시",
+      "submitting": "해결 중..."
+    },
+    "comment": {
+      "title": "댓글 추가",
+      "label": "댓글",
+      "placeholderInternal": "댓글 작성(내부로 표시하지 않으면 고객에게 공개됨)",
+      "placeholderCustomer": "지원팀에 남길 댓글을 작성해 주세요",
+      "visibility": "댓글 공개 범위",
+      "customerVisible": "👥 고객 공개",
+      "internalOnly": "🔒 내부 전용",
+      "customerNote": "댓글은 DropletAI 지원팀에 표시됩니다",
+      "added": "댓글이 추가되었습니다",
+      "failed": "댓글 제출을 일시적으로 사용할 수 없습니다. 다시 시도해 주세요.",
+      "submit": "댓글 추가",
+      "submitting": "추가 중..."
+    },
+    "attachment": {
+      "title": "첨부 파일 업로드",
+      "visibility": "공개 범위:",
+      "customerVisible": "고객 공개",
+      "internalOnly": "내부 전용",
+      "badSize": "1바이트에서 50MB 사이의 파일을 선택해 주세요.",
+      "badName": "이름이 3–255자의 안전한 문자로 된 파일을 선택해 주세요.",
+      "uploaded": "{name} 업로드됨",
+      "failed": "첨부 파일 업로드를 일시적으로 사용할 수 없습니다. 다시 시도해 주세요.",
+      "choose": "파일 선택",
+      "uploading": "업로드 중...",
+      "types": "최대 50MB. JPEG/PNG/GIF/WebP, MP4/MOV, PDF, UTF-8 텍스트 또는 Excel."
+    }
+  },
+  "share": {
+    "metaTitle": "티켓 상태",
+    "headerLabel": "티켓 상태",
+    "accessDenied": "접근 거부됨",
+    "tokenRequired": "이 티켓을 보려면 유효한 액세스 토큰이 필요합니다.",
+    "tooManyRequests": "요청이 너무 많습니다",
+    "rateLimited": "티켓 조회 요청 한도를 초과했습니다. {seconds}초 후에 다시 시도해 주세요.",
+    "unavailableTitle": "티켓 조회 불가",
+    "unavailable": "티켓 조회를 일시적으로 사용할 수 없습니다. 잠시 후 다시 시도해 주세요.",
+    "notFoundTitle": "티켓을 찾을 수 없습니다",
+    "notFound": "티켓이 존재하지 않거나 액세스 링크가 유효하지 않을 수 있습니다.",
+    "goHome": "홈으로 이동",
+    "description": "설명",
+    "resolutionSummary": "해결 요약",
+    "updates": "업데이트 및 댓글",
+    "noUpdates": "아직 업데이트가 없습니다. 담당 팀이 티켓을 처리하고 있습니다.",
+    "submitter": "티켓 제출자",
+    "closedNotice": "이 티켓은 종료되었습니다. 문제가 다시 발생했다면 <link>새 티켓을 제출</link>하고 {ticketNo}을(를) 함께 기재해 주세요.",
+    "attachments": "첨부 파일",
+    "download": "(다운로드)",
+    "details": "티켓 상세 정보",
+    "customer": "고객사",
+    "site": "사이트",
+    "status": "상태",
+    "severity": "심각도",
+    "impact": "영향",
+    "equipment": "장비",
+    "area": "구역 / 공정",
+    "owner": "담당자",
+    "pendingAssignment": "배정 대기 중",
+    "created": "생성일",
+    "resolved": "해결일",
+    "timeline": "활동 타임라인",
+    "eventCreated": "티켓 생성됨",
+    "eventStatus": "상태 → {status}",
+    "eventAssigned": "엔지니어 배정됨",
+    "copyright": "© {year} DropletAI Services. 모든 권리 보유."
+  },
+  "guestReply": {
+    "waitingTitle": "팀이 회원님의 답변을 기다리고 있습니다",
+    "title": "팀에 답장",
+    "body": "메시지는 이 티켓에 추가되며 담당 엔지니어에게 바로 전달됩니다.",
+    "label": "답장 내용",
+    "placeholder": "답변, 업데이트 또는 아직 남아 있는 문제를 공유해 주세요",
+    "empty": "보내기 전에 메시지를 입력해 주세요.",
+    "reopenLabel": "해결되지 않았습니다 — 티켓 다시 열기",
+    "reopenHelp": "선택하지 않으면 메시지만 추가되고 티켓은 해결됨 상태로 유지됩니다.",
+    "counter": "{count} / {max}",
+    "reopened": "티켓이 다시 열렸습니다. 팀에 메시지가 전달되었습니다.",
+    "sent": "답장을 보냈습니다. 팀에 메시지가 전달되었습니다.",
+    "failed": "답장 기능을 일시적으로 사용할 수 없습니다. 다시 시도해 주세요.",
+    "rateLimited": "답장이 너무 많습니다. 몇 분 후에 다시 시도해 주세요.",
+    "sending": "보내는 중…",
+    "reopenAndSend": "다시 열고 보내기",
+    "send": "답장 보내기"
+  },
+  "accessDenied": {
+    "restricted": "접근이 제한되었습니다.",
+    "returned": "대시보드로 돌아왔습니다.",
+    "admin": "해당 페이지는 관리자만 이용할 수 있습니다.",
+    "internal": "해당 페이지는 DropletAI 직원만 이용할 수 있습니다.",
+    "cm": "팀 관리는 고객 관리자만 이용할 수 있습니다.",
+    "external": "내 사이트는 고객 계정 전용입니다. 대신 티켓 또는 고객사 및 사이트 메뉴를 이용해 주세요."
+  },
+  "dashboard": {
+    "metaTitle": "대시보드",
+    "title": "대시보드",
+    "viewAll": "모두 보기 →",
+    "allTickets": "모든 티켓 →",
+    "noTicketsYet": "아직 티켓이 없습니다.",
+    "unknownSite": "알 수 없는 사이트",
+    "unknownCustomer": "알 수 없는 고객사",
+    "recentTickets": "최근 티켓",
+    "internal": {
+      "eyebrow": "서비스 운영",
+      "subtitle": "모든 고객 사이트의 DropletAI 지원 업무를 실시간으로 확인합니다.",
+      "openQueue": "미해결 티켓 대기열",
+      "openTickets": "미해결 티켓",
+      "openTicketsHint": "아직 해결되지 않은 모든 티켓",
+      "urgent": "진행 중인 P1 / P2",
+      "urgentHint": "긴급 및 높음 심각도",
+      "unassigned": "미배정",
+      "unassignedHint": "담당자 배정 대기 중",
+      "breached": "SLA 위반",
+      "breachedHint": "목표 기한을 넘긴 미해결 티켓",
+      "myOpen": "내 미해결 티켓",
+      "myOpenHint": "나에게 배정된 {count}건, 기한이 가까운 순",
+      "nothingAssigned": "현재 나에게 배정된 티켓이 없습니다. <link>미배정 티켓을 맡아 보세요</link>.",
+      "recentlyCreated": "최근 생성됨",
+      "slaBreached": "SLA 위반",
+      "resolveBy": "{time}까지 해결",
+      "noTarget": "해결 목표 없음"
+    },
+    "manager": {
+      "subtitle": "조직의 지원 활동 현황입니다.",
+      "sites": "사이트",
+      "openTickets": "미해결 티켓",
+      "urgent": "진행 중인 P1 / P2",
+      "team": "팀원",
+      "attention": "주의가 필요한 사이트",
+      "attentionHint": "미해결 티켓 수 기준",
+      "open": "미해결",
+      "allSites": "모든 사이트",
+      "noSites": "사이트를 찾을 수 없습니다.",
+      "noTickets": "아직 티켓이 없습니다. <link>요청을 제출</link>하여 시작해 보세요."
+    },
+    "customer": {
+      "subtitle": "다시 오신 것을 환영합니다! 지원 활동 현황을 확인해 보세요.",
+      "mySites": "내 사이트",
+      "totalTickets": "전체 티켓",
+      "noSitesTitle": "아직 배정된 사이트가 없습니다",
+      "noSitesBody": "고객 관리자에게 사이트 배정을 요청하거나, 설정을 위해 DropletAI 어카운트 매니저에게 문의해 주세요.",
+      "noTicketsTitle": "아직 티켓이 없습니다",
+      "noTicketsBody": "티켓을 제출하면 여기에 표시되며 진행 상황을 확인할 수 있습니다.",
+      "submit": "티켓 제출"
+    }
+  },
+  "sites": {
+    "metaTitle": "내 사이트",
+    "title": "내 사이트",
+    "subtitle": "지원 티켓을 제출하고 추적할 수 있는 사이트",
+    "managerEmptyTitle": "조직에 등록된 사이트가 아직 없습니다",
+    "managerEmptyBody": "조직에 활성 사이트가 없습니다. 설정을 위해 DropletAI 어카운트 매니저에게 문의해 주세요.",
+    "emptyTitle": "배정된 사이트가 없습니다",
+    "emptyBody": "아직 접근 가능한 사이트가 없습니다. 고객 관리자에게 사이트 배정을 요청해 주세요.",
+    "customer": "고객사",
+    "timezone": "시간대",
+    "yourRole": "내 역할",
+    "viewTickets": "티켓 보기 →",
+    "newTicket": "티켓 제출"
+  },
+  "errorPage": {
+    "title": "문제가 발생했습니다",
+    "body": "예기치 않은 오류가 발생했습니다. 다시 시도하거나 대시보드로 돌아가 주세요.",
+    "reference": "참조: {digest}",
+    "retry": "다시 시도",
+    "dashboard": "대시보드로 이동"
+  },
+  "notFound": {
+    "title": "페이지를 찾을 수 없습니다",
+    "body": "찾으시는 페이지가 존재하지 않거나 이동되었습니다.",
+    "home": "홈",
+    "dashboard": "대시보드로 이동"
+  },
+  "forbidden": {
+    "title": "접근 권한이 없습니다",
+    "body": "이 계정에는 이 페이지를 볼 수 있는 권한이 없습니다. 잘못되었다고 생각되면 관리자에게 문의해 주세요.",
+    "back": "대시보드로 돌아가기"
+  }
+}

@@ -55,8 +55,11 @@ jobs:
       - name: Run production HTTP end-to-end smoke
         run: npm run test:e2e
 
-      - name: Audit dependencies
-        run: npm audit
+      - name: Audit production dependencies
+        run: npm audit --omit=dev
+
+      - name: Audit full dependency tree for critical advisories
+        run: npm audit --audit-level=critical
 
   credentialed-authorization:
     name: Credentialed staging authorization

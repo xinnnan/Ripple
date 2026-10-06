@@ -139,6 +139,35 @@ describe("spare part request mutation contract", () => {
     });
   });
 
+  it.each([
+    [
+      "23514",
+      "Invalid spare part request status transition: requested -> shipped",
+      "invalid_transition",
+    ],
+    [
+      "42501",
+      "Spare part request approval requires an administrator",
+      "approval_forbidden",
+    ],
+    ["23514", "new row violates check constraint \"fulfilled_quantity\"", undefined],
+    ["42501", "Active internal account required", undefined],
+  ])("classifies %s %s as %s without exposing the database message", async (code, message, kind) => {
+    const { client } = clientWithRpc({ data: null, error: { code, message } });
+
+    const failure = await applySparePartRequestPatch({
+      supabase: client,
+      requestId: REQUEST_ID,
+      actorId: ACTOR_ID,
+      patch: { status: "shipped" },
+    }).catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(SparePartRequestMutationError);
+    expect((failure as SparePartRequestMutationError).code).toBe(code);
+    expect((failure as SparePartRequestMutationError).kind).toBe(kind);
+    expect((failure as Error).message).not.toContain(message);
+  });
+
   it("uses an explicit null when no line-item update is requested", async () => {
     const { client, rpc } = clientWithRpc({
       data: REQUEST_ID,

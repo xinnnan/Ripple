@@ -237,7 +237,6 @@ describe("ticket server-page read integrity", () => {
     "ticket_attachments",
     "ticket_events",
     "users",
-    "ai_suggestions",
     "spare_part_requests",
     "field_service_orders",
   ])("surfaces a failed ticket-detail %s query", async (failingTable) => {

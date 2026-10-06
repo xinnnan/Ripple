@@ -6,6 +6,7 @@ import {
   ticketStatusAcceptsAssignment,
   ticketStatusRequiresOwner,
   TICKET_STATUS_TRANSITIONS,
+  isCustomerReopenable,
 } from "./status";
 
 const expectedTransitions: Record<
@@ -80,5 +81,20 @@ describe("ticket status transition truth table", () => {
     )) {
       expect(ticketStatusAcceptsAssignment(status)).toBe(true);
     }
+  });
+});
+
+describe("customer reopen window", () => {
+  const now = Date.parse("2026-10-05T12:00:00Z");
+  it("allows resolved tickets and tickets closed within 30 days", () => {
+    expect(isCustomerReopenable("resolved", null, now)).toBe(true);
+    expect(isCustomerReopenable("closed", "2026-09-06T12:00:01Z", now)).toBe(true);
+  });
+
+  it("refuses open tickets and tickets closed more than 30 days ago", () => {
+    expect(isCustomerReopenable("in_progress", null, now)).toBe(false);
+    expect(isCustomerReopenable("closed", "2026-09-05T11:59:59Z", now)).toBe(false);
+    expect(isCustomerReopenable("closed", null, now)).toBe(false);
+    expect(isCustomerReopenable("closed", "not a date", now)).toBe(false);
   });
 });

@@ -7,6 +7,13 @@ import {
   provisionTeamUser,
 } from "@/lib/users/provisioning";
 import { buildTeamSiteAccess } from "@/lib/team/read-model";
+import {
+  applyInitialLocale,
+  deliverAccountInvitation,
+  invitationResponse,
+  type InvitationOutcome,
+} from "@/lib/users/onboarding";
+import { DEFAULT_LOCALE, LOCALES } from "@/i18n/config";
 
 export const dynamic = "force-dynamic";
 
@@ -82,13 +89,15 @@ export async function GET() {
   }
 }
 
+// Leaving `password` out invites the team member by email instead.
 const createTeamMemberSchema = z
   .object({
     email: z.string().trim().email().max(320),
-    password: z.string().min(12).max(128),
+    password: z.string().min(12).max(128).optional(),
     full_name: z.string().trim().min(1).max(200),
     phone: z.string().trim().max(50).optional(),
     site_ids: z.array(z.string().uuid()).max(200).optional(),
+    locale: z.enum(LOCALES).optional(),
   })
   .strict();
 
@@ -182,9 +191,12 @@ export async function POST(request: NextRequest) {
   }
   const data = parsed.data;
 
+  const supabase = createAdminClient();
+  const locale = data.locale ?? DEFAULT_LOCALE;
+  let user: { id: string; email: string };
   try {
-    const user = await provisionTeamUser({
-      supabase: createAdminClient(),
+    user = await provisionTeamUser({
+      supabase,
       actorId: auth.userId,
       customerId: auth.customerId,
       email: data.email,
@@ -193,17 +205,6 @@ export async function POST(request: NextRequest) {
       phone: data.phone,
       siteIds: data.site_ids ?? [],
     });
-    return NextResponse.json(
-      {
-        user: {
-          id: user.id,
-          email: user.email,
-          full_name: data.full_name,
-          role: "customer",
-        },
-      },
-      { status: 201 }
-    );
   } catch (error) {
     if (error instanceof UserProvisioningError) {
       return provisioningErrorResponse(error);
@@ -214,4 +215,44 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
+
+  // The account is committed; language and invitation problems are reported
+  // to the manager instead of turning a created account into an error.
+  const localeSaved = await applyInitialLocale({
+    supabase,
+    actorId: auth.userId,
+    userId: user.id,
+    locale,
+  });
+
+  let invitation: InvitationOutcome | null = null;
+  if (!data.password) {
+    const [actorResult, customerResult] = await Promise.all([
+      supabase.from("users").select("full_name").eq("id", auth.userId).maybeSingle(),
+      supabase.from("customers").select("name").eq("id", auth.customerId).maybeSingle(),
+    ]);
+    invitation = await deliverAccountInvitation({
+      supabase,
+      email: user.email,
+      name: data.full_name,
+      inviter: actorResult.data?.full_name?.trim() || "Your team",
+      company: customerResult.data?.name?.trim() || "DropletAI",
+      locale,
+    });
+  }
+
+  return NextResponse.json(
+    {
+      user: {
+        id: user.id,
+        email: user.email,
+        full_name: data.full_name,
+        role: "customer",
+        locale: localeSaved ? locale : DEFAULT_LOCALE,
+      },
+      invitation: invitationResponse(invitation),
+      locale_saved: localeSaved,
+    },
+    { status: 201, headers: { "Cache-Control": "private, no-store" } }
+  );
 }

@@ -17,7 +17,7 @@ const usersTable = readFileSync(
 const partRequestActions = readFileSync(
   join(
     root,
-    "src/app/(auth)/admin/part-requests/[id]/part-request-actions.tsx"
+    "src/app/(auth)/(operations)/part-requests/[id]/part-request-actions.tsx"
   ),
   "utf8"
 );

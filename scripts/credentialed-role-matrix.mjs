@@ -671,9 +671,27 @@ async function runBrowserAndApiMatrix(browser, fixture) {
       `/api/tickets/${tenantA.activeTicketId}/comments`,
       200
     );
+    // The external projection deliberately omits visibility and staff
+    // identifiers; the route filters to customer-visible rows server-side.
     assert(
-      comments.comments.every((comment) => comment.visibility === "customer"),
+      comments.comments.length > 0,
+      "fixture ticket needs a customer-visible comment to prove shaping"
+    );
+    assert(
+      comments.comments.every(
+        (comment) =>
+          comment.visibility === undefined || comment.visibility === "customer"
+      ),
       "customer comments API returned an internal comment"
+    );
+    assert(
+      comments.comments.every(
+        (comment) =>
+          !("author_id" in comment) &&
+          !("is_automated" in comment) &&
+          !("email" in (comment.author ?? {}))
+      ),
+      "customer comments API exposed internal comment fields"
     );
     assert(
       !comments.comments.some(
@@ -697,11 +715,6 @@ async function runBrowserAndApiMatrix(browser, fixture) {
     await expectMalformedJson(
       sessions.engineer.context,
       `/api/tickets/${tenantA.activeTicketId}/comments`,
-      "POST"
-    );
-    await expectMalformedJson(
-      sessions.engineer.context,
-      "/api/ai/suggest",
       "POST"
     );
 

@@ -42,10 +42,6 @@ export const TICKET_DETAIL_EVENT_SELECT = `
   actor:users!ticket_events_actor_id_fkey(full_name, email)
 ` as const;
 
-export const TICKET_DETAIL_AI_SUGGESTION_SELECT = `
-  id, suggestion_type, output_text, confidence_level, model_name, created_at
-` as const;
-
 export const INTERNAL_TICKET_DETAIL_PART_REQUEST_SELECT = `
   id, request_no, status, total_cost,
   items:spare_part_request_items(quantity)

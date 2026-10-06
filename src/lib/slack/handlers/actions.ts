@@ -1,7 +1,6 @@
 import type { WebClient } from "@slack/web-api";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { buildResolveModal } from "../blocks/resolve-modal";
-import { buildAskRippleAssistModal } from "../blocks/ai-modal";
 import { createTicketCore, resolveSiteBySlackChannel } from "@/lib/tickets/create";
 import { INTERNAL_ROLES } from "@/lib/roles";
 import {
@@ -18,20 +17,10 @@ import {
 } from "@/lib/tickets/mutations";
 import { dispatchTicketOutboxBestEffort } from "@/lib/tickets/outbox";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { requestAiSuggestion } from "@/lib/ai/service";
-import {
-  AiSuggestionInProgressError,
-  AiSuggestionOutcomeUnknownError,
-  AiSuggestionRateLimitError,
-  AiSuggestionTicketNotFoundError,
-  AiSuggestionUnavailableError,
-} from "@/lib/ai/errors";
-import { isSuggestionType } from "@/lib/ai/suggest";
 import {
   buildSlackTicketCommentIdempotencyKey,
   buildSlackTicketIdempotencyKey,
 } from "@/lib/tickets/idempotency";
-import { buildSlackAiSuggestionIdempotencyKey } from "@/lib/ai/idempotency";
 import {
   TICKET_COMMENT_MAX_LENGTH,
   TICKET_CONTEXT_MAX_LENGTH,
@@ -245,23 +234,6 @@ export async function handleBlockAction(
         });
       } catch (error) {
         console.error("Failed to open resolve modal:", error);
-      }
-      break;
-    }
-
-    case "ask_ripple_assist": {
-      if (!ticketNo) break;
-      try {
-        const modal = buildAskRippleAssistModal(ticketNo, {
-          channelId,
-          messageTs,
-        });
-        await client.views.open({
-          trigger_id: payload.trigger_id,
-          view: modal,
-        });
-      } catch (error) {
-        console.error("Failed to open AI modal:", error);
       }
       break;
     }
@@ -552,91 +524,6 @@ export async function handleViewSubmission(
             client,
           },
         });
-      }
-
-      return { response_action: "clear" };
-    }
-
-    case "ripple_assist_submit": {
-      const taskType = state.task_type_block?.task_type?.selected_option?.value || "summary";
-      const ticketNo = metadata.ticket_no;
-
-      if (!isSuggestionType(taskType)) {
-        return {
-          response_action: "errors",
-          errors: {
-            task_type_block: "Select a supported Ripple Assist task.",
-          },
-        };
-      }
-
-      const { data: ticket, error: ticketError } = await supabase
-        .from("tickets")
-        .select("id")
-        .eq("ticket_no", ticketNo)
-        .maybeSingle();
-
-      if (ticketError || !ticket) {
-        return {
-          response_action: "errors",
-          errors: {
-            task_type_block: "Ticket not found. Close the modal and try again.",
-          },
-        };
-      }
-
-      if (!metadata.channel_id) {
-        return {
-          response_action: "errors",
-          errors: {
-            task_type_block:
-              "Slack channel context is missing. Close the modal and try again.",
-          },
-        };
-      }
-
-      try {
-        const data = await requestAiSuggestion({
-          ticketId: ticket.id,
-          suggestionType: taskType,
-          actorId: internalUser!.id,
-          source: "slack",
-          idempotencyKey: buildSlackAiSuggestionIdempotencyKey(
-            payload.view.id
-          ),
-        });
-
-        await client.chat.postEphemeral({
-          channel: metadata.channel_id,
-          user: payload.user.id,
-          text: `🤖 *Ripple Assist — ${taskType}*\n\n${data.output_text || "No suggestion generated."}\n\n_Confidence: ${data.confidence_level || "unknown"} | Model: ${data.model_name || "unknown"}_`,
-        });
-      } catch (error) {
-        console.error("AI suggestion failed:", {
-          name: error instanceof Error ? error.name : "UnknownError",
-        });
-        const text =
-          error instanceof AiSuggestionRateLimitError
-            ? `⏳ ${error.message}`
-            : error instanceof AiSuggestionInProgressError ||
-              error instanceof AiSuggestionOutcomeUnknownError
-            ? `⏳ ${error.message}`
-            : error instanceof AiSuggestionTicketNotFoundError ||
-              error instanceof AiSuggestionUnavailableError
-            ? `❌ ${error.message}`
-            : "❌ Ripple Assist failed to generate a suggestion. Please try again.";
-        try {
-          await client.chat.postEphemeral({
-            channel: metadata.channel_id,
-            user: payload.user.id,
-            text,
-          });
-        } catch (postError) {
-          console.warn(
-            "[slack/handlers] Ripple Assist error reply failed (non-fatal):",
-            postError instanceof Error ? postError.message : postError
-          );
-        }
       }
 
       return { response_action: "clear" };

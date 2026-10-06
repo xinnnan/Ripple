@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 
 /**
@@ -18,18 +19,19 @@ export function Pagination({
   totalPages: number;
   onChange: (page: number) => void;
 }) {
+  const t = useTranslations("pagination");
   if (totalPages <= 1) return null;
 
   const window = buildPageWindow(page, totalPages);
 
   return (
-    <div className="flex items-center justify-center gap-1 mt-4">
+    <nav aria-label={t("label")} className="flex flex-wrap items-center justify-center gap-1 mt-4">
       <button
         onClick={() => onChange(Math.max(1, page - 1))}
         disabled={page <= 1}
         className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-accent transition-colors disabled:opacity-40 disabled:hover:bg-background"
       >
-        ‹ Previous
+        {t("previous")}
       </button>
       {window.map((p, i) =>
         p === "..." ? (
@@ -60,9 +62,9 @@ export function Pagination({
         disabled={page >= totalPages}
         className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-accent transition-colors disabled:opacity-40 disabled:hover:bg-background"
       >
-        Next ›
+        {t("next")}
       </button>
-    </div>
+    </nav>
   );
 }
 

@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useRef, useTransition } from "react";
+import { useEffect, useState, useRef, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { useLocale, useTranslations } from "next-intl";
 import {
-  STATUS_LABELS,
   SEVERITY_LABELS,
   type TicketStatus,
   type Severity,
@@ -17,7 +17,7 @@ import {
 import { cn } from "@/lib/utils";
 import {
   assertClientMutationResponse,
-  clientMutationErrorMessage,
+  localizedClientMutationError,
 } from "@/lib/http/client-mutation";
 import {
   TICKET_COMMENT_MAX_LENGTH,
@@ -48,6 +48,8 @@ interface TicketActionsPanelProps {
   isInternal: boolean;
   currentCustomerVisibleSummary: string | null;
   currentInternalSummary: string | null;
+  /** Customer accounts: resolved, or closed within the 30-day window. */
+  canCustomerReopen?: boolean;
 }
 
 export function TicketActionsPanel({
@@ -61,10 +63,24 @@ export function TicketActionsPanel({
   isInternal,
   currentCustomerVisibleSummary,
   currentInternalSummary,
+  canCustomerReopen = false,
 }: TicketActionsPanelProps) {
+  const t = useTranslations("ticketActions");
+  const labels = useTranslations("labels");
+  const locale = useLocale();
   const [status, setStatus] = useState<TicketStatus>(currentStatus);
   const [severity, setSeverity] = useState<Severity>(currentSeverity);
   const [ownerId, setOwnerId] = useState<string | null>(currentOwnerId);
+  // router.refresh() can deliver another engineer's change. Re-seed the form
+  // from the new server state instead of presenting stale values as edits.
+  const serverStateKey = `${currentStatus}|${currentSeverity}|${currentOwnerId ?? ""}`;
+  const [syncedServerState, setSyncedServerState] = useState(serverStateKey);
+  if (syncedServerState !== serverStateKey) {
+    setSyncedServerState(serverStateKey);
+    setStatus(currentStatus);
+    setSeverity(currentSeverity);
+    setOwnerId(currentOwnerId);
+  }
   const [resolveOpen, setResolveOpen] = useState(false);
   const [mutationError, setMutationError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -122,13 +138,13 @@ export function TicketActionsPanel({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(patch),
     });
-    await assertClientMutationResponse(res, "Failed to update ticket");
+    await assertClientMutationResponse(res, t("update.failed"));
   }
 
   async function handleSaveAll() {
     if (!dirty || busy) return;
     if (ticketStatusRequiresOwner(status) && !ownerId) {
-      setMutationError("Select an owner for assigned or in-progress tickets.");
+      setMutationError(t("update.ownerRequired"));
       return;
     }
     const patch: Record<string, unknown> = {};
@@ -168,10 +184,7 @@ export function TicketActionsPanel({
       startRefresh(() => router.refresh());
     } catch (error) {
       setMutationError(
-        clientMutationErrorMessage(
-          error,
-          "Ticket update is temporarily unavailable. Please retry."
-        )
+        localizedClientMutationError(error, t("update.failed"), locale)
       );
     } finally {
       setSaving(false);
@@ -187,7 +200,7 @@ export function TicketActionsPanel({
           className="rounded-xl border border-border p-6"
         >
           <h2 className="text-sm font-semibold text-foreground mb-4">
-            Update Ticket
+            {t("update.title")}
           </h2>
 
           <div className="space-y-3">
@@ -196,7 +209,7 @@ export function TicketActionsPanel({
                 htmlFor="ticket-update-status"
                 className="block text-xs font-medium text-muted-foreground mb-1"
               >
-                Status
+                {t("update.status")}
               </label>
               <select
                 id="ticket-update-status"
@@ -207,7 +220,7 @@ export function TicketActionsPanel({
               >
                 {statusOptions.map((value) => (
                   <option key={value} value={value}>
-                    {STATUS_LABELS[value]}
+                    {labels(`status.${value}`)}
                   </option>
                 ))}
               </select>
@@ -218,7 +231,7 @@ export function TicketActionsPanel({
                 htmlFor="ticket-update-severity"
                 className="block text-xs font-medium text-muted-foreground mb-1"
               >
-                Severity
+                {t("update.severity")}
               </label>
               <select
                 id="ticket-update-severity"
@@ -227,9 +240,9 @@ export function TicketActionsPanel({
                 disabled={busy}
                 className="w-full rounded-lg border border-border px-3 py-2 text-sm text-foreground bg-background"
               >
-                {Object.entries(SEVERITY_LABELS).map(([v, l]) => (
+                {Object.keys(SEVERITY_LABELS).map((v) => (
                   <option key={v} value={v}>
-                    {l}
+                    {labels(`severity.${v}`)}
                   </option>
                 ))}
               </select>
@@ -240,7 +253,7 @@ export function TicketActionsPanel({
                 htmlFor="ticket-update-owner"
                 className="block text-xs font-medium text-muted-foreground mb-1"
               >
-                Owner
+                {t("update.owner")}
               </label>
               <select
                 id="ticket-update-owner"
@@ -250,17 +263,17 @@ export function TicketActionsPanel({
                 className="w-full rounded-lg border border-border px-3 py-2 text-sm text-foreground bg-background"
               >
                 {!ticketStatusRequiresOwner(status) && (
-                  <option value="">— Unassigned —</option>
+                  <option value="">{t("update.unassigned")}</option>
                 )}
                 {ticketStatusRequiresOwner(status) && !ownerId && (
                   <option value="" disabled>
-                    — Select an owner —
+                    {t("update.selectOwner")}
                   </option>
                 )}
                 {availableOwners.map((o) => (
                   <option key={o.id} value={o.id}>
                     {o.full_name}
-                    {o.id === currentUserId ? " (me)" : ""}
+                    {o.id === currentUserId ? ` ${t("update.me")}` : ""}
                   </option>
                 ))}
               </select>
@@ -272,7 +285,7 @@ export function TicketActionsPanel({
               disabled={!dirty || busy}
               className="w-full rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              {busy ? "Saving…" : dirty ? "Save Changes" : "No changes"}
+              {busy ? t("update.saving") : dirty ? t("update.save") : t("update.noChanges")}
             </button>
             {mutationError && (
               <p role="alert" className="text-xs text-red-600">
@@ -283,7 +296,7 @@ export function TicketActionsPanel({
 
           {/* Quick action buttons */}
           <div className="mt-4 pt-4 border-t border-border space-y-2">
-            <p className="text-xs font-medium text-muted-foreground">Quick actions</p>
+            <p className="text-xs font-medium text-muted-foreground">{t("update.quickActions")}</p>
             <div className="grid grid-cols-2 gap-2">
               {currentOwnerId !== currentUserId &&
                 ticketStatusAcceptsAssignment(currentStatus) && (
@@ -293,7 +306,7 @@ export function TicketActionsPanel({
                   disabled={busy}
                   className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-accent transition-colors"
                 >
-                  Assign to me
+                  {t("update.assignToMe")}
                 </button>
                 )}
               {canTransitionTicketStatus(currentStatus, "in_progress") && (
@@ -303,7 +316,7 @@ export function TicketActionsPanel({
                   disabled={busy}
                   className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-accent transition-colors"
                 >
-                  Mark In Progress
+                  {t("update.markInProgress")}
                 </button>
               )}
               {canTransitionTicketStatus(currentStatus, "reopened") && (
@@ -313,7 +326,7 @@ export function TicketActionsPanel({
                   disabled={busy}
                   className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-accent transition-colors col-span-2"
                 >
-                  Reopen Ticket
+                  {t("update.reopen")}
                 </button>
               )}
             </div>
@@ -334,15 +347,30 @@ export function TicketActionsPanel({
         />
       )}
 
-      {/* Customer: read-only ticket info (no action) */}
-      {!isInternal && (
-        <div className="rounded-xl border border-border p-6">
-          <h2 className="text-sm font-semibold text-foreground mb-2">Need to update?</h2>
-          <p className="text-sm text-muted-foreground mb-3">
-            Add a comment below to share new info with the team, or upload
-            attachments.
-          </p>
+      {/* Customer guidance */}
+      {!isInternal && currentStatus === "waiting_customer" && (
+        <div
+          role="status"
+          className="rounded-xl border border-amber-200 bg-amber-50 p-6"
+        >
+          <h2 className="mb-2 text-sm font-semibold text-amber-900">
+            {t("guidance.waitingTitle")}
+          </h2>
+          <p className="text-sm text-amber-900/80">{t("guidance.waitingBody")}</p>
         </div>
+      )}
+      {!isInternal &&
+        currentStatus !== "waiting_customer" &&
+        !canCustomerReopen && (
+          <div className="rounded-xl border border-border p-6">
+            <h2 className="mb-2 text-sm font-semibold text-foreground">
+              {t("guidance.updateTitle")}
+            </h2>
+            <p className="text-sm text-muted-foreground">{t("guidance.updateBody")}</p>
+          </div>
+        )}
+      {!isInternal && canCustomerReopen && (
+        <ReopenTicketCard ticketId={ticketId} />
       )}
 
       {/* Add Comment */}
@@ -350,6 +378,100 @@ export function TicketActionsPanel({
 
       {/* Upload Attachment */}
       <AttachmentUpload ticketId={ticketId} isInternal={isInternal} />
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Customer reopen
+// ---------------------------------------------------------------------------
+
+function ReopenTicketCard({ ticketId }: { ticketId: string }) {
+  const t = useTranslations("ticketActions.reopen");
+  const locale = useLocale();
+  const [reason, setReason] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const router = useRouter();
+  const [refreshing, startRefresh] = useTransition();
+  const busy = submitting || refreshing;
+  const attemptRef = useRef<{ fingerprint: string; key: string } | null>(null);
+
+  async function handleReopen(e: React.FormEvent) {
+    e.preventDefault();
+    const normalizedReason = reason.trim();
+    if (busy) return;
+    if (!normalizedReason) {
+      setError(t("required"));
+      return;
+    }
+    setSubmitting(true);
+    setError(null);
+    try {
+      const requestBody = JSON.stringify({
+        body: normalizedReason,
+        reopen: true,
+      });
+      if (attemptRef.current?.fingerprint !== requestBody) {
+        attemptRef.current = {
+          fingerprint: requestBody,
+          key: generateTicketIdempotencyKey(),
+        };
+      }
+      const res = await fetch(`/api/tickets/${ticketId}/comments`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          [TICKET_IDEMPOTENCY_KEY_HEADER]: attemptRef.current.key,
+        },
+        body: requestBody,
+      });
+      await assertClientMutationResponse(res, t("failed"));
+      attemptRef.current = null;
+      setReason("");
+      startRefresh(() => router.refresh());
+    } catch (err) {
+      setError(localizedClientMutationError(err, t("failed"), locale));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="rounded-xl border border-border p-6">
+      <h2 className="mb-2 text-sm font-semibold text-foreground">
+        {t("title")}
+      </h2>
+      <p className="mb-3 text-sm text-muted-foreground">{t("body")}</p>
+      <form aria-busy={busy} onSubmit={handleReopen} className="space-y-3">
+        <label htmlFor="ticket-reopen-reason" className="sr-only">
+          {t("label")}
+        </label>
+        <textarea
+          id="ticket-reopen-reason"
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+          rows={3}
+          maxLength={TICKET_COMMENT_MAX_LENGTH}
+          disabled={busy}
+          aria-invalid={error ? true : undefined}
+          aria-describedby={error ? "ticket-reopen-error" : undefined}
+          placeholder={t("placeholder")}
+          className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+        />
+        {error && (
+          <p id="ticket-reopen-error" role="alert" className="text-xs text-red-600">
+            {error}
+          </p>
+        )}
+        <button
+          type="submit"
+          disabled={busy}
+          className="min-h-11 w-full rounded-lg bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {busy ? t("submitting") : t("submit")}
+        </button>
+      </form>
     </div>
   );
 }
@@ -375,6 +497,8 @@ function ResolveCard({
   open: boolean;
   onOpenChange: (v: boolean) => void;
 }) {
+  const t = useTranslations("ticketActions.resolve");
+  const locale = useLocale();
   const [customerSummary, setCustomerSummary] = useState(
     currentCustomerVisibleSummary || ""
   );
@@ -389,6 +513,15 @@ function ResolveCard({
 
   const isResolved = currentStatus === "resolved" || currentStatus === "closed";
 
+  useEffect(() => {
+    if (!open) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !busy) onOpenChange(false);
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [open, busy, onOpenChange]);
+
   async function handleResolve(e: React.FormEvent) {
     e.preventDefault();
     if (busy) return;
@@ -396,7 +529,7 @@ function ResolveCard({
     const normalizedCustomerSummary = customerSummary.trim();
     const normalizedInternalSummary = internalSummary.trim();
     if (!normalizedCustomerSummary) {
-      setError("Customer-visible summary is required when resolving a ticket.");
+      setError(t("required"));
       return;
     }
     setSubmitting(true);
@@ -411,18 +544,13 @@ function ResolveCard({
           internal_summary: normalizedInternalSummary || null,
         }),
       });
-      await assertClientMutationResponse(res, "Failed to resolve ticket");
+      await assertClientMutationResponse(res, t("failed"));
       setCustomerSummary(normalizedCustomerSummary);
       setInternalSummary(normalizedInternalSummary);
       onOpenChange(false);
       startRefresh(() => router.refresh());
     } catch (e) {
-      setError(
-        clientMutationErrorMessage(
-          e,
-          "Ticket resolution is temporarily unavailable. Please retry."
-        )
-      );
+      setError(localizedClientMutationError(e, t("failed"), locale));
     } finally {
       setSubmitting(false);
     }
@@ -432,12 +560,10 @@ function ResolveCard({
     <>
       <div className="rounded-xl border border-green-200 bg-green-50/50 p-6">
         <h2 className="text-sm font-semibold text-green-800 mb-2">
-          {isResolved ? "Resolution" : "Resolve Ticket"}
+          {isResolved ? t("resolutionTitle") : t("resolveTitle")}
         </h2>
         <p className="text-xs text-green-700 mb-3">
-          {isResolved
-            ? "This ticket is marked resolved. You can re-open from the quick actions above, or update the resolution summary below."
-            : "Mark the ticket resolved and capture a customer-visible explanation."}
+          {isResolved ? t("resolvedBody") : t("openBody")}
         </p>
         <button
           type="button"
@@ -445,7 +571,7 @@ function ResolveCard({
           disabled={busy}
           className="rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 transition-colors"
         >
-          {isResolved ? "Edit Resolution" : "Resolve " + ticketNo}
+          {isResolved ? t("edit") : t("resolveTicket", { ticketNo })}
         </button>
       </div>
 
@@ -468,14 +594,14 @@ function ResolveCard({
                 id="resolve-ticket-title"
                 className="text-lg font-semibold text-foreground"
               >
-                Resolve {ticketNo}
+                {t("resolveTicket", { ticketNo })}
               </h3>
               <button
                 type="button"
                 onClick={() => onOpenChange(false)}
                 disabled={busy}
                 className="text-muted-foreground hover:text-foreground"
-                aria-label="Close"
+                aria-label={t("close")}
               >
                 ✕
               </button>
@@ -496,11 +622,10 @@ function ResolveCard({
                   htmlFor="resolve-customer-summary"
                   className="block text-sm font-medium text-foreground mb-1"
                 >
-                  Customer-visible summary <span className="text-red-500">*</span>
+                  {t("customerSummary")} <span className="text-red-500">*</span>
                 </label>
                 <p className="text-xs text-muted-foreground mb-2">
-                  What did we do? What does the customer need to know? Shown
-                  in the public view and on the customer&apos;s dashboard.
+                  {t("customerSummaryHelp")}
                 </p>
                 <textarea
                   id="resolve-customer-summary"
@@ -511,7 +636,7 @@ function ResolveCard({
                   disabled={busy}
                   rows={4}
                   className="w-full rounded-lg border border-border px-3 py-2 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/20"
-                  placeholder="e.g. The AMR-03 fleet was rebooted and re-registered with the WCS. Production resumed at 14:32."
+                  placeholder={t("customerSummaryPlaceholder")}
                 />
               </div>
 
@@ -520,11 +645,10 @@ function ResolveCard({
                   htmlFor="resolve-internal-summary"
                   className="block text-sm font-medium text-foreground mb-1"
                 >
-                  Internal summary <span className="text-xs text-muted-foreground">(optional, internal only)</span>
+                  {t("internalSummary")} <span className="text-xs text-muted-foreground">{t("internalOptional")}</span>
                 </label>
                 <p className="text-xs text-muted-foreground mb-2">
-                  Root cause, what we tried, what to do if it happens again.
-                  Visible to DropletAI engineers only.
+                  {t("internalSummaryHelp")}
                 </p>
                 <textarea
                   id="resolve-internal-summary"
@@ -534,7 +658,7 @@ function ResolveCard({
                   disabled={busy}
                   rows={4}
                   className="w-full rounded-lg border border-border px-3 py-2 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/20"
-                  placeholder="e.g. The root cause was a stale WCS handshake after a network blip. Fix: re-registered the fleet, no firmware change needed."
+                  placeholder={t("internalSummaryPlaceholder")}
                 />
               </div>
               </div>
@@ -545,14 +669,14 @@ function ResolveCard({
                   disabled={busy}
                   className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-accent transition-colors"
                 >
-                  Cancel
+                  {t("cancel")}
                 </button>
                 <button
                   type="submit"
                   disabled={busy}
                   className="rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 transition-colors disabled:opacity-50"
                 >
-                  {busy ? "Resolving..." : "Mark Resolved"}
+                  {busy ? t("submitting") : t("submit")}
                 </button>
               </div>
             </form>
@@ -574,6 +698,8 @@ function CommentForm({
   ticketId: string;
   isInternal: boolean;
 }) {
+  const t = useTranslations("ticketActions.comment");
+  const locale = useLocale();
   const [body, setBody] = useState("");
   const [visibility, setVisibility] = useState<"customer" | "internal">(
     "customer"
@@ -616,18 +742,15 @@ function CommentForm({
         },
         body: requestBody,
       });
-      await assertClientMutationResponse(res, "Failed to add comment");
+      await assertClientMutationResponse(res, t("failed"));
       commentAttemptRef.current = null;
       setBody("");
-      setMessage({ type: "success", text: "Comment added" });
+      setMessage({ type: "success", text: t("added") });
       startRefresh(() => router.refresh());
     } catch (err) {
       setMessage({
         type: "error",
-        text: clientMutationErrorMessage(
-          err,
-          "Comment submission is temporarily unavailable. Please retry."
-        ),
+        text: localizedClientMutationError(err, t("failed"), locale),
       });
     } finally {
       setSubmitting(false);
@@ -637,7 +760,7 @@ function CommentForm({
   return (
     <div className="rounded-xl border border-border p-6">
       <h2 className="text-sm font-semibold text-foreground mb-4">
-        Add Comment
+        {t("title")}
       </h2>
 
       {message && (
@@ -657,7 +780,7 @@ function CommentForm({
 
       <form aria-busy={busy} onSubmit={handleSubmit} className="space-y-3">
         <label htmlFor="ticket-comment-body" className="sr-only">
-          Comment
+          {t("label")}
         </label>
         <textarea
           id="ticket-comment-body"
@@ -668,9 +791,7 @@ function CommentForm({
           maxLength={TICKET_COMMENT_MAX_LENGTH}
           disabled={busy}
           placeholder={
-            isInternal
-              ? "Write a comment (visible to customer unless you mark internal)"
-              : "Write a comment for the support team"
+            isInternal ? t("placeholderInternal") : t("placeholderCustomer")
           }
           className="w-full rounded-lg border border-border px-3 py-2 text-sm text-foreground bg-background focus:outline-none focus:ring-2 focus:ring-primary/20"
         />
@@ -678,7 +799,7 @@ function CommentForm({
           {isInternal ? (
             <div>
               <label htmlFor="ticket-comment-visibility" className="sr-only">
-                Comment visibility
+                {t("visibility")}
               </label>
               <select
                 id="ticket-comment-visibility"
@@ -689,13 +810,13 @@ function CommentForm({
                 disabled={busy}
                 className="rounded-lg border border-border px-3 py-2 text-xs text-foreground bg-background"
               >
-                <option value="customer">👥 Customer visible</option>
-                <option value="internal">🔒 Internal only</option>
+                <option value="customer">{t("customerVisible")}</option>
+                <option value="internal">{t("internalOnly")}</option>
               </select>
             </div>
           ) : (
             <span className="text-xs text-muted-foreground">
-              Comments are visible to DropletAI support
+              {t("customerNote")}
             </span>
           )}
           <button
@@ -703,7 +824,7 @@ function CommentForm({
             disabled={busy || !body.trim()}
             className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
           >
-            {busy ? "Adding..." : "Add Comment"}
+            {busy ? t("submitting") : t("submit")}
           </button>
         </div>
       </form>
@@ -722,6 +843,8 @@ function AttachmentUpload({
   ticketId: string;
   isInternal: boolean;
 }) {
+  const t = useTranslations("ticketActions.attachment");
+  const locale = useLocale();
   const [uploading, setUploading] = useState(false);
   const [visibility, setVisibility] = useState<"customer" | "internal">(
     "customer"
@@ -752,8 +875,8 @@ function AttachmentUpload({
         type: "error",
         text:
           file.size < 1 || file.size > MAX_ATTACHMENT_BYTES
-            ? "Choose a file between 1 byte and 50MB."
-            : "Choose a file with a safe name between 3 and 255 characters.",
+            ? t("badSize")
+            : t("badName"),
       });
       e.target.value = "";
       return;
@@ -772,16 +895,13 @@ function AttachmentUpload({
         method: "POST",
         body: formData,
       });
-      await assertClientMutationResponse(res, "Failed to upload file");
-      setMessage({ type: "success", text: `${file.name} uploaded` });
+      await assertClientMutationResponse(res, t("failed"));
+      setMessage({ type: "success", text: t("uploaded", { name: file.name }) });
       startRefresh(() => router.refresh());
     } catch (err) {
       setMessage({
         type: "error",
-        text: clientMutationErrorMessage(
-          err,
-          "Attachment upload is temporarily unavailable. Please retry."
-        ),
+        text: localizedClientMutationError(err, t("failed"), locale),
       });
     } finally {
       setUploading(false);
@@ -792,7 +912,7 @@ function AttachmentUpload({
   return (
     <div className="rounded-xl border border-border p-6">
       <h2 className="text-sm font-semibold text-foreground mb-4">
-        Upload Attachment
+        {t("title")}
       </h2>
 
       {message && (
@@ -817,7 +937,7 @@ function AttachmentUpload({
               htmlFor="ticket-attachment-visibility"
               className="text-muted-foreground"
             >
-              Visibility:
+              {t("visibility")}
             </label>
             <select
               id="ticket-attachment-visibility"
@@ -828,8 +948,8 @@ function AttachmentUpload({
               disabled={busy}
               className="rounded-lg border border-border px-2 py-1 text-xs bg-background"
             >
-              <option value="customer">Customer visible</option>
-              <option value="internal">Internal only</option>
+              <option value="customer">{t("customerVisible")}</option>
+              <option value="internal">{t("internalOnly")}</option>
             </select>
           </div>
         )}
@@ -845,7 +965,7 @@ function AttachmentUpload({
                 : "cursor-pointer hover:bg-muted/50"
             )}
           >
-            {busy ? "Uploading..." : "Choose File"}
+            {busy ? t("uploading") : t("choose")}
             <input
               id="ticket-attachment-file"
               ref={fileInputRef}
@@ -857,7 +977,7 @@ function AttachmentUpload({
             />
           </label>
           <span className="text-xs text-muted-foreground">
-            Max 50MB. JPEG/PNG/GIF/WebP, MP4/MOV, PDF, UTF-8 text, or Excel.
+            {t("types")}
           </span>
         </div>
       </div>

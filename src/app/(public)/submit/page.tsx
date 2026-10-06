@@ -2,7 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { buildPublicTicketPath } from "@/lib/tickets/public-link";
+import { formatFileSize } from "@/lib/utils";
 import { useRouter } from "next/navigation";
+import { useLocale, useTranslations } from "next-intl";
 import {
   REQUEST_TYPE_LABELS,
   SEVERITY_LABELS,
@@ -21,7 +24,7 @@ import {
   logIdentityReadFailure,
 } from "@/lib/supabase/auth-read";
 import {
-  clientMutationErrorMessage,
+  clientMutationErrorStatus,
   ExpectedClientMutationError,
   readClientJsonResponse,
 } from "@/lib/http/client-mutation";
@@ -100,6 +103,9 @@ async function validateSiteCode(
 
 export default function SubmitTicketPage() {
   const router = useRouter();
+  const t = useTranslations("submit");
+  const labels = useTranslations("labels");
+  const locale = useLocale();
   const [formData, setFormData] = useState<FormData>({
     site_code: "",
     submitter_name: "",
@@ -148,9 +154,7 @@ export default function SubmitTicketPage() {
       const user = authResult.data.user;
       if (authResult.error && !isUnauthenticatedAuthError(authResult.error)) {
         logIdentityReadFailure("public-submit/auth", authResult.error);
-        setAccountLoadError(
-          "We could not determine your account status. Please retry before submitting."
-        );
+        setAccountLoadError(t("account.statusUnknown"));
         return;
       }
       if (!user) return;
@@ -163,13 +167,11 @@ export default function SubmitTicketPage() {
         .maybeSingle();
       if (profileResult.error) {
         logIdentityReadFailure("public-submit/profile", profileResult.error);
-        setAccountLoadError(
-          "Your account details are temporarily unavailable. Please retry."
-        );
+        setAccountLoadError(t("account.detailsUnavailable"));
         return;
       }
       if (!profileResult.data || profileResult.data.status !== "active") {
-        setAccountLoadError("This signed-in account is not available.");
+        setAccountLoadError(t("account.notAvailable"));
         return;
       }
 
@@ -194,13 +196,11 @@ export default function SubmitTicketPage() {
       );
     } catch (error) {
       logIdentityReadFailure("public-submit/context", error);
-      setAccountLoadError(
-        "Your account details are temporarily unavailable. Please retry."
-      );
+      setAccountLoadError(t("account.detailsUnavailable"));
     } finally {
       setAuthChecking(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     void checkAuth();
@@ -248,16 +248,14 @@ export default function SubmitTicketPage() {
           setSiteCodeValid(null);
           setSiteCodeError(
             outcome.status === "throttled"
-              ? "Too many checks. Please wait a minute and try again."
-              : "Site validation is temporarily unavailable. Please try again."
+              ? t("fields.siteThrottled")
+              : t("fields.siteUnavailable")
           );
         }
       } catch (error) {
         if (!(error instanceof DOMException && error.name === "AbortError")) {
           setSiteCodeValid(null);
-          setSiteCodeError(
-            "Site validation is temporarily unavailable. Please try again."
-          );
+          setSiteCodeError(t("fields.siteUnavailable"));
         }
       } finally {
         if (!controller.signal.aborted) setSiteCodeValidating(false);
@@ -268,7 +266,7 @@ export default function SubmitTicketPage() {
       clearTimeout(timer);
       controller.abort();
     };
-  }, [formData.site_code, isLoggedIn]);
+  }, [formData.site_code, isLoggedIn, t]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
@@ -278,7 +276,7 @@ export default function SubmitTicketPage() {
         e.target.value = "";
         setResult({
           success: false,
-          message: `Choose no more than ${MAX_TICKET_SUBMISSION_ATTACHMENTS} attachments.`,
+          message: t("files.tooMany", { max: MAX_TICKET_SUBMISSION_ATTACHMENTS }),
         });
         return;
       }
@@ -299,8 +297,8 @@ export default function SubmitTicketPage() {
           success: false,
           message:
             invalidFile.size < 1 || invalidFile.size > MAX_ATTACHMENT_BYTES
-              ? `${invalidFile.name} must be between 1 byte and 50MB.`
-              : "Attachment names must be 3–255 safe characters.",
+              ? t("files.badSize", { name: invalidFile.name })
+              : t("files.badName"),
         });
         return;
       }
@@ -325,6 +323,19 @@ export default function SubmitTicketPage() {
     }));
   };
 
+  // API messages are English; show translated copy for the failures a
+  // customer can act on and keep the precise server text for English.
+  function submissionErrorMessage(error: unknown): string {
+    if (!(error instanceof ExpectedClientMutationError)) {
+      return t("errors.unavailable");
+    }
+    const status = clientMutationErrorStatus(error);
+    if (status === 429) return t("errors.rateLimited");
+    if (status === 403) return t("errors.invalidSite");
+    if (status === undefined || locale === "en") return error.message;
+    return t("errors.failed");
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isSubmitting || siteCodeValidating) return;
@@ -344,9 +355,9 @@ export default function SubmitTicketPage() {
           setValidatedSiteName("");
           setSiteCodeError(
             outcome.status === "throttled"
-              ? "Too many checks. Please wait a minute and try again."
+              ? t("fields.siteThrottled")
               : outcome.status === "unavailable"
-                ? "Site validation is temporarily unavailable. Please try again."
+                ? t("fields.siteUnavailable")
                 : ""
           );
           return;
@@ -379,9 +390,7 @@ export default function SubmitTicketPage() {
         !normalized.impact ||
         !normalized.description
       ) {
-        throw new ExpectedClientMutationError(
-          "Complete all required ticket fields before submitting."
-        );
+        throw new ExpectedClientMutationError(t("errors.incomplete"));
       }
 
       const requestBody = JSON.stringify(normalized);
@@ -403,10 +412,7 @@ export default function SubmitTicketPage() {
         body: requestBody,
       });
 
-      const data = await readClientJsonResponse(
-        res,
-        "Failed to submit ticket. Please try again."
-      );
+      const data = await readClientJsonResponse(res, t("errors.failed"));
       if (
         typeof data !== "object" ||
         data === null ||
@@ -415,9 +421,7 @@ export default function SubmitTicketPage() {
         !("ticket_no" in data) ||
         typeof data.ticket_no !== "string"
       ) {
-        throw new ExpectedClientMutationError(
-          "Ticket creation may have succeeded, but confirmation is unavailable. Contact support or check your ticket list before retrying."
-        );
+        throw new ExpectedClientMutationError(t("errors.unconfirmed"));
       }
       const created = data as {
         id: string;
@@ -461,22 +465,14 @@ export default function SubmitTicketPage() {
         success: true,
         ticket_no: created.ticket_no,
         secure_token: secureToken,
-        message: "Your request is now in the DropletAI support queue.",
+        message: t("success.body"),
         attachmentWarning:
           failedUploads > 0
-            ? `${failedUploads} attachment${
-                failedUploads === 1 ? "" : "s"
-              } could not be uploaded. Open the ticket to try again.`
+            ? t("success.attachmentsFailed", { count: failedUploads })
             : undefined,
       });
     } catch (error) {
-      setResult({
-        success: false,
-        message: clientMutationErrorMessage(
-          error,
-          "Ticket submission is temporarily unavailable. Please check your connection and retry."
-        ),
-      });
+      setResult({ success: false, message: submissionErrorMessage(error) });
     } finally {
       setIsSubmitting(false);
     }
@@ -504,14 +500,14 @@ export default function SubmitTicketPage() {
             </svg>
           </div>
           <h1 className="text-3xl font-semibold tracking-tight text-slate-950">
-            Support request submitted
+            {t("success.title")}
           </h1>
           <p className="mt-3 text-slate-600">
             {result.message}
           </p>
           <div className="my-7 rounded-2xl border border-lime-200 bg-lime-50 p-5">
             <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-500">
-              Ticket ID
+              {t("success.ticketId")}
             </p>
             <p className="mt-1 text-3xl font-bold text-primary">
               {result.ticket_no}
@@ -526,12 +522,12 @@ export default function SubmitTicketPage() {
             </p>
           )}
           <div className="flex flex-col gap-3 sm:flex-row">
-            {result.secure_token && (
+            {result.secure_token && result.ticket_no && (
               <Link
-                href={`/t/${result.secure_token}`}
+                href={buildPublicTicketPath(result.ticket_no, result.secure_token)}
                 className="flex-1 rounded-xl bg-primary px-5 py-3 text-sm font-bold text-white hover:bg-primary/90"
               >
-                Track this ticket
+                {t("success.track")}
               </Link>
             )}
             <button
@@ -539,12 +535,11 @@ export default function SubmitTicketPage() {
               onClick={handleSubmitAnother}
               className="flex-1 rounded-xl border border-slate-300 px-5 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
             >
-              Submit another
+              {t("success.another")}
             </button>
           </div>
           <p className="mt-6 text-xs leading-5 text-slate-500">
-            Save the ticket ID and tracking link. Email delivery depends on
-            your organization&apos;s notification configuration.
+            {t("success.saveHint")}
           </p>
           </section>
         </main>
@@ -563,18 +558,16 @@ export default function SubmitTicketPage() {
             className="w-full rounded-3xl border border-slate-200 bg-white p-7 shadow-xl shadow-slate-900/5 sm:p-10"
           >
             <p className="text-sm font-bold uppercase tracking-[0.18em] text-primary">
-              Support intake
+              {t("eyebrowShort")}
             </p>
             <h1 className="mt-3 text-2xl font-semibold text-slate-950">
-              Submit a Support Request
+              {t("title")}
             </h1>
             <p className="mt-3 text-sm font-semibold text-slate-800">
-              {authChecking ? "Checking your account" : "Account check failed"}
+              {authChecking ? t("account.checking") : t("account.checkFailed")}
             </p>
             <p className="mt-2 text-sm leading-6 text-slate-600">
-              {authChecking
-                ? "Please wait while we determine whether to load your assigned sites or the guest intake form."
-                : accountLoadError}
+              {authChecking ? t("account.checkingBody") : accountLoadError}
             </p>
             {!authChecking && (
               <div className="mt-6 flex flex-wrap gap-3">
@@ -583,14 +576,14 @@ export default function SubmitTicketPage() {
                   onClick={() => void checkAuth()}
                   className="rounded-xl bg-primary px-5 py-3 text-sm font-bold text-white hover:bg-primary/90"
                 >
-                  Try again
+                  {t("account.tryAgain")}
                 </button>
                 <form action="/auth/logout" method="post">
                   <button
                     type="submit"
                     className="rounded-xl border border-slate-300 px-5 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
                   >
-                    Sign out
+                    {t("account.signOut")}
                   </button>
                 </form>
               </div>
@@ -609,21 +602,20 @@ export default function SubmitTicketPage() {
       {/* Form */}
       <main className="mx-auto max-w-4xl px-6 py-12 sm:py-16">
         <p className="text-sm font-bold uppercase tracking-[0.18em] text-primary">
-          Structured support intake
+          {t("eyebrow")}
         </p>
         <h1 className="mt-3 text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl">
-          Submit a Support Request
+          {t("title")}
         </h1>
         <p className="mt-3 max-w-2xl text-base leading-7 text-slate-600">
-          Give the service team enough site, asset, and impact context to begin
-          triage without an extra round of questions.
+          {t("intro")}
         </p>
 
         <div className="my-8 grid gap-px overflow-hidden rounded-2xl border border-slate-200 bg-slate-200 sm:grid-cols-3">
           {[
-            ["1", "Identify your site"],
-            ["2", "Describe operational impact"],
-            ["3", "Attach useful evidence"],
+            ["1", t("steps.site")],
+            ["2", t("steps.impact")],
+            ["3", t("steps.evidence")],
           ].map(([number, label]) => (
             <div key={number} className="flex items-center gap-3 bg-white p-4">
               <span className="flex h-7 w-7 items-center justify-center rounded-full bg-lime-100 text-xs font-bold text-primary">
@@ -653,7 +645,7 @@ export default function SubmitTicketPage() {
           {/* Contact Info */}
           <div className="space-y-4 rounded-2xl border border-border bg-white p-5 shadow-sm sm:p-7">
             <h2 className="text-base font-semibold text-foreground">
-              Your Information
+              {t("sections.you")}
             </h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
@@ -661,7 +653,7 @@ export default function SubmitTicketPage() {
                   htmlFor="site-code"
                   className="block text-sm font-medium text-foreground mb-1"
                 >
-                  Site Code *
+                  {t("fields.site")}
                 </label>
                 {isLoggedIn ? (
                   <select
@@ -681,8 +673,8 @@ export default function SubmitTicketPage() {
                   >
                     <option value="">
                       {userSites.length === 0
-                        ? "No active sites available"
-                        : "Select a site..."}
+                        ? t("fields.siteNone")
+                        : t("fields.siteSelect")}
                     </option>
                     {userSites.map((site) => (
                       <option key={site.site_id} value={site.site_id}>
@@ -703,7 +695,7 @@ export default function SubmitTicketPage() {
                       aria-invalid={siteCodeValid === false}
                       maxLength={SITE_CODE_MAX_LENGTH}
                       pattern="[A-Za-z0-9][A-Za-z0-9-]*"
-                      title="Use letters, numbers, and hyphens only."
+                      title={t("fields.siteCodeTitle")}
                       value={formData.site_code}
                       onChange={(event) =>
                         setFormData((previous) => ({
@@ -713,7 +705,7 @@ export default function SubmitTicketPage() {
                       }
                       required
                       disabled={isSubmitting}
-                      placeholder="e.g. ADI-INDY-001"
+                      placeholder={t("fields.siteCodePlaceholder")}
                       className={`w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 ${
                         siteCodeValid === true
                           ? "border-green-400 focus:ring-green-200"
@@ -729,7 +721,7 @@ export default function SubmitTicketPage() {
                     >
                       {siteCodeValidating ? (
                         <span className="text-muted-foreground">
-                          Checking...
+                          {t("fields.siteChecking")}
                         </span>
                       ) : siteCodeValid === true && validatedSiteName ? (
                         <span className="text-green-700">
@@ -737,7 +729,7 @@ export default function SubmitTicketPage() {
                         </span>
                       ) : siteCodeValid === false ? (
                         <span className="text-red-700">
-                          Site code not found. Please check and try again.
+                          {t("fields.siteNotFound")}
                         </span>
                       ) : siteCodeError ? (
                         <span className="text-amber-700">{siteCodeError}</span>
@@ -747,8 +739,7 @@ export default function SubmitTicketPage() {
                 )}
                 {isLoggedIn && userSites.length === 0 && (
                   <p className="mt-1 text-xs text-amber-700">
-                    No active sites are assigned to this account. Contact your
-                    customer administrator or DropletAI support before submitting.
+                    {t("fields.siteNoneHelp")}
                   </p>
                 )}
               </div>
@@ -757,7 +748,7 @@ export default function SubmitTicketPage() {
                   htmlFor="submitter-name"
                   className="block text-sm font-medium text-foreground mb-1"
                 >
-                  Your Name *
+                  {t("fields.name")}
                 </label>
                 <input
                   id="submitter-name"
@@ -777,7 +768,7 @@ export default function SubmitTicketPage() {
                   htmlFor="submitter-email"
                   className="block text-sm font-medium text-foreground mb-1"
                 >
-                  Email *
+                  {t("fields.email")}
                 </label>
                 <input
                   id="submitter-email"
@@ -798,7 +789,7 @@ export default function SubmitTicketPage() {
                   htmlFor="submitter-phone"
                   className="block text-sm font-medium text-foreground mb-1"
                 >
-                  Phone
+                  {t("fields.phone")}
                 </label>
                 <input
                   id="submitter-phone"
@@ -819,7 +810,7 @@ export default function SubmitTicketPage() {
           {/* Issue Details */}
           <div className="space-y-4 rounded-2xl border border-border bg-white p-5 shadow-sm sm:p-7">
             <h2 className="text-base font-semibold text-foreground">
-              Issue Details
+              {t("sections.issue")}
             </h2>
 
             <div>
@@ -827,7 +818,7 @@ export default function SubmitTicketPage() {
                 htmlFor="issue-title"
                 className="block text-sm font-medium text-foreground mb-1"
               >
-                Issue Title *
+                {t("fields.title")}
               </label>
               <input
                 id="issue-title"
@@ -838,7 +829,7 @@ export default function SubmitTicketPage() {
                 required
                 maxLength={TICKET_TITLE_MAX_LENGTH}
                 disabled={isSubmitting}
-                placeholder="e.g. AMR-03 not completing delivery mission"
+                placeholder={t("fields.titlePlaceholder")}
                 className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
               />
             </div>
@@ -849,7 +840,7 @@ export default function SubmitTicketPage() {
                   htmlFor="request-type"
                   className="block text-sm font-medium text-foreground mb-1"
                 >
-                  Request Type *
+                  {t("fields.requestType")}
                 </label>
                 <select
                   id="request-type"
@@ -860,10 +851,10 @@ export default function SubmitTicketPage() {
                   disabled={isSubmitting}
                   className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                 >
-                  <option value="">Select...</option>
-                  {Object.entries(REQUEST_TYPE_LABELS).map(([value, label]) => (
+                  <option value="">{t("fields.select")}</option>
+                  {Object.keys(REQUEST_TYPE_LABELS).map((value) => (
                     <option key={value} value={value}>
-                      {label}
+                      {labels(`requestType.${value}`)}
                     </option>
                   ))}
                 </select>
@@ -873,7 +864,7 @@ export default function SubmitTicketPage() {
                   htmlFor="severity"
                   className="block text-sm font-medium text-foreground mb-1"
                 >
-                  Severity *
+                  {t("fields.severity")}
                 </label>
                 <select
                   id="severity"
@@ -884,10 +875,10 @@ export default function SubmitTicketPage() {
                   disabled={isSubmitting}
                   className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                 >
-                  <option value="">Select...</option>
-                  {Object.entries(SEVERITY_LABELS).map(([value, label]) => (
+                  <option value="">{t("fields.select")}</option>
+                  {Object.keys(SEVERITY_LABELS).map((value) => (
                     <option key={value} value={value}>
-                      {label}
+                      {labels(`severity.${value}`)}
                     </option>
                   ))}
                 </select>
@@ -897,7 +888,7 @@ export default function SubmitTicketPage() {
                   htmlFor="impact"
                   className="block text-sm font-medium text-foreground mb-1"
                 >
-                  Production Impact *
+                  {t("fields.impact")}
                 </label>
                 <select
                   id="impact"
@@ -908,10 +899,10 @@ export default function SubmitTicketPage() {
                   disabled={isSubmitting}
                   className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                 >
-                  <option value="">Select...</option>
-                  {Object.entries(IMPACT_LABELS).map(([value, label]) => (
+                  <option value="">{t("fields.select")}</option>
+                  {Object.keys(IMPACT_LABELS).map((value) => (
                     <option key={value} value={value}>
-                      {label}
+                      {labels(`impact.${value}`)}
                     </option>
                   ))}
                 </select>
@@ -924,7 +915,7 @@ export default function SubmitTicketPage() {
                   htmlFor="asset-id"
                   className="block text-sm font-medium text-foreground mb-1"
                 >
-                  Equipment / Asset ID
+                  {t("fields.asset")}
                 </label>
                 <input
                   id="asset-id"
@@ -934,7 +925,7 @@ export default function SubmitTicketPage() {
                   onChange={handleChange}
                   maxLength={TICKET_CONTEXT_MAX_LENGTH}
                   disabled={isSubmitting}
-                  placeholder="e.g. AMR-03, Charger-01"
+                  placeholder={t("fields.assetPlaceholder")}
                   className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                 />
               </div>
@@ -943,7 +934,7 @@ export default function SubmitTicketPage() {
                   htmlFor="area"
                   className="block text-sm font-medium text-foreground mb-1"
                 >
-                  Area / Process
+                  {t("fields.area")}
                 </label>
                 <input
                   id="area"
@@ -953,7 +944,7 @@ export default function SubmitTicketPage() {
                   onChange={handleChange}
                   maxLength={TICKET_CONTEXT_MAX_LENGTH}
                   disabled={isSubmitting}
-                  placeholder="e.g. Receiving, Line-side, Dock"
+                  placeholder={t("fields.areaPlaceholder")}
                   className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                 />
               </div>
@@ -964,7 +955,7 @@ export default function SubmitTicketPage() {
                 htmlFor="description"
                 className="block text-sm font-medium text-foreground mb-1"
               >
-                Description *
+                {t("fields.description")}
               </label>
               <textarea
                 id="description"
@@ -975,7 +966,7 @@ export default function SubmitTicketPage() {
                 rows={5}
                 maxLength={TICKET_DESCRIPTION_MAX_LENGTH}
                 disabled={isSubmitting}
-                placeholder="Describe the issue in detail. What happened? When did it start? What is the impact?"
+                placeholder={t("fields.descriptionPlaceholder")}
                 className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary resize-y"
               />
             </div>
@@ -984,7 +975,7 @@ export default function SubmitTicketPage() {
           {/* Attachments */}
           <div className="space-y-4 rounded-2xl border border-border bg-white p-5 shadow-sm sm:p-7">
             <h2 className="text-base font-semibold text-foreground">
-              Attachments
+              {t("sections.attachments")}
             </h2>
             <div className="border-2 border-dashed border-border rounded-lg p-8 text-center">
               <input
@@ -1019,12 +1010,9 @@ export default function SubmitTicketPage() {
                   />
                 </svg>
                 <span className="text-primary font-medium">
-                  Click to upload
+                  {t("files.upload")}
                 </span>
-                <p className="text-xs mt-1">
-                  JPEG/PNG/GIF/WebP, MP4/MOV, PDF, UTF-8 text, CSV/log, or
-                  Excel (max 50MB each)
-                </p>
+                <p className="text-xs mt-1">{t("files.types")}</p>
               </label>
               {files.length > 0 && (
                 <div className="mt-4 text-sm text-foreground">
@@ -1033,7 +1021,7 @@ export default function SubmitTicketPage() {
                       key={`${f.name}-${f.size}-${f.lastModified}`}
                       className="py-1"
                     >
-                      {f.name} ({(f.size / 1024).toFixed(1)} KB)
+                      {f.name} ({formatFileSize(f.size)})
                     </div>
                   ))}
                 </div>
@@ -1053,10 +1041,10 @@ export default function SubmitTicketPage() {
               className="flex-1 rounded-lg bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground shadow-sm hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isSubmitting
-                ? "Submitting..."
+                ? t("actions.submitting")
                 : !isLoggedIn && siteCodeValidating
-                  ? "Checking site..."
-                  : "Submit Support Request"}
+                  ? t("actions.checkingSite")
+                  : t("actions.submit")}
             </button>
             <button
               type="button"
@@ -1064,7 +1052,7 @@ export default function SubmitTicketPage() {
               disabled={isSubmitting}
               className="rounded-lg border border-border px-6 py-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
             >
-              Cancel
+              {t("actions.cancel")}
             </button>
           </div>
         </form>

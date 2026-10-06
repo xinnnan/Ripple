@@ -47,7 +47,7 @@ const ticketExportFilterSchema = z
     severity: z.array(z.enum(severities)).max(severities.length),
     customerId: z.string().uuid().optional(),
     siteId: z.string().uuid().optional(),
-    ownerId: z.string().uuid().optional(),
+    ownerId: z.union([z.literal("unassigned"), z.string().uuid()]).optional(),
     range: z.enum(ranges).optional(),
     sla: z.enum(slaBuckets).optional(),
     dateFrom: dateBoundarySchema.optional(),

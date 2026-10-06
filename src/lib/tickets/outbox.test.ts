@@ -94,6 +94,10 @@ function dependencies(overrides: Partial<{
       sent: true,
       id: "email-1",
     }),
+    sendTicketUpdate: vi.fn().mockResolvedValue({
+      sent: true,
+      id: "email-update-1",
+    }),
   };
 }
 
@@ -386,6 +390,103 @@ describe("ticket notification outbox delivery", () => {
       },
     });
     expect(deps.sendTicketResolved).not.toHaveBeenCalled();
+  });
+});
+
+describe("submitter email language", () => {
+  it.each([
+    ["ticket.email_confirmation", "sendTicketConfirmation", {}],
+    ["ticket.email_resolution", "sendTicketResolved", {}],
+    ["ticket.email_customer_update", "sendTicketUpdate", { body: "Hola" }],
+  ] as const)("%s uses the ticket's stored language", async (type, sender, payload) => {
+    const deps = dependencies();
+    await deliverTicketOutboxEvent(event(type, payload), { ...ticket(), locale: "ko" }, {}, deps);
+    expect(deps[sender]).toHaveBeenCalledWith(expect.objectContaining({ locale: "ko" }));
+  });
+});
+
+describe("intentionally disabled email", () => {
+  it("terminally skips instead of retrying until dead letter", async () => {
+    const deps = dependencies();
+    deps.sendTicketResolved.mockResolvedValue({ sent: false, reason: "no_api_key" });
+
+    await expect(
+      deliverTicketOutboxEvent(event("ticket.email_resolution"), ticket(), {}, deps)
+    ).resolves.toEqual({
+      delivered: true,
+      result: { provider: "resend", outcome: "skipped", reason: "email_disabled" },
+    });
+  });
+
+  it("still retries real provider failures", async () => {
+    const deps = dependencies();
+    deps.sendTicketResolved.mockResolvedValue({
+      sent: false,
+      reason: "send_failed",
+      error: "domain not verified",
+    });
+
+    await expect(
+      deliverTicketOutboxEvent(event("ticket.email_resolution"), ticket(), {}, deps)
+    ).resolves.toMatchObject({ delivered: false, retryable: true });
+  });
+});
+
+describe("customer update email delivery", () => {
+  it("emails the comment and flags tickets waiting on the customer", async () => {
+    const deps = dependencies();
+    const waiting = { ...ticket(), status: "waiting_customer" as const };
+
+    await expect(
+      deliverTicketOutboxEvent(
+        event("ticket.email_customer_update", {
+          comment_id: "77777777-7777-4777-8777-777777777777",
+          body: "Which firmware version is installed?",
+        }),
+        waiting,
+        {},
+        deps
+      )
+    ).resolves.toMatchObject({ delivered: true });
+
+    expect(deps.sendTicketUpdate).toHaveBeenCalledWith({
+      to: "operator@example.com",
+      ticketNo: "RPL-000123",
+      title: "AMR stopped",
+      secureToken: "secure-token",
+      message: "Which firmware version is installed?",
+      awaitingCustomer: true,
+      idempotencyKey: `ripple-outbox/${EVENT_ID}`,
+    });
+  });
+
+  it.each([{}, { body: "" }, { body: 42 }, { body: "x".repeat(10_001) }])(
+    "terminally rejects invalid payload #%#",
+    async (payload) => {
+      const deps = dependencies();
+      await expect(
+        deliverTicketOutboxEvent(
+          event("ticket.email_customer_update", payload),
+          ticket(),
+          {},
+          deps
+        )
+      ).resolves.toMatchObject({ delivered: false, retryable: false });
+      expect(deps.sendTicketUpdate).not.toHaveBeenCalled();
+    }
+  );
+
+  it("skips when the ticket has no submitter email", async () => {
+    const deps = dependencies();
+    await expect(
+      deliverTicketOutboxEvent(
+        event("ticket.email_customer_update", { body: "Update" }),
+        ticket(null),
+        {},
+        deps
+      )
+    ).resolves.toMatchObject({ delivered: true, result: { outcome: "skipped" } });
+    expect(deps.sendTicketUpdate).not.toHaveBeenCalled();
   });
 });
 

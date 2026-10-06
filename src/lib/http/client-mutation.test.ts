@@ -23,7 +23,7 @@ describe("client mutation response containment", () => {
     await expect(
       assertClientMutationResponse(response, "Save failed")
     ).rejects.toEqual(
-      new ExpectedClientMutationError("Invalid team member update")
+      new ExpectedClientMutationError("Invalid team member update", undefined, 400)
     );
   });
 
@@ -34,7 +34,12 @@ describe("client mutation response containment", () => {
   ])("falls back for malformed, non-string, or oversized errors", async (response) => {
     await expect(
       assertClientMutationResponse(response, "Safe fallback")
-    ).rejects.toEqual(new ExpectedClientMutationError("Safe fallback"));
+    ).rejects.toMatchObject({
+      name: "ExpectedClientMutationError",
+      message: "Safe fallback",
+      code: undefined,
+      status: response.status,
+    });
   });
 
   it("contains unexpected network/runtime exception text", () => {
@@ -67,5 +72,26 @@ describe("client mutation response containment", () => {
     ).rejects.toEqual(
       new ExpectedClientMutationError("Response unavailable")
     );
+  });
+});
+
+describe("client mutation error codes", () => {
+  it("carries a well-formed API code and status for translated copy", async () => {
+    const { clientMutationErrorCode, clientMutationErrorStatus } = await import(
+      "./client-mutation"
+    );
+    const error = await assertClientMutationResponse(
+      Response.json({ error: "Exists", code: "USER_EMAIL_EXISTS" }, { status: 409 }),
+      "Failed"
+    ).catch((caught: unknown) => caught);
+    expect(clientMutationErrorCode(error)).toBe("USER_EMAIL_EXISTS");
+    expect(clientMutationErrorStatus(error)).toBe(409);
+
+    const malformed = await assertClientMutationResponse(
+      Response.json({ error: "x", code: "<script>" }, { status: 400 }),
+      "Failed"
+    ).catch((caught: unknown) => caught);
+    expect(clientMutationErrorCode(malformed)).toBeUndefined();
+    expect(clientMutationErrorCode(new Error("network"))).toBeUndefined();
   });
 });

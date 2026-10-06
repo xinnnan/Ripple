@@ -39,6 +39,7 @@ import {
   normalizeTicketIdempotencyKey,
   TICKET_IDEMPOTENCY_KEY_HEADER,
 } from "@/lib/tickets/idempotency";
+import { LOCALE_COOKIE, resolveRequestLocale } from "@/i18n/config";
 
 const createTicketSchema = z.object({
   customer_id: z.string().uuid().optional(),
@@ -270,6 +271,10 @@ export async function POST(request: NextRequest) {
       submitter_name: data.submitter_name,
       submitter_email: data.submitter_email,
       submitter_phone: data.submitter_phone,
+      locale: resolveRequestLocale({
+        cookie: request.cookies.get(LOCALE_COOKIE)?.value,
+        acceptLanguage: request.headers.get("accept-language"),
+      }),
     });
 
     return NextResponse.json(

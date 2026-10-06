@@ -29,24 +29,32 @@ const sources = new Map(
   ])
 );
 
+const english = JSON.parse(
+  readFileSync(join(root, "messages/en.json"), "utf8")
+) as { team: { member: { inactiveNotice: string } } };
+
 describe("identity form mutation integrity", () => {
   it.each(identityForms)("contains expected %s failures", (name) => {
     const source = sources.get(name)!;
 
-    expect(source).toContain("assertClientMutationResponse");
-    expect(source).toContain("clientMutationErrorMessage");
-    expect(source).toContain("await assertClientMutationResponse");
-    expect(source).toContain("aria-busy={saving}");
-    expect(source).toContain(
-      'role={message.type === "error" ? "alert" : "status"}'
-    );
+    expect(source).toMatch(/assertClientMutationResponse|readClientJsonResponse/);
+    expect(source).toMatch(/aria-busy=\{(saving|busy)\}/);
+    expect(source).toMatch(/role=\{message\.type === "error" \? "alert" : "status"\}|role="alert"/);
     expect(source).not.toContain("await res.json()");
     expect(source).not.toContain("instanceof Error");
   });
 
+  it("contains raw API failures behind bounded or translated copy", () => {
+    expect(sources.get("admin user creation")).toContain("clientMutationErrorMessage");
+    expect(sources.get("admin user editing")).toContain("clientMutationErrorMessage");
+    expect(sources.get("team-member creation")).toContain('t("failed")');
+    expect(sources.get("team-member creation")).toContain('"USER_EMAIL_EXISTS"');
+    expect(sources.get("team-member editing")).toContain('t("failed")');
+  });
+
   it.each([
-    ["admin user creation", "if (saving) return;"],
-    ["team-member creation", "if (saving) return;"],
+    ["admin user creation", "if (busy) return;"],
+    ["team-member creation", "if (busy) return;"],
     ["admin user editing", "if (saving || isInactive) return;"],
     ["team-member editing", "if (saving || isInactive) return;"],
   ])("guards duplicate or read-only %s submissions", (name, guard) => {
@@ -65,16 +73,19 @@ describe("identity form mutation integrity", () => {
     expect(source).toContain("minLength={12}");
     expect(source).toContain("maxLength={128}");
     expect(source).toContain(`id="${idPrefix}-name"`);
-    expect(source).toContain('autoComplete="name"');
+    expect(source).toContain(`id="${idPrefix}-locale"`);
+    // These fields describe someone else, so the inviter's own identity must
+    // not be autofilled into them.
+    expect(source).not.toContain('autoComplete="name"');
     expect(source).toContain("maxLength={200}");
-    expect(source).toContain("disabled={saving}");
+    expect(source).toContain("disabled={busy}");
   });
 
   it.each([
-    ["team-member creation", "Assign Sites", "disabled={saving}"],
+    ["team-member creation", 't("sites")', "disabled={busy}"],
     [
       "team-member editing",
-      "Site Access",
+      't("siteAccess")',
       "disabled={saving || isInactive}",
     ],
   ])("groups and locks %s site choices", (name, legend, disabledState) => {
@@ -93,8 +104,10 @@ describe("identity form mutation integrity", () => {
 
       expect(source).toContain('const isInactive = user.status === "inactive"');
       expect(source).toContain("disabled={saving || isInactive}");
-      expect(source).toContain("inactive and read-only");
     }
+    expect(sources.get("admin user editing")).toContain("inactive and read-only");
+    expect(sources.get("team-member editing")).toContain('t("inactiveNotice")');
+    expect(english.team.member.inactiveNotice).toContain("inactive and read-only");
   });
 
   it("binds editable team-member labels to their controls", () => {

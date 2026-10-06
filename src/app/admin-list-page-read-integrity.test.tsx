@@ -17,8 +17,8 @@ vi.mock("next/navigation", () => ({ redirect }));
 
 import CustomersSitesPage from "@/app/(auth)/admin/customers-sites/page";
 import AdminCustomersPage from "@/app/(auth)/admin/customers/page";
-import FieldServicePage from "@/app/(auth)/admin/field-service/page";
-import PartRequestsPage from "@/app/(auth)/admin/part-requests/page";
+import FieldServicePage from "@/app/(auth)/(operations)/field-service/page";
+import PartRequestsPage from "@/app/(auth)/(operations)/part-requests/page";
 import AdminSitesPage from "@/app/(auth)/admin/sites/page";
 import AdminSLAPoliciesPage from "@/app/(auth)/admin/sla-policies/page";
 import AdminSparePartsPage from "@/app/(auth)/admin/spare-parts/page";
