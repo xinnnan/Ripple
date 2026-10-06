@@ -1,18 +1,22 @@
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { setTimeout as delay } from "node:timers/promises";
+import { fileURLToPath } from "node:url";
 
 const port = Number(process.env.RIPPLE_E2E_PORT || 21000 + (process.pid % 10000));
 const host = "127.0.0.1";
 const baseUrl = `http://${host}:${port}`;
-const nextBin = new URL("../node_modules/next/dist/bin/next", import.meta.url);
+// fileURLToPath decodes percent-escapes so checkouts with spaces still work.
+const nextBin = fileURLToPath(
+  new URL("../node_modules/next/dist/bin/next", import.meta.url)
+);
 const output = [];
 
 const server = spawn(
   process.execPath,
-  [nextBin.pathname, "start", "--hostname", host, "--port", String(port)],
+  [nextBin, "start", "--hostname", host, "--port", String(port)],
   {
-    cwd: new URL("..", import.meta.url),
+    cwd: fileURLToPath(new URL("..", import.meta.url)),
     env: {
       ...process.env,
       NODE_ENV: "production",

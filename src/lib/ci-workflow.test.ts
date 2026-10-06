@@ -35,14 +35,24 @@ describe("repository quality-gate contract", () => {
       "npm run lint",
       "npm run build",
       "npm run test:e2e",
-      "npm audit",
+      "npm audit --omit=dev",
+      "npm audit --audit-level=critical",
     ];
     let previousIndex = -1;
     for (const command of commands) {
-      const index = workflow.indexOf(`run: ${command}`);
+      const index = workflow.indexOf(`run: ${command}\n`);
       expect(index, `${command} must be present`).toBeGreaterThan(previousIndex);
       previousIndex = index;
     }
+  });
+
+  it("blocks every shipped advisory and any critical development advisory", () => {
+    // Production dependencies tolerate no advisory. The full tree must never
+    // carry a critical one; lower-severity dev-only advisories without a
+    // published fix are tracked in AGENTS.md instead of blocking every PR.
+    expect(workflow).toMatch(/run: npm audit --omit=dev\n/);
+    expect(workflow).toMatch(/run: npm audit --audit-level=critical\n/);
+    expect(workflow).not.toMatch(/run: npm audit\n/);
   });
 
   it("keeps the credentialed matrix manual, protected, and fail closed", () => {
