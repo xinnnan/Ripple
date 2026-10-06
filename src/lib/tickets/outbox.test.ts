@@ -393,6 +393,33 @@ describe("ticket notification outbox delivery", () => {
   });
 });
 
+describe("intentionally disabled email", () => {
+  it("terminally skips instead of retrying until dead letter", async () => {
+    const deps = dependencies();
+    deps.sendTicketResolved.mockResolvedValue({ sent: false, reason: "no_api_key" });
+
+    await expect(
+      deliverTicketOutboxEvent(event("ticket.email_resolution"), ticket(), {}, deps)
+    ).resolves.toEqual({
+      delivered: true,
+      result: { provider: "resend", outcome: "skipped", reason: "email_disabled" },
+    });
+  });
+
+  it("still retries real provider failures", async () => {
+    const deps = dependencies();
+    deps.sendTicketResolved.mockResolvedValue({
+      sent: false,
+      reason: "send_failed",
+      error: "domain not verified",
+    });
+
+    await expect(
+      deliverTicketOutboxEvent(event("ticket.email_resolution"), ticket(), {}, deps)
+    ).resolves.toMatchObject({ delivered: false, retryable: true });
+  });
+});
+
 describe("customer update email delivery", () => {
   it("emails the comment and flags tickets waiting on the customer", async () => {
     const deps = dependencies();

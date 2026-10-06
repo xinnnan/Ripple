@@ -4,6 +4,7 @@ import {
   formatDateOnly,
   resolveSiteTimezone,
   singleRelation,
+  formatFileSize,
 } from "./utils";
 
 describe("formatDate", () => {
@@ -63,5 +64,19 @@ describe("formatDateOnly", () => {
   it("leaves an unexpected value visible instead of inventing a date", () => {
     expect(formatDateOnly("not-a-date")).toBe("not-a-date");
     expect(formatDateOnly("2026-02-30")).toBe("2026-02-30");
+  });
+});
+
+describe("formatFileSize", () => {
+  it.each([
+    [0, "0 B"],
+    [38, "38 B"],
+    [1023, "1023 B"],
+    [1024, "1.0 KB"],
+    [2048, "2.0 KB"],
+    [5 * 1024 * 1024, "5.0 MB"],
+    [50 * 1024 * 1024, "50.0 MB"],
+  ])("formats %i bytes as %s", (bytes, label) => {
+    expect(formatFileSize(bytes)).toBe(label);
   });
 });

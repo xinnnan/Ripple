@@ -31,6 +31,9 @@ vi.mock("@/lib/distributed-rate-limit", () => ({
 vi.mock("@/lib/supabase/admin", () => ({
   createAdminClient: () => ({ from: fromMock }),
 }));
+vi.mock("next/image", () => ({
+  default: ({ alt }: { alt: string }) => <span role="img" aria-label={alt} />,
+}));
 vi.mock("./guest-reply-form", () => ({
   GuestReplyForm: (props: Record<string, unknown>) => (
     <div data-testid="guest-reply-form" data-props={JSON.stringify(props)} />

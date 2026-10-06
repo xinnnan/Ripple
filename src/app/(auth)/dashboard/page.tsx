@@ -53,7 +53,7 @@ interface DashboardPageProps {
 
 export default async function DashboardPage({
   searchParams,
-}: DashboardPageProps = {}) {
+}: DashboardPageProps) {
   const denied = parseDeniedReason((await searchParams)?.denied);
   const supabase = await createClient();
 

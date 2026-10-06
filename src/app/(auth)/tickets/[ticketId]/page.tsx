@@ -9,7 +9,7 @@ import {
   type Severity,
 } from "@/types/ticket";
 import { SPR_STATUS_LABELS, SPR_STATUS_COLORS, FSO_STATUS_LABELS, FSO_STATUS_COLORS, SERVICE_TYPE_LABELS } from "@/types/spare-parts";
-import { formatDate, resolveSiteTimezone } from "@/lib/utils";
+import { formatDate, formatFileSize, resolveSiteTimezone, singleRelation } from "@/lib/utils";
 import { isCustomerReopenable } from "@/lib/tickets/status";
 import Link from "next/link";
 import { AIAssistButton } from "./ai-assist-button";
@@ -70,15 +70,18 @@ interface TicketDetailRow {
   first_response_at: string | null;
   first_response_breached_at: string | null;
   resolution_breached_at: string | null;
-  customer: { id: string; name: string }[] | null;
-  site: {
+  // Many-to-one embeds arrive as objects at runtime; accept either shape.
+  customer: OneOrMany<{ id: string; name: string }>;
+  site: OneOrMany<{
     id: string;
     site_name: string;
     site_code: string;
     timezone: string;
-  }[] | null;
-  owner: { id?: string; full_name: string }[] | null;
+  }>;
+  owner: OneOrMany<{ id?: string; full_name: string }>;
 }
+
+type OneOrMany<T> = T | T[] | null;
 
 interface TicketPartRequestRow {
   id: string;
@@ -308,7 +311,7 @@ export default async function TicketDetailPage({ params }: Props) {
               <p className="text-sm text-muted-foreground">No comments yet.</p>
             ) : (
               <div className="space-y-4">
-                {comments.map((comment: { id: string; body: string; visibility: string; source: string; created_at: string; author: { full_name: string }[] }) => (
+                {comments.map((comment: { id: string; body: string; visibility: string; source: string; created_at: string; author: { full_name: string } | { full_name: string }[] | null }) => (
                   <div
                     key={comment.id}
                     className={`border-l-2 pl-4 ${
@@ -317,7 +320,7 @@ export default async function TicketDetailPage({ params }: Props) {
                   >
                     <div className="flex items-center gap-2 mb-1">
                       <span className="text-xs font-medium text-foreground">
-                        {comment.author?.[0]?.full_name || "Unknown"}
+                        {singleRelation(comment.author)?.full_name ?? "Ticket submitter"}
                       </span>
                       <span className="text-xs text-muted-foreground">
                         via {comment.source}
@@ -359,7 +362,7 @@ export default async function TicketDetailPage({ params }: Props) {
                         {att.file_name}
                         <span className="sr-only"> (download)</span>
                       </a>
-                      <p className="text-xs text-muted-foreground">{(att.file_size / 1024).toFixed(1)} KB</p>
+                      <p className="text-xs text-muted-foreground">{formatFileSize(att.file_size)}</p>
                     </div>
                     {att.visibility === "internal" && (
                       <span className="text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">Internal</span>
@@ -538,15 +541,15 @@ export default async function TicketDetailPage({ params }: Props) {
           <div className="rounded-xl border border-border p-6 space-y-3">
             <h2 className="text-sm font-semibold text-foreground">Details</h2>
             <dl className="space-y-2 text-sm">
-              <div><dt className="text-xs text-muted-foreground">Customer</dt><dd className="font-medium">{ticket.customer?.[0]?.name}</dd></div>
-              <div><dt className="text-xs text-muted-foreground">Site</dt><dd className="font-medium">{ticket.site?.[0]?.site_name} ({ticket.site?.[0]?.site_code})</dd></div>
+              <div><dt className="text-xs text-muted-foreground">Customer</dt><dd className="font-medium">{singleRelation(ticket.customer)?.name}</dd></div>
+              <div><dt className="text-xs text-muted-foreground">Site</dt><dd className="font-medium">{singleRelation(ticket.site)?.site_name} ({singleRelation(ticket.site)?.site_code})</dd></div>
               <div><dt className="text-xs text-muted-foreground">Type</dt><dd className="font-medium">{REQUEST_TYPE_LABELS[ticket.request_type as keyof typeof REQUEST_TYPE_LABELS]}</dd></div>
               <div><dt className="text-xs text-muted-foreground">Severity</dt><dd className="font-medium">{SEVERITY_LABELS[ticket.severity as keyof typeof SEVERITY_LABELS]}</dd></div>
               {ticket.impact && <div><dt className="text-xs text-muted-foreground">Impact</dt><dd className="font-medium">{IMPACT_LABELS[ticket.impact as keyof typeof IMPACT_LABELS]}</dd></div>}
               {ticket.asset_id && <div><dt className="text-xs text-muted-foreground">Asset</dt><dd className="font-medium">{ticket.asset_id}</dd></div>}
               {ticket.area && <div><dt className="text-xs text-muted-foreground">Area</dt><dd className="font-medium">{ticket.area}</dd></div>}
               <div><dt className="text-xs text-muted-foreground">Source</dt><dd className="font-medium">{ticket.source}</dd></div>
-              <div><dt className="text-xs text-muted-foreground">Owner</dt><dd className="font-medium">{ticket.owner?.[0]?.full_name || "Unassigned"}</dd></div>
+              <div><dt className="text-xs text-muted-foreground">Owner</dt><dd className="font-medium">{singleRelation(ticket.owner)?.full_name || "Unassigned"}</dd></div>
               {isInternal && ticket.submitter_name && <div><dt className="text-xs text-muted-foreground">Submitter</dt><dd className="font-medium">{ticket.submitter_name} ({ticket.submitter_email})</dd></div>}
               <div>
                 <dt className="text-xs text-muted-foreground">Created</dt>

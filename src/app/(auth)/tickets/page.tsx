@@ -3,7 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getUserScope, scopeTickets, scopeSites } from "@/lib/supabase/scope";
 import { redirect } from "next/navigation";
 import { SEVERITY_LABELS, STATUS_LABELS, type Severity, type TicketStatus } from "@/types/ticket";
-import { formatDate } from "@/lib/utils";
+import { formatDate, resolveSiteTimezone, singleRelation } from "@/lib/utils";
 import Link from "next/link";
 import { TicketsPageHeader } from "./tickets-page-header";
 import { TableEmpty } from "@/components/empty-state";
@@ -22,6 +22,8 @@ import { assertPageQueriesSucceeded } from "@/lib/server-page-query";
 export const metadata: Metadata = { title: "Tickets" };
 
 export const dynamic = "force-dynamic";
+
+type Relation<T> = T | T[] | null;
 
 interface Props {
   searchParams: Promise<{
@@ -81,7 +83,7 @@ export default async function TicketsPage({ searchParams }: Props) {
       ticket_no, title, severity, status, request_type, created_at,
       sla_policy_id, sla_breached, first_response_due_at, resolve_due_at, first_response_at,
       customer:customers(id, name),
-      site:sites(id, site_name),
+      site:sites(id, site_name, timezone),
       owner:users!tickets_owner_id_fkey(id, full_name)
     `,
       { count: "exact" }
@@ -297,9 +299,10 @@ function renderTicketsPage(
     status: string;
     request_type: string;
     created_at: string;
-    customer: { id?: string; name: string }[];
-    site: { id?: string; site_name: string }[];
-    owner: { id?: string; full_name: string }[];
+    // Many-to-one embeds arrive as objects; tolerate either shape.
+    customer: Relation<{ id?: string; name: string }>;
+    site: Relation<{ id?: string; site_name: string; timezone?: string }>;
+    owner: Relation<{ id?: string; full_name: string }>;
   }[],
   totalCount: number,
   isInternal: boolean,
@@ -397,7 +400,7 @@ function renderTicketsPage(
                   key={ticket.ticket_no}
                   className="hover:bg-muted/30 transition-colors"
                 >
-                  <td className="p-3">
+                  <td className="whitespace-nowrap p-3">
                     <Link
                       href={`/tickets/${ticket.ticket_no}`}
                       className="text-xs font-mono font-medium text-primary hover:text-primary/80"
@@ -420,10 +423,10 @@ function renderTicketsPage(
                   </td>
                   <td className="p-3">
                     <p className="text-sm text-foreground">
-                      {ticket.customer?.[0]?.name}
+                      {singleRelation(ticket.customer)?.name}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      {ticket.site?.[0]?.site_name}
+                      {singleRelation(ticket.site)?.site_name}
                     </p>
                   </td>
                   <td className="p-3">
@@ -436,12 +439,12 @@ function renderTicketsPage(
                   </td>
                   <td className="p-3">
                     <span className="text-sm text-muted-foreground">
-                      {ticket.owner?.[0]?.full_name || "—"}
+                      {singleRelation(ticket.owner)?.full_name || "—"}
                     </span>
                   </td>
                   <td className="p-3">
                     <span className="text-xs text-muted-foreground">
-                      {formatDate(ticket.created_at)}
+                      {formatDate(ticket.created_at, resolveSiteTimezone(ticket.site))}
                     </span>
                   </td>
                 </tr>

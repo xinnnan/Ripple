@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { buildPublicTicketPath } from "@/lib/tickets/public-link";
+import { formatFileSize } from "@/lib/utils";
 import { useRouter } from "next/navigation";
 import {
   REQUEST_TYPE_LABELS,
@@ -1034,7 +1035,7 @@ export default function SubmitTicketPage() {
                       key={`${f.name}-${f.size}-${f.lastModified}`}
                       className="py-1"
                     >
-                      {f.name} ({(f.size / 1024).toFixed(1)} KB)
+                      {f.name} ({formatFileSize(f.size)})
                     </div>
                   ))}
                 </div>

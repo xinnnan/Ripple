@@ -3,9 +3,10 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getClientIp } from "@/lib/rate-limit";
 import { headers } from "next/headers";
 import { STATUS_LABELS, SEVERITY_LABELS, IMPACT_LABELS } from "@/types/ticket";
-import { formatDate, resolveSiteTimezone } from "@/lib/utils";
+import { formatDate, formatFileSize, resolveSiteTimezone } from "@/lib/utils";
 import { consumePublicTicketLimit } from "@/lib/tickets/public-access";
 import { isCustomerReopenable } from "@/lib/tickets/status";
+import Image from "next/image";
 import Link from "next/link";
 import { GuestReplyForm } from "./guest-reply-form";
 
@@ -221,12 +222,14 @@ export default async function TicketViewPage({ params, searchParams }: Props) {
       {/* Header */}
       <header className="border-b border-border">
         <div className="mx-auto max-w-4xl px-6 py-4 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-3">
-            <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
-              <span className="text-primary-foreground font-bold text-sm">
-                R
-              </span>
-            </div>
+          <Link href="/" className="flex min-h-11 items-center gap-3">
+            <Image
+              src="/logo.png"
+              alt=""
+              width={32}
+              height={32}
+              className="rounded-lg"
+            />
             <span className="text-lg font-semibold text-foreground">
               Ripple
             </span>
@@ -377,7 +380,7 @@ export default async function TicketViewPage({ params, searchParams }: Props) {
                           <span className="sr-only"> (download)</span>
                         </a>
                         <p className="text-xs text-muted-foreground">
-                          {(att.file_size / 1024).toFixed(1)} KB
+                          {formatFileSize(att.file_size)}
                         </p>
                       </div>
                     </div>

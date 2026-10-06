@@ -142,7 +142,7 @@ function setProfile(role: "admin" | "customer_manager" | "customer") {
 
 async function renderDashboardVariant(denied?: string) {
   const variant = await DashboardPage(
-    denied ? { searchParams: Promise.resolve({ denied }) } : undefined
+    denied ? { searchParams: Promise.resolve({ denied }) } : {}
   );
   if (!React.isValidElement(variant) || typeof variant.type !== "function") {
     throw new Error("Expected an async dashboard variant");
@@ -190,7 +190,7 @@ describe("dashboard read integrity", () => {
       })
     );
 
-    await expectGenericReadFailure(DashboardPage);
+    await expectGenericReadFailure(() => DashboardPage({}));
 
     expect(createAdminClient).not.toHaveBeenCalled();
   });

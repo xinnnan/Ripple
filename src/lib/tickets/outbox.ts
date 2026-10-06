@@ -165,6 +165,14 @@ async function recordProviderAttempt(
 }
 
 function emailDecision(result: SendResult): OutboxDeliveryDecision {
+  if (!result.sent && result.reason === "no_api_key") {
+    // Email is intentionally disabled (no Resend key). Retrying would only
+    // march every notification to the dead-letter queue.
+    return {
+      delivered: true,
+      result: { provider: "resend", outcome: "skipped", reason: "email_disabled" },
+    };
+  }
   if (result.sent) {
     return {
       delivered: true,
