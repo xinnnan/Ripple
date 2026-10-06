@@ -1,8 +1,8 @@
 # AGENTS.md — Ripple Project Notes
 
-> DropletAI's Slack-native support portal. Lightweight ticket system, web portal, and AI-assisted troubleshooting for industrial automation deployments (AMR / AGV / conveyor / sortation / RCS / WCS).
+> DropletAI's Slack-native support portal. Lightweight ticket system and web portal, in English, Spanish, Simplified Chinese, and Korean, for industrial automation deployments (AMR / AGV / conveyor / sortation / RCS / WCS).
 
-This file is the **single source of truth for project context** — read it before touching anything. It also serves as the lessons-learned notebook and progress tracker. Last updated 2026-10-05.
+This file is the **single source of truth for project context** — read it before touching anything. It also serves as the lessons-learned notebook and progress tracker. Last updated 2026-10-06.
 
 ---
 
@@ -25,6 +25,14 @@ build cleanly from scratch on local Supabase and pass `npm run verify:db`
 production on 2026-10-06 (reported by the product owner); production
 behaviour verification is pending. `main` is live on Vercel.
 
+**Ship scope (2026-10-06)** — the release focuses on one journey: a customer is
+invited, signs in, raises a ticket, and follows it to resolution; DropletAI
+staff resolve it. AI assist was removed. The customer-facing product is in
+English, Spanish (es-419), Simplified Chinese, and Korean. Customer accounts
+belong to exactly one company; admins and engineers see every customer.
+Migration 059 (locales + admin customer onboarding) must be applied to
+production **before** deploying the code that uses it.
+
 ---
 
 ## 2. Tech Stack
@@ -38,7 +46,8 @@ behaviour verification is pending. `main` is live on Vercel.
 | Storage | **Supabase Storage** | Bucket `ripple-attachments`, 50MB cap per file |
 | Slack | **@slack/bolt** + **@slack/web-api** | Bolt runs inside Next.js API routes (no separate process) |
 | AI | **Removed 2026-10-06** (product decision) | Ripple Assist UI, `/api/ai/suggest`, Slack assist actions, and `src/lib/ai` were deleted; the `ai_suggestions` tables remain in the schema unused |
-| Email | **Resend** | Transactional ticket confirmation and resolution notices |
+| Email | **Resend** | Ticket confirmation/update/resolution notices, invitations, and password resets — all rendered in the recipient's language |
+| i18n | **next-intl 4** (no locale routing) | Language = `NEXT_LOCALE` cookie → `Accept-Language` → English. Catalogs in `messages/{en,es,zh,ko}.json`; internal admin/operations pages stay English |
 | Async delivery | **Postgres outbox + Vercel Cron** | Request-path fast drain plus lease/retry/dead-letter recovery |
 | Validation | **Zod** | All API request bodies |
 | Hosting | **Vercel** | Serverless API routes |
@@ -51,7 +60,7 @@ behaviour verification is pending. `main` is live on Vercel.
 /Ripple
 ├── src/
 │   ├── app/
-│   │   ├── (public)/                    # No-auth: login, recovery/reset, submit
+│   │   ├── (public)/                    # No-auth: login, recovery/reset, submit, /t share page
 │   │   ├── (auth)/                      # Auth-required, sidebar layout
 │   │   │   ├── (operations)/            # Internal (admin + engineer) gate
 │   │   │   │   ├── field-service/       # Dispatch list/create/detail
@@ -116,13 +125,18 @@ behaviour verification is pending. `main` is live on Vercel.
 │   │   │   ├── admin-mutations.ts        # Atomic admin catalog wrappers
 │   │   │   ├── inventory-contracts.ts    # Strict inventory request contracts
 │   │   │   └── inventory-mutations.ts    # Atomic inventory command wrappers
+│   │   ├── users/onboarding.ts           # Invitation delivery + initial account language
+│   │   ├── auth/account-links.ts        # One-time set-password links (token_hash → /auth/callback)
 │   │   └── email/
-│   │       └── send.ts                  # Resend templates + idempotency keys
+│   │       ├── send.ts                  # Resend templates + idempotency keys
+│   │       └── i18n.ts                  # Email translator for the recipient's locale
+│   ├── i18n/                            # Locale config, request config, client namespace allow-list
 │   ├── types/
 │   │   ├── ticket.ts                    # ⭐ All domain enums + labels
 │   │   └── spare-parts.ts               # ⭐ Spare parts + field service enums
 │   └── middleware.ts                    # ⭐ Route guard + session refresh
-├── supabase/migrations/                 # 000–058, apply in order
+├── messages/                            # en/es/zh/ko catalogs (catalog-parity.test.ts keeps them aligned)
+├── supabase/migrations/                 # 000–059, apply in order
 ├── supabase/verification/               # Rollback-only SQL matrices (npm run verify:db)
 ├── supabase/config.toml                 # Local stack on ports 553xx (supabase start)
 ├── scripts/seed-local-qa.mjs            # Loopback-only QA fixtures (npm run seed:local)
@@ -188,10 +202,11 @@ const isInternal = role ? INTERNAL_ROLES.includes(role) : email ? isInternalEmai
 
 ## 5. Database Schema (Supabase)
 
-59 migrations (000–058), to be applied in order. Migrations 001–055 are
-confirmed applied and live-verified as of 2026-08-19. Migrations 000 and
-056–058 build from scratch and pass the local verification matrices; they
-await production application. Key tables:
+60 migrations (000–059), to be applied in order. Migrations 001–055 are
+confirmed applied and live-verified as of 2026-08-19; 056–058 were applied to
+production on 2026-10-06. Migration 059 builds from scratch and passes the
+local verification matrix (36 assertions); it awaits production application.
+Key tables:
 
 | Table | Purpose | Notes |
 |---|---|---|
@@ -217,6 +232,14 @@ await production application. Key tables:
 | `spare_parts` / `spare_part_inventory` / `spare_part_requests` / `spare_part_request_items` | Phase 3 catalog + per-site stock + request workflow | `request_no` SPR-XXXX; migration 042 makes catalog create/update transactionally audited with normalized case-folded identity, bounded shape, nonnegative price, and no-op preservation. Migration 043 adds guarded atomic stock upsert/PATCH, ordered quantity bounds, active-parent checks, exact audit evidence, and increase-only restock timestamps; its 72-assertion live matrix is green |
 | `field_service_orders` / `field_service_engineers` | Phase 3 dispatch | `order_no` FSO-XXXX, M:N engineers |
 | `ticket_customer_reply_requests` | Service-only replay ledger for guest replies and customer reopen | Migration 058; keys 16–180 chars, exact replay returns the first comment, altered reuse fails closed |
+
+Migration 059 adds `users.locale` and `tickets.locale` (`en|es|zh|ko`,
+default `en`). The ticket-create wrapper stores the submitter's request
+language (replay-safe), `set_user_locale_atomic` lets a user, an admin, or the
+user's own customer manager set an account language with audit, and
+`finalize_admin_customer_user_creation` lets an admin create a customer
+manager or a site-bound customer for exactly one active company (sites must
+belong to it), mirrored into the canonical membership model.
 
 Migration 057 adds a `BEFORE UPDATE OF status` trigger on `spare_part_requests`
 (requested → approved|cancelled, approved → shipped|cancelled, shipped →
@@ -341,8 +364,8 @@ if ("error" in auth) return NextResponse.json({ error: auth.error }, { status: a
 ```bash
 npm ci
 cp .env.local.example .env.local   # fill in real values
-# Production: run migrations in the Supabase SQL editor in order (000 → 058).
-# Local: `supabase start` builds 000 → 058 on ports 553xx (another local
+# Production: run migrations in the Supabase SQL editor in order (000 → 059).
+# Local: `supabase start` builds 000 → 059 on ports 553xx (another local
 # project may already own the default 543xx ports).
 npm run dev
 ```
@@ -352,18 +375,22 @@ npm run dev
 supabase start            # or `supabase db reset` to rebuild from scratch
 npm run verify:db         # rollback-only SQL matrices in supabase/verification
 npm run seed:local        # loopback-only QA accounts for every role
-# Production build against the local stack (public env is inlined at build):
+# Production build against the local stack. NEXT_PUBLIC_* values are inlined
+# at BUILD time, so build with the local values too (otherwise the browser
+# signs in against production). Use a public HTTPS NEXT_PUBLIC_APP_URL such
+# as https://support.dropletai.services so invitation links validate; the
+# workflow script only uses their path:
 #   export NEXT_PUBLIC_SUPABASE_URL / _PUBLISHABLE_KEY / SUPABASE_SECRET_KEY
 #   from `supabase status -o env`, blank provider keys, then
 #   npm run build && npx next start -p 3002
 RIPPLE_E2E_REQUIRE_CREDENTIALS=1 \
   RIPPLE_E2E_FIXTURES_FILE=scripts/credentialed-role-matrix.local.json \
   npm run test:e2e:credentialed   # 82 read-only role/tenant checks
-npm run test:e2e:workflows        # 23 mutating workflow checks (reseed first)
+npm run test:e2e:workflows        # 38 mutating workflow checks (reseed first)
 ```
 Run the app against the local stack by overriding env inline (process env
 wins over `.env`), and blank provider keys so nothing reaches real Slack,
-Resend, or MiniMax: see `.claude/launch.json` `ripple-local` or set
+or Resend: see `.claude/launch.json` `ripple-local` or set
 `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, and
 `SUPABASE_SECRET_KEY` from `supabase status -o env`.
 
@@ -372,11 +399,11 @@ Resend, or MiniMax: see `.claude/launch.json` `ripple-local` or set
 - `npm run build` — production build
 - `npm run start` — production server
 - `npm run lint` — direct ESLint CLI across the repository; warnings fail the gate
-- `npm test` — Vitest 4 unit/contract suite (1,390 tests)
-- `npm run verify:db` — local database verification matrices (95 assertions)
+- `npm test` — Vitest 4 unit/contract suite (1,432 tests, including catalog parity for all four languages)
+- `npm run verify:db` — local database verification matrices (131 assertions)
 - `npm run seed:local` — idempotent local QA fixtures (refuses non-loopback URLs); also writes the gitignored `scripts/credentialed-role-matrix.local.json`
-- `npm run test:e2e:workflows` — local-only mutating workflow E2E (downloads, update email, auto-return, reopen, guest reply, approval); run after `seed:local` against a production build served on port 3002
-- `npm run test:e2e` — 42-check production HTTP smoke plus optional credentialed Playwright/API/RLS matrix; requires a successful build
+- `npm run test:e2e:workflows` — local-only mutating workflow E2E (downloads, update email, auto-return, reopen, guest reply, approval, admin and manager invitations, Spanish set-password → sign-in → ticket); run after `seed:local` against a production build served on port 3002
+- `npm run test:e2e` — 45-check production HTTP smoke (incl. es/zh/ko rendering) plus optional credentialed Playwright/API/RLS matrix; requires a successful build
 - `npm run test:e2e:credentialed` — real six-account/two-tenant matrix; set `RIPPLE_E2E_FIXTURES_FILE`
 - `npm run test:e2e:install-browser` — install the pinned Chromium runtime
 
@@ -389,8 +416,8 @@ SLACK_BOT_TOKEN=
 SLACK_SIGNING_SECRET=
 RESEND_API_KEY=                         # optional until sender domain is verified
 EMAIL_FROM=support@dropletai.services
-NEXT_PUBLIC_APP_URL=
-CRON_SECRET=                           # long server-only outbox worker token
+NEXT_PUBLIC_APP_URL=                   # public HTTPS origin; required for invitation and reset links
+CRON_SECRET=                           # long random server-only token (openssl rand -hex 32); Vercel Cron sends it as a Bearer token
 ```
 
 ### Git
@@ -1764,6 +1791,30 @@ missing" and called `signOut()`, so a database blip would sign every active
 user out. It now returns a no-store 503 with `Retry-After` and keeps the
 session; only a successful read that finds no active profile revokes it.
 
+### Public build-time env makes a "local" build talk to production
+Found 2026-10-06. A production build served against the local stack still had
+the production `NEXT_PUBLIC_SUPABASE_URL` inlined from `.env.local`, so the
+browser sent local QA sign-ins to the production Auth endpoint (they failed;
+no accounts exist there). Server-side env was local, which hid the problem
+until a real browser login.
+
+**Lesson:** `NEXT_PUBLIC_*` is compiled into the bundle. Set the local values
+at build time, not only at `next start`, and grep `.next/static` for the
+production project ref before running browser tests.
+
+### Translation tests must not reward awkward copy
+Found 2026-10-06. A parity test that failed on any value identical to English
+pushed translators to pad natural loanwords ("Tickets" → "Tickets de
+soporte"). Keep the "actually translated" check, but give it explicit global
+and per-locale allow-lists for brand names, codes, and loanwords.
+
+### Account language and device language are different facts
+Customers read the portal in a device language (cookie or browser) but receive
+emails in the account language (`users.locale`) or the ticket's submission
+language (`tickets.locale`). Middleware adopts the account language only on a
+device with no explicit choice, the invitation callback does the same for the
+set-password page, and the switcher saves both for signed-in users.
+
 ### Dependency advisories land daily
 The 2026-08 zero-vulnerability baseline had become 18 advisories (one critical
 Next.js RCE) by 2026-10-05, and two more (proxy-addr critical, source-map-js
@@ -1979,7 +2030,10 @@ resume work; this section remains the broader historical summary.
 ### Known issues / open work
 | Priority | Item | Where | Notes |
 |---|---|---|---|
-| 🟡 Verify | Migrations 056–058 applied to production 2026-10-06 (reported) | `supabase/migrations/` | Deploy the matching application code, then run production behaviour checks; `npm run verify:db` passes locally (95 assertions) and replies/auto-return were 12-way concurrency checked |
+| 🔴 Deploy | Apply migration 059 before deploying this branch | `supabase/migrations/059_customer_locales.sql` | Ticket creation sends `locale` to the 059 wrapper and admin onboarding calls the 059 command; deploying the code first breaks both. `npm run verify:db` passes locally (131 assertions) |
+| 🟡 Review | Native-speaker review of es/zh/ko copy | `messages/*.json` | Machine-assisted translations pass key/placeholder/ICU parity tests; ask a fluent reviewer to read login, submit, ticket detail, and emails. Terms to confirm: project-status labels ("Out of Service", "Pre-Signoff"), "Account Manager" |
+| 🟡 Configure | Invitation/reset link lifetime is Supabase's email OTP expiry (default 1 hour) | Supabase dashboard → Auth → Email | Raise to 24 hours so invitations survive a working day; admins can resend from the user page ("Send sign-in link") |
+| 🟡 Verify | Migrations 056–058 applied to production 2026-10-06 (reported) | `supabase/migrations/` | Deploy the matching application code, then run production behaviour checks; `npm run verify:db` passes locally and replies/auto-return were 12-way concurrency checked |
 | 🟡 Configure | Daily cron now also auto-closes resolved tickets | `vercel.json`, `/api/internal/outbox/dispatch` | Requires `CRON_SECRET`; a 5–15 minute schedule (Vercel Pro or external scheduler) would also tighten outbox retry latency |
 | 🟢 Low | 34 latent type errors in test files only (Node `File` vs DOM `File` under TS 5.9) | `src/**/*.test.ts` | `next build` type-checks app code cleanly; add a `tsc --noEmit` gate after fixing test typings |
 | 🟢 Low | Dev-only `braces` ≤3.0.3 advisory has no published fix | `eslint-config-next` → `fast-glob` | Lint-time only on repository-authored globs; CI audits production with zero tolerance and the full tree for criticals |
@@ -2423,7 +2477,7 @@ npm audit
 ```
 
 **Apply a new migration:**
-1. Create `supabase/migrations/059_xxx.sql` (next number)
+1. Create `supabase/migrations/060_xxx.sql` (next number)
 2. Test locally: `supabase db reset` (drops + re-applies all)
 3. Apply to prod via Supabase SQL editor
 4. Document in this file's §5 + §10

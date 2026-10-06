@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 
 /**
  * Reusable "you don't have permission to see this" screen. Use anywhere a
@@ -6,12 +7,13 @@ import Link from "next/link";
  * app shell so the user can navigate back.
  */
 export function ForbiddenScreen({
-  title = "You don't have access",
-  description = "Your account doesn't have permission to view this page. If you think this is wrong, contact your admin.",
+  title,
+  description,
 }: {
   title?: string;
   description?: string;
 }) {
+  const t = useTranslations("forbidden");
   return (
     <div className="p-8 max-w-lg mx-auto text-center pt-24">
       <div className="mx-auto h-12 w-12 rounded-full bg-amber-100 flex items-center justify-center mb-4">
@@ -29,13 +31,17 @@ export function ForbiddenScreen({
           />
         </svg>
       </div>
-      <h1 className="text-lg font-semibold text-foreground mb-2">{title}</h1>
-      <p className="text-sm text-muted-foreground mb-6">{description}</p>
+      <h1 className="text-lg font-semibold text-foreground mb-2">
+        {title ?? t("title")}
+      </h1>
+      <p className="text-sm text-muted-foreground mb-6">
+        {description ?? t("body")}
+      </p>
       <Link
         href="/dashboard"
         className="inline-block rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
       >
-        Back to dashboard
+        {t("back")}
       </Link>
     </div>
   );

@@ -15,68 +15,29 @@ import {
 } from "lucide-react";
 import { PublicSiteFooter } from "@/components/public-site-footer";
 import { PublicSiteHeader } from "@/components/public-site-header";
+import { getTranslations } from "next-intl/server";
 
 const intakeSteps = [
-  {
-    number: "01",
-    title: "Identify the site",
-    description:
-      "Use the site code assigned to your deployment so the request reaches the right customer and facility context.",
-    icon: MapPin,
-  },
-  {
-    number: "02",
-    title: "Describe the impact",
-    description:
-      "Tell us what stopped, when it started, and which equipment or process is affected. Add photos, logs, or video.",
-    icon: MessageSquareText,
-  },
-  {
-    number: "03",
-    title: "Track the response",
-    description:
-      "Follow status, ownership, engineer updates, parts requests, and field-service activity from one ticket.",
-    icon: ClipboardCheck,
-  },
-];
+  { number: "01", key: "site", icon: MapPin },
+  { number: "02", key: "impact", icon: MessageSquareText },
+  { number: "03", key: "track", icon: ClipboardCheck },
+] as const;
 
-const checklist = [
-  "Site code and affected area",
-  "Equipment or asset identifier",
-  "Operational and safety impact",
-  "When the behavior started",
-  "Error text, photos, video, or logs",
-  "Actions already attempted",
-];
+const checklist = ["site", "asset", "impact", "started", "evidence", "tried"] as const;
 
 const capabilities = [
-  {
-    title: "Structured triage",
-    description:
-      "Severity and production-impact fields help the service team prioritize the right response.",
-    icon: ShieldCheck,
-  },
-  {
-    title: "Engineering collaboration",
-    description:
-      "Customer-visible updates and internal technical notes keep every handoff connected.",
-    icon: Wrench,
-  },
-  {
-    title: "Parts coordination",
-    description:
-      "Link spare-part requests and fulfillment progress directly to the support case.",
-    icon: PackageCheck,
-  },
-  {
-    title: "Reply from anywhere",
-    description:
-      "Answer questions, share files, or reopen a ticket from your account or your tracking link.",
-    icon: Reply,
-  },
-];
+  { key: "triage", icon: ShieldCheck },
+  { key: "collaboration", icon: Wrench },
+  { key: "parts", icon: PackageCheck },
+  { key: "reply", icon: Reply },
+] as const;
 
-export default function HomePage() {
+const severities = ["P1", "P2", "P3", "P4"] as const;
+const highlights = ["channels", "siteAware", "timeline"] as const;
+
+export default async function HomePage() {
+  const t = await getTranslations("landing");
+  const labels = await getTranslations("labels");
   return (
     <div className="min-h-screen bg-white">
       <PublicSiteHeader current="home" />
@@ -85,7 +46,7 @@ export default function HomePage() {
         <section className="relative isolate min-h-[680px] overflow-hidden bg-slate-950">
           <Image
             src="/images/ripple-automation-fleet.jpg"
-            alt="Autonomous mobile robots lined up inside an industrial facility"
+            alt={t("heroImageAlt")}
             fill
             priority
             sizes="100vw"
@@ -98,46 +59,42 @@ export default function HomePage() {
             <div className="max-w-3xl">
               <div className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-slate-950/35 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-lime-300 backdrop-blur">
                 <span className="h-1.5 w-1.5 rounded-full bg-lime-400" />
-                Service operations, connected
+                {t("eyebrow")}
               </div>
               <h1 className="mt-7 max-w-2xl text-5xl font-semibold leading-[0.98] tracking-[-0.045em] text-white sm:text-6xl lg:text-7xl">
-                Keep your automation moving.
+                {t("title")}
               </h1>
               <p className="mt-7 max-w-2xl text-lg leading-8 text-slate-200 sm:text-xl">
-                Report an issue once, route it with the right site and
-                operational context, and follow every update through
-                resolution.
+                {t("lead")}
               </p>
               <div className="mt-9 flex flex-col gap-3 sm:flex-row">
                 <Link
                   href="/submit"
                   className="inline-flex items-center justify-center gap-2 rounded-xl bg-lime-400 px-5 py-3.5 text-sm font-bold text-slate-950 shadow-lg shadow-lime-950/20 transition hover:bg-lime-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lime-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
                 >
-                  Submit a support request
+                  {t("submitCta")}
                   <ArrowRight className="h-4 w-4" aria-hidden="true" />
                 </Link>
                 <Link
                   href="/login"
                   className="inline-flex items-center justify-center rounded-xl border border-white/25 bg-white/10 px-5 py-3.5 text-sm font-semibold text-white backdrop-blur transition hover:bg-white/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
                 >
-                  Sign in to track tickets
+                  {t("signInCta")}
                 </Link>
               </div>
               <p className="mt-5 text-sm text-slate-300">
-                No account? You can still submit with your site code.
+                {t("noAccount")}
               </p>
             </div>
 
             <div className="mt-14 grid gap-px overflow-hidden rounded-2xl border border-white/15 bg-white/15 backdrop-blur md:grid-cols-3">
-              {[
-                ["Slack + web", "Create from /ticket or the support portal"],
-                ["Site-aware", "Route every issue to its deployment context"],
-                ["One timeline", "Keep status, updates, parts, and visits linked"],
-              ].map(([title, description]) => (
-                <div key={title} className="bg-slate-950/55 p-5 sm:p-6">
-                  <p className="text-sm font-semibold text-white">{title}</p>
+              {highlights.map((key) => (
+                <div key={key} className="bg-slate-950/55 p-5 sm:p-6">
+                  <p className="text-sm font-semibold text-white">
+                    {t(`highlights.${key}.title`)}
+                  </p>
                   <p className="mt-1 text-sm leading-6 text-slate-300">
-                    {description}
+                    {t(`highlights.${key}.description`)}
                   </p>
                 </div>
               ))}
@@ -152,15 +109,13 @@ export default function HomePage() {
           <div className="mx-auto max-w-7xl px-6 lg:px-8">
             <div className="max-w-2xl">
               <p className="text-sm font-bold uppercase tracking-[0.18em] text-primary">
-                A clearer support handoff
+                {t("how.eyebrow")}
               </p>
               <h2 className="mt-4 text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl">
-                From first signal to documented resolution
+                {t("how.title")}
               </h2>
               <p className="mt-5 text-lg leading-8 text-slate-600">
-                Ripple gives customers and service teams a shared operating
-                record without forcing every conversation into another
-                spreadsheet.
+                {t("how.lead")}
               </p>
             </div>
 
@@ -181,10 +136,10 @@ export default function HomePage() {
                       </span>
                     </div>
                     <h3 className="mt-8 text-xl font-semibold text-slate-950">
-                      {step.title}
+                      {t(`how.steps.${step.key}.title`)}
                     </h3>
                     <p className="mt-3 text-sm leading-7 text-slate-600">
-                      {step.description}
+                      {t(`how.steps.${step.key}.description`)}
                     </p>
                   </article>
                 );
@@ -197,14 +152,13 @@ export default function HomePage() {
           <div className="mx-auto grid max-w-7xl gap-12 px-6 lg:grid-cols-[0.9fr_1.1fr] lg:items-center lg:px-8">
             <div>
               <p className="text-sm font-bold uppercase tracking-[0.18em] text-primary">
-                Faster, more useful triage
+                {t("prepare.eyebrow")}
               </p>
               <h2 className="mt-4 text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl">
-                Give the engineer a strong starting point.
+                {t("prepare.title")}
               </h2>
               <p className="mt-5 text-lg leading-8 text-slate-600">
-                A concise report with operational context is more useful than a
-                long message without asset or impact details.
+                {t("prepare.lead")}
               </p>
               <div className="mt-8 grid gap-3 sm:grid-cols-2">
                 {checklist.map((item) => (
@@ -213,7 +167,7 @@ export default function HomePage() {
                       <Check className="h-3.5 w-3.5" aria-hidden="true" />
                     </span>
                     <span className="text-sm leading-6 text-slate-700">
-                      {item}
+                      {t(`prepare.checklist.${item}`)}
                     </span>
                   </div>
                 ))}
@@ -222,7 +176,7 @@ export default function HomePage() {
                 href="/submit"
                 className="mt-9 inline-flex items-center gap-2 text-sm font-bold text-primary hover:text-primary/80"
               >
-                Start a structured report
+                {t("prepare.cta")}
                 <ArrowRight className="h-4 w-4" aria-hidden="true" />
               </Link>
             </div>
@@ -234,26 +188,25 @@ export default function HomePage() {
                 </span>
                 <div>
                   <p className="text-sm font-semibold uppercase tracking-[0.14em] text-lime-300">
-                    Choose impact carefully
+                    {t("prepare.severityEyebrow")}
                   </p>
                   <h3 className="mt-2 text-2xl font-semibold">
-                    Severity should describe operations, not frustration.
+                    {t("prepare.severityTitle")}
                   </h3>
                 </div>
               </div>
               <div className="mt-8 space-y-4">
-                {[
-                  ["P1 — Critical", "Safety concern or production stopped"],
-                  ["P2 — High", "Major degradation or urgent operational risk"],
-                  ["P3 — Normal", "Limited impact with workarounds available"],
-                  ["P4 — Low", "Question, training, or planned improvement"],
-                ].map(([label, meaning]) => (
+                {severities.map((severity) => (
                   <div
-                    key={label}
+                    key={severity}
                     className="grid gap-1 border-t border-white/10 pt-4 sm:grid-cols-[150px_1fr]"
                   >
-                    <p className="text-sm font-semibold text-white">{label}</p>
-                    <p className="text-sm leading-6 text-slate-400">{meaning}</p>
+                    <p className="text-sm font-semibold text-white">
+                      {labels(`severity.${severity}`)}
+                    </p>
+                    <p className="text-sm leading-6 text-slate-400">
+                      {t(`prepare.severity.${severity}`)}
+                    </p>
                   </div>
                 ))}
               </div>
@@ -266,15 +219,13 @@ export default function HomePage() {
             <div className="grid gap-12 lg:grid-cols-[0.85fr_1.15fr]">
               <div>
                 <p className="text-sm font-bold uppercase tracking-[0.18em] text-lime-300">
-                  More than a ticket inbox
+                  {t("record.eyebrow")}
                 </p>
                 <h2 className="mt-4 text-3xl font-semibold tracking-tight sm:text-4xl">
-                  One service record across the work.
+                  {t("record.title")}
                 </h2>
                 <p className="mt-5 max-w-xl text-lg leading-8 text-slate-400">
-                  The same support case can coordinate software investigation,
-                  hardware evidence, spare parts, and onsite service without
-                  losing the original customer context.
+                  {t("record.lead")}
                 </p>
               </div>
               <div className="grid gap-px overflow-hidden rounded-2xl bg-white/10 sm:grid-cols-2">
@@ -282,7 +233,7 @@ export default function HomePage() {
                   const Icon = capability.icon;
                   return (
                     <article
-                      key={capability.title}
+                      key={capability.key}
                       className="bg-slate-900 p-6 sm:p-7"
                     >
                       <Icon
@@ -290,10 +241,10 @@ export default function HomePage() {
                         aria-hidden="true"
                       />
                       <h3 className="mt-5 font-semibold text-white">
-                        {capability.title}
+                        {t(`record.capabilities.${capability.key}.title`)}
                       </h3>
                       <p className="mt-2 text-sm leading-6 text-slate-400">
-                        {capability.description}
+                        {t(`record.capabilities.${capability.key}.description`)}
                       </p>
                     </article>
                   );
@@ -315,13 +266,16 @@ export default function HomePage() {
                   aria-hidden="true"
                 />
                 <h2 className="mt-6 text-2xl font-semibold text-slate-950">
-                  Use your Slack Connect channel
+                  {t("channels.slackTitle")}
                 </h2>
                 <p className="mt-4 text-base leading-7 text-slate-600">
-                  Run <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-sm text-slate-900">/ticket</code>{" "}
-                  in your site channel to create a structured request without
-                  leaving Slack. Contact your DropletAI Account Manager if your
-                  site channel is not connected yet.
+                  {t.rich("channels.slackBody", {
+                    code: (chunks) => (
+                      <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-sm text-slate-900">
+                        {chunks}
+                      </code>
+                    ),
+                  })}
                 </p>
               </article>
               <article className="rounded-3xl border border-lime-200 bg-white p-8 shadow-sm">
@@ -330,18 +284,19 @@ export default function HomePage() {
                   aria-hidden="true"
                 />
                 <h2 className="mt-6 text-2xl font-semibold text-slate-950">
-                  Submit from the web—account optional
+                  {t("channels.webTitle")}
                 </h2>
                 <p className="mt-4 text-base leading-7 text-slate-600">
-                  Use your deployment&apos;s site code to submit from the web.
-                  If you do not know it, ask your Account Manager or email{" "}
-                  <a
-                    href="mailto:support@dropletai.services"
-                    className="font-semibold text-primary hover:underline"
-                  >
-                    support@dropletai.services
-                  </a>
-                  .
+                  {t.rich("channels.webBody", {
+                    email: (chunks) => (
+                      <a
+                        href="mailto:support@dropletai.services"
+                        className="font-semibold text-primary hover:underline"
+                      >
+                        {chunks}
+                      </a>
+                    ),
+                  })}
                 </p>
               </article>
             </div>
@@ -349,17 +304,17 @@ export default function HomePage() {
             <div className="mt-12 flex flex-col items-start justify-between gap-6 rounded-3xl bg-primary p-8 text-white sm:p-10 lg:flex-row lg:items-center">
               <div>
                 <p className="text-sm font-semibold uppercase tracking-[0.16em] text-lime-100">
-                  Ready when you are
+                  {t("closing.eyebrow")}
                 </p>
                 <h2 className="mt-3 text-3xl font-semibold tracking-tight">
-                  Start with the site. We&apos;ll keep the work connected.
+                  {t("closing.title")}
                 </h2>
               </div>
               <Link
                 href="/submit"
                 className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-white px-5 py-3.5 text-sm font-bold text-primary transition hover:bg-lime-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
               >
-                Submit a ticket
+                {t("closing.cta")}
                 <ArrowRight className="h-4 w-4" aria-hidden="true" />
               </Link>
             </div>

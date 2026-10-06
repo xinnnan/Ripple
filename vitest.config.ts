@@ -16,5 +16,6 @@ export default defineConfig({
     environment: "node",
     include: ["src/**/*.{test,spec}.{ts,tsx}"],
     globals: true,
+    setupFiles: ["./src/test/setup-i18n.tsx"],
   },
 });

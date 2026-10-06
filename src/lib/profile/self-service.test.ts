@@ -33,7 +33,11 @@ describe("self-service profile contract", () => {
   it("rejects an empty name", () => {
     expect(
       normalizeSelfServiceProfile({ fullName: "   ", phone: "" })
-    ).toEqual({ success: false, error: "Full name is required." });
+    ).toEqual({
+      success: false,
+      error: "Full name is required.",
+      code: "nameRequired",
+    });
   });
 
   it("rejects overlong profile fields", () => {
@@ -54,12 +58,14 @@ describe("self-service profile contract", () => {
     ).toEqual({
       success: false,
       error: "Full name contains invalid characters.",
+      code: "nameInvalid",
     });
     expect(
       normalizeSelfServiceProfile({ fullName: "Alex", phone: "+1\t555" })
     ).toEqual({
       success: false,
       error: "Phone contains invalid characters.",
+      code: "phoneInvalid",
     });
   });
 

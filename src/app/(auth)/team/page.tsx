@@ -1,17 +1,21 @@
 import type { Metadata } from "next";
+import { getLocale, getTranslations } from "next-intl/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import type { UserRole } from "@/types/ticket";
-import { isCustomerManager, ROLE_LABELS } from "@/lib/roles";
+import { isCustomerManager } from "@/lib/roles";
 import { formatDate } from "@/lib/utils";
 import { CreateTeamMemberForm } from "./create-team-member-form";
 import { TableEmpty } from "@/components/empty-state";
 import { buildTeamSiteAccess } from "@/lib/team/read-model";
 import { assertPageQueriesSucceeded } from "@/lib/server-page-query";
 
-export const metadata: Metadata = { title: "Team" };
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("team");
+  return { title: t("metaTitle") };
+}
 
 export const dynamic = "force-dynamic";
 
@@ -77,18 +81,23 @@ export default async function TeamPage() {
     membershipsResult.data || []
   );
 
+  const [t, labels, locale] = await Promise.all([
+    getTranslations("team"),
+    getTranslations("labels"),
+    getLocale(),
+  ]);
   const total = users?.length || 0;
   const active = users?.filter((u: { status: string }) => u.status === "active").length || 0;
   const managers = users?.filter((u: { role: string }) => u.role === "customer_manager").length || 0;
   const customers = users?.filter((u: { role: string }) => u.role === "customer").length || 0;
 
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-8">
       <div className="mb-8 flex items-start justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Team</h1>
+          <h1 className="text-2xl font-bold text-foreground">{t("title")}</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Manage your organization&apos;s team members and site access.
+            {t("subtitle")}
           </p>
         </div>
       </div>
@@ -96,19 +105,19 @@ export default async function TeamPage() {
       {/* Team overview */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
         <div className="rounded-xl border border-border p-6">
-          <p className="text-xs text-muted-foreground">Total members</p>
+          <p className="text-xs text-muted-foreground">{t("stats.total")}</p>
           <p className="text-3xl font-bold text-blue-600 mt-1">{total}</p>
         </div>
         <div className="rounded-xl border border-border p-6">
-          <p className="text-xs text-muted-foreground">Active</p>
+          <p className="text-xs text-muted-foreground">{t("stats.active")}</p>
           <p className="text-3xl font-bold text-green-600 mt-1">{active}</p>
         </div>
         <div className="rounded-xl border border-border p-6">
-          <p className="text-xs text-muted-foreground">Customer managers</p>
+          <p className="text-xs text-muted-foreground">{t("stats.managers")}</p>
           <p className="text-3xl font-bold text-purple-600 mt-1">{managers}</p>
         </div>
         <div className="rounded-xl border border-border p-6">
-          <p className="text-xs text-muted-foreground">Customers</p>
+          <p className="text-xs text-muted-foreground">{t("stats.customers")}</p>
           <p className="text-3xl font-bold text-amber-600 mt-1">{customers}</p>
         </div>
       </div>
@@ -116,38 +125,38 @@ export default async function TeamPage() {
       <CreateTeamMemberForm sites={sites} />
 
       {/* Team Members Table */}
-      <div className="rounded-xl border border-border overflow-hidden">
+      <div className="rounded-xl border border-border overflow-x-auto">
         {total === 0 ? (
           <TableEmpty
             colSpan={1}
             icon="users"
-            title="No team members yet"
-            description="Add the first person to your organization. They'll be able to submit and track tickets for the sites you assign them to."
+            title={t("emptyTitle")}
+            description={t("emptyDescription")}
           />
         ) : (
           <table className="w-full">
             <thead>
               <tr className="border-b border-border bg-muted/50">
                 <th className="p-3 text-left text-xs font-medium text-muted-foreground">
-                  Name
+                  {t("columns.name")}
                 </th>
                 <th className="p-3 text-left text-xs font-medium text-muted-foreground">
-                  Email
+                  {t("columns.email")}
                 </th>
                 <th className="p-3 text-left text-xs font-medium text-muted-foreground">
-                  Role
+                  {t("columns.role")}
                 </th>
                 <th className="p-3 text-left text-xs font-medium text-muted-foreground">
-                  Sites
+                  {t("columns.sites")}
                 </th>
                 <th className="p-3 text-left text-xs font-medium text-muted-foreground">
-                  Status
+                  {t("columns.status")}
                 </th>
                 <th className="p-3 text-left text-xs font-medium text-muted-foreground">
-                  Joined
+                  {t("columns.joined")}
                 </th>
                 <th className="p-3 text-right text-xs font-medium text-muted-foreground">
-                  Actions
+                  {t("columns.actions")}
                 </th>
               </tr>
             </thead>
@@ -175,14 +184,14 @@ export default async function TeamPage() {
                       </td>
                       <td className="p-3">
                         <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-blue-50 text-blue-700">
-                          {ROLE_LABELS[u.role as UserRole] || u.role}
+                          {labels.has(`role.${u.role}`) ? labels(`role.${u.role}`) : u.role}
                         </span>
                       </td>
                       <td className="p-3">
                         <div className="flex flex-wrap gap-1">
                           {userSites.length === 0 ? (
                             <span className="text-xs text-muted-foreground">
-                              No sites
+                              {t("noSites")}
                             </span>
                           ) : (
                             <>
@@ -211,23 +220,23 @@ export default async function TeamPage() {
                               : "bg-gray-50 text-gray-700"
                           }`}
                         >
-                          {u.status}
+                          {labels.has(`userStatus.${u.status}`) ? labels(`userStatus.${u.status}`) : u.status}
                         </span>
                       </td>
                       <td className="p-3 text-xs text-muted-foreground">
-                        {formatDate(u.created_at)}
+                        {formatDate(u.created_at, undefined, locale)}
                       </td>
                       <td className="p-3 text-right">
                         {u.role === "customer_manager" ? (
                           <span className="text-xs text-muted-foreground">
-                            Organization-wide
+                            {t("organizationWide")}
                           </span>
                         ) : (
                           <Link
                             href={`/team/${u.id}`}
                             className="text-sm font-medium text-primary hover:text-primary/80"
                           >
-                            Edit
+                            {t("edit")}
                           </Link>
                         )}
                       </td>

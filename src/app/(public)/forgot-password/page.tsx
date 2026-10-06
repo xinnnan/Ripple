@@ -12,8 +12,11 @@ import {
   isRecoveryLookupMiss,
 } from "@/lib/auth/browser-flow";
 import { logIdentityReadFailure } from "@/lib/supabase/auth-read";
+import { useTranslations } from "next-intl";
 
 export default function ForgotPasswordPage() {
+  const t = useTranslations("forgotPassword");
+  const authErrors = useTranslations("authErrors");
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -32,6 +35,30 @@ export default function ForgotPasswordPage() {
     setError(null);
 
     try {
+      // Ripple sends the recovery email itself (localized, via Resend). The
+      // response is identical whether or not the address has an account.
+      const response = await fetch("/api/auth/recover", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.trim() }),
+      });
+      if (response.status === 429) {
+        setError(authErrors("recoveryRateLimited"));
+        return;
+      }
+      if (!response.ok) {
+        setError(authErrors("recoveryGeneric"));
+        return;
+      }
+      const { delivery } = (await response.json().catch(() => ({}))) as {
+        delivery?: string;
+      };
+      if (delivery === "ripple") {
+        setSubmitted(true);
+        return;
+      }
+
+      // Ripple email is disabled: fall back to Supabase Auth's own mailer.
       const supabase = createClient();
       const { error: resetError } = await supabase.auth.resetPasswordForEmail(
         email.trim(),
@@ -48,7 +75,7 @@ export default function ForgotPasswordPage() {
         if (!isAuthRateLimitError(resetError)) {
           logIdentityReadFailure("forgot-password/request", resetError);
         }
-        setError(getRecoveryErrorMessage(resetError));
+        setError(authErrors(getRecoveryErrorMessage(resetError)));
         return;
       }
 
@@ -57,7 +84,7 @@ export default function ForgotPasswordPage() {
       setSubmitted(true);
     } catch (resetError) {
       logIdentityReadFailure("forgot-password/request-unexpected", resetError);
-      setError(getRecoveryErrorMessage(resetError));
+      setError(authErrors(getRecoveryErrorMessage(resetError)));
     } finally {
       setLoading(false);
     }
@@ -69,26 +96,27 @@ export default function ForgotPasswordPage() {
       <main className="mx-auto grid max-w-6xl gap-8 px-6 py-14 lg:grid-cols-[0.8fr_1.2fr] lg:items-start lg:px-8 lg:py-20">
         <div className="pt-2">
           <p className="text-sm font-bold uppercase tracking-[0.18em] text-primary">
-            Account recovery
+            {t("eyebrow")}
           </p>
           <h1 className="mt-4 text-4xl font-semibold tracking-[-0.035em] text-slate-950">
-            Reset your password.
+            {t("title")}
           </h1>
           <p className="mt-5 max-w-md text-base leading-7 text-slate-600">
-            Enter the work email associated with Ripple. If it matches an
-            account, we&apos;ll send a time-limited recovery link.
+            {t("lead")}
           </p>
           <div className="mt-8 rounded-2xl border border-slate-200 bg-white p-5 text-sm leading-6 text-slate-600">
-            <p className="font-semibold text-slate-900">No longer have access?</p>
+            <p className="font-semibold text-slate-900">{t("noAccessTitle")}</p>
             <p className="mt-1">
-              Contact your DropletAI Account Manager or email{" "}
-              <a
-                href="mailto:support@dropletai.services"
-                className="font-semibold text-primary hover:underline"
-              >
-                support@dropletai.services
-              </a>
-              .
+              {t.rich("noAccessBody", {
+                email: (chunks) => (
+                  <a
+                    href="mailto:support@dropletai.services"
+                    className="font-semibold text-primary hover:underline"
+                  >
+                    {chunks}
+                  </a>
+                ),
+              })}
             </p>
           </div>
         </div>
@@ -100,19 +128,20 @@ export default function ForgotPasswordPage() {
                 <CheckCircle2 className="h-6 w-6" aria-hidden="true" />
               </span>
               <h2 className="mt-6 text-2xl font-semibold text-slate-950">
-                Check your inbox
+                {t("submittedTitle")}
               </h2>
               <p className="mt-3 text-sm leading-7 text-slate-600">
-                If an account matches <strong>{email.trim()}</strong>, a
-                recovery link is on its way. Check spam or junk folders before
-                requesting another email.
+                {t.rich("submittedBody", {
+                  email: email.trim(),
+                  strong: (chunks) => <strong>{chunks}</strong>,
+                })}
               </p>
               <button
                 type="button"
                 onClick={() => setSubmitted(false)}
                 className="mt-7 text-sm font-semibold text-primary hover:text-primary/80"
               >
-                Send another link
+                {t("sendAnother")}
               </button>
             </div>
           ) : (
@@ -121,10 +150,10 @@ export default function ForgotPasswordPage() {
                 <Mail className="h-6 w-6" aria-hidden="true" />
               </span>
               <h2 className="mt-6 text-2xl font-semibold text-slate-950">
-                Where should we send the link?
+                {t("formTitle")}
               </h2>
               <p className="mt-2 text-sm leading-6 text-slate-600">
-                Recovery links expire and can be used only once.
+                {t("formHint")}
               </p>
 
               {error && (
@@ -141,7 +170,7 @@ export default function ForgotPasswordPage() {
                   htmlFor="recovery-email"
                   className="mb-2 block text-sm font-semibold text-slate-800"
                 >
-                  Work email
+                  {t("email")}
                 </label>
                 <input
                   id="recovery-email"
@@ -152,7 +181,7 @@ export default function ForgotPasswordPage() {
                   onChange={(event) => setEmail(event.target.value)}
                   required
                   maxLength={320}
-                  placeholder="you@company.com"
+                  placeholder={t("emailPlaceholder")}
                   className="h-12 w-full rounded-xl border border-slate-300 bg-white px-4 text-sm text-slate-950 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-primary focus:ring-4 focus:ring-lime-100"
                 />
               </div>
@@ -162,7 +191,7 @@ export default function ForgotPasswordPage() {
                 disabled={loading}
                 className="mt-5 flex h-12 w-full items-center justify-center rounded-xl bg-primary px-4 text-sm font-bold text-white transition hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {loading ? "Sending link…" : "Send recovery link"}
+                {loading ? t("submitting") : t("submit")}
               </button>
             </form>
           )}
@@ -172,7 +201,7 @@ export default function ForgotPasswordPage() {
             className="mt-8 inline-flex items-center gap-1.5 text-sm font-semibold text-slate-600 hover:text-slate-950"
           >
             <ArrowLeft className="h-4 w-4" aria-hidden="true" />
-            Back to sign in
+            {t("backToSignIn")}
           </Link>
         </section>
       </main>

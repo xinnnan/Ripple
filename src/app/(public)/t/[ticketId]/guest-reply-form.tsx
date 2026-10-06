@@ -2,9 +2,11 @@
 
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { useLocale, useTranslations } from "next-intl";
 import {
   assertClientMutationResponse,
-  clientMutationErrorMessage,
+  clientMutationErrorStatus,
+  localizedClientMutationError,
 } from "@/lib/http/client-mutation";
 import { TICKET_COMMENT_MAX_LENGTH } from "@/lib/tickets/input-contract";
 import {
@@ -30,6 +32,8 @@ export function GuestReplyForm({
   canReopen,
   awaitingCustomer,
 }: GuestReplyFormProps) {
+  const t = useTranslations("guestReply");
+  const locale = useLocale();
   const [body, setBody] = useState("");
   const [reopen, setReopen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -47,7 +51,7 @@ export function GuestReplyForm({
     const normalizedBody = body.trim();
     if (busy) return;
     if (!normalizedBody) {
-      setMessage({ type: "error", text: "Write a message before sending." });
+      setMessage({ type: "error", text: t("empty") });
       return;
     }
     setSubmitting(true);
@@ -76,24 +80,22 @@ export function GuestReplyForm({
           body: requestBody,
         }
       );
-      await assertClientMutationResponse(response, "Your reply could not be sent");
+      await assertClientMutationResponse(response, t("failed"));
       attemptRef.current = null;
       setBody("");
       setReopen(false);
       setMessage({
         type: "success",
-        text: shouldReopen
-          ? "Ticket reopened. The team has your message."
-          : "Reply sent. The team has your message.",
+        text: shouldReopen ? t("reopened") : t("sent"),
       });
       startRefresh(() => router.refresh());
     } catch (error) {
       setMessage({
         type: "error",
-        text: clientMutationErrorMessage(
-          error,
-          "Replies are temporarily unavailable. Please retry."
-        ),
+        text:
+          clientMutationErrorStatus(error) === 429
+            ? t("rateLimited")
+            : localizedClientMutationError(error, t("failed"), locale),
       });
     } finally {
       setSubmitting(false);
@@ -113,11 +115,10 @@ export function GuestReplyForm({
         id="guest-reply-heading"
         className="mb-1 text-sm font-semibold text-foreground"
       >
-        {awaitingCustomer ? "The team is waiting on your reply" : "Reply to the team"}
+        {awaitingCustomer ? t("waitingTitle") : t("title")}
       </h2>
       <p className="mb-4 text-sm text-muted-foreground">
-        Your message is added to this ticket and goes straight to the engineer
-        working on it.
+        {t("body")}
       </p>
 
       {message && (
@@ -136,7 +137,7 @@ export function GuestReplyForm({
 
       <form aria-busy={busy} onSubmit={handleSubmit} className="space-y-3">
         <label htmlFor="guest-reply-body" className="sr-only">
-          Your reply
+          {t("label")}
         </label>
         <textarea
           id="guest-reply-body"
@@ -145,7 +146,7 @@ export function GuestReplyForm({
           rows={4}
           maxLength={TICKET_COMMENT_MAX_LENGTH}
           disabled={busy}
-          placeholder="Share an answer, an update, or what is still wrong"
+          placeholder={t("placeholder")}
           className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
         />
         {canReopen && (
@@ -158,23 +159,26 @@ export function GuestReplyForm({
               className="mt-0.5 h-4 w-4 accent-[var(--color-primary)]"
             />
             <span>
-              <span className="font-medium">This is not fixed — reopen the ticket</span>
+              <span className="font-medium">{t("reopenLabel")}</span>
               <span className="block text-xs text-muted-foreground">
-                Without this, your message is added but the ticket stays resolved.
+                {t("reopenHelp")}
               </span>
             </span>
           </label>
         )}
         <div className="flex items-center justify-between gap-3">
           <span className="text-xs text-muted-foreground">
-            {body.length.toLocaleString("en-US")} / 10,000
+            {t("counter", {
+              count: body.length.toLocaleString(locale),
+              max: TICKET_COMMENT_MAX_LENGTH.toLocaleString(locale),
+            })}
           </span>
           <button
             type="submit"
             disabled={busy}
             className="min-h-11 rounded-lg bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {busy ? "Sending…" : canReopen && reopen ? "Reopen and send" : "Send reply"}
+            {busy ? t("sending") : canReopen && reopen ? t("reopenAndSend") : t("send")}
           </button>
         </div>
       </form>

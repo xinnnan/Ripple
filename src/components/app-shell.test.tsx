@@ -4,7 +4,10 @@ import { describe, expect, it, vi } from "vitest";
 
 (globalThis as typeof globalThis & { React: typeof React }).React = React;
 
-vi.mock("next/navigation", () => ({ usePathname: () => "/dashboard" }));
+vi.mock("next/navigation", () => ({
+  usePathname: () => "/dashboard",
+  useRouter: () => ({ refresh: () => {} }),
+}));
 vi.mock("next/image", () => ({
   default: ({ alt }: { alt: string }) => (
     <span role="img" aria-label={alt || "Ripple"} />

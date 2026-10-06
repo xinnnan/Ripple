@@ -1,6 +1,8 @@
+import { randomBytes } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 type InternalRole = "admin" | "engineer";
+type CustomerRole = "customer_manager" | "customer";
 type ProvisioningPhase = "auth" | "finalize" | "reconcile";
 
 interface ProvisionedUser {
@@ -12,7 +14,9 @@ interface ProvisioningBase {
   supabase: SupabaseClient;
   actorId: string;
   email: string;
-  password: string;
+  /** Omit to invite: the account gets an unusable random password and the
+   * person chooses their own through a one-time setup link. */
+  password?: string;
   fullName: string;
   phone?: string | null;
 }
@@ -34,7 +38,7 @@ async function createProvisionalUser(
 ): Promise<ProvisionedUser> {
   const { data, error } = await args.supabase.auth.admin.createUser({
     email: args.email,
-    password: args.password,
+    password: args.password ?? randomBytes(32).toString("base64url"),
     email_confirm: true,
     user_metadata: {
       full_name: args.fullName,
@@ -100,6 +104,7 @@ async function reconcileTeamFinalization(args: {
   supabase: SupabaseClient;
   targetUserId: string;
   expectedCustomerId: string;
+  expectedRole?: CustomerRole;
 }): Promise<"committed" | "provisional" | "unknown"> {
   const { data, error } = await args.supabase
     .from("users")
@@ -109,7 +114,7 @@ async function reconcileTeamFinalization(args: {
 
   if (error || !data) return "unknown";
   if (
-    data.role === "customer" &&
+    data.role === (args.expectedRole ?? "customer") &&
     data.status === "active" &&
     data.customer_id === args.expectedCustomerId
   ) {
@@ -218,6 +223,65 @@ export async function provisionTeamUser(
 
   throw new UserProvisioningError(
     "Team user finalization requires reconciliation",
+    "reconcile",
+    result.error?.code,
+    true
+  );
+}
+
+/**
+ * Administrator onboarding for a customer company: creates either its
+ * customer manager or a site-bound customer user (migration 059).
+ */
+export async function provisionAdminCustomerUser(
+  args: ProvisioningBase & {
+    role: CustomerRole;
+    customerId: string;
+    siteIds: string[];
+  }
+): Promise<ProvisionedUser> {
+  const provisional = await createProvisionalUser(args);
+
+  let result: { data: unknown; error: null | { code?: string } } = {
+    data: null,
+    error: null,
+  };
+  try {
+    result = await args.supabase.rpc("finalize_admin_customer_user_creation", {
+      p_actor_id: args.actorId,
+      p_target_user_id: provisional.id,
+      p_customer_id: args.customerId,
+      p_role: args.role,
+      p_full_name: args.fullName,
+      p_phone: args.phone ?? null,
+      p_site_ids: args.siteIds,
+    });
+  } catch {
+    // A transport failure can happen after PostgreSQL commits. Re-read the
+    // profile before deciding whether compensation is safe.
+  }
+
+  if (!result.error && result.data === provisional.id) return provisional;
+
+  const state = await reconcileTeamFinalization({
+    supabase: args.supabase,
+    targetUserId: provisional.id,
+    expectedCustomerId: args.customerId,
+    expectedRole: args.role,
+  });
+  if (state === "committed") return provisional;
+  if (state === "provisional") {
+    const cleaned = await removeProvisionalUser(args.supabase, provisional.id);
+    throw new UserProvisioningError(
+      "Customer user finalization failed",
+      "finalize",
+      result.error?.code,
+      !cleaned
+    );
+  }
+
+  throw new UserProvisioningError(
+    "Customer user finalization requires reconciliation",
     "reconcile",
     result.error?.code,
     true

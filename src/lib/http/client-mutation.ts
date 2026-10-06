@@ -1,11 +1,18 @@
 const MAX_CLIENT_ERROR_LENGTH = 300;
 
 export class ExpectedClientMutationError extends Error {
-  constructor(message: string) {
+  constructor(
+    message: string,
+    /** Stable machine code from the API, used to show translated copy. */
+    readonly code?: string,
+    readonly status?: number
+  ) {
     super(message);
     this.name = "ExpectedClientMutationError";
   }
 }
+
+const ERROR_CODE_PATTERN = /^[A-Z][A-Z0-9_]{1,63}$/;
 
 function boundedErrorMessage(value: unknown, fallback: string): string {
   if (typeof value !== "string") return fallback;
@@ -23,12 +30,16 @@ export async function assertClientMutationResponse(
   if (response.ok) return;
 
   const body = (await response.json().catch(() => null)) as unknown;
-  const error =
-    typeof body === "object" && body !== null && "error" in body
-      ? (body as { error?: unknown }).error
-      : undefined;
+  const record =
+    typeof body === "object" && body !== null
+      ? (body as { error?: unknown; code?: unknown })
+      : {};
   throw new ExpectedClientMutationError(
-    boundedErrorMessage(error, fallback)
+    boundedErrorMessage(record.error, fallback),
+    typeof record.code === "string" && ERROR_CODE_PATTERN.test(record.code)
+      ? record.code
+      : undefined,
+    response.status
   );
 }
 
@@ -53,4 +64,26 @@ export function clientMutationErrorMessage(
   return error instanceof ExpectedClientMutationError
     ? error.message
     : fallback;
+}
+
+/** The API's stable error code, when the failure carried one. */
+export function clientMutationErrorCode(error: unknown): string | undefined {
+  return error instanceof ExpectedClientMutationError ? error.code : undefined;
+}
+
+/** HTTP status of an expected API failure, when known. */
+export function clientMutationErrorStatus(error: unknown): number | undefined {
+  return error instanceof ExpectedClientMutationError ? error.status : undefined;
+}
+
+/**
+ * API error messages are written in English. English readers get the precise
+ * bounded message; every other language gets the translated fallback.
+ */
+export function localizedClientMutationError(
+  error: unknown,
+  fallback: string,
+  locale: string
+): string {
+  return locale === "en" ? clientMutationErrorMessage(error, fallback) : fallback;
 }

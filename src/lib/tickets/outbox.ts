@@ -52,6 +52,8 @@ export interface IntegrationOutboxEvent {
 
 export interface OutboxTicket extends Ticket {
   submitter_email?: string | null;
+  /** Submission language (migration 059) for submitter emails. */
+  locale?: string | null;
 }
 
 export type OutboxDeliveryDecision =
@@ -243,6 +245,7 @@ export async function deliverTicketOutboxEvent(
           secureToken: ticket.secure_token,
           customerName: customer?.name ?? "Customer",
           siteName: site?.site_name ?? "Site",
+          locale: ticket.locale,
           idempotencyKey: `ripple-outbox/${event.id}`,
         })
       );
@@ -324,6 +327,7 @@ export async function deliverTicketOutboxEvent(
           title: ticket.title,
           secureToken: ticket.secure_token,
           resolutionSummary: summary,
+          locale: ticket.locale,
           idempotencyKey: `ripple-outbox/${event.id}`,
         })
       );
@@ -366,6 +370,7 @@ export async function deliverTicketOutboxEvent(
           message,
           // Read at delivery time so the subject reflects the current state.
           awaitingCustomer: ticket.status === "waiting_customer",
+          locale: ticket.locale,
           idempotencyKey: `ripple-outbox/${event.id}`,
         })
       );

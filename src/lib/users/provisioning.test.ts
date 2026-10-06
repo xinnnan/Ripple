@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   UserProvisioningError,
+  provisionAdminCustomerUser,
   provisionAdminUser,
   provisionTeamUser,
 } from "./provisioning";
@@ -194,6 +195,84 @@ describe("secure user provisioning wrapper", () => {
   });
 });
 
+describe("administrator customer onboarding", () => {
+  const customerArgs = {
+    ...base,
+    role: "customer" as const,
+    customerId: CUSTOMER_ID,
+    siteIds: [SITE_ID],
+  };
+
+  it("finalizes a company-bound customer through the migration 059 command", async () => {
+    const { client, rpc } = provisioningClient();
+
+    await expect(
+      provisionAdminCustomerUser({ ...customerArgs, supabase: client })
+    ).resolves.toEqual({ id: USER_ID, email: "created@example.com" });
+    expect(rpc).toHaveBeenCalledWith("finalize_admin_customer_user_creation", {
+      p_actor_id: ACTOR_ID,
+      p_target_user_id: USER_ID,
+      p_customer_id: CUSTOMER_ID,
+      p_role: "customer",
+      p_full_name: "Created User",
+      p_phone: "+1 555 0100",
+      p_site_ids: [SITE_ID],
+    });
+  });
+
+  it("generates an unusable password when the person is invited", async () => {
+    const { client, createUser } = provisioningClient();
+    const { password: _omit, ...invite } = customerArgs;
+
+    await provisionAdminCustomerUser({ ...invite, supabase: client });
+    const password = createUser.mock.calls[0][0].password as string;
+    expect(password.length).toBeGreaterThanOrEqual(40);
+    const second = provisioningClient();
+    await provisionAdminCustomerUser({ ...invite, supabase: second.client });
+    expect(second.createUser.mock.calls[0][0].password).not.toBe(password);
+  });
+
+  it("treats a committed manager as success after an ambiguous response", async () => {
+    const { client } = provisioningClient({
+      rpcThrows: true,
+      profile: { role: "customer_manager", status: "active", customer_id: CUSTOMER_ID },
+    });
+
+    await expect(
+      provisionAdminCustomerUser({
+        ...customerArgs,
+        role: "customer_manager",
+        siteIds: [],
+        supabase: client,
+      })
+    ).resolves.toMatchObject({ id: USER_ID });
+  });
+
+  it("compensates a provisional identity when the company command rejects", async () => {
+    const { client, deleteUser } = provisioningClient({
+      rpcResult: { data: null, error: { code: "42501" } },
+      profile: { role: "customer", status: "invited", customer_id: null },
+    });
+
+    await expect(
+      provisionAdminCustomerUser({ ...customerArgs, supabase: client })
+    ).rejects.toMatchObject({ phase: "finalize", code: "42501" });
+    expect(deleteUser).toHaveBeenCalledWith(USER_ID);
+  });
+
+  it("never deletes an account whose role or company does not match", async () => {
+    const { client, deleteUser } = provisioningClient({
+      rpcResult: { data: null, error: { code: "XX000" } },
+      profile: { role: "customer", status: "active", customer_id: SITE_ID },
+    });
+
+    await expect(
+      provisionAdminCustomerUser({ ...customerArgs, supabase: client })
+    ).rejects.toMatchObject({ phase: "reconcile", reconciliationRequired: true });
+    expect(deleteUser).not.toHaveBeenCalled();
+  });
+});
+
 describe("migration 039 provisioning integrity", () => {
   const migration = readFileSync(
     resolve(process.cwd(), "supabase/migrations/039_secure_user_provisioning.sql"),
@@ -260,11 +339,16 @@ describe("migration 039 provisioning integrity", () => {
     expect(teamRoute).not.toContain('.from("site_members").upsert');
   });
 
-  it("constrains admin creation to internal roles and stronger passwords", () => {
-    expect(adminRoute).toContain('z.enum(["admin", "engineer"])');
-    expect(adminRoute).toContain("password: z.string().min(12).max(128)");
+  it("binds admin-created customers to one company and keeps passwords strong", () => {
+    expect(adminRoute).toContain(
+      'z.enum(["admin", "engineer", "customer_manager", "customer"])'
+    );
+    expect(adminRoute).toContain("password: z.string().min(12).max(128).optional()");
+    expect(adminRoute).toContain("Customer users need at least one site");
+    expect(adminRoute).toContain("DropletAI staff are not bound to a customer");
+    expect(adminRoute).toContain("provisionAdminCustomerUser");
     expect(adminForm).toContain("INTERNAL_ROLE_OPTIONS");
-    expect(adminForm).toContain("tenant-bound provisioning workflow");
+    expect(adminForm).toContain("CUSTOMER_ROLE_OPTIONS");
     expect(adminForm).toContain("minLength={12}");
     expect(adminForm).toContain('htmlFor="admin-create-user-email"');
   });

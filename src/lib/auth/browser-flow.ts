@@ -1,17 +1,24 @@
-export const LOGIN_GENERIC_ERROR =
-  "We could not sign you in. Please try again.";
-export const LOGIN_INVALID_CREDENTIALS_ERROR =
-  "The email or password is incorrect.";
-export const LOGIN_RATE_LIMIT_ERROR =
-  "Too many sign-in attempts. Wait a few minutes before trying again.";
-export const RECOVERY_GENERIC_ERROR =
-  "We could not send a recovery email right now. Please try again.";
-export const RECOVERY_RATE_LIMIT_ERROR =
-  "Too many requests. Wait a few minutes before trying again.";
-export const RESET_PASSWORD_GENERIC_ERROR =
-  "We could not update your password. Request a new recovery link.";
-export const RESET_PASSWORD_RATE_LIMIT_ERROR =
-  "Too many password attempts. Wait a few minutes or request a new recovery link.";
+/**
+ * Message keys (namespace `authErrors`) rather than sentences, so every auth
+ * page renders them in the visitor's language. Provider messages are never
+ * shown to users.
+ */
+export const LOGIN_GENERIC_ERROR = "loginGeneric";
+export const LOGIN_INVALID_CREDENTIALS_ERROR = "loginInvalidCredentials";
+export const LOGIN_RATE_LIMIT_ERROR = "loginRateLimited";
+export const RECOVERY_GENERIC_ERROR = "recoveryGeneric";
+export const RECOVERY_RATE_LIMIT_ERROR = "recoveryRateLimited";
+export const RESET_PASSWORD_GENERIC_ERROR = "resetGeneric";
+export const RESET_PASSWORD_RATE_LIMIT_ERROR = "resetRateLimited";
+
+export type AuthErrorKey =
+  | typeof LOGIN_GENERIC_ERROR
+  | typeof LOGIN_INVALID_CREDENTIALS_ERROR
+  | typeof LOGIN_RATE_LIMIT_ERROR
+  | typeof RECOVERY_GENERIC_ERROR
+  | typeof RECOVERY_RATE_LIMIT_ERROR
+  | typeof RESET_PASSWORD_GENERIC_ERROR
+  | typeof RESET_PASSWORD_RATE_LIMIT_ERROR;
 
 interface BrowserAuthError {
   code?: unknown;
@@ -43,7 +50,7 @@ export function isRecoveryLookupMiss(error: unknown): boolean {
   return code === "user_not_found" || code === "email_not_found";
 }
 
-export function getLoginErrorMessage(error: unknown): string {
+export function getLoginErrorMessage(error: unknown): AuthErrorKey {
   if (isInvalidCredentialsError(error)) {
     return LOGIN_INVALID_CREDENTIALS_ERROR;
   }
@@ -51,13 +58,13 @@ export function getLoginErrorMessage(error: unknown): string {
   return LOGIN_GENERIC_ERROR;
 }
 
-export function getRecoveryErrorMessage(error: unknown): string {
+export function getRecoveryErrorMessage(error: unknown): AuthErrorKey {
   return isAuthRateLimitError(error)
     ? RECOVERY_RATE_LIMIT_ERROR
     : RECOVERY_GENERIC_ERROR;
 }
 
-export function getResetPasswordErrorMessage(error: unknown): string {
+export function getResetPasswordErrorMessage(error: unknown): AuthErrorKey {
   return isAuthRateLimitError(error)
     ? RESET_PASSWORD_RATE_LIMIT_ERROR
     : RESET_PASSWORD_GENERIC_ERROR;

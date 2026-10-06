@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 
 /**
  * Root error boundary. Catches uncaught errors in the App Router tree.
@@ -15,6 +16,7 @@ export default function GlobalError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  const t = useTranslations("errorPage");
   useEffect(() => {
     // Server-side errors include a `digest` we can search for in logs.
     console.error("[ripple] uncaught error:", error);
@@ -39,15 +41,12 @@ export default function GlobalError({
           </svg>
         </div>
         <h1 className="text-xl font-semibold text-foreground mb-2">
-          Something went wrong
+          {t("title")}
         </h1>
-        <p className="text-sm text-muted-foreground mb-6">
-          We hit an unexpected error. You can retry, or head back to the
-          dashboard.
-        </p>
+        <p className="text-sm text-muted-foreground mb-6">{t("body")}</p>
         {error.digest && (
           <p className="text-xs font-mono text-muted-foreground/70 mb-4">
-            ref: {error.digest}
+            {t("reference", { digest: error.digest })}
           </p>
         )}
         <div className="flex gap-2 justify-center">
@@ -55,13 +54,13 @@ export default function GlobalError({
             onClick={reset}
             className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
           >
-            Try again
+            {t("retry")}
           </button>
           <Link
             href="/dashboard"
             className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-accent transition-colors"
           >
-            Go to dashboard
+            {t("dashboard")}
           </Link>
         </div>
       </div>

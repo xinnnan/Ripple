@@ -1,10 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import {
-  assertClientMutationResponse,
-  clientMutationErrorMessage,
-} from "@/lib/http/client-mutation";
+import { useTranslations } from "next-intl";
+import { assertClientMutationResponse } from "@/lib/http/client-mutation";
 
 interface SiteOption {
   id: string;
@@ -27,6 +25,8 @@ export function EditTeamMemberForm({
   sites: SiteOption[];
   currentSiteIds: string[];
 }) {
+  const t = useTranslations("team.member");
+  const labels = useTranslations("labels");
   const [fullName, setFullName] = useState(user.full_name || "");
   const [status, setStatus] = useState(user.status);
   const [selectedSites, setSelectedSites] = useState<string[]>(currentSiteIds);
@@ -62,17 +62,11 @@ export function EditTeamMemberForm({
         }),
       });
 
-      await assertClientMutationResponse(res, "Failed to update team member");
+      await assertClientMutationResponse(res, t("failed"));
 
-      setMessage({ type: "success", text: "Team member updated successfully" });
-    } catch (err) {
-      setMessage({
-        type: "error",
-        text: clientMutationErrorMessage(
-          err,
-          "Team-member update is temporarily unavailable. Please retry."
-        ),
-      });
+      setMessage({ type: "success", text: t("saved") });
+    } catch {
+      setMessage({ type: "error", text: t("failed") });
     } finally {
       setSaving(false);
     }
@@ -81,7 +75,7 @@ export function EditTeamMemberForm({
   return (
     <div className="rounded-xl border border-border p-6">
       <h2 className="text-base font-semibold text-foreground mb-4">
-        Edit Details
+        {t("title")}
       </h2>
 
       {message && (
@@ -99,8 +93,7 @@ export function EditTeamMemberForm({
 
       {isInactive && (
         <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          This account is inactive and read-only. Reactivation requires a
-          reviewed administrator workflow.
+          {t("inactiveNotice")}
         </div>
       )}
 
@@ -110,7 +103,7 @@ export function EditTeamMemberForm({
             htmlFor="team-member-full-name"
             className="block text-sm font-medium text-foreground mb-1"
           >
-            Full Name
+            {t("fullName")}
           </label>
           <input
             id="team-member-full-name"
@@ -130,7 +123,7 @@ export function EditTeamMemberForm({
             htmlFor="team-member-status"
             className="block text-sm font-medium text-foreground mb-1"
           >
-            Status
+            {t("status")}
           </label>
           <select
             id="team-member-status"
@@ -139,18 +132,18 @@ export function EditTeamMemberForm({
             disabled={saving || isInactive}
             className="w-full rounded-lg border border-border px-3 py-2 text-sm text-foreground bg-background"
           >
-            <option value="active">Active</option>
-            <option value="inactive">Inactive</option>
+            <option value="active">{labels("userStatus.active")}</option>
+            <option value="inactive">{labels("userStatus.inactive")}</option>
           </select>
         </div>
 
         {/* Site Assignment */}
         <fieldset disabled={saving || isInactive}>
           <legend className="block text-sm font-medium text-foreground mb-2">
-            Site Access
+            {t("siteAccess")}
           </legend>
           {sites.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No sites available.</p>
+            <p className="text-sm text-muted-foreground">{t("noSitesAvailable")}</p>
           ) : (
             <div className="flex flex-wrap gap-2">
               {sites.map((site) => (
@@ -178,7 +171,7 @@ export function EditTeamMemberForm({
           disabled={saving || isInactive}
           className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
         >
-          {saving ? "Saving..." : "Save Changes"}
+          {saving ? t("saving") : t("save")}
         </button>
       </form>
     </div>

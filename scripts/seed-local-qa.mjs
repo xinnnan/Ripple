@@ -70,6 +70,23 @@ const { data: existing } = await supabase.auth.admin.listUsers({ perPage: 1000 }
 for (const user of existing.users.filter((u) => u.email?.endsWith("@ripple.test"))) {
   await supabase.auth.admin.deleteUser(user.id);
 }
+// Accounts created through the onboarding commands also carry canonical
+// company memberships (migration 056), which must go before their profiles.
+const { data: qaMemberships } = await supabase
+  .from("customer_memberships")
+  .select("id")
+  .in("customer_id", [ids.acme, ids.globex]);
+const qaMembershipIds = (qaMemberships ?? []).map((row) => row.id);
+if (qaMembershipIds.length > 0) {
+  await must(
+    supabase.from("customer_site_assignments").delete().in("membership_id", qaMembershipIds),
+    "reset site assignments"
+  );
+  await must(
+    supabase.from("customer_memberships").delete().in("id", qaMembershipIds),
+    "reset memberships"
+  );
+}
 // Deleting auth.users does not remove the mirrored profile in this project.
 await must(
   supabase.from("users").delete().like("email", "%@ripple.test"),

@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import englishMessages from "../../../messages/en.json";
 
 const callbackRoute = readFileSync(
   resolve(process.cwd(), "src/app/auth/callback/route.ts"),
@@ -37,9 +38,13 @@ describe("password recovery flow contract", () => {
 
   it("links sign-in to the non-enumerating recovery request", () => {
     expect(loginPage).toContain('href="/forgot-password"');
+    expect(forgotPasswordPage).toContain('fetch("/api/auth/recover"');
+    // Supabase's mailer remains the fallback when Ripple email is disabled.
     expect(forgotPasswordPage).toContain("resetPasswordForEmail");
     expect(forgotPasswordPage).toContain("isRecoveryLookupMiss");
-    expect(forgotPasswordPage).toContain("If an account matches");
+    expect(englishMessages.forgotPassword.submittedBody).toContain(
+      "If an account matches"
+    );
     expect(forgotPasswordPage).not.toContain("User not found");
   });
 
@@ -74,7 +79,10 @@ describe("password recovery flow contract", () => {
     expect(sessionCleanup).toContain('scope: "global"');
     expect(sessionCleanup).toContain('scope: "local"');
     expect(resetPasswordPage).toContain('setRecoveryState("cleanup_failed")');
-    expect(resetPasswordPage).toContain("update the password again");
+    expect(resetPasswordPage).toContain('t("cleanupBody")');
+    expect(englishMessages.resetPassword.cleanupBody).toContain(
+      "update the password again"
+    );
     expect(resetPasswordPage).toContain("sessions=partial");
     expect(loginPage).toContain('search.get("sessions")');
   });

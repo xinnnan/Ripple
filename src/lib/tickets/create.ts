@@ -28,6 +28,7 @@ import { dispatchTicketOutboxBestEffort } from "@/lib/tickets/outbox";
 import { computeSlaTargets, findPolicyForCustomer } from "@/lib/sla";
 import { normalizeSiteCode } from "@/lib/sites/site-code";
 import type { TicketSource, RequestType, Severity, Impact } from "@/types/ticket";
+import { DEFAULT_LOCALE, type Locale } from "@/i18n/config";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -56,6 +57,8 @@ export interface CreateTicketInput {
   submitter_name?: string | null;
   submitter_email?: string | null;
   submitter_phone?: string | null;
+  /** Language the ticket was submitted in; customer emails use it. */
+  locale?: Locale;
 }
 
 export interface CreateTicketOptions {
@@ -226,6 +229,7 @@ export async function createTicketCore(
         first_response_due_at: firstResponseDueAt,
         resolve_due_at: resolveDueAt,
         idempotency_key: input.idempotency_key,
+        locale: input.locale ?? DEFAULT_LOCALE,
       },
     }
   );

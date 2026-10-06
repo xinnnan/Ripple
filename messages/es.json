@@ -1,0 +1,980 @@
+{
+  "labels": {
+    "status": {
+      "new": "Nuevo",
+      "assigned": "Asignado",
+      "in_progress": "En curso",
+      "waiting_customer": "Esperando al cliente",
+      "waiting_droplet": "Esperando a DropletAI",
+      "resolved": "Resuelto",
+      "closed": "Cerrado",
+      "reopened": "Reabierto"
+    },
+    "severity": {
+      "P1": "P1 — Crítico",
+      "P2": "P2 — Alto",
+      "P3": "P3 — Medio",
+      "P4": "P4 — Bajo"
+    },
+    "impact": {
+      "safety": "Riesgo para la seguridad",
+      "production_stopped": "Producción detenida",
+      "production_slowed": "Producción ralentizada",
+      "single_asset": "Un solo equipo afectado",
+      "no_impact": "Sin impacto en la producción"
+    },
+    "requestType": {
+      "incident": "Incidente",
+      "service_request": "Solicitud de servicio",
+      "question": "Consulta",
+      "change_request": "Solicitud de cambio",
+      "parts_rma": "Repuestos / RMA",
+      "deployment_issue": "Problema de implementación",
+      "training_documentation": "Capacitación / documentación"
+    },
+    "projectStatus": {
+      "pre_signoff": "Previo a la aceptación",
+      "in_warranty": "En garantía",
+      "full_coverage": "Cobertura completa",
+      "essential_coverage": "Cobertura esencial",
+      "out_of_service": "Sin cobertura de servicio"
+    },
+    "role": {
+      "admin": "Administrador",
+      "engineer": "Ingeniero",
+      "customer_manager": "Gerente de cliente",
+      "customer": "Usuario cliente"
+    },
+    "userStatus": {
+      "active": "Activo",
+      "inactive": "Inactivo",
+      "invited": "Invitado"
+    },
+    "source": {
+      "slack": "Slack",
+      "web": "Web",
+      "email": "Correo electrónico",
+      "internal": "Interno"
+    },
+    "partRequestStatus": {
+      "requested": "Solicitada",
+      "approved": "Aprobada",
+      "shipped": "Enviada",
+      "delivered": "Entregada",
+      "cancelled": "Cancelada"
+    },
+    "fieldServiceStatus": {
+      "scheduled": "Programada",
+      "in_progress": "En curso",
+      "completed": "Completada",
+      "cancelled": "Cancelada"
+    },
+    "serviceType": {
+      "repair": "Reparación",
+      "installation": "Instalación",
+      "inspection": "Inspección",
+      "commissioning": "Puesta en marcha",
+      "training": "Capacitación",
+      "emergency": "Emergencia",
+      "maintenance": "Mantenimiento"
+    },
+    "memberRole": {
+      "owner": "Propietario",
+      "manager": "Gerente",
+      "member": "Miembro",
+      "viewer": "Observador"
+    }
+  },
+  "landing": {
+    "heroImageAlt": "Robots móviles autónomos alineados dentro de una instalación industrial",
+    "eyebrow": "Operaciones de servicio, conectadas",
+    "title": "Mantenga su automatización en marcha.",
+    "lead": "Reporte un problema una sola vez, envíelo con el contexto operativo y del sitio adecuados, y siga cada actualización hasta su resolución.",
+    "submitCta": "Enviar una solicitud de soporte",
+    "signInCta": "Iniciar sesión para seguir sus tickets",
+    "noAccount": "¿No tiene cuenta? Aun así puede enviar una solicitud con su código de sitio.",
+    "highlights": {
+      "channels": {
+        "title": "Slack y web",
+        "description": "Cree tickets desde /ticket o desde el portal de soporte"
+      },
+      "siteAware": {
+        "title": "Contexto del sitio",
+        "description": "Cada problema llega con el contexto de su implementación"
+      },
+      "timeline": {
+        "title": "Una sola línea de tiempo",
+        "description": "Estado, actualizaciones, repuestos y visitas, todo vinculado"
+      }
+    },
+    "how": {
+      "eyebrow": "Un traspaso de soporte más claro",
+      "title": "De la primera señal a la resolución documentada",
+      "lead": "Ripple ofrece a los clientes y a los equipos de servicio un registro operativo compartido, sin obligar a que cada conversación termine en otra hoja de cálculo.",
+      "steps": {
+        "site": {
+          "title": "Identifique el sitio",
+          "description": "Use el código de sitio asignado a su implementación para que la solicitud llegue con el contexto correcto del cliente y de la instalación."
+        },
+        "impact": {
+          "title": "Describa el impacto",
+          "description": "Indíquenos qué se detuvo, cuándo empezó y qué equipo o proceso está afectado. Agregue fotos, registros o videos."
+        },
+        "track": {
+          "title": "Siga la respuesta",
+          "description": "Consulte el estado, el responsable, las actualizaciones del ingeniero, las solicitudes de repuestos y la actividad de servicio en campo desde un solo ticket."
+        }
+      }
+    },
+    "prepare": {
+      "eyebrow": "Un triaje más rápido y útil",
+      "title": "Dele al ingeniero un buen punto de partida.",
+      "lead": "Un reporte conciso con contexto operativo es más útil que un mensaje largo sin detalles del equipo ni del impacto.",
+      "checklist": {
+        "site": "Código de sitio y área afectada",
+        "asset": "Identificador del equipo o activo",
+        "impact": "Impacto operativo y de seguridad",
+        "started": "Cuándo comenzó el comportamiento",
+        "evidence": "Texto del error, fotos, videos o registros",
+        "tried": "Acciones ya intentadas"
+      },
+      "cta": "Iniciar un reporte estructurado",
+      "severityEyebrow": "Elija el impacto con cuidado",
+      "severityTitle": "La severidad debe describir la operación, no la frustración.",
+      "severity": {
+        "P1": "Riesgo para la seguridad o producción detenida",
+        "P2": "Degradación importante o riesgo operativo urgente",
+        "P3": "Impacto limitado con soluciones alternativas disponibles",
+        "P4": "Consulta, capacitación o mejora planificada"
+      }
+    },
+    "record": {
+      "eyebrow": "Más que una bandeja de tickets",
+      "title": "Un solo registro de servicio para todo el trabajo.",
+      "lead": "El mismo caso de soporte puede coordinar la investigación de software, la evidencia de hardware, los repuestos y el servicio en sitio sin perder el contexto original del cliente.",
+      "capabilities": {
+        "triage": {
+          "title": "Triaje estructurado",
+          "description": "Los campos de severidad e impacto en la producción ayudan al equipo de servicio a priorizar la respuesta adecuada."
+        },
+        "collaboration": {
+          "title": "Colaboración con ingeniería",
+          "description": "Las actualizaciones visibles para el cliente y las notas técnicas internas mantienen conectado cada traspaso."
+        },
+        "parts": {
+          "title": "Coordinación de repuestos",
+          "description": "Vincule las solicitudes de repuestos y el avance de su entrega directamente al caso de soporte."
+        },
+        "reply": {
+          "title": "Responda desde cualquier lugar",
+          "description": "Responda preguntas, comparta archivos o reabra un ticket desde su cuenta o desde su enlace de seguimiento."
+        }
+      }
+    },
+    "channels": {
+      "slackTitle": "Use su canal de Slack Connect",
+      "slackBody": "Ejecute <code>/ticket</code> en el canal de su sitio para crear una solicitud estructurada sin salir de Slack. Comuníquese con su gerente de cuenta de DropletAI si el canal de su sitio aún no está conectado.",
+      "webTitle": "Envíe desde la web, con o sin cuenta",
+      "webBody": "Use el código de sitio de su implementación para enviar su solicitud desde la web. Si no lo conoce, consulte a su gerente de cuenta o escriba a <email>support@dropletai.services</email>."
+    },
+    "closing": {
+      "eyebrow": "Listos cuando usted lo esté",
+      "title": "Empiece por el sitio. Nosotros mantenemos el trabajo conectado.",
+      "cta": "Enviar un ticket"
+    }
+  },
+  "common": {
+    "language": "Idioma",
+    "languageSaveFailed": "El idioma cambió en este dispositivo, pero no se pudo guardar en su cuenta.",
+    "brand": "Ripple",
+    "byDropletAI": "de DropletAI",
+    "homeAriaLabel": "Inicio del soporte de Ripple",
+    "signIn": "Iniciar sesión",
+    "signOut": "Cerrar sesión",
+    "submitTicket": "Enviar un ticket",
+    "submitShort": "Enviar",
+    "supportEmail": "support@dropletai.services",
+    "cancel": "Cancelar",
+    "close": "Cerrar",
+    "retry": "Reintentar",
+    "save": "Guardar",
+    "loading": "Cargando…",
+    "back": "Volver",
+    "goHome": "Ir al inicio",
+    "goToDashboard": "Ir al panel",
+    "download": "descargar",
+    "notAvailable": "—"
+  },
+  "publicHeader": {
+    "navLabel": "Navegación principal",
+    "howItWorks": "Cómo funciona",
+    "whatToInclude": "Qué incluir",
+    "supportChannels": "Canales de soporte"
+  },
+  "publicFooter": {
+    "brand": "Ripple de DropletAI",
+    "tagline": "Coordinación de servicio para implementaciones de automatización industrial: desde el primer reporte hasta la respuesta de ingeniería, los repuestos y el trabajo en campo.",
+    "copyright": "© {year} DropletAI Services. Todos los derechos reservados."
+  },
+  "authErrors": {
+    "loginGeneric": "No pudimos iniciar su sesión. Inténtelo de nuevo.",
+    "loginInvalidCredentials": "El correo electrónico o la contraseña son incorrectos.",
+    "loginRateLimited": "Demasiados intentos de inicio de sesión. Espere unos minutos antes de volver a intentarlo.",
+    "recoveryGeneric": "No pudimos enviar el correo de recuperación en este momento. Inténtelo de nuevo.",
+    "recoveryRateLimited": "Demasiadas solicitudes. Espere unos minutos antes de volver a intentarlo.",
+    "resetGeneric": "No pudimos actualizar su contraseña. Solicite un nuevo enlace de recuperación.",
+    "resetRateLimited": "Demasiados intentos de contraseña. Espere unos minutos o solicite un nuevo enlace de recuperación."
+  },
+  "login": {
+    "metaTitle": "Iniciar sesión",
+    "supportHome": "Inicio de soporte",
+    "eyebrow": "Acceso para clientes y servicio",
+    "title": "Le damos la bienvenida de nuevo.",
+    "lead": "Inicie sesión para seguir la actividad de sus tickets, administrar el acceso a sus sitios y trabajar con el equipo de servicio de DropletAI.",
+    "inactive": "Esta cuenta está inactiva o suspendida. Comuníquese con un administrador de Ripple para obtener acceso.",
+    "callbackFailed": "Ese enlace de inicio de sesión o de recuperación no es válido o ha caducado. Solicite un nuevo enlace e inténtelo de nuevo.",
+    "signoutFailed": "No pudimos confirmar el cierre de sesión. Si usa un dispositivo compartido, cierre este navegador e inténtelo de nuevo.",
+    "passwordUpdatedPartial": "Su contraseña se actualizó y se cerró la sesión en este dispositivo. No se pudieron confirmar las demás sesiones; comuníquese con soporte si necesita revocarlas.",
+    "passwordUpdated": "Su contraseña se actualizó. Inicie sesión con su nueva contraseña.",
+    "logoutPartial": "Se cerró la sesión en este dispositivo, pero no se pudieron confirmar las demás sesiones. Comuníquese con soporte si necesita revocarlas.",
+    "email": "Correo electrónico de trabajo",
+    "emailPlaceholder": "nombre@empresa.com",
+    "password": "Contraseña",
+    "forgotPassword": "¿Olvidó su contraseña?",
+    "passwordPlaceholder": "Ingrese su contraseña",
+    "showPassword": "Mostrar contraseña",
+    "hidePassword": "Ocultar contraseña",
+    "submit": "Iniciar sesión",
+    "submitting": "Iniciando sesión…",
+    "noAccessTitle": "¿No tiene acceso al portal?",
+    "noAccessBody": "Puede <submit>enviar un ticket sin una cuenta</submit> o comunicarse con su gerente de cuenta de DropletAI para obtener acceso.",
+    "copyright": "© {year} DropletAI Services. Todos los derechos reservados.",
+    "imageAlt": "Robots móviles autónomos dentro de una instalación industrial",
+    "asideTitle": "Un registro operativo compartido para cada traspaso de soporte.",
+    "asideBody": "Mantenga el contexto del cliente, las actualizaciones de ingeniería, la actividad de repuestos y la coordinación del servicio en campo vinculados a la misma solicitud."
+  },
+  "emails": {
+    "brand": "Ripple Support",
+    "brandSub": "DropletAI Services",
+    "copyright": "© {year} DropletAI Services. Todos los derechos reservados.",
+    "noReply": "Las respuestas a este correo no se supervisan.",
+    "labels": {
+      "ticketId": "ID del ticket",
+      "customer": "Cliente",
+      "site": "Sitio",
+      "issue": "Problema"
+    },
+    "confirmation": {
+      "subject": "[{ticketNo}] Ticket de soporte creado — {title}",
+      "heading": "Se creó su ticket de soporte",
+      "trackIntro": "Puede consultar el estado de su ticket en cualquier momento:",
+      "button": "Ver estado del ticket",
+      "closing": "Nuestro equipo ya recibió la notificación y responderá en breve. Si se trata de un problema crítico, comuníquese directamente con el canal de soporte de su sitio."
+    },
+    "resolved": {
+      "subject": "[{ticketNo}] Ticket resuelto — {title}",
+      "heading": "✅ Su ticket se resolvió",
+      "summaryTitle": "Resumen de la resolución",
+      "button": "Ver todos los detalles",
+      "closing": "Si el problema no se resolvió por completo, reabra el ticket desde su página dentro de los próximos 30 días o envíe un nuevo ticket."
+    },
+    "update": {
+      "subjectAction": "[{ticketNo}] Acción requerida — {title}",
+      "subjectUpdate": "[{ticketNo}] Nueva actualización — {title}",
+      "headingAction": "Su ticket está esperando su respuesta",
+      "headingUpdate": "Hay una nueva actualización en su ticket",
+      "messageTitle": "Mensaje del equipo de DropletAI",
+      "button": "Ver y responder",
+      "closing": "Responda desde la página de su ticket para que lo vea el ingeniero adecuado."
+    },
+    "passwordReset": {
+      "subject": "Restablezca su contraseña de Ripple",
+      "heading": "Restablezca su contraseña",
+      "body": "Recibimos una solicitud para restablecer la contraseña de su cuenta de Ripple. Use el botón de abajo para elegir una nueva contraseña. El enlace caduca en una hora y solo puede usarse una vez.",
+      "button": "Elegir una nueva contraseña",
+      "ignore": "Si usted no hizo esta solicitud, puede ignorar este correo. Su contraseña no cambiará."
+    },
+    "invitation": {
+      "subject": "Le invitamos a Ripple Support",
+      "heading": "Le damos la bienvenida a Ripple, {name}",
+      "body": "{inviter} le invitó al portal de soporte de {company}. Use Ripple para enviar solicitudes de soporte, seguir su avance y comunicarse con el equipo de servicio de DropletAI.",
+      "button": "Establecer su contraseña",
+      "expiry": "Este enlace caduca en una hora y solo puede usarse una vez. Si caduca, use “¿Olvidó su contraseña?” en la página de inicio de sesión con esta dirección de correo.",
+      "signInHint": "Después de establecer su contraseña, inicie sesión en {url}"
+    }
+  },
+  "forgotPassword": {
+    "metaTitle": "Restablecer contraseña",
+    "eyebrow": "Recuperación de cuenta",
+    "title": "Restablezca su contraseña.",
+    "lead": "Ingrese el correo electrónico de trabajo asociado a Ripple. Si coincide con una cuenta, le enviaremos un enlace de recuperación de tiempo limitado.",
+    "noAccessTitle": "¿Ya no tiene acceso?",
+    "noAccessBody": "Comuníquese con su gerente de cuenta de DropletAI o escriba a <email>support@dropletai.services</email>.",
+    "submittedTitle": "Revise su bandeja de entrada",
+    "submittedBody": "Si hay una cuenta asociada a <strong>{email}</strong>, le enviamos un enlace de recuperación. Revise las carpetas de spam o correo no deseado antes de solicitar otro correo.",
+    "sendAnother": "Enviar otro enlace",
+    "formTitle": "¿A dónde debemos enviar el enlace?",
+    "formHint": "Los enlaces de recuperación caducan y solo pueden usarse una vez.",
+    "email": "Correo electrónico de trabajo",
+    "emailPlaceholder": "nombre@empresa.com",
+    "submit": "Enviar enlace de recuperación",
+    "submitting": "Enviando enlace…",
+    "backToSignIn": "Volver a iniciar sesión"
+  },
+  "resetPassword": {
+    "metaTitle": "Elegir una nueva contraseña",
+    "tooShort": "Use al menos 12 caracteres.",
+    "mismatch": "Las contraseñas no coinciden.",
+    "checking": "Verificando su enlace de recuperación…",
+    "unavailableTitle": "No pudimos verificar este enlace de recuperación.",
+    "unavailableBody": "El servicio de autenticación no está disponible temporalmente. Vuelva a intentarlo antes de solicitar otro enlace.",
+    "tryAgain": "Intentar de nuevo",
+    "invalidTitle": "Este enlace de recuperación no es válido o ha caducado.",
+    "invalidBody": "Los enlaces de recuperación tienen un tiempo limitado y son de un solo uso. Solicite uno nuevo para continuar.",
+    "requestNew": "Solicitar un nuevo enlace",
+    "cleanupTitle": "Su contraseña se actualizó, pero el cierre de sesión requiere atención.",
+    "cleanupBody": "No pudimos confirmar que esta sesión de recuperación haya finalizado. No vuelva a actualizar la contraseña. Intente cerrar sesión y, si este mensaje vuelve a aparecer, comuníquese con el soporte de DropletAI.",
+    "signOut": "Cerrar sesión",
+    "contactSupport": "Contactar a soporte",
+    "eyebrow": "Proteja su cuenta",
+    "title": "Elija una nueva contraseña.",
+    "lead": "Use una contraseña única que no utilice en ningún otro servicio.",
+    "newPassword": "Nueva contraseña",
+    "showPassword": "Mostrar nueva contraseña",
+    "hidePassword": "Ocultar nueva contraseña",
+    "confirmPassword": "Confirmar nueva contraseña",
+    "ruleLength": "Al menos 12 caracteres",
+    "ruleUnique": "Exclusiva para su cuenta de Ripple",
+    "submit": "Actualizar contraseña",
+    "submitting": "Actualizando contraseña…"
+  },
+  "invitationNotice": {
+    "sent": "Se envió una invitación por correo a {email}. El enlace solo puede usarse una vez y caduca; siempre se puede usar “¿Olvidó su contraseña?” en la página de inicio de sesión.",
+    "emailDisabled": "El envío de correos no está configurado, por lo que no se envió ninguna invitación.",
+    "sendFailed": "No se pudo enviar el correo de invitación.",
+    "linkFailed": "No se pudo crear un enlace de inicio de sesión.",
+    "shareLink": "Comparta este enlace de un solo uso con {email} de forma privada. Solo funciona una vez y caduca.",
+    "noLink": "Inténtelo más tarde o comuníquese con el soporte de DropletAI.",
+    "linkLabel": "Enlace de inicio de sesión de un solo uso",
+    "copy": "Copiar enlace",
+    "copied": "Copiado"
+  },
+  "team": {
+    "metaTitle": "Equipo",
+    "title": "Equipo",
+    "subtitle": "Administre los miembros del equipo de su organización y su acceso a los sitios.",
+    "stats": {
+      "total": "Total de miembros",
+      "active": "Activos",
+      "managers": "Gerentes de cliente",
+      "customers": "Usuarios cliente"
+    },
+    "emptyTitle": "Aún no hay miembros en el equipo",
+    "emptyDescription": "Agregue a la primera persona de su organización. Podrá enviar y seguir tickets de los sitios que usted le asigne.",
+    "columns": {
+      "name": "Nombre",
+      "email": "Correo electrónico",
+      "role": "Rol",
+      "sites": "Sitios",
+      "status": "Estado",
+      "joined": "Fecha de ingreso",
+      "actions": "Acciones"
+    },
+    "noSites": "Sin sitios",
+    "organizationWide": "Toda la organización",
+    "edit": "Editar",
+    "add": {
+      "open": "+ Agregar miembro",
+      "heading": "Agregar miembro del equipo",
+      "email": "Correo electrónico *",
+      "fullName": "Nombre completo *",
+      "phone": "Teléfono",
+      "language": "Idioma",
+      "languageHint": "Se usa en los correos que recibe esta persona. Puede cambiarlo en cualquier momento.",
+      "setup": "Configuración de acceso",
+      "setupInvite": "Enviar una invitación por correo para que elija su contraseña (recomendado)",
+      "setupPassword": "Establecer una contraseña temporal",
+      "passwordLabel": "Contraseña temporal",
+      "passwordPlaceholder": "Al menos 12 caracteres",
+      "sites": "Sitios *",
+      "sitesHint": "Solo podrá crear y seguir tickets de los sitios que usted elija.",
+      "noSitesAvailable": "No hay sitios disponibles.",
+      "submitInvite": "Agregar e invitar",
+      "submitPassword": "Agregar miembro",
+      "creating": "Agregando…",
+      "createdWithPassword": "Se agregó a {email} con la contraseña temporal que usted estableció. Compártala de forma privada; esta persona podrá cambiarla en Perfil.",
+      "chooseSite": "Elija al menos un sitio para que pueda crear tickets.",
+      "passwordTooShort": "Las contraseñas temporales deben tener al menos 12 caracteres.",
+      "emailExists": "Ya existe una cuenta con ese correo electrónico. Comuníquese con el soporte de DropletAI si esa persona debe unirse a su equipo.",
+      "failed": "No se pudo agregar al miembro del equipo. Vuelva a intentarlo."
+    },
+    "member": {
+      "metaTitle": "Miembro del equipo",
+      "back": "← Volver a Equipo",
+      "title": "Editar miembro del equipo",
+      "subtitle": "Actualice el perfil y el acceso a sitios de {name}.",
+      "notFound": "No se encontró el miembro del equipo.",
+      "email": "Correo electrónico",
+      "role": "Rol",
+      "fullName": "Nombre completo",
+      "status": "Estado",
+      "siteAccess": "Acceso a sitios",
+      "noSitesAvailable": "No hay sitios disponibles.",
+      "inactiveNotice": "Esta cuenta está inactiva y es de solo lectura. Comuníquese con el soporte de DropletAI para reactivarla.",
+      "save": "Guardar cambios",
+      "saving": "Guardando…",
+      "saved": "Miembro del equipo actualizado.",
+      "failed": "No se pudo actualizar el miembro del equipo. Vuelva a intentarlo."
+    }
+  },
+  "nav": {
+    "dashboard": "Panel",
+    "tickets": "Tickets",
+    "mySites": "Mis sitios",
+    "team": "Equipo",
+    "fieldService": "Servicio en campo",
+    "partRequests": "Solicitudes de repuestos",
+    "customersSites": "Clientes y sitios",
+    "users": "Usuarios",
+    "spareParts": "Repuestos",
+    "inventory": "Inventario",
+    "slaPolicies": "Políticas de SLA",
+    "auditLog": "Registro de auditoría",
+    "systemStatus": "Estado del sistema",
+    "profile": "Perfil",
+    "signOut": "Cerrar sesión",
+    "workspace": "Espacio de trabajo",
+    "operations": "Operaciones",
+    "administration": "Administración",
+    "tagline": "Portal de soporte",
+    "openNavigation": "Abrir navegación",
+    "closeNavigation": "Cerrar navegación",
+    "closeNavigationOverlay": "Cerrar la superposición de navegación",
+    "applicationNavigation": "Navegación de la aplicación"
+  },
+  "submit": {
+    "metaTitle": "Enviar una solicitud de soporte",
+    "eyebrow": "Registro estructurado de soporte",
+    "eyebrowShort": "Registro de soporte",
+    "title": "Enviar una solicitud de soporte",
+    "intro": "Brinde al equipo de servicio suficiente contexto del sitio, del equipo y del impacto para iniciar el triaje sin una ronda adicional de preguntas.",
+    "steps": {
+      "site": "Identifique su sitio",
+      "impact": "Describa el impacto operativo",
+      "evidence": "Adjunte evidencia útil"
+    },
+    "account": {
+      "checking": "Verificando su cuenta",
+      "checkFailed": "No se pudo verificar la cuenta",
+      "checkingBody": "Espere mientras determinamos si debemos cargar sus sitios asignados o el formulario para invitados.",
+      "statusUnknown": "No pudimos determinar el estado de su cuenta. Vuelva a intentarlo antes de enviar.",
+      "detailsUnavailable": "Los datos de su cuenta no están disponibles temporalmente. Vuelva a intentarlo.",
+      "notAvailable": "Esta cuenta con sesión iniciada no está disponible.",
+      "tryAgain": "Intentar de nuevo",
+      "signOut": "Cerrar sesión"
+    },
+    "sections": {
+      "you": "Sus datos",
+      "issue": "Detalles del problema",
+      "attachments": "Archivos adjuntos"
+    },
+    "fields": {
+      "site": "Código de sitio *",
+      "siteSelect": "Seleccione un sitio...",
+      "siteNone": "No hay sitios activos disponibles",
+      "siteNoneHelp": "No hay sitios activos asignados a esta cuenta. Comuníquese con el administrador de su organización o con el soporte de DropletAI antes de enviar.",
+      "siteCodePlaceholder": "p. ej., ADI-INDY-001",
+      "siteCodeTitle": "Use solo letras, números y guiones.",
+      "siteChecking": "Verificando...",
+      "siteNotFound": "No se encontró el código de sitio. Revíselo e inténtelo de nuevo.",
+      "siteThrottled": "Demasiadas verificaciones. Espere un minuto e inténtelo de nuevo.",
+      "siteUnavailable": "La validación del sitio no está disponible temporalmente. Inténtelo de nuevo.",
+      "name": "Su nombre *",
+      "email": "Correo electrónico *",
+      "phone": "Teléfono",
+      "title": "Título del problema *",
+      "titlePlaceholder": "p. ej., AMR-03 no completa la misión de entrega",
+      "requestType": "Tipo de solicitud *",
+      "severity": "Severidad *",
+      "impact": "Impacto en la producción *",
+      "select": "Seleccione...",
+      "asset": "Equipo / ID del activo",
+      "assetPlaceholder": "p. ej., AMR-03, Charger-01",
+      "area": "Área / proceso",
+      "areaPlaceholder": "p. ej., Recepción, Pie de línea, Andén",
+      "description": "Descripción *",
+      "descriptionPlaceholder": "Describa el problema en detalle. ¿Qué ocurrió? ¿Cuándo comenzó? ¿Cuál es el impacto?"
+    },
+    "files": {
+      "upload": "Haga clic para cargar",
+      "types": "JPEG/PNG/GIF/WebP, MP4/MOV, PDF, texto UTF-8, CSV/log o Excel (máx. 50 MB cada uno)",
+      "tooMany": "Elija como máximo {max} archivos adjuntos.",
+      "badSize": "{name} debe tener entre 1 byte y 50 MB.",
+      "badName": "Los nombres de los archivos adjuntos deben tener entre 3 y 255 caracteres seguros."
+    },
+    "actions": {
+      "submit": "Enviar solicitud de soporte",
+      "submitting": "Enviando...",
+      "checkingSite": "Verificando sitio...",
+      "cancel": "Cancelar"
+    },
+    "errors": {
+      "incomplete": "Complete todos los campos obligatorios del ticket antes de enviarlo.",
+      "failed": "No se pudo enviar el ticket. Inténtelo de nuevo.",
+      "unconfirmed": "Es posible que el ticket se haya creado, pero la confirmación no está disponible. Comuníquese con soporte o revise su lista de tickets antes de volver a intentarlo.",
+      "unavailable": "El envío de tickets no está disponible temporalmente. Revise su conexión y vuelva a intentarlo.",
+      "rateLimited": "Demasiadas solicitudes. Espere un minuto e inténtelo de nuevo.",
+      "invalidSite": "Ese sitio no está disponible. Revise el código de sitio e inténtelo de nuevo."
+    },
+    "success": {
+      "title": "Solicitud de soporte enviada",
+      "body": "Su solicitud ya está en la cola de soporte de DropletAI.",
+      "ticketId": "ID del ticket",
+      "track": "Seguir este ticket",
+      "another": "Enviar otra",
+      "attachmentsFailed": "{count, plural, one {No se pudo cargar # archivo adjunto.} other {No se pudieron cargar # archivos adjuntos.}} Abra el ticket para intentarlo de nuevo.",
+      "saveHint": "Guarde el ID del ticket y el enlace de seguimiento. También enviamos una confirmación por correo cuando el envío de correos está configurado para su organización."
+    }
+  },
+  "profile": {
+    "metaTitle": "Perfil",
+    "title": "Perfil",
+    "subtitle": "Administre la configuración de su cuenta",
+    "loadFailedTitle": "No se pudo cargar el perfil",
+    "unavailable": "Los datos de la cuenta no están disponibles temporalmente. Vuelva a intentarlo.",
+    "sessionEnded": "Su sesión finalizó. Vuelva a iniciar sesión.",
+    "notAvailable": "Esta cuenta no está disponible.",
+    "tryAgain": "Intentar de nuevo",
+    "signIn": "Iniciar sesión",
+    "email": "Correo electrónico",
+    "emailManaged": "Administrado por DropletAI",
+    "role": "Rol",
+    "fullName": "Nombre completo",
+    "phone": "Teléfono",
+    "notSet": "Sin definir",
+    "edit": "Editar perfil",
+    "save": "Guardar cambios",
+    "saving": "Guardando…",
+    "cancel": "Cancelar",
+    "saved": "Perfil actualizado.",
+    "saveFailed": "No se pudo actualizar su perfil. Inténtelo de nuevo.",
+    "errors": {
+      "nameRequired": "El nombre completo es obligatorio.",
+      "nameTooLong": "El nombre completo debe tener 200 caracteres o menos.",
+      "nameInvalid": "El nombre completo contiene caracteres no válidos.",
+      "phoneTooLong": "El teléfono debe tener 50 caracteres o menos.",
+      "phoneInvalid": "El teléfono contiene caracteres no válidos."
+    },
+    "language": {
+      "title": "Idioma",
+      "body": "Se usa en este portal y en los correos que le enviamos."
+    },
+    "password": {
+      "title": "Cambiar contraseña",
+      "body": "Use al menos 12 caracteres. Se recomienda una contraseña única generada con un administrador de contraseñas.",
+      "new": "Nueva contraseña",
+      "newPlaceholder": "Al menos 12 caracteres",
+      "confirm": "Confirmar nueva contraseña",
+      "confirmPlaceholder": "Repita la nueva contraseña",
+      "show": "Mostrar contraseñas",
+      "hide": "Ocultar contraseñas",
+      "submit": "Actualizar contraseña",
+      "submitting": "Actualizando…",
+      "tooShort": "La contraseña debe tener al menos 12 caracteres.",
+      "mismatch": "Las contraseñas no coinciden.",
+      "updated": "Contraseña actualizada.",
+      "failed": "No se pudo actualizar su contraseña. Inténtelo de nuevo."
+    }
+  },
+  "createTicket": {
+    "title": "Enviar nuevo ticket",
+    "close": "Cerrar el formulario del ticket",
+    "created": "Ticket creado",
+    "view": "Ver ticket",
+    "done": "Listo",
+    "site": "Sitio *",
+    "loadingSites": "Cargando sitios...",
+    "selectedSite": "Cliente: {customer} | Sitio: {site}",
+    "noSitesHelp": "No hay sitios activos asignados a su cuenta. Comuníquese con su gerente de cliente o con el soporte de DropletAI.",
+    "sitesUnavailable": "Las opciones de sitio no están disponibles temporalmente. Vuelva a intentarlo.",
+    "retrySites": "Volver a cargar sitios",
+    "type": "Tipo *",
+    "impact": "Impacto *",
+    "asset": "Equipo / activo",
+    "assetPlaceholder": "p. ej., AMR-03",
+    "areaPlaceholder": "p. ej., Zona de picking A",
+    "descriptionPlaceholder": "Describa el problema en detalle...",
+    "chooseSite": "Seleccione un sitio.",
+    "incomplete": "Complete los campos obligatorios del ticket antes de enviarlo.",
+    "failed": "No se pudo crear el ticket.",
+    "unconfirmed": "Es posible que el ticket se haya creado, pero la confirmación no está disponible. Actualice la lista de tickets antes de volver a intentarlo.",
+    "unavailable": "La creación de tickets no está disponible temporalmente. Vuelva a intentarlo.",
+    "submit": "Enviar ticket",
+    "submitting": "Enviando...",
+    "rateLimited": "Demasiadas solicitudes. Espere un minuto e inténtelo de nuevo."
+  },
+  "pagination": {
+    "previous": "‹ Anterior",
+    "next": "Siguiente ›",
+    "label": "Paginación"
+  },
+  "ticketList": {
+    "metaTitle": "Tickets",
+    "title": "Tickets",
+    "subtitleInternal": "Todos los tickets de soporte de todos los clientes y sitios",
+    "subtitleCustomer": "Sus tickets de soporte",
+    "newTicket": "+ Enviar ticket",
+    "exportCsv": "Exportar CSV",
+    "filters": {
+      "quick": "Filtros rápidos:",
+      "all": "Todos",
+      "search": "Buscar",
+      "searchPlaceholder": "N.º de ticket o título…",
+      "severity": "Severidad",
+      "customer": "Cliente",
+      "allCustomers": "Todos los clientes",
+      "site": "Sitio",
+      "allSites": "Todos los sitios",
+      "owner": "Responsable",
+      "allOwners": "Todos los responsables",
+      "unassigned": "Sin asignar",
+      "created": "Fecha de creación",
+      "allTime": "Cualquier fecha",
+      "last7": "Últimos 7 días",
+      "last30": "Últimos 30 días",
+      "last90": "Últimos 90 días",
+      "sla": "SLA",
+      "slaAll": "Todos",
+      "slaBreached": "⚠ Incumplido",
+      "slaBreaching": "Próximo a vencer",
+      "slaOnTrack": "Dentro del plazo",
+      "slaNone": "Sin SLA",
+      "clear": "Borrar",
+      "noResults": "Sin resultados",
+      "showing": "Mostrando {start}–{end} de {total, plural, one {# ticket} other {# tickets}}"
+    },
+    "invalidFilters": "Uno o más filtros de tickets no son válidos. Borre los filtros e inténtelo de nuevo.",
+    "clearFilters": "Borrar filtros",
+    "columns": {
+      "ticket": "N.º de ticket",
+      "severity": "Severidad",
+      "title": "Título",
+      "customerSite": "Cliente / sitio",
+      "status": "Estado",
+      "owner": "Responsable",
+      "created": "Creado"
+    },
+    "empty": {
+      "title": "No hay tickets que coincidan",
+      "filtered": "Intente ajustar o borrar los filtros de arriba.",
+      "internal": "Los tickets aparecerán aquí cuando se creen.",
+      "customer": "Cuando envíe un ticket, aparecerá aquí.",
+      "submit": "Enviar un ticket"
+    }
+  },
+  "ticketDetail": {
+    "metaTitle": "Detalle del ticket",
+    "notFound": "No se encontró el ticket",
+    "back": "← Volver a los tickets",
+    "description": "Descripción",
+    "resolutionSummary": "Resumen de la resolución",
+    "internalSummary": "Resumen interno",
+    "comments": "Comentarios ({count})",
+    "noComments": "Aún no hay comentarios.",
+    "submitter": "Solicitante del ticket",
+    "via": "vía {source}",
+    "internal": "Interno",
+    "attachments": "Archivos adjuntos ({count})",
+    "download": "(descargar)",
+    "partRequests": "Solicitudes de repuestos ({count})",
+    "newPartRequest": "+ Nueva solicitud",
+    "noPartRequests": "No hay solicitudes de repuestos vinculadas a este ticket.",
+    "items": "{count, plural, one {# artículo} other {# artículos}}",
+    "fieldService": "Órdenes de servicio en campo ({count})",
+    "newFieldService": "+ Nueva orden de servicio",
+    "noFieldService": "No hay órdenes de servicio en campo vinculadas a este ticket.",
+    "details": "Detalles",
+    "customer": "Cliente",
+    "site": "Sitio",
+    "type": "Tipo",
+    "severity": "Severidad",
+    "impact": "Impacto",
+    "asset": "Activo",
+    "area": "Área",
+    "source": "Origen",
+    "owner": "Responsable",
+    "unassigned": "Sin asignar",
+    "submitterLabel": "Solicitante",
+    "created": "Creado",
+    "resolved": "Resuelto",
+    "closed": "Cerrado",
+    "timesShownIn": "Todas las horas se muestran en {timezone}",
+    "activity": "Actividad",
+    "timesIn": "Horas en {timezone}",
+    "by": "por {name}",
+    "events": {
+      "ticket_created": "Ticket creado",
+      "status_changed": "Estado: {from} → {to}",
+      "owner_assigned": "Responsable asignado",
+      "severity_changed": "Severidad: {from} → {to}",
+      "comment_added": "Comentario agregado ({visibility})",
+      "attachment_added": "Archivo adjunto: {name}"
+    }
+  },
+  "sla": {
+    "prefix": "Estado del SLA: {label}",
+    "on_track": "Dentro del plazo",
+    "response_breached": "Respuesta incumplida",
+    "resolution_breached": "Resolución incumplida",
+    "met": "Cumplido",
+    "not_applicable": "No aplica",
+    "nextMilestone": "Próximo hito en",
+    "firstResponseLate": "Primera respuesta con {delta} de retraso",
+    "responseDueAgo": "Respuesta vencida hace {delta}",
+    "resolvedLate": "Resuelto con {delta} de retraso",
+    "resolutionDueAgo": "Resolución vencida hace {delta}",
+    "resolutionMissed": "No se cumplió el hito de resolución",
+    "firstResponseAt": "Primera respuesta: {time}",
+    "duration": {
+      "seconds": "{n} s",
+      "minutes": "{n} min",
+      "hours": "{h} h",
+      "hoursMinutes": "{h} h {m} min",
+      "days": "{d} d",
+      "daysHours": "{d} d {h} h"
+    }
+  },
+  "ticketActions": {
+    "update": {
+      "title": "Actualizar ticket",
+      "status": "Estado",
+      "severity": "Severidad",
+      "owner": "Responsable",
+      "unassigned": "— Sin asignar —",
+      "selectOwner": "— Seleccione un responsable —",
+      "me": "(yo)",
+      "saving": "Guardando…",
+      "save": "Guardar cambios",
+      "noChanges": "Sin cambios",
+      "ownerRequired": "Seleccione un responsable para los tickets asignados o en curso.",
+      "failed": "La actualización del ticket no está disponible temporalmente. Vuelva a intentarlo.",
+      "quickActions": "Acciones rápidas",
+      "assignToMe": "Asignarme",
+      "markInProgress": "Marcar en curso",
+      "reopen": "Reabrir ticket"
+    },
+    "guidance": {
+      "waitingTitle": "Estamos esperando su respuesta",
+      "waitingBody": "Responda en el cuadro de comentarios de abajo. Su respuesta llega directamente al ingeniero que atiende este ticket.",
+      "updateTitle": "¿Necesita actualizar algo?",
+      "updateBody": "Agregue un comentario abajo para compartir nueva información con el equipo, o cargue archivos adjuntos."
+    },
+    "reopen": {
+      "title": "¿No se resolvió?",
+      "body": "Reabra este ticket e indique al equipo qué sigue ocurriendo. Los comentarios por sí solos no lo reabren.",
+      "label": "Qué sigue fallando",
+      "placeholder": "¿Qué sigue fallando?",
+      "required": "Indique al equipo qué sigue fallando para que pueda retomarlo.",
+      "failed": "La reapertura no está disponible temporalmente. Vuelva a intentarlo.",
+      "submit": "Reabrir ticket",
+      "submitting": "Reabriendo…"
+    },
+    "resolve": {
+      "resolutionTitle": "Resolución",
+      "resolveTitle": "Resolver ticket",
+      "resolvedBody": "Este ticket está marcado como resuelto. Puede reabrirlo desde las acciones rápidas de arriba o actualizar el resumen de la resolución abajo.",
+      "openBody": "Marque el ticket como resuelto y registre una explicación visible para el cliente.",
+      "edit": "Editar resolución",
+      "resolveTicket": "Resolver {ticketNo}",
+      "close": "Cerrar",
+      "customerSummary": "Resumen visible para el cliente",
+      "customerSummaryHelp": "¿Qué hicimos? ¿Qué necesita saber el cliente? Se muestra en la vista pública y en el panel del cliente.",
+      "customerSummaryPlaceholder": "p. ej., Se reinició la flota AMR-03 y se volvió a registrar en el WCS. La producción se reanudó a las 14:32.",
+      "internalSummary": "Resumen interno",
+      "internalOptional": "(opcional, solo interno)",
+      "internalSummaryHelp": "Causa raíz, qué intentamos y qué hacer si vuelve a ocurrir. Visible solo para los ingenieros de DropletAI.",
+      "internalSummaryPlaceholder": "p. ej., La causa raíz fue un handshake obsoleto con el WCS tras una breve falla de red. Solución: se volvió a registrar la flota; no fue necesario cambiar el firmware.",
+      "required": "El resumen visible para el cliente es obligatorio al resolver un ticket.",
+      "failed": "La resolución del ticket no está disponible temporalmente. Vuelva a intentarlo.",
+      "cancel": "Cancelar",
+      "submit": "Marcar como resuelto",
+      "submitting": "Resolviendo..."
+    },
+    "comment": {
+      "title": "Agregar comentario",
+      "label": "Comentario",
+      "placeholderInternal": "Escriba un comentario (visible para el cliente, salvo que lo marque como interno)",
+      "placeholderCustomer": "Escriba un comentario para el equipo de soporte",
+      "visibility": "Visibilidad del comentario",
+      "customerVisible": "👥 Visible para el cliente",
+      "internalOnly": "🔒 Solo interno",
+      "customerNote": "Los comentarios son visibles para el soporte de DropletAI",
+      "added": "Comentario agregado",
+      "failed": "El envío de comentarios no está disponible temporalmente. Vuelva a intentarlo.",
+      "submit": "Agregar comentario",
+      "submitting": "Agregando..."
+    },
+    "attachment": {
+      "title": "Cargar archivo adjunto",
+      "visibility": "Visibilidad:",
+      "customerVisible": "Visible para el cliente",
+      "internalOnly": "Solo interno",
+      "badSize": "Elija un archivo de entre 1 byte y 50 MB.",
+      "badName": "Elija un archivo con un nombre seguro de entre 3 y 255 caracteres.",
+      "uploaded": "Se cargó {name}",
+      "failed": "La carga de archivos adjuntos no está disponible temporalmente. Vuelva a intentarlo.",
+      "choose": "Elegir archivo",
+      "uploading": "Cargando...",
+      "types": "Máx. 50 MB. JPEG/PNG/GIF/WebP, MP4/MOV, PDF, texto UTF-8 o Excel."
+    }
+  },
+  "share": {
+    "metaTitle": "Estado del ticket",
+    "headerLabel": "Estado del ticket",
+    "accessDenied": "Acceso denegado",
+    "tokenRequired": "Se requiere un token de acceso válido para ver este ticket.",
+    "tooManyRequests": "Demasiadas solicitudes",
+    "rateLimited": "Superó el límite de consultas de tickets. Vuelva a intentarlo en {seconds} segundos.",
+    "unavailableTitle": "Consulta de tickets no disponible",
+    "unavailable": "La consulta de tickets no está disponible temporalmente. Vuelva a intentarlo más tarde.",
+    "notFoundTitle": "No se encontró el ticket",
+    "notFound": "Es posible que este ticket no exista o que su enlace de acceso no sea válido.",
+    "goHome": "Ir al inicio",
+    "description": "Descripción",
+    "resolutionSummary": "Resumen de la resolución",
+    "updates": "Actualizaciones y comentarios",
+    "noUpdates": "Aún no hay actualizaciones. Nuestro equipo está trabajando en su ticket.",
+    "submitter": "Solicitante del ticket",
+    "closedNotice": "Este ticket está cerrado. Si el problema volvió a aparecer, <link>envíe un nuevo ticket</link> y mencione {ticketNo}.",
+    "attachments": "Archivos adjuntos",
+    "download": "(descargar)",
+    "details": "Detalles del ticket",
+    "customer": "Cliente",
+    "site": "Sitio",
+    "status": "Estado",
+    "severity": "Severidad",
+    "impact": "Impacto",
+    "equipment": "Equipo",
+    "area": "Área / proceso",
+    "owner": "Responsable",
+    "pendingAssignment": "Pendiente de asignación",
+    "created": "Creado",
+    "resolved": "Resuelto",
+    "timeline": "Historial de actividad",
+    "eventCreated": "Ticket creado",
+    "eventStatus": "Estado → {status}",
+    "eventAssigned": "Ingeniero asignado",
+    "copyright": "© {year} DropletAI Services. Todos los derechos reservados."
+  },
+  "guestReply": {
+    "waitingTitle": "El equipo está esperando su respuesta",
+    "title": "Responder al equipo",
+    "body": "Su mensaje se agrega a este ticket y llega directamente al ingeniero que lo atiende.",
+    "label": "Su respuesta",
+    "placeholder": "Comparta una respuesta, una actualización o qué sigue fallando",
+    "empty": "Escriba un mensaje antes de enviar.",
+    "reopenLabel": "No está resuelto — reabrir el ticket",
+    "reopenHelp": "Si no marca esta opción, su mensaje se agrega, pero el ticket sigue resuelto.",
+    "counter": "{count} / {max}",
+    "reopened": "Ticket reabierto. El equipo recibió su mensaje.",
+    "sent": "Respuesta enviada. El equipo recibió su mensaje.",
+    "failed": "Las respuestas no están disponibles temporalmente. Vuelva a intentarlo.",
+    "rateLimited": "Demasiadas respuestas. Espere unos minutos e inténtelo de nuevo.",
+    "sending": "Enviando…",
+    "reopenAndSend": "Reabrir y enviar",
+    "send": "Enviar respuesta"
+  },
+  "accessDenied": {
+    "restricted": "Acceso restringido.",
+    "returned": "Se le redirigió a su panel.",
+    "admin": "Esa página está limitada a los administradores.",
+    "internal": "Esa página está limitada al personal de DropletAI.",
+    "cm": "La administración del equipo está limitada a los gerentes de cliente.",
+    "external": "Mis sitios es para cuentas de clientes. Use Tickets o Clientes y sitios en su lugar."
+  },
+  "dashboard": {
+    "metaTitle": "Panel",
+    "title": "Panel",
+    "viewAll": "Ver todo →",
+    "allTickets": "Todos los tickets →",
+    "noTicketsYet": "Aún no hay tickets.",
+    "unknownSite": "Sitio desconocido",
+    "unknownCustomer": "Cliente desconocido",
+    "recentTickets": "Tickets recientes",
+    "internal": {
+      "eyebrow": "Operaciones de servicio",
+      "subtitle": "Vista en tiempo real del trabajo de soporte de DropletAI en todos los sitios de clientes.",
+      "openQueue": "Cola de tickets abiertos",
+      "openTickets": "Tickets abiertos",
+      "openTicketsHint": "Todo lo que aún no se ha resuelto",
+      "urgent": "P1 / P2 activos",
+      "urgentHint": "Severidad crítica y alta",
+      "unassigned": "Sin asignar",
+      "unassignedHint": "Esperando un responsable",
+      "breached": "SLA incumplido",
+      "breachedHint": "Tickets abiertos que superaron un objetivo",
+      "myOpen": "Mis tickets abiertos",
+      "myOpenHint": "Asignados a usted: {count}, por vencimiento más próximo",
+      "nothingAssigned": "No tiene nada asignado en este momento. <link>Tome un ticket sin asignar</link>.",
+      "recentlyCreated": "Creados recientemente",
+      "slaBreached": "SLA incumplido",
+      "resolveBy": "Resolver antes de {time}",
+      "noTarget": "Sin objetivo de resolución"
+    },
+    "manager": {
+      "subtitle": "Resumen de la actividad de soporte de su organización.",
+      "sites": "Sitios",
+      "openTickets": "Tickets abiertos",
+      "urgent": "P1 / P2 activos",
+      "team": "Miembros del equipo",
+      "attention": "Sitios que requieren atención",
+      "attentionHint": "por cantidad de tickets abiertos",
+      "open": "abiertos",
+      "allSites": "Todos los sitios",
+      "noSites": "No se encontraron sitios.",
+      "noTickets": "Aún no hay tickets. <link>Envíe una solicitud</link> para comenzar."
+    },
+    "customer": {
+      "subtitle": "¡Le damos la bienvenida! Este es un resumen de su actividad de soporte.",
+      "mySites": "Mis sitios",
+      "totalTickets": "Total de tickets",
+      "noSitesTitle": "Aún no tiene sitios asignados",
+      "noSitesBody": "Pida a su gerente de cliente que le asigne un sitio o comuníquese con su gerente de cuenta de DropletAI para configurar su acceso.",
+      "noTicketsTitle": "Aún no hay tickets",
+      "noTicketsBody": "Cuando envíe un ticket, aparecerá aquí para que pueda seguir su avance.",
+      "submit": "Enviar un ticket"
+    }
+  },
+  "sites": {
+    "metaTitle": "Mis sitios",
+    "title": "Mis sitios",
+    "subtitle": "Sitios a los que tiene acceso para enviar y seguir tickets de soporte",
+    "managerEmptyTitle": "Aún no hay sitios en su organización",
+    "managerEmptyBody": "Su organización no tiene sitios activos. Comuníquese con su gerente de cuenta de DropletAI para configurarlos.",
+    "emptyTitle": "No tiene sitios asignados",
+    "emptyBody": "Aún no tiene acceso a ningún sitio. Pida a su gerente de cliente que le asigne uno.",
+    "customer": "Cliente",
+    "timezone": "Zona horaria",
+    "yourRole": "Su rol",
+    "viewTickets": "Ver tickets →",
+    "newTicket": "Enviar un ticket"
+  },
+  "errorPage": {
+    "title": "Algo salió mal",
+    "body": "Ocurrió un error inesperado. Puede volver a intentarlo o regresar al panel.",
+    "reference": "ref.: {digest}",
+    "retry": "Intentar de nuevo",
+    "dashboard": "Ir al panel"
+  },
+  "notFound": {
+    "title": "Página no encontrada",
+    "body": "La página que busca no existe o se movió.",
+    "home": "Inicio",
+    "dashboard": "Ir al panel"
+  },
+  "forbidden": {
+    "title": "No tiene acceso",
+    "body": "Su cuenta no tiene permiso para ver esta página. Si cree que se trata de un error, comuníquese con su administrador.",
+    "back": "Volver al panel"
+  }
+}

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useLocale, useTranslations } from "next-intl";
 import {
   REQUEST_TYPE_LABELS,
   SEVERITY_LABELS,
@@ -13,6 +14,7 @@ import {
 import { getCurrentSites } from "@/lib/supabase/scope.client";
 import {
   clientMutationErrorMessage,
+  clientMutationErrorStatus,
   ExpectedClientMutationError,
   readClientJsonResponse,
 } from "@/lib/http/client-mutation";
@@ -44,6 +46,11 @@ export function CreateTicketModal({
   onClose,
   onCreated,
 }: CreateTicketModalProps) {
+  const t = useTranslations("createTicket");
+  const f = useTranslations("submit.fields");
+  const labels = useTranslations("labels");
+  const common = useTranslations("common");
+  const locale = useLocale();
   const [userSites, setUserSites] = useState<UserSite[]>([]);
   const [selectedSiteId, setSelectedSiteId] = useState("");
   const [title, setTitle] = useState("");
@@ -91,9 +98,8 @@ export function CreateTicketModal({
       );
     } catch {
       if (requestId !== siteRequestIdRef.current) return;
-      setSiteLoadError(
-        "Site options are temporarily unavailable. Please retry."
-      );
+      // Store the state, not copy: the message renders in the current language.
+      setSiteLoadError("unavailable");
     } finally {
       if (requestId === siteRequestIdRef.current) setLoadingSites(false);
     }
@@ -120,7 +126,7 @@ export function CreateTicketModal({
 
     const site = userSites.find((s) => s.site_id === selectedSiteId);
     if (!site) {
-      setError("Please select a site");
+      setError(t("chooseSite"));
       return;
     }
 
@@ -133,7 +139,7 @@ export function CreateTicketModal({
       !severity ||
       !impact
     ) {
-      setError("Complete the required ticket fields before submitting.");
+      setError(t("incomplete"));
       return;
     }
 
@@ -166,10 +172,7 @@ export function CreateTicketModal({
         body: requestBody,
       });
 
-      const data = await readClientJsonResponse(
-        res,
-        "Failed to create ticket"
-      );
+      const data = await readClientJsonResponse(res, t("failed"));
       if (
         typeof data !== "object" ||
         data === null ||
@@ -177,19 +180,20 @@ export function CreateTicketModal({
         typeof data.ticket_no !== "string"
       ) {
         onCreated?.();
-        throw new ExpectedClientMutationError(
-          "Ticket creation may have succeeded, but confirmation is unavailable. Refresh the ticket list before retrying."
-        );
+        throw new ExpectedClientMutationError(t("unconfirmed"));
       }
 
       setSuccess(data.ticket_no);
       onCreated?.();
     } catch (err) {
+      // Server messages are English; other languages get translated copy.
+      const status = clientMutationErrorStatus(err);
       setError(
-        clientMutationErrorMessage(
-          err,
-          "Ticket creation is temporarily unavailable. Please retry."
-        )
+        status === 429
+          ? t("rateLimited")
+          : locale === "en" || status === undefined
+            ? clientMutationErrorMessage(err, t("unavailable"))
+            : t("failed")
       );
     } finally {
       setSubmitting(false);
@@ -222,11 +226,11 @@ export function CreateTicketModal({
             id="create-ticket-title"
             className="text-lg font-semibold text-foreground"
           >
-            Submit New Ticket
+            {t("title")}
           </h2>
           <button
             type="button"
-            aria-label="Close ticket form"
+            aria-label={t("close")}
             onClick={() => {
               resetForm();
               onClose();
@@ -248,7 +252,7 @@ export function CreateTicketModal({
               </svg>
             </div>
             <p className="text-base font-semibold text-foreground mb-1">
-              Ticket Created!
+              {t("created")}
             </p>
             <p className="text-sm text-muted-foreground font-mono">{success}</p>
             <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row">
@@ -260,7 +264,7 @@ export function CreateTicketModal({
                 }}
                 className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
               >
-                View ticket
+                {t("view")}
               </Link>
               <button
                 type="button"
@@ -270,7 +274,7 @@ export function CreateTicketModal({
                 }}
                 className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-accent"
               >
-                Done
+                {t("done")}
               </button>
             </div>
           </div>
@@ -294,14 +298,14 @@ export function CreateTicketModal({
                 role="alert"
                 className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
               >
-                <p>{siteLoadError}</p>
+                <p>{t("sitesUnavailable")}</p>
                 <button
                   type="button"
                   onClick={() => void loadSites()}
                   disabled={loadingSites || submitting}
                   className="mt-2 font-semibold text-primary hover:text-primary/80"
                 >
-                  Retry site loading
+                  {t("retrySites")}
                 </button>
               </div>
             )}
@@ -309,7 +313,7 @@ export function CreateTicketModal({
             {/* Site Selection */}
             <div>
               <label htmlFor="ticket-site" className="block text-sm font-medium text-foreground mb-1">
-                Site *
+                {t("site")}
               </label>
               <select
                 id="ticket-site"
@@ -326,10 +330,10 @@ export function CreateTicketModal({
               >
                 <option value="">
                   {loadingSites
-                    ? "Loading sites..."
+                    ? t("loadingSites")
                     : userSites.length === 0
-                      ? "No active sites available"
-                      : "Select a site..."}
+                      ? f("siteNone")
+                      : f("siteSelect")}
                 </option>
                 {userSites.map((site) => (
                   <option key={site.site_id} value={site.site_id}>
@@ -339,13 +343,15 @@ export function CreateTicketModal({
               </select>
               {selectedSite && (
                 <p className="text-xs text-muted-foreground mt-1">
-                  Customer: {selectedSite.customer_name} | Site: {selectedSite.site_code}
+                  {t("selectedSite", {
+                    customer: selectedSite.customer_name,
+                    site: selectedSite.site_code,
+                  })}
                 </p>
               )}
               {!loadingSites && !siteLoadError && userSites.length === 0 && (
                 <p className="mt-1 text-xs text-amber-700">
-                  No active sites are assigned to your account. Contact your
-                  customer administrator or DropletAI support.
+                  {t("noSitesHelp")}
                 </p>
               )}
             </div>
@@ -353,7 +359,7 @@ export function CreateTicketModal({
             {/* Title */}
             <div>
               <label htmlFor="ticket-title" className="block text-sm font-medium text-foreground mb-1">
-                Issue Title *
+                {f("title")}
               </label>
               <input
                 id="ticket-title"
@@ -363,7 +369,7 @@ export function CreateTicketModal({
                 required
                 maxLength={TICKET_TITLE_MAX_LENGTH}
                 disabled={submitting}
-                placeholder="e.g. AMR-03 not completing delivery mission"
+                placeholder={f("titlePlaceholder")}
                 className="w-full rounded-lg border border-border px-3 py-2 text-sm text-foreground bg-background focus:outline-none focus:ring-2 focus:ring-primary/20"
               />
             </div>
@@ -371,7 +377,7 @@ export function CreateTicketModal({
             {/* Type / Severity / Impact */}
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <div>
-                <label htmlFor="ticket-type" className="block text-sm font-medium text-foreground mb-1">Type *</label>
+                <label htmlFor="ticket-type" className="block text-sm font-medium text-foreground mb-1">{t("type")}</label>
                 <select
                   id="ticket-type"
                   value={requestType}
@@ -380,14 +386,14 @@ export function CreateTicketModal({
                   disabled={submitting}
                   className="w-full rounded-lg border border-border px-3 py-2 text-sm text-foreground bg-background"
                 >
-                  <option value="">Select...</option>
-                  {Object.entries(REQUEST_TYPE_LABELS).map(([v, l]) => (
-                    <option key={v} value={v}>{l}</option>
+                  <option value="">{f("select")}</option>
+                  {Object.keys(REQUEST_TYPE_LABELS).map((v) => (
+                    <option key={v} value={v}>{labels(`requestType.${v}`)}</option>
                   ))}
                 </select>
               </div>
               <div>
-                <label htmlFor="ticket-severity" className="block text-sm font-medium text-foreground mb-1">Severity *</label>
+                <label htmlFor="ticket-severity" className="block text-sm font-medium text-foreground mb-1">{f("severity")}</label>
                 <select
                   id="ticket-severity"
                   value={severity}
@@ -396,14 +402,14 @@ export function CreateTicketModal({
                   disabled={submitting}
                   className="w-full rounded-lg border border-border px-3 py-2 text-sm text-foreground bg-background"
                 >
-                  <option value="">Select...</option>
-                  {Object.entries(SEVERITY_LABELS).map(([v, l]) => (
-                    <option key={v} value={v}>{l}</option>
+                  <option value="">{f("select")}</option>
+                  {Object.keys(SEVERITY_LABELS).map((v) => (
+                    <option key={v} value={v}>{labels(`severity.${v}`)}</option>
                   ))}
                 </select>
               </div>
               <div>
-                <label htmlFor="ticket-impact" className="block text-sm font-medium text-foreground mb-1">Impact *</label>
+                <label htmlFor="ticket-impact" className="block text-sm font-medium text-foreground mb-1">{t("impact")}</label>
                 <select
                   id="ticket-impact"
                   value={impact}
@@ -412,9 +418,9 @@ export function CreateTicketModal({
                   disabled={submitting}
                   className="w-full rounded-lg border border-border px-3 py-2 text-sm text-foreground bg-background"
                 >
-                  <option value="">Select...</option>
-                  {Object.entries(IMPACT_LABELS).map(([v, l]) => (
-                    <option key={v} value={v}>{l}</option>
+                  <option value="">{f("select")}</option>
+                  {Object.keys(IMPACT_LABELS).map((v) => (
+                    <option key={v} value={v}>{labels(`impact.${v}`)}</option>
                   ))}
                 </select>
               </div>
@@ -423,7 +429,7 @@ export function CreateTicketModal({
             {/* Asset / Area */}
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
-                <label htmlFor="ticket-asset" className="block text-sm font-medium text-foreground mb-1">Equipment / Asset</label>
+                <label htmlFor="ticket-asset" className="block text-sm font-medium text-foreground mb-1">{t("asset")}</label>
                 <input
                   id="ticket-asset"
                   type="text"
@@ -431,12 +437,12 @@ export function CreateTicketModal({
                   onChange={(e) => setAssetId(e.target.value)}
                   maxLength={TICKET_CONTEXT_MAX_LENGTH}
                   disabled={submitting}
-                  placeholder="e.g. AMR-03"
+                  placeholder={t("assetPlaceholder")}
                   className="w-full rounded-lg border border-border px-3 py-2 text-sm text-foreground bg-background focus:outline-none focus:ring-2 focus:ring-primary/20"
                 />
               </div>
               <div>
-                <label htmlFor="ticket-area" className="block text-sm font-medium text-foreground mb-1">Area / Process</label>
+                <label htmlFor="ticket-area" className="block text-sm font-medium text-foreground mb-1">{f("area")}</label>
                 <input
                   id="ticket-area"
                   type="text"
@@ -444,7 +450,7 @@ export function CreateTicketModal({
                   onChange={(e) => setArea(e.target.value)}
                   maxLength={TICKET_CONTEXT_MAX_LENGTH}
                   disabled={submitting}
-                  placeholder="e.g. Picking Zone A"
+                  placeholder={t("areaPlaceholder")}
                   className="w-full rounded-lg border border-border px-3 py-2 text-sm text-foreground bg-background focus:outline-none focus:ring-2 focus:ring-primary/20"
                 />
               </div>
@@ -453,7 +459,7 @@ export function CreateTicketModal({
             {/* Description */}
             <div>
               <label htmlFor="ticket-description" className="block text-sm font-medium text-foreground mb-1">
-                Description *
+                {f("description")}
               </label>
               <textarea
                 id="ticket-description"
@@ -463,7 +469,7 @@ export function CreateTicketModal({
                 rows={4}
                 maxLength={TICKET_DESCRIPTION_MAX_LENGTH}
                 disabled={submitting}
-                placeholder="Describe the issue in detail..."
+                placeholder={t("descriptionPlaceholder")}
                 className="w-full rounded-lg border border-border px-3 py-2 text-sm text-foreground bg-background focus:outline-none focus:ring-2 focus:ring-primary/20"
               />
             </div>
@@ -476,7 +482,7 @@ export function CreateTicketModal({
                 disabled={submitting}
                 className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-accent transition-colors"
               >
-                Cancel
+                {common("cancel")}
               </button>
               <button
                 type="submit"
@@ -488,7 +494,7 @@ export function CreateTicketModal({
                 }
                 className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
               >
-                {submitting ? "Submitting..." : "Submit Ticket"}
+                {submitting ? t("submitting") : t("submit")}
               </button>
             </div>
           </form>

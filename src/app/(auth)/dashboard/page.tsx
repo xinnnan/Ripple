@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
+import { getLocale, getTranslations } from "next-intl/server";
+import { useLocale, useTranslations } from "next-intl";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { redirect } from "next/navigation";
-import { SEVERITY_LABELS, STATUS_LABELS, type TicketStatus } from "@/types/ticket";
-import { PROJECT_STATUS_LABELS, PROJECT_STATUS_COLORS } from "@/types/ticket";
+import type { TicketStatus } from "@/types/ticket";
+import { PROJECT_STATUS_COLORS } from "@/types/ticket";
 import {
   formatDate,
   resolveSiteTimezone,
@@ -23,7 +25,21 @@ import {
   type DeniedReason,
 } from "./access-denied-notice";
 
-export const metadata: Metadata = { title: "Dashboard" };
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("dashboard");
+  return { title: t("metaTitle") };
+}
+
+async function dashboardText() {
+  const [t, labels, locale] = await Promise.all([
+    getTranslations("dashboard"),
+    getTranslations("labels"),
+    getLocale(),
+  ]);
+  const label = (group: string, value: string | null | undefined) =>
+    value && labels.has(`${group}.${value}`) ? labels(`${group}.${value}`) : value ?? "";
+  return { t, label, locale };
+}
 
 export const dynamic = "force-dynamic";
 
@@ -131,6 +147,7 @@ async function InternalDashboard({
   denied: DeniedReason | null;
 }) {
   const supabase = createAdminClient();
+  const { t } = await dashboardText();
   const ticketSummary = `
     ticket_no, title, severity, status, resolve_due_at, sla_breached, created_at,
     customer:customers(name),
@@ -189,16 +206,16 @@ async function InternalDashboard({
 
   const stats = [
     {
-      label: "Open tickets",
+      label: t("internal.openTickets"),
       value: openTickets.count ?? 0,
-      hint: "Everything not yet resolved",
+      hint: t("internal.openTicketsHint"),
       href: ticketListHref({ status: OPEN_TICKET_STATUSES }),
       accent: "bg-slate-900",
     },
     {
-      label: "P1 / P2 active",
+      label: t("internal.urgent"),
       value: urgentTickets.count ?? 0,
-      hint: "Critical and high severity",
+      hint: t("internal.urgentHint"),
       href: ticketListHref({
         status: OPEN_TICKET_STATUSES,
         severity: ["P1", "P2"],
@@ -206,9 +223,9 @@ async function InternalDashboard({
       accent: "bg-red-600",
     },
     {
-      label: "Unassigned",
+      label: t("internal.unassigned"),
       value: unassignedTickets.count ?? 0,
-      hint: "Waiting for an owner",
+      hint: t("internal.unassignedHint"),
       href: ticketListHref({
         status: OPEN_TICKET_STATUSES,
         owner_id: "unassigned",
@@ -216,9 +233,9 @@ async function InternalDashboard({
       accent: "bg-amber-500",
     },
     {
-      label: "SLA breached",
+      label: t("internal.breached"),
       value: breachedTickets.count ?? 0,
-      hint: "Open tickets past a target",
+      hint: t("internal.breachedHint"),
       href: ticketListHref({ status: OPEN_TICKET_STATUSES, sla: "breached" }),
       accent: "bg-rose-700",
     },
@@ -231,18 +248,18 @@ async function InternalDashboard({
       <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-primary">
-            Service operations
+            {t("internal.eyebrow")}
           </p>
-          <h1 className="mt-1 text-2xl font-bold text-foreground">Dashboard</h1>
+          <h1 className="mt-1 text-2xl font-bold text-foreground">{t("title")}</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Live view of DropletAI support work across every customer site.
+            {t("internal.subtitle")}
           </p>
         </div>
         <Link
           href={ticketListHref({ status: OPEN_TICKET_STATUSES })}
           className="inline-flex min-h-11 items-center justify-center rounded-xl bg-slate-950 px-4 text-sm font-semibold text-white transition hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
         >
-          Open ticket queue
+          {t("internal.openQueue")}
         </Link>
       </div>
 
@@ -289,11 +306,10 @@ async function InternalDashboard({
                 id="my-open-tickets"
                 className="text-base font-semibold text-foreground"
               >
-                My open tickets
+                {t("internal.myOpen")}
               </h2>
               <p className="text-xs text-muted-foreground">
-                {myTickets.count ?? mine.length} assigned to you, soonest due
-                first
+                {t("internal.myOpenHint", { count: myTickets.count ?? mine.length })}
               </p>
             </div>
             <Link
@@ -303,22 +319,24 @@ async function InternalDashboard({
               })}
               className="text-sm font-medium text-primary hover:text-primary/80"
             >
-              View all →
+              {t("viewAll")}
             </Link>
           </div>
           {mine.length === 0 ? (
             <div className="p-6 text-sm text-muted-foreground">
-              Nothing is assigned to you right now.{" "}
-              <Link
-                href={ticketListHref({
-                  status: OPEN_TICKET_STATUSES,
-                  owner_id: "unassigned",
-                })}
-                className="font-medium text-primary hover:text-primary/80"
-              >
-                Pick up an unassigned ticket
-              </Link>
-              .
+              {t.rich("internal.nothingAssigned", {
+                link: (chunks) => (
+                  <Link
+                    href={ticketListHref({
+                      status: OPEN_TICKET_STATUSES,
+                      owner_id: "unassigned",
+                    })}
+                    className="font-medium text-primary hover:text-primary/80"
+                  >
+                    {chunks}
+                  </Link>
+                ),
+              })}
             </div>
           ) : (
             <ul className="divide-y divide-border">
@@ -338,18 +356,18 @@ async function InternalDashboard({
               id="recent-tickets"
               className="text-base font-semibold text-foreground"
             >
-              Recently created
+              {t("internal.recentlyCreated")}
             </h2>
             <Link
               href="/tickets"
               className="text-sm font-medium text-primary hover:text-primary/80"
             >
-              All tickets →
+              {t("allTickets")}
             </Link>
           </div>
           {recent.length === 0 ? (
             <div className="p-6 text-sm text-muted-foreground">
-              No tickets yet.
+              {t("noTicketsYet")}
             </div>
           ) : (
             <ul className="divide-y divide-border">
@@ -371,11 +389,14 @@ function QueueRow({
   ticket: InternalQueueTicket;
   showDue?: boolean;
 }) {
+  const t = useTranslations("dashboard");
+  const labels = useTranslations("labels");
+  const locale = useLocale();
   const site = singleRelation(ticket.site);
   const timezone = resolveSiteTimezone(ticket.site);
-  const severityLabel =
-    SEVERITY_LABELS[ticket.severity as keyof typeof SEVERITY_LABELS] ??
-    ticket.severity;
+  const severityLabel = labels.has(`severity.${ticket.severity}`)
+    ? labels(`severity.${ticket.severity}`)
+    : ticket.severity;
   return (
     <li>
       <Link
@@ -395,12 +416,13 @@ function QueueRow({
           <span
             className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium status-${ticket.status}`}
           >
-            {STATUS_LABELS[ticket.status as keyof typeof STATUS_LABELS] ??
-              ticket.status}
+            {labels.has(`status.${ticket.status}`)
+              ? labels(`status.${ticket.status}`)
+              : ticket.status}
           </span>
           {showDue && ticket.sla_breached && (
             <span className="inline-flex items-center rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-semibold text-rose-700">
-              SLA breached
+              {t("internal.slaBreached")}
             </span>
           )}
         </div>
@@ -408,14 +430,16 @@ function QueueRow({
           {ticket.title}
         </p>
         <p className="mt-0.5 text-xs text-muted-foreground">
-          {singleRelation(ticket.customer)?.name || "Unknown customer"} ·{" "}
-          {site?.site_name || "Unknown site"} ·{" "}
+          {singleRelation(ticket.customer)?.name || t("unknownCustomer")} ·{" "}
+          {site?.site_name || t("unknownSite")} ·{" "}
           {showDue
             ? ticket.resolve_due_at
-              ? `Resolve by ${formatDate(ticket.resolve_due_at, timezone)}`
-              : "No resolution target"
+              ? t("internal.resolveBy", {
+                  time: formatDate(ticket.resolve_due_at, timezone, locale),
+                })
+              : t("internal.noTarget")
             : ticket.created_at
-              ? formatDate(ticket.created_at, timezone)
+              ? formatDate(ticket.created_at, timezone, locale)
               : ""}
         </p>
       </Link>
@@ -544,6 +568,8 @@ async function CustomerManagerDashboard({
     .sort((a, b) => b.count - a.count)
     .slice(0, 5);
 
+  const { t, label, locale } = await dashboardText();
+
   // Get team members count
   const teamCountResult = await supabase
     .from("users")
@@ -560,34 +586,34 @@ async function CustomerManagerDashboard({
     <div className="p-5 sm:p-8">
       <AccessDeniedNotice reason={denied} />
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
+        <h1 className="text-2xl font-bold text-foreground">{t("title")}</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Overview of your organization’s support activity.
+          {t("manager.subtitle")}
         </p>
       </div>
 
       {/* Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-8">
         <div className="rounded-xl border border-border p-6">
-          <p className="text-sm text-muted-foreground">Sites</p>
+          <p className="text-sm text-muted-foreground">{t("manager.sites")}</p>
           <p className="text-3xl font-bold mt-1 text-blue-600">
             {sites?.length ?? 0}
           </p>
         </div>
         <div className="rounded-xl border border-border p-6">
-          <p className="text-sm text-muted-foreground">Open Tickets</p>
+          <p className="text-sm text-muted-foreground">{t("manager.openTickets")}</p>
           <p className="text-3xl font-bold mt-1 text-amber-600">
             {openCount}
           </p>
         </div>
         <div className="rounded-xl border border-border p-6">
-          <p className="text-sm text-muted-foreground">P1 / P2 Active</p>
+          <p className="text-sm text-muted-foreground">{t("manager.urgent")}</p>
           <p className="text-3xl font-bold mt-1 text-red-600">
             {p1p2Count}
           </p>
         </div>
         <div className="rounded-xl border border-border p-6">
-          <p className="text-sm text-muted-foreground">Team Members</p>
+          <p className="text-sm text-muted-foreground">{t("manager.team")}</p>
           <p className="text-3xl font-bold mt-1 text-purple-600">
             {teamCount ?? 0}
           </p>
@@ -599,10 +625,10 @@ async function CustomerManagerDashboard({
         <div className="rounded-xl border border-border mb-8">
           <div className="p-6 border-b border-border flex items-center justify-between">
             <h2 className="text-base font-semibold text-foreground">
-              Sites needing attention
+              {t("manager.attention")}
             </h2>
             <span className="text-xs text-muted-foreground">
-              by open ticket count
+              {t("manager.attentionHint")}
             </span>
           </div>
           <div className="divide-y divide-border">
@@ -625,7 +651,7 @@ async function CustomerManagerDashboard({
                     {s.count}
                   </span>
                   <span className="text-xs text-muted-foreground">
-                    open
+                    {t("manager.open")}
                   </span>
                 </div>
               </Link>
@@ -637,25 +663,24 @@ async function CustomerManagerDashboard({
       {/* Sites */}
       <div className="rounded-xl border border-border mb-8">
         <div className="p-6 border-b border-border flex items-center justify-between">
-          <h2 className="text-base font-semibold text-foreground">All Sites</h2>
+          <h2 className="text-base font-semibold text-foreground">{t("manager.allSites")}</h2>
           <Link
             href="/sites"
             className="text-sm font-medium text-primary hover:text-primary/80"
           >
-            View all →
+            {t("viewAll")}
           </Link>
         </div>
         {(!sites || sites.length === 0) ? (
           <div className="p-6 text-center text-sm text-muted-foreground">
-            No sites found.
+            {t("manager.noSites")}
           </div>
         ) : (
           <div className="divide-y divide-border">
             {sites.map((site) => {
               const statusColor =
                 PROJECT_STATUS_COLORS[site.project_status as keyof typeof PROJECT_STATUS_COLORS] || "bg-gray-100 text-gray-800";
-              const statusLabel =
-                PROJECT_STATUS_LABELS[site.project_status as keyof typeof PROJECT_STATUS_LABELS] || site.project_status;
+              const statusLabel = label("projectStatus", site.project_status);
               return (
                 <div key={site.id} className="flex items-center justify-between p-4">
                   <div>
@@ -675,21 +700,23 @@ async function CustomerManagerDashboard({
       {/* Recent Tickets */}
       <div className="rounded-xl border border-border">
         <div className="p-6 border-b border-border flex items-center justify-between">
-          <h2 className="text-base font-semibold text-foreground">Recent Tickets</h2>
+          <h2 className="text-base font-semibold text-foreground">{t("recentTickets")}</h2>
           <Link
             href="/tickets"
             className="text-sm font-medium text-primary hover:text-primary/80"
           >
-            View all →
+            {t("viewAll")}
           </Link>
         </div>
         {recentTickets.length === 0 ? (
           <div className="p-6 text-center text-sm text-muted-foreground">
-            No tickets yet.{" "}
-            <Link href="/submit" className="text-primary hover:text-primary/80">
-              Submit a request
-            </Link>{" "}
-            to get started.
+            {t.rich("manager.noTickets", {
+              link: (chunks) => (
+                <Link href="/submit" className="text-primary hover:text-primary/80">
+                  {chunks}
+                </Link>
+              ),
+            })}
           </div>
         ) : (
           <div className="divide-y divide-border">
@@ -706,18 +733,19 @@ async function CustomerManagerDashboard({
                   <div className="min-w-0">
                     <p className="break-words text-sm font-medium text-foreground">{ticket.title}</p>
                     <p className="text-xs text-muted-foreground">
-                      {singleRelation(ticket.site)?.site_name || "Unknown Site"}
+                      {singleRelation(ticket.site)?.site_name || t("unknownSite")}
                     </p>
                   </div>
                 </div>
                 <div className="flex items-center justify-between gap-3 sm:justify-end sm:gap-4">
                   <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-blue-50 text-blue-700">
-                    {STATUS_LABELS[ticket.status as keyof typeof STATUS_LABELS] || ticket.status}
+                    {label("status", ticket.status)}
                   </span>
                   <span className="text-right text-xs text-muted-foreground sm:w-28">
                     {formatDate(
                       ticket.created_at,
-                      resolveSiteTimezone(ticket.site)
+                      resolveSiteTimezone(ticket.site),
+                      locale
                     )}
                   </span>
                 </div>
@@ -840,32 +868,34 @@ async function CustomerDashboard({
     totalCount = totalCountRes.count ?? 0;
   }
 
+  const { t, label, locale } = await dashboardText();
+
   return (
     <div className="p-5 sm:p-8">
       <AccessDeniedNotice reason={denied} />
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
+        <h1 className="text-2xl font-bold text-foreground">{t("title")}</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Welcome back! Here is an overview of your support activity.
+          {t("customer.subtitle")}
         </p>
       </div>
 
       {/* Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
         <div className="rounded-xl border border-border p-6">
-          <p className="text-sm text-muted-foreground">My Sites</p>
+          <p className="text-sm text-muted-foreground">{t("customer.mySites")}</p>
           <p className="text-3xl font-bold mt-1 text-blue-600">
             {sites.length}
           </p>
         </div>
         <div className="rounded-xl border border-border p-6">
-          <p className="text-sm text-muted-foreground">Open Tickets</p>
+          <p className="text-sm text-muted-foreground">{t("manager.openTickets")}</p>
           <p className="text-3xl font-bold mt-1 text-amber-600">
             {openCount}
           </p>
         </div>
         <div className="rounded-xl border border-border p-6">
-          <p className="text-sm text-muted-foreground">Total Tickets</p>
+          <p className="text-sm text-muted-foreground">{t("customer.totalTickets")}</p>
           <p className="text-3xl font-bold mt-1 text-green-600">
             {totalCount}
           </p>
@@ -875,12 +905,12 @@ async function CustomerDashboard({
       {/* My Sites */}
       <div className="rounded-xl border border-border mb-8">
         <div className="p-6 border-b border-border flex items-center justify-between">
-          <h2 className="text-base font-semibold text-foreground">My Sites</h2>
+          <h2 className="text-base font-semibold text-foreground">{t("customer.mySites")}</h2>
           <Link
             href="/sites"
             className="text-sm font-medium text-primary hover:text-primary/80"
           >
-            View all →
+            {t("viewAll")}
           </Link>
         </div>
         {sites.length === 0 ? (
@@ -892,11 +922,10 @@ async function CustomerDashboard({
               </svg>
             </div>
             <h3 className="text-sm font-semibold text-foreground mb-1">
-              No sites assigned to you yet
+              {t("customer.noSitesTitle")}
             </h3>
             <p className="text-sm text-muted-foreground max-w-sm mx-auto">
-              Ask your Customer Manager to assign you to a site, or contact
-              your DropletAI Account Manager to get set up.
+              {t("customer.noSitesBody")}
             </p>
           </div>
         ) : (
@@ -906,10 +935,7 @@ async function CustomerDashboard({
                 PROJECT_STATUS_COLORS[
                   site.project_status as keyof typeof PROJECT_STATUS_COLORS
                 ] || "bg-gray-100 text-gray-800";
-              const statusLabel =
-                PROJECT_STATUS_LABELS[
-                  site.project_status as keyof typeof PROJECT_STATUS_LABELS
-                ] || site.project_status;
+              const statusLabel = label("projectStatus", site.project_status);
 
               return (
                 <div
@@ -942,13 +968,13 @@ async function CustomerDashboard({
       <div className="rounded-xl border border-border">
         <div className="p-6 border-b border-border flex items-center justify-between">
           <h2 className="text-base font-semibold text-foreground">
-            Recent Tickets
+            {t("recentTickets")}
           </h2>
           <Link
             href="/tickets"
             className="text-sm font-medium text-primary hover:text-primary/80"
           >
-            View all →
+            {t("viewAll")}
           </Link>
         </div>
         {recentTickets.length === 0 ? (
@@ -959,17 +985,16 @@ async function CustomerDashboard({
               </svg>
             </div>
             <h3 className="text-sm font-semibold text-foreground mb-1">
-              No tickets yet
+              {t("customer.noTicketsTitle")}
             </h3>
             <p className="text-sm text-muted-foreground max-w-sm mx-auto mb-4">
-              When you submit a ticket, it will appear here so you can track
-              its progress.
+              {t("customer.noTicketsBody")}
             </p>
             <Link
               href="/submit"
               className="inline-block rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
             >
-              Submit a ticket
+              {t("customer.submit")}
             </Link>
           </div>
         ) : (
@@ -989,20 +1014,19 @@ async function CustomerDashboard({
                       {ticket.title}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      {singleRelation(ticket.site)?.site_name || "Unknown Site"}
+                      {singleRelation(ticket.site)?.site_name || t("unknownSite")}
                     </p>
                   </div>
                 </div>
                 <div className="flex items-center justify-between gap-3 sm:justify-end sm:gap-4">
                   <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-blue-50 text-blue-700">
-                    {STATUS_LABELS[
-                      ticket.status as keyof typeof STATUS_LABELS
-                    ] || ticket.status}
+                    {label("status", ticket.status)}
                   </span>
                   <span className="text-right text-xs text-muted-foreground sm:w-28">
                     {formatDate(
                       ticket.created_at,
-                      resolveSiteTimezone(ticket.site)
+                      resolveSiteTimezone(ticket.site),
+                      locale
                     )}
                   </span>
                 </div>

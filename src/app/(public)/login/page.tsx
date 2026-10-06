@@ -12,8 +12,13 @@ import {
   isInvalidCredentialsError,
 } from "@/lib/auth/browser-flow";
 import { logIdentityReadFailure } from "@/lib/supabase/auth-read";
+import { useTranslations } from "next-intl";
+import { LanguageSwitcher } from "@/components/language-switcher";
 
 export default function LoginPage() {
+  const t = useTranslations("login");
+  const authErrors = useTranslations("authErrors");
+  const common = useTranslations("common");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -27,30 +32,24 @@ export default function LoginPage() {
     setRedirectPath(getSafeRedirectPath(search.get("next")));
 
     if (search.get("account") === "inactive") {
-      setError(
-        "This account is inactive or suspended. Contact a Ripple administrator for access."
-      );
+      setError(t("inactive"));
     } else if (search.get("error") === "auth_callback_failed") {
-      setError(
-        "That sign-in or recovery link is invalid or has expired. Request a new link and try again."
-      );
+      setError(t("callbackFailed"));
     } else if (search.get("error") === "signout_failed") {
-      setError(
-        "We could not confirm sign-out. Close this browser on a shared device and try again."
-      );
+      setError(t("signoutFailed"));
     }
 
     if (search.get("password") === "updated") {
       setNotice(
         search.get("sessions") === "partial"
-          ? "Your password was updated and this device was signed out. Other sessions could not be confirmed; contact support if you need them revoked."
-          : "Your password was updated. Sign in with your new password."
+          ? t("passwordUpdatedPartial")
+          : t("passwordUpdated")
       );
     } else if (search.get("logout") === "partial") {
-      setNotice(
-        "This device was signed out, but other sessions could not be confirmed. Contact support if you need them revoked."
-      );
+      setNotice(t("logoutPartial"));
     }
+    // Messages are read once from the URL on arrival.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleLogin = async (event: React.FormEvent) => {
@@ -73,7 +72,7 @@ export default function LoginPage() {
         ) {
           logIdentityReadFailure("login/sign-in", signInError);
         }
-        setError(getLoginErrorMessage(signInError));
+        setError(authErrors(getLoginErrorMessage(signInError)));
         return;
       }
 
@@ -84,7 +83,7 @@ export default function LoginPage() {
       window.location.assign(redirectPath);
     } catch (signInError) {
       logIdentityReadFailure("login/sign-in-unexpected", signInError);
-      setError(getLoginErrorMessage(signInError));
+      setError(authErrors(getLoginErrorMessage(signInError)));
     } finally {
       setLoading(false);
     }
@@ -108,32 +107,34 @@ export default function LoginPage() {
             />
             <div className="leading-tight">
               <span className="block font-semibold tracking-tight text-slate-950">
-                Ripple
+                {common("brand")}
               </span>
               <span className="block text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                by DropletAI
+                {common("byDropletAI")}
               </span>
             </div>
           </Link>
-          <Link
-            href="/"
-            className="inline-flex items-center gap-1.5 text-sm font-semibold text-slate-600 hover:text-slate-950"
-          >
-            <ArrowLeft className="h-4 w-4" aria-hidden="true" />
-            Support home
-          </Link>
+          <div className="flex items-center gap-2">
+            <LanguageSwitcher />
+            <Link
+              href="/"
+              className="hidden items-center gap-1.5 text-sm font-semibold text-slate-600 hover:text-slate-950 sm:inline-flex"
+            >
+              <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+              {t("supportHome")}
+            </Link>
+          </div>
         </div>
 
         <div className="my-auto w-full max-w-md self-center py-16">
           <p className="text-sm font-bold uppercase tracking-[0.18em] text-primary">
-            Customer &amp; service access
+            {t("eyebrow")}
           </p>
           <h1 className="mt-4 text-4xl font-semibold tracking-[-0.035em] text-slate-950">
-            Welcome back.
+            {t("title")}
           </h1>
           <p className="mt-3 text-base leading-7 text-slate-600">
-            Sign in to follow ticket activity, manage site access, and work
-            with the DropletAI service team.
+            {t("lead")}
           </p>
 
           <form onSubmit={handleLogin} className="mt-9 space-y-5">
@@ -163,7 +164,7 @@ export default function LoginPage() {
                 htmlFor="email"
                 className="mb-2 block text-sm font-semibold text-slate-800"
               >
-                Work email
+                {t("email")}
               </label>
               <input
                 id="email"
@@ -174,7 +175,7 @@ export default function LoginPage() {
                 onChange={(event) => setEmail(event.target.value)}
                 required
                 maxLength={320}
-                placeholder="you@company.com"
+                placeholder={t("emailPlaceholder")}
                 className="h-12 w-full rounded-xl border border-slate-300 bg-white px-4 text-sm text-slate-950 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-primary focus:ring-4 focus:ring-lime-100"
               />
             </div>
@@ -185,13 +186,13 @@ export default function LoginPage() {
                   htmlFor="password"
                   className="block text-sm font-semibold text-slate-800"
                 >
-                  Password
+                  {t("password")}
                 </label>
                 <Link
                   href="/forgot-password"
                   className="text-sm font-semibold text-primary hover:text-primary/80"
                 >
-                  Forgot password?
+                  {t("forgotPassword")}
                 </Link>
               </div>
               <div className="relative">
@@ -203,13 +204,13 @@ export default function LoginPage() {
                   onChange={(event) => setPassword(event.target.value)}
                   required
                   maxLength={1024}
-                  placeholder="Enter your password"
+                  placeholder={t("passwordPlaceholder")}
                   className="h-12 w-full rounded-xl border border-slate-300 bg-white px-4 pr-12 text-sm text-slate-950 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-primary focus:ring-4 focus:ring-lime-100"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword((visible) => !visible)}
-                  aria-label={showPassword ? "Hide password" : "Show password"}
+                  aria-label={showPassword ? t("hidePassword") : t("showPassword")}
                   className="absolute inset-y-0 right-0 flex w-12 items-center justify-center rounded-r-xl text-slate-500 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
                 >
                   {showPassword ? (
@@ -226,36 +227,38 @@ export default function LoginPage() {
               disabled={loading}
               className="flex h-12 w-full items-center justify-center rounded-xl bg-primary px-4 text-sm font-bold text-white shadow-sm transition hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {loading ? "Signing in…" : "Sign in"}
+              {loading ? t("submitting") : t("submit")}
             </button>
           </form>
 
           <div className="mt-8 rounded-2xl border border-slate-200 bg-white p-4 text-sm leading-6 text-slate-600 shadow-sm">
             <p className="font-semibold text-slate-900">
-              Don&apos;t have portal access?
+              {t("noAccessTitle")}
             </p>
             <p className="mt-1">
-              You can{" "}
-              <Link
-                href="/submit"
-                className="font-semibold text-primary hover:underline"
-              >
-                submit a ticket without an account
-              </Link>
-              , or contact your DropletAI Account Manager for access.
+              {t.rich("noAccessBody", {
+                submit: (chunks) => (
+                  <Link
+                    href="/submit"
+                    className="font-semibold text-primary hover:underline"
+                  >
+                    {chunks}
+                  </Link>
+                ),
+              })}
             </p>
           </div>
         </div>
 
         <p className="text-xs text-slate-500">
-          © {new Date().getFullYear()} DropletAI Services
+          {t("copyright", { year: new Date().getFullYear() })}
         </p>
       </section>
 
       <aside className="relative hidden min-h-screen overflow-hidden lg:block">
         <Image
           src="/images/ripple-automation-fleet.jpg"
-          alt="Autonomous mobile robots inside an industrial facility"
+          alt={t("imageAlt")}
           fill
           priority
           sizes="(min-width: 1024px) 55vw, 0vw"
@@ -267,11 +270,10 @@ export default function LoginPage() {
             <ShieldCheck className="h-5 w-5" aria-hidden="true" />
           </span>
           <p className="mt-6 max-w-xl text-3xl font-semibold leading-tight tracking-tight">
-            One shared operating record for every support handoff.
+            {t("asideTitle")}
           </p>
           <p className="mt-4 max-w-lg text-sm leading-7 text-slate-300">
-            Keep customer context, engineering updates, parts activity, and
-            field-service coordination tied to the same request.
+            {t("asideBody")}
           </p>
         </div>
       </aside>

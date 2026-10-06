@@ -34,6 +34,9 @@ vi.mock("@/lib/supabase/admin", () => ({
 vi.mock("next/image", () => ({
   default: ({ alt }: { alt: string }) => <span role="img" aria-label={alt} />,
 }));
+vi.mock("@/components/language-switcher", () => ({
+  LanguageSwitcher: () => <div data-testid="language-switcher" />,
+}));
 vi.mock("./guest-reply-form", () => ({
   GuestReplyForm: (props: Record<string, unknown>) => (
     <div data-testid="guest-reply-form" data-props={JSON.stringify(props)} />
@@ -63,7 +66,7 @@ describe("public ticket view boundary", () => {
   it("does not call the distributed command or database without a token", async () => {
     const html = await renderPage("");
 
-    expect(html).toContain("Access Denied");
+    expect(html).toContain("Access denied");
     expect(distributedRateLimitMock).not.toHaveBeenCalled();
     expect(fromMock).not.toHaveBeenCalled();
   });
@@ -77,7 +80,7 @@ describe("public ticket view boundary", () => {
 
     const html = await renderPage();
 
-    expect(html).toContain("Too Many Requests");
+    expect(html).toContain("Too many requests");
     expect(html).toContain("37 seconds");
     expect(fromMock).not.toHaveBeenCalled();
   });
@@ -87,7 +90,7 @@ describe("public ticket view boundary", () => {
 
     const html = await renderPage();
 
-    expect(html).toContain("Ticket Lookup Unavailable");
+    expect(html).toContain("Ticket lookup unavailable");
     expect(html).toContain("temporarily unavailable");
     expect(html).not.toContain("private detail");
     expect(fromMock).not.toHaveBeenCalled();

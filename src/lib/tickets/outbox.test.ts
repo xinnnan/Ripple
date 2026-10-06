@@ -393,6 +393,18 @@ describe("ticket notification outbox delivery", () => {
   });
 });
 
+describe("submitter email language", () => {
+  it.each([
+    ["ticket.email_confirmation", "sendTicketConfirmation", {}],
+    ["ticket.email_resolution", "sendTicketResolved", {}],
+    ["ticket.email_customer_update", "sendTicketUpdate", { body: "Hola" }],
+  ] as const)("%s uses the ticket's stored language", async (type, sender, payload) => {
+    const deps = dependencies();
+    await deliverTicketOutboxEvent(event(type, payload), { ...ticket(), locale: "ko" }, {}, deps);
+    expect(deps[sender]).toHaveBeenCalledWith(expect.objectContaining({ locale: "ko" }));
+  });
+});
+
 describe("intentionally disabled email", () => {
   it("terminally skips instead of retrying until dead letter", async () => {
     const deps = dependencies();

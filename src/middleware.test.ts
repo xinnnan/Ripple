@@ -150,3 +150,56 @@ describe("middleware profile availability", () => {
     expect(location.searchParams.get("next")).toBe("/tickets?status=new&page=2");
   });
 });
+
+describe("middleware account language", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  function clientWithLocale(locale: unknown) {
+    const client = makeClient("customer");
+    const query = client.from() as Record<string, ReturnType<typeof vi.fn>>;
+    query.maybeSingle
+      .mockResolvedValueOnce({ data: { role: "customer", status: "active" }, error: null })
+      .mockResolvedValueOnce({ data: { locale }, error: null });
+    client.from.mockClear();
+    createServerClient.mockReturnValue(client);
+    return client;
+  }
+
+  it("adopts the account language on a device without a language choice", async () => {
+    clientWithLocale("es");
+
+    const response = await middleware(
+      new NextRequest("https://support.example.com/dashboard")
+    );
+
+    expect(response.headers.get("x-middleware-next")).toBe("1");
+    expect(response.cookies.get("NEXT_LOCALE")?.value).toBe("es");
+    // The page rendered by this request sees the new language too.
+    expect(response.headers.get("x-middleware-request-cookie")).toContain("NEXT_LOCALE=es");
+  });
+
+  it("keeps an explicit device choice and skips the extra read", async () => {
+    const client = clientWithLocale("es");
+
+    const response = await middleware(
+      new NextRequest("https://support.example.com/dashboard", {
+        headers: { cookie: "NEXT_LOCALE=ko" },
+      })
+    );
+
+    expect(response.cookies.get("NEXT_LOCALE")).toBeUndefined();
+    expect(client.from).toHaveBeenCalledTimes(1);
+  });
+
+  it("ignores unsupported stored values", async () => {
+    clientWithLocale("fr");
+
+    const response = await middleware(
+      new NextRequest("https://support.example.com/dashboard")
+    );
+
+    expect(response.cookies.get("NEXT_LOCALE")).toBeUndefined();
+  });
+});

@@ -9,10 +9,14 @@ A Slack-native support portal for DropletAI Services. Centralises customer suppo
 - **Customer-Side Submit Form** — Public, no-account-needed form for guest customers at `/submit`.
 - **Account Recovery** — Non-enumerating email recovery and one-time password reset flow.
 - **Responsive Support Experience** — Detailed support guidance, supplied industrial automation visuals, self-hosted Inter, and a role-aware mobile application drawer.
-- **Ripple Assist (AI)** — Internal troubleshooting copilot. **Sprint 2: gracefully falls back to mock output if the AI provider key is invalid/missing** (does not block core ticket flow).
-- **Replay-Safe Ripple Assist** — Web and signed Slack requests retain stable
-  request keys, checkpoint before paid provider I/O, and atomically persist the
-  first durable suggestion receipt; ambiguous provider outcomes fail closed.
+- **Four Languages** — Everything a customer or guest sees (sign-in, submit,
+  tickets, dashboard, team, profile, share page, emails) is available in
+  English, Spanish, Simplified Chinese, and Korean. The language follows the
+  user's choice, then their browser; emails use the account or ticket language.
+- **Customer Onboarding** — Admins create customer managers or site-bound
+  customer users for exactly one company; customer managers invite their own
+  team. Invitations email a one-time "set your password" link in the invitee's
+  language (or hand the link to the inviter when email is not configured).
 - **Spare Parts + Field Service** — Phase 3 modules: catalog, per-site inventory, request workflow, dispatch.
 - **Audit Log** — Cross-entity audit trail (`audit_logs` table) covering tickets, customers, sites, users, security events.
 - **Durable Ticket Notifications** — Transactional outbox, lease-based dispatch,
@@ -73,14 +77,14 @@ A Slack-native support portal for DropletAI Services. Centralises customer suppo
 | Layer | Tool |
 |-------|------|
 | Frontend | Next.js 15.5.22 (App Router) + React 19 + TypeScript + Tailwind CSS v4 + self-hosted Inter |
-| Database | Supabase Postgres (59 migrations, 000–058, see `supabase/migrations/`) |
+| Database | Supabase Postgres (60 migrations, 000–059, see `supabase/migrations/`) |
 | Auth | Supabase Auth (email + password + recovery) + new `sb_publishable_` / `sb_secret_` key format |
 | Storage | Supabase Storage — bucket `ripple-attachments`, **50 MB cap per file** |
 | Slack | `@slack/bolt` + `@slack/web-api` (runs inside Next.js API routes, no separate process) |
-| AI | **MiniMax AI** (OpenAI-compatible) — was OpenAI → Zhipu → MiniMax. **See "AI provider" section below.** |
-| Email | Resend (transactional: ticket confirmation, resolution notice) |
+| i18n | next-intl 4 — `messages/{en,es,zh,ko}.json`, no locale URL prefixes |
+| Email | Resend (ticket confirmation/update/resolution, invitations, password resets — localized) |
 | Validation | Zod (all API request bodies) |
-| Testing | Vitest (1,390 unit/contract tests) + 42-check production HTTP smoke + local database matrices (`npm run verify:db`) + credentialed Playwright/API/RLS matrix |
+| Testing | Vitest (1,432 unit/contract tests, incl. catalog parity) + 45-check production HTTP smoke + local database matrices (`npm run verify:db`, 131 assertions) + credentialed Playwright/API/RLS matrix + 38-check local workflow E2E |
 | Hosting | Vercel (serverless API routes) |
 
 ## Phases
@@ -89,7 +93,7 @@ A Slack-native support portal for DropletAI Services. Centralises customer suppo
 |---|---|---|
 | 1 — Foundation | ✅ | Next.js + Supabase + Slack Bolt skeleton |
 | 2 — Customer auth + user/site mgmt | ✅ | Customer auth, project status, Slack channel linking, middleware |
-| 2.5 — Submit modal + AI + e2e fixes | ✅ | Ticket modal, MiniMax, audit fixes |
+| 2.5 — Submit modal + e2e fixes | ✅ | Ticket modal, audit fixes (AI assist later removed, 2026-10-06) |
 | 3 — Spare parts + field service | ✅ | Catalog, per-site inventory, request workflow, dispatch |
 | 4 — Complete ticket system | ✅ | Tenant scope, error/404 pages, admin role gate, empty states, API lockdown, search/filter/pagination, interactive detail, detail tabs, audit log center, customer manager enrichment, Slack interactive loop closed |
 | PRD v1.1 gap closure | 🚧 | Security containment and platform-kernel migration. See `plans/prd-v1.1-gap-closure-plan.md`. |
@@ -103,7 +107,6 @@ A Slack-native support portal for DropletAI Services. Centralises customer suppo
 - Supabase account and project (with `pgvector` extension enabled)
 - Slack workspace with app creation permissions
 - (Optional) Resend account for transactional email
-- (Optional) MiniMax / Zhipu / OpenAI key for Ripple Assist
 
 ### Setup
 
@@ -297,7 +300,7 @@ separate distributed buckets. The share view is lifecycle-scoped and reads an
 explicit customer-safe ticket projection plus customer-visible child records;
 raw event old values and non-public event types are not retrieved.
 
-### Enable pgvector (for AI features)
+### Enable pgvector
 
 Migration `000_enable_required_extensions.sql` enables it; no manual step.
 
@@ -322,11 +325,10 @@ npm run verify:db  # local migration matrices (requires `supabase start`)
 The production server exposes two non-cacheable operational probes:
 
 - `GET /api/health/live` — process liveness only; returns `200`.
-- `GET /api/health/ready` — secret-safe database, Slack, outbox, email, and
-  Ripple Assist configuration status; returns `200` when core delivery is
-  configured or `503` when traffic should not be admitted. Optional email and
-  AI services report disabled/invalid state without exposing environment
-  values.
+- `GET /api/health/ready` — secret-safe database, Slack, outbox, and email
+  configuration status; returns `200` when core delivery is configured or
+  `503` when traffic should not be admitted. Optional email reports
+  disabled/invalid state without exposing environment values.
 - `GET /api/internal/outbox/dispatch` — `CRON_SECRET`-protected durable
   notification worker. Request-path dispatch handles the normal fast path;
   Vercel Cron calls this recovery worker daily. On plans that support more
@@ -399,26 +401,18 @@ All three Slack ingress routes fail closed. Missing or template credentials
 return `503 SLACK_CONFIGURATION_ERROR`; requests with missing, stale, or invalid
 Slack signatures return `401 SLACK_SIGNATURE_INVALID`.
 
-## AI Provider (Ripple Assist)
+## Languages
 
-**Current provider:** MiniMax AI, OpenAI-compatible.
-
-```env
-MINIMAX_API_KEY=…
-MINIMAX_BASE_URL=https://api.minimax.chat/v1/
-MINIMAX_MODEL=M2.7-highspeed
-```
-
-⚠️ **Caveat:** The domain `minimax.chat` is not a well-known public LLM endpoint. Sprint 2 verified the URL resolves and returns proper error responses, but the key configured at that time returned `401 invalid api key`. To avoid breaking the rest of the system, `src/lib/ai/suggest.ts` **gracefully falls back to a mock response** when the key is missing or the provider returns auth errors. The response is marked with `confidence_level: "low"` and `_mock: true` so the UI can show "AI assist is offline" honestly.
-
-`POST /api/ai/suggest` is internal-only and requires a bounded
-`Idempotency-Key` header. The browser retains that key across retries; signed
-Slack modal submissions derive the same identity from the view ID. Migration
-051 owns this replay boundary and is confirmed deployed/live-verified.
-
-**To switch provider** (e.g. back to Zhipu, OpenAI, or another OpenAI-compatible service): change the three env vars above. No code change required — `suggest.ts` is provider-agnostic.
-
-**To disable AI entirely:** leave `MINIMAX_API_KEY` blank. The endpoint will return a mock response with `_mock: true` and `confidence_level: "low"`.
+Customer-facing copy lives in `messages/en.json` with translations in
+`es.json` (Latin American Spanish), `zh.json` (Simplified Chinese), and
+`ko.json` (Korean). To add or change copy, edit `en.json` and every
+translation; `src/i18n/catalog-parity.test.ts` fails when keys, placeholders,
+or ICU syntax drift, or when a string is left untranslated. Internal admin and
+operations pages stay in English. A user's language comes from the
+`NEXT_LOCALE` cookie (set by the language switcher), then the browser's
+`Accept-Language`, then English. Signed-in users' choices are also saved to
+`users.locale`, which account emails use; ticket emails use the language the
+ticket was submitted in.
 
 ## Project Structure
 
@@ -451,7 +445,6 @@ src/
 ├── lib/
 │   ├── supabase/                # client, server, admin, scope, auth-helpers
 │   ├── slack/                   # app, verify, blocks, handlers
-│   ├── ai/                      # suggest (with mock fallback), prompt
 │   ├── customers/               # atomic customer mutation wrappers
 │   ├── email/                   # Resend templates
 │   ├── field-service/           # DATE contracts + atomic mutation wrappers
@@ -479,8 +472,9 @@ AGENTS.md                        # ⭐ project context, lessons learned, roadmap
 - Ticket creation → `app/api/tickets/route.ts` (POST), `lib/slack/handlers/actions.ts` (view_submission), `lib/slack/blocks/ticket-form.ts`
 - Ticket detail → `app/(auth)/tickets/[ticketId]/page.tsx` + `ticket-actions-panel.tsx`
 - Slack actions → `lib/slack/handlers/actions.ts` + `app/api/slack/interactive/route.ts`
-- AI assist → `app/api/ai/suggest/route.ts` + `lib/ai/service.ts` + `lib/ai/suggest.ts`
-- DB schema → `supabase/migrations/001_*.sql` … `055_customer_membership_foundation.sql`
+- Customer onboarding → `app/api/admin/users/route.ts`, `app/api/team/route.ts`, `lib/users/provisioning.ts`, `lib/users/onboarding.ts`
+- Languages → `src/i18n/`, `messages/*.json`, `components/language-switcher.tsx`
+- DB schema → `supabase/migrations/001_*.sql` … `059_customer_locales.sql`
 
 ## Ticket Lifecycle
 
@@ -500,9 +494,6 @@ AGENTS.md                        # ⭐ project context, lessons learned, roadmap
 | `SUPABASE_SECRET_KEY` | Supabase **new** `sb_secret_` service role key (server only) |
 | `SLACK_BOT_TOKEN` | Slack Bot User OAuth Token (`xoxb-…`) |
 | `SLACK_SIGNING_SECRET` | Slack App Signing Secret (request signature HMAC) |
-| `MINIMAX_API_KEY` | MiniMax / OpenAI-compatible API key |
-| `MINIMAX_BASE_URL` | OpenAI-compatible base URL (default `https://api.minimax.chat/v1/`) |
-| `MINIMAX_MODEL` | Model name (default `M2.7-highspeed`) |
 | `RESEND_API_KEY` | Optional Resend key; blank disables email, while a configured key activates email readiness checks |
 | `EMAIL_FROM` | Plain sender email address (default `support@dropletai.services`) |
 | `NEXT_PUBLIC_APP_URL` | Public root origin used in email links; production requires public HTTPS, while localhost HTTP is development-only |

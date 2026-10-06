@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
+import { getTranslations } from "next-intl/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { PROJECT_STATUS_LABELS, PROJECT_STATUS_COLORS } from "@/types/ticket";
+import { PROJECT_STATUS_COLORS } from "@/types/ticket";
 import type { UserRole } from "@/types/ticket";
 import { isCustomerManager } from "@/lib/roles";
 import { assertPageQueriesSucceeded } from "@/lib/server-page-query";
@@ -9,7 +10,10 @@ import { singleRelation } from "@/lib/utils";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-export const metadata: Metadata = { title: "My sites" };
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("sites");
+  return { title: t("metaTitle") };
+}
 
 export const dynamic = "force-dynamic";
 
@@ -99,13 +103,18 @@ export default async function SitesPage() {
     }
   }
 
+  const [t, labels] = await Promise.all([
+    getTranslations("sites"),
+    getTranslations("labels"),
+  ]);
+  const label = (group: string, value: string) =>
+    labels.has(`${group}.${value}`) ? labels(`${group}.${value}`) : value;
+
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-8">
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-foreground">My Sites</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Sites you have access to for submitting and tracking support tickets
-        </p>
+        <h1 className="text-2xl font-bold text-foreground">{t("title")}</h1>
+        <p className="text-sm text-muted-foreground mt-1">{t("subtitle")}</p>
       </div>
 
       {sites.length === 0 ? (
@@ -118,11 +127,10 @@ export default async function SitesPage() {
               </svg>
             </div>
             <h3 className="text-sm font-semibold text-foreground mb-1">
-              No sites under your organization yet
+              {t("managerEmptyTitle")}
             </h3>
             <p className="text-sm text-muted-foreground max-w-md mx-auto mb-4">
-              Your organization doesn&apos;t have any active sites. Contact
-              your DropletAI Account Manager to get set up.
+              {t("managerEmptyBody")}
             </p>
           </div>
         ) : (
@@ -134,11 +142,10 @@ export default async function SitesPage() {
               </svg>
             </div>
             <h3 className="text-sm font-semibold text-foreground mb-1">
-              No sites assigned to you
+              {t("emptyTitle")}
             </h3>
             <p className="text-sm text-muted-foreground max-w-md mx-auto">
-              You don&apos;t have access to any sites yet. Ask your Customer
-              Manager to assign you to one.
+              {t("emptyBody")}
             </p>
           </div>
         )
@@ -147,10 +154,7 @@ export default async function SitesPage() {
           {sites.map((site) => {
             const customer = singleRelation(site.customer);
             const status = (site.project_status as string) || "pre_signoff";
-            const statusLabel =
-              PROJECT_STATUS_LABELS[
-                status as keyof typeof PROJECT_STATUS_LABELS
-              ] || status;
+            const statusLabel = label("projectStatus", status);
             const statusColor =
               PROJECT_STATUS_COLORS[
                 status as keyof typeof PROJECT_STATUS_COLORS
@@ -180,7 +184,7 @@ export default async function SitesPage() {
                 <div className="space-y-2 text-sm">
                   {customer?.name && (
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">Customer</span>
+                      <span className="text-muted-foreground">{t("customer")}</span>
                       <span className="text-foreground font-medium">
                         {customer.name}
                       </span>
@@ -188,26 +192,32 @@ export default async function SitesPage() {
                   )}
                   {site.timezone && (
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">Timezone</span>
+                      <span className="text-muted-foreground">{t("timezone")}</span>
                       <span className="text-foreground">
                         {site.timezone as string}
                       </span>
                     </div>
                   )}
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">Your Role</span>
-                    <span className="text-foreground capitalize">
-                      {site.member_role}
+                    <span className="text-muted-foreground">{t("yourRole")}</span>
+                    <span className="text-foreground">
+                      {label("memberRole", site.member_role)}
                     </span>
                   </div>
                 </div>
 
-                <div className="mt-4 pt-4 border-t border-border">
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
                   <Link
                     href={`/tickets?site=${site.id}`}
                     className="text-sm font-medium text-primary hover:text-primary/80 transition-colors"
                   >
-                    View Tickets →
+                    {t("viewTickets")}
+                  </Link>
+                  <Link
+                    href="/submit"
+                    className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    {t("newTicket")}
                   </Link>
                 </div>
               </div>

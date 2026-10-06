@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type ComponentType } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useTranslations } from "next-intl";
 import {
   Boxes,
   Building2,
@@ -24,8 +25,24 @@ import {
   X,
 } from "lucide-react";
 import type { UserRole } from "@/types/ticket";
-import { ROLE_LABELS } from "@/lib/roles";
 import { cn } from "@/lib/utils";
+import { LanguageSwitcher } from "@/components/language-switcher";
+
+type NavLabelKey =
+  | "dashboard"
+  | "tickets"
+  | "mySites"
+  | "team"
+  | "fieldService"
+  | "partRequests"
+  | "customersSites"
+  | "users"
+  | "spareParts"
+  | "inventory"
+  | "slaPolicies"
+  | "auditLog"
+  | "systemStatus"
+  | "profile";
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -38,32 +55,39 @@ interface AppShellProps {
 
 interface NavItem {
   href: string;
-  label: string;
+  label: NavLabelKey;
   icon: ComponentType<{ className?: string; "aria-hidden"?: boolean }>;
 }
 
 const primaryItems: NavItem[] = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/tickets", label: "Tickets", icon: Ticket },
+  { href: "/dashboard", label: "dashboard", icon: LayoutDashboard },
+  { href: "/tickets", label: "tickets", icon: Ticket },
 ];
 
 const operationsItems: NavItem[] = [
-  { href: "/field-service", label: "Field Service", icon: Wrench },
-  { href: "/part-requests", label: "Part Requests", icon: ClipboardList },
+  { href: "/field-service", label: "fieldService", icon: Wrench },
+  { href: "/part-requests", label: "partRequests", icon: ClipboardList },
 ];
 
 const adminItems: NavItem[] = [
   {
     href: "/admin/customers-sites",
-    label: "Customers & Sites",
+    label: "customersSites",
     icon: Building2,
   },
-  { href: "/admin/users", label: "Users", icon: Users },
-  { href: "/admin/spare-parts", label: "Spare Parts", icon: Package },
-  { href: "/admin/inventory", label: "Inventory", icon: Boxes },
-  { href: "/admin/sla-policies", label: "SLA Policies", icon: Clock3 },
-  { href: "/admin/audit", label: "Audit Log", icon: FileClock },
+  { href: "/admin/users", label: "users", icon: Users },
+  { href: "/admin/spare-parts", label: "spareParts", icon: Package },
+  { href: "/admin/inventory", label: "inventory", icon: Boxes },
+  { href: "/admin/sla-policies", label: "slaPolicies", icon: Clock3 },
+  { href: "/admin/audit", label: "auditLog", icon: FileClock },
 ];
+
+const systemStatusItem: NavItem = {
+  href: "/settings",
+  label: "systemStatus",
+  icon: Settings,
+};
+const profileItem: NavItem = { href: "/profile", label: "profile", icon: UserCircle };
 
 function isCurrentPath(pathname: string, href: string) {
   if (href === "/dashboard") return pathname === href;
@@ -79,6 +103,8 @@ export function AppShell({
   isInternal,
 }: AppShellProps) {
   const pathname = usePathname();
+  const t = useTranslations("nav");
+  const labels = useTranslations("labels");
   const [mobileOpen, setMobileOpen] = useState(false);
   const mobileTriggerRef = useRef<HTMLButtonElement>(null);
 
@@ -95,7 +121,7 @@ export function AppShell({
     window.requestAnimationFrame(() => {
       document
         .querySelector<HTMLButtonElement>(
-          "#mobile-navigation button[aria-label='Close navigation']"
+          "#mobile-navigation button[data-close-navigation]"
         )
         ?.focus();
     });
@@ -113,10 +139,10 @@ export function AppShell({
 
   const roleItems: NavItem[] = [];
   if (!isInternal) {
-    roleItems.push({ href: "/sites", label: "My Sites", icon: MapPin });
+    roleItems.push({ href: "/sites", label: "mySites", icon: MapPin });
   }
   if (isManager) {
-    roleItems.push({ href: "/team", label: "Team", icon: Users });
+    roleItems.push({ href: "/team", label: "team", icon: Users });
   }
 
   const sidebar = (
@@ -137,14 +163,15 @@ export function AppShell({
           <div className="leading-tight">
             <span className="block font-semibold text-white">Ripple</span>
             <span className="block text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-              Service operations
+              {t("tagline")}
             </span>
           </div>
         </Link>
         <button
           type="button"
           onClick={() => setMobileOpen(false)}
-          aria-label="Close navigation"
+          aria-label={t("closeNavigation")}
+          data-close-navigation=""
           className="inline-flex h-11 w-11 items-center justify-center rounded-lg text-slate-400 hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lime-400 lg:hidden"
         >
           <X className="h-5 w-5" aria-hidden="true" />
@@ -153,7 +180,7 @@ export function AppShell({
 
       <nav
         className="flex-1 space-y-6 overflow-y-auto px-3 py-5"
-        aria-label="Application navigation"
+        aria-label={t("applicationNavigation")}
       >
         <NavGroup
           items={primaryItems}
@@ -163,7 +190,7 @@ export function AppShell({
 
         {roleItems.length > 0 && (
           <NavGroup
-            label="Workspace"
+            label={t("workspace")}
             items={roleItems}
             pathname={pathname}
             onNavigate={() => setMobileOpen(false)}
@@ -172,7 +199,7 @@ export function AppShell({
 
         {isInternal && (
           <NavGroup
-            label="Operations"
+            label={t("operations")}
             items={operationsItems}
             pathname={pathname}
             onNavigate={() => setMobileOpen(false)}
@@ -181,7 +208,7 @@ export function AppShell({
 
         {isAdmin && (
           <NavGroup
-            label="Administration"
+            label={t("administration")}
             items={adminItems}
             pathname={pathname}
             onNavigate={() => setMobileOpen(false)}
@@ -191,18 +218,7 @@ export function AppShell({
 
       <div className="border-t border-white/10 p-3">
         <NavGroup
-          items={[
-            ...(isInternal
-              ? [
-                  {
-                    href: "/settings",
-                    label: "System status",
-                    icon: Settings,
-                  },
-                ]
-              : []),
-            { href: "/profile", label: "Profile", icon: UserCircle },
-          ]}
+          items={isInternal ? [systemStatusItem, profileItem] : [profileItem]}
           pathname={pathname}
           onNavigate={() => setMobileOpen(false)}
         />
@@ -213,18 +229,19 @@ export function AppShell({
             </span>
             <div className="min-w-0">
               <p className="truncate text-xs font-semibold text-white">
-                {ROLE_LABELS[role] ?? role}
+                {labels.has(`role.${role}`) ? labels(`role.${role}`) : role}
               </p>
               <p className="truncate text-[11px] text-slate-500">{email}</p>
             </div>
           </div>
-          <form action="/auth/logout" method="POST" className="mt-3">
+          <LanguageSwitcher tone="dark" className="mt-3 w-full [&>select]:w-full" />
+          <form action="/auth/logout" method="POST" className="mt-2">
             <button
               type="submit"
               className="flex min-h-11 w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-400 transition hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lime-400"
             >
               <LogOut className="h-4 w-4" aria-hidden="true" />
-              Sign out
+              {t("signOut")}
             </button>
           </form>
         </div>
@@ -239,7 +256,7 @@ export function AppShell({
           ref={mobileTriggerRef}
           type="button"
           onClick={() => setMobileOpen(true)}
-          aria-label="Open navigation"
+          aria-label={t("openNavigation")}
           aria-expanded={mobileOpen}
           aria-controls="mobile-navigation"
           className="inline-flex h-11 w-11 items-center justify-center rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
@@ -263,7 +280,7 @@ export function AppShell({
           href="/tickets"
           className="inline-flex min-h-11 items-center rounded-lg bg-primary px-3 py-2 text-xs font-bold text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
         >
-          Tickets
+          {t("tickets")}
         </Link>
       </header>
 
@@ -275,7 +292,7 @@ export function AppShell({
         <div className="fixed inset-0 z-50 lg:hidden">
           <button
             type="button"
-            aria-label="Close navigation overlay"
+            aria-label={t("closeNavigationOverlay")}
             onClick={() => setMobileOpen(false)}
             className="absolute inset-0 bg-slate-950/60 backdrop-blur-sm"
           />
@@ -283,7 +300,7 @@ export function AppShell({
             id="mobile-navigation"
             role="dialog"
             aria-modal="true"
-            aria-label="Application navigation"
+            aria-label={t("applicationNavigation")}
             className="relative h-full w-[min(86vw,320px)] shadow-2xl"
           >
             {sidebar}
@@ -307,6 +324,7 @@ function NavGroup({
   pathname: string;
   onNavigate: () => void;
 }) {
+  const t = useTranslations("nav");
   return (
     <div>
       {label && (
@@ -332,7 +350,7 @@ function NavGroup({
               )}
             >
               <Icon className="h-4 w-4 shrink-0" aria-hidden={true} />
-              {item.label}
+              {t(item.label)}
             </Link>
           );
         })}

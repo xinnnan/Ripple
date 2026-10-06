@@ -60,9 +60,10 @@ async function waitForServer() {
   throw new Error(`Next.js did not become ready:\n${output.join("")}`);
 }
 
-async function expectPage(path, expectedText) {
+async function expectPage(path, expectedText, headers = {}) {
   const response = await fetch(`${baseUrl}${path}`, {
     redirect: "manual",
+    headers,
     signal: AbortSignal.timeout(5000),
   });
   const body = await response.text();
@@ -72,7 +73,8 @@ async function expectPage(path, expectedText) {
         `received ${response.status}`
     );
   }
-  process.stdout.write(`PASS page ${path}\n`);
+  const language = headers["accept-language"] ?? headers.cookie ?? "";
+  process.stdout.write(`PASS page ${path}${language ? ` (${language})` : ""}\n`);
 }
 
 async function expectHardDeleteDisabled(path, replacement) {
@@ -280,7 +282,16 @@ try {
   await expectPage("/login", "Welcome back.");
   await expectPage("/forgot-password", "Reset your password.");
   await expectPage("/submit", "Submit a Support Request");
-  await expectPage("/t/RPL-000000", "Access Denied");
+  await expectPage("/t/RPL-000000", "Access denied");
+  // Language: browser preference first, then an explicit choice cookie.
+  await expectPage("/", "Mantenga su automatización en marcha.", {
+    "accept-language": "es-MX,es;q=0.9,en;q=0.5",
+  });
+  await expectPage("/login", "欢迎回来。", { cookie: "NEXT_LOCALE=zh" });
+  await expectPage("/submit", "지원 요청 제출", {
+    "accept-language": "en-US",
+    cookie: "NEXT_LOCALE=ko",
+  });
   await expectHardDeleteDisabled(
     "/api/admin/customers/bulk-delete",
     "/api/admin/customers/bulk-archive"
@@ -460,7 +471,6 @@ try {
   await expectHealth("/api/health/live", 200, "live");
   await expectHealth("/api/health/ready", 503, "not_ready", {
     email: "disabled",
-    ai: "disabled",
   });
   await expectOutboxConfigurationDenial();
   await expectSlackConfigurationDenial(

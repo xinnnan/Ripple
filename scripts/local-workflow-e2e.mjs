@@ -137,6 +137,151 @@ try {
   check((await patch(admin, "approved")).status() === 200, "admin approves the part request");
   check((await patch(engineer, "shipped")).status() === 200, "engineer ships the approved request");
 
+  // --- onboarding: admin invites a Spanish-speaking customer -----------------
+  // Email is disabled locally, so the API hands the one-time link back to the
+  // administrator. The new customer opens it, chooses a password, signs in,
+  // and raises a ticket; everything follows their language.
+  const inviteEmail = `e2e-invite-${crypto.randomUUID().slice(0, 8)}@ripple.test`;
+  const created = await admin.request.post(
+    "/api/admin/users",
+    json({
+      email: inviteEmail,
+      full_name: "María Invitada",
+      role: "customer",
+      customer_id: fixture.resources.tenantA.customerId,
+      site_ids: [fixture.resources.tenantA.activeSiteId],
+      locale: "es",
+    })
+  );
+  check(created.status() === 201, "admin creates a company-bound customer account");
+  const createdBody = await created.json();
+  check(
+    createdBody.invitation?.status === "not_sent" &&
+      createdBody.invitation?.reason === "email_disabled" &&
+      typeof createdBody.invitation?.setup_link === "string",
+    "without email delivery the admin receives the one-time setup link"
+  );
+  const { data: invitedUser } = await db
+    .from("users")
+    .select("id, role, status, customer_id, locale")
+    .eq("email", inviteEmail)
+    .single();
+  check(
+    invitedUser.role === "customer" &&
+      invitedUser.status === "active" &&
+      invitedUser.customer_id === fixture.resources.tenantA.customerId &&
+      invitedUser.locale === "es",
+    "the invited account is active, bound to one company, and stored in Spanish"
+  );
+  const crossSite = await admin.request.post(
+    "/api/admin/users",
+    json({
+      email: `e2e-cross-${crypto.randomUUID().slice(0, 8)}@ripple.test`,
+      full_name: "Cross Tenant",
+      role: "customer",
+      customer_id: fixture.resources.tenantA.customerId,
+      site_ids: [fixture.resources.tenantB.activeSiteId],
+    })
+  );
+  check(crossSite.status() === 403, "a customer cannot be given another company's site");
+
+  const newcomer = await browser.newContext({ baseURL: fixture.baseUrl, locale: "en-US" });
+  const page = await newcomer.newPage();
+  const setupUrl = new URL(createdBody.invitation.setup_link);
+  await page.goto(`${setupUrl.pathname}${setupUrl.search}`);
+  await page.waitForURL((url) => url.pathname === "/reset-password");
+  const cookies = await newcomer.cookies();
+  check(
+    cookies.some((cookie) => cookie.name === "NEXT_LOCALE" && cookie.value === "es"),
+    "the setup link switches the browser to the invitation language"
+  );
+  check((await page.locator("html").getAttribute("lang")) === "es-419", "the set-password page renders in Spanish");
+  const chosenPassword = `E2e-${crypto.randomUUID()}`;
+  await page.locator("#new-password").fill(chosenPassword);
+  await page.locator("#confirm-password").fill(chosenPassword);
+  await page.locator("form button[type=submit]").click();
+  await page.waitForURL((url) => url.pathname === "/login");
+  await page.locator("#email").fill(inviteEmail);
+  await page.locator("#password").fill(chosenPassword);
+  await page.locator("form button[type=submit]").click();
+  await page.waitForURL((url) => url.pathname === "/dashboard");
+  check(true, "the invited customer signs in with the password they chose");
+
+  const ticketResponse = await newcomer.request.post(
+    "/api/tickets",
+    json(
+      {
+        site_id: fixture.resources.tenantA.activeSiteId,
+        title: "El AMR-07 no completa la misión",
+        request_type: "incident",
+        severity: "P3",
+        impact: "single_asset",
+        description: "Se detiene en el muelle 4 desde esta mañana.",
+      },
+      key()
+    )
+  );
+  check(ticketResponse.status() === 201, "the invited customer raises a ticket");
+  const { data: newTicket } = await db
+    .from("tickets")
+    .select("locale, customer_id, created_by")
+    .eq("ticket_no", (await ticketResponse.json()).ticket_no)
+    .single();
+  check(
+    newTicket.locale === "es" &&
+      newTicket.customer_id === fixture.resources.tenantA.customerId &&
+      newTicket.created_by === invitedUser.id,
+    "the ticket records the customer's language for its emails"
+  );
+  const otherCompany = await newcomer.request.get(`/api/tickets/${fixture.resources.tenantB.activeTicketId}`, {
+    failOnStatusCode: false,
+  });
+  check([403, 404].includes(otherCompany.status()), "the new customer cannot read another company's ticket");
+  await newcomer.close();
+
+  // --- a customer manager invites a Korean-speaking teammate -----------------
+  const manager = await login(browser, fixture.actors.customerManagerA.email);
+  const teammateEmail = `e2e-team-${crypto.randomUUID().slice(0, 8)}@ripple.test`;
+  const teammate = await manager.request.post(
+    "/api/team",
+    json({
+      email: teammateEmail,
+      full_name: "김 팀원",
+      site_ids: [fixture.resources.tenantA.activeSiteId],
+      locale: "ko",
+    })
+  );
+  check(teammate.status() === 201, "a customer manager invites a teammate");
+  check(
+    (await teammate.json()).invitation?.status === "not_sent",
+    "the manager is told the invitation email was not delivered"
+  );
+  const { data: teammateRow } = await db
+    .from("users")
+    .select("role, customer_id, locale")
+    .eq("email", teammateEmail)
+    .single();
+  check(
+    teammateRow.role === "customer" &&
+      teammateRow.customer_id === fixture.resources.tenantA.customerId &&
+      teammateRow.locale === "ko",
+    "the teammate joins the manager's company only, in Korean"
+  );
+  const foreignSite = await manager.request.post(
+    "/api/team",
+    json({
+      email: `e2e-team-${crypto.randomUUID().slice(0, 8)}@ripple.test`,
+      full_name: "Cross",
+      site_ids: [fixture.resources.tenantB.activeSiteId],
+    })
+  );
+  check([403, 409].includes(foreignSite.status()), "a manager cannot grant another company's site");
+  const customerInvite = await customer.request.post(
+    "/api/team",
+    json({ email: `e2e-x-${crypto.randomUUID().slice(0, 8)}@ripple.test`, full_name: "X" })
+  );
+  check(customerInvite.status() === 403, "regular customers cannot invite anyone");
+
   console.log(`Local workflow end-to-end passed: ${passed} checks.`);
 } finally {
   await browser.close();

@@ -5,32 +5,34 @@ meaningful change and before ending a work session. Newest entries go first.
 
 ## Current checkpoint
 
-- **Branch:** `claude/production-readiness` (from `main` at `8b9b4fb`)
-- **Active phase:** Production readiness of the current feature set (scope
-  decision 2026-10-05: ship current product; PRD v1.1 domains deferred).
-  Plan: [`production-readiness-plan.md`](./production-readiness-plan.md)
-- **Last verified checkpoint:** `a7b1d2c`. `npm ci` (npm 10), 1,390 Vitest
-  tests, zero-warning lint, production build, 42-check HTTP smoke,
-  `npm audit --omit=dev` = 0, full-tree critical audit clean, and
-  `npm run verify:db` (95 assertions) all pass. Authenticated browser QA
-  covered engineer, customer, other-tenant customer, and guest flows against
-  a seeded local stack at 1024 px and 375 px with no horizontal overflow and
-  no unexpected console errors.
-- **Deployment gate:** migrations 056, 057, and 058 were applied to
-  production by the product owner on 2026-10-06 (reported; 000 is a no-op
-  where pgvector exists). Remaining: production behaviour checks for 057/058
-  against real data, deploy this branch so the application uses the new
-  commands, set `CRON_SECRET` so the daily worker can auto-close tickets and
-  drain the outbox, and verify the Resend sender domain.
-- **End-to-end (2026-10-06):** against a production build on the seeded local
-  stack, the credentialed role/tenant matrix passed 82 checks (it exposed and
-  fixed a false-positive comment-shape assertion that only passed before on
-  empty fixtures) and the new `test:e2e:workflows` passed 23 mutating checks.
-- **External gates unchanged:** hosted CI branch protection, protected
-  staging fixture, MiniMax key, first real Slack-thread reconciliation.
-- **Exact next step:** merge the `claude/production-readiness` PR so the
-  deployed app matches migrations 056–058, then run the credentialed matrix
-  and production behaviour checks.
+- **Branch:** `claude/production-readiness` (PR xinnnan/Ripple#11)
+- **Active phase:** ship the core customer journey (decision 2026-10-06):
+  invite → sign in → raise ticket → follow/reply → resolution, in English,
+  Spanish, Simplified Chinese, and Korean. AI assist removed (`16268da`).
+  Customers belong to one company; staff see all customers.
+- **This checkpoint adds:** migration 059 (account/ticket locales, audited
+  `set_user_locale_atomic`, admin customer onboarding command); admin creation
+  of customer managers and site-bound customers; invitations with localized
+  one-time set-password links (link handed to the inviter when email is off);
+  admin "Send sign-in link"; manager team invitations; localized password
+  reset sent by Ripple; next-intl across every customer-facing page and email;
+  account-language adoption on new devices; mobile language button.
+- **Last verified:** 1,432 Vitest tests (incl. four-language catalog parity),
+  zero-warning lint, production build, `npm run verify:db` 131 assertions,
+  credentialed role/tenant matrix, and 38-check `test:e2e:workflows`
+  (admin + manager invitations, Spanish set-password → sign-in → ticket,
+  cross-company denial) on a production build against the seeded local
+  stack; browser QA in es/zh/ko at desktop and 375 px with no overflow.
+- **Deployment gate:** apply migration 059 to production **before** deploying
+  this branch. Then set `CRON_SECRET`, verify the Resend sender domain (until
+  then invitations return a copyable link instead of sending email), raise
+  Supabase's email OTP expiry to 24 h, and run the production checks for
+  057–059.
+- **Open:** native-speaker review of es/zh/ko copy; hosted CI branch
+  protection and protected staging fixture; first real Slack-thread
+  reconciliation.
+- **Exact next step:** apply 059 in the Supabase SQL editor, merge PR #11,
+  then invite one real customer per language and walk the journey.
 
 ## Previous checkpoint (2026-08-19, superseded)
 

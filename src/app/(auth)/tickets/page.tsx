@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
+import { getLocale, getTranslations } from "next-intl/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getUserScope, scopeTickets, scopeSites } from "@/lib/supabase/scope";
 import { redirect } from "next/navigation";
-import { SEVERITY_LABELS, STATUS_LABELS, type Severity, type TicketStatus } from "@/types/ticket";
 import { formatDate, resolveSiteTimezone, singleRelation } from "@/lib/utils";
 import Link from "next/link";
 import { TicketsPageHeader } from "./tickets-page-header";
@@ -19,7 +19,10 @@ import { TicketListControls } from "./ticket-list-controls";
 import { buildTicketSearchFilter } from "@/lib/tickets/search-filter";
 import { assertPageQueriesSucceeded } from "@/lib/server-page-query";
 
-export const metadata: Metadata = { title: "Tickets" };
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("ticketList");
+  return { title: t("metaTitle") };
+}
 
 export const dynamic = "force-dynamic";
 
@@ -69,7 +72,7 @@ export default async function TicketsPage({ searchParams }: Props) {
         canFilterByCustomer: false,
         canFilterByOwner: false,
       },
-      "One or more ticket filters are invalid. Clear the filters and try again."
+      "invalid"
     );
   }
 
@@ -290,7 +293,7 @@ async function loadFilterOptions(
   };
 }
 
-function renderTicketsPage(
+async function renderTicketsPage(
   filters: ReturnType<typeof parseFilters>,
   tickets: {
     ticket_no: string;
@@ -307,8 +310,13 @@ function renderTicketsPage(
   totalCount: number,
   isInternal: boolean,
   options: TicketFilterOptions,
-  filterError?: string
+  filterError?: "invalid"
 ) {
+  const [t, labels, locale] = await Promise.all([
+    getTranslations("ticketList"),
+    getTranslations("labels"),
+    getLocale(),
+  ]);
   const hasFilters = Boolean(
     filters.q ||
       (filters.status && filters.status.length > 0) ||
@@ -333,12 +341,12 @@ function renderTicketsPage(
           role="alert"
           className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive"
         >
-          <span>{filterError}</span>
+          <span>{t("invalidFilters")}</span>
           <Link
             href="/tickets"
             className="font-medium underline underline-offset-4"
           >
-            Clear filters
+            {t("clearFilters")}
           </Link>
         </div>
       )}
@@ -351,25 +359,25 @@ function renderTicketsPage(
           <thead>
             <tr className="border-b border-border bg-muted/50">
               <th className="text-left text-xs font-medium text-muted-foreground p-3">
-                Ticket
+                {t("columns.ticket")}
               </th>
               <th className="text-left text-xs font-medium text-muted-foreground p-3">
-                Severity
+                {t("columns.severity")}
               </th>
               <th className="text-left text-xs font-medium text-muted-foreground p-3">
-                Title
+                {t("columns.title")}
               </th>
               <th className="text-left text-xs font-medium text-muted-foreground p-3">
-                Customer / Site
+                {t("columns.customerSite")}
               </th>
               <th className="text-left text-xs font-medium text-muted-foreground p-3">
-                Status
+                {t("columns.status")}
               </th>
               <th className="text-left text-xs font-medium text-muted-foreground p-3">
-                Owner
+                {t("columns.owner")}
               </th>
               <th className="text-left text-xs font-medium text-muted-foreground p-3">
-                Created
+                {t("columns.created")}
               </th>
             </tr>
           </thead>
@@ -378,20 +386,20 @@ function renderTicketsPage(
               <TableEmpty
                 colSpan={7}
                 icon="ticket"
-                title="No tickets match"
+                title={t("empty.title")}
                 description={
                   hasFilters
-                    ? "Try adjusting the filters above or clearing them."
+                    ? t("empty.filtered")
                     : isInternal
-                    ? "When tickets are created they will appear here."
-                    : "When you submit a ticket, it will appear here."
+                    ? t("empty.internal")
+                    : t("empty.customer")
                 }
                 action={
                   hasFilters
-                    ? { label: "Clear filters", href: "/tickets" }
+                    ? { label: t("clearFilters"), href: "/tickets" }
                     : isInternal
                     ? undefined
-                    : { label: "Submit a ticket", href: "/submit" }
+                    : { label: t("empty.submit"), href: "/submit" }
                 }
               />
             ) : (
@@ -412,8 +420,9 @@ function renderTicketsPage(
                     <span
                       className={`severity-${ticket.severity} inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium`}
                     >
-                      {SEVERITY_LABELS[ticket.severity as Severity] ||
-                        ticket.severity}
+                      {labels.has(`severity.${ticket.severity}`)
+                        ? labels(`severity.${ticket.severity}`)
+                        : ticket.severity}
                     </span>
                   </td>
                   <td className="p-3">
@@ -433,8 +442,9 @@ function renderTicketsPage(
                     <span
                       className={`status-${ticket.status} inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium`}
                     >
-                      {STATUS_LABELS[ticket.status as TicketStatus] ||
-                        ticket.status}
+                      {labels.has(`status.${ticket.status}`)
+                        ? labels(`status.${ticket.status}`)
+                        : ticket.status}
                     </span>
                   </td>
                   <td className="p-3">
@@ -444,7 +454,7 @@ function renderTicketsPage(
                   </td>
                   <td className="p-3">
                     <span className="text-xs text-muted-foreground">
-                      {formatDate(ticket.created_at, resolveSiteTimezone(ticket.site))}
+                      {formatDate(ticket.created_at, resolveSiteTimezone(ticket.site), locale)}
                     </span>
                   </td>
                 </tr>

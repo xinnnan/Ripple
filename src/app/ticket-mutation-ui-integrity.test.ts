@@ -42,10 +42,14 @@ describe("ticket mutation UI integrity", () => {
   });
 
   it("contains returned and unexpected ticket action failures", () => {
+    expect(createModal).toContain("clientMutationErrorMessage");
+    expect(actionsPanel).toContain("localizedClientMutationError");
     for (const source of [publicSubmit, createModal, actionsPanel]) {
-      expect(source).toContain("clientMutationErrorMessage");
       expect(source).not.toContain("err instanceof Error ? err.message");
     }
+    // Translated intake: unexpected failures never surface raw exception text.
+    expect(publicSubmit).toContain("function submissionErrorMessage");
+    expect(publicSubmit).toContain('return t("errors.unavailable")');
     expect(actionsPanel).toContain("assertClientMutationResponse");
   });
 

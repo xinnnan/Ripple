@@ -4,6 +4,8 @@ import Link from "next/link";
 import { formatDate } from "@/lib/utils";
 import { ROLE_LABELS } from "@/lib/roles";
 import { EditUserForm } from "./edit-user-form";
+import { SendInvitationButton } from "./send-invitation-button";
+import { LOCALE_NAMES, isLocale } from "@/i18n/config";
 import { DetailTabs } from "@/components/detail-tabs";
 import { getCurrentTab } from "@/components/detail-tabs-helpers";
 import { TableEmpty } from "@/components/empty-state";
@@ -29,7 +31,7 @@ export default async function AdminUserDetailPage({ params, searchParams }: Prop
 
   const userResult = await admin
     .from("users")
-    .select("id, email, full_name, role, status, phone, slack_user_id, customer_id, created_at, customer:customers(name)")
+    .select("id, email, full_name, role, status, phone, slack_user_id, customer_id, locale, created_at, customer:customers(name)")
     .eq("id", id)
     .maybeSingle();
   assertPageQueriesSucceeded("admin/user-detail", userResult);
@@ -180,6 +182,16 @@ export default async function AdminUserDetailPage({ params, searchParams }: Prop
       {activeTab === "overview" && (
         <div className="space-y-6">
           <EditUserForm user={user} />
+
+          {user.status === "active" && (
+            <div className="rounded-xl border border-border p-6">
+              <h2 className="mb-1 text-base font-semibold text-foreground">Sign-in access</h2>
+              <p className="mb-3 text-sm text-muted-foreground">
+                Language: {isLocale(user.locale) ? LOCALE_NAMES[user.locale] : LOCALE_NAMES.en}
+              </p>
+              <SendInvitationButton userId={user.id} email={user.email} />
+            </div>
+          )}
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="rounded-xl border border-border p-6">

@@ -20,34 +20,43 @@ function containsControlCharacters(value: string): boolean {
   });
 }
 
+export type SelfServiceProfileErrorCode =
+  | "nameRequired"
+  | "nameTooLong"
+  | "nameInvalid"
+  | "phoneTooLong"
+  | "phoneInvalid";
+
 export function normalizeSelfServiceProfile(
   input: SelfServiceProfileInput
 ):
   | { success: true; data: NormalizedSelfServiceProfile }
-  | { success: false; error: string } {
+  | { success: false; error: string; code: SelfServiceProfileErrorCode } {
   const fullName = input.fullName.trim();
   const phone = input.phone.trim();
 
   if (!fullName) {
-    return { success: false, error: "Full name is required." };
+    return { success: false, error: "Full name is required.", code: "nameRequired" };
   }
   if (fullName.length > 200) {
     return {
       success: false,
       error: "Full name must be 200 characters or fewer.",
+      code: "nameTooLong",
     };
   }
   if (containsControlCharacters(fullName)) {
-    return { success: false, error: "Full name contains invalid characters." };
+    return { success: false, error: "Full name contains invalid characters.", code: "nameInvalid" };
   }
   if (phone.length > 50) {
     return {
       success: false,
       error: "Phone must be 50 characters or fewer.",
+      code: "phoneTooLong",
     };
   }
   if (containsControlCharacters(phone)) {
-    return { success: false, error: "Phone contains invalid characters." };
+    return { success: false, error: "Phone contains invalid characters.", code: "phoneInvalid" };
   }
 
   return {

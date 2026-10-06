@@ -80,7 +80,7 @@ describe("internal operations layout", () => {
     async (role) => {
       authAs(role, false);
       const html = await renderLayout();
-      expect(html).toContain("You don&#x27;t have access");
+      expect(html).toContain("You don’t have access");
       expect(html).not.toContain("operations body");
     }
   );

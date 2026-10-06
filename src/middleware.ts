@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
+import {
+  LOCALE_COOKIE,
+  LOCALE_COOKIE_MAX_AGE_SECONDS,
+  isLocale,
+} from "@/i18n/config";
 
 // Routes that require authentication
 const PROTECTED_ROUTES = [
@@ -117,6 +122,33 @@ export async function middleware(request: NextRequest) {
         response.cookies.set(cookie);
       }
       return response;
+    }
+  }
+
+  // A device that has never chosen a language adopts the account's language,
+  // so a customer invited in Spanish sees Spanish wherever they sign in. The
+  // explicit switcher choice (the cookie) always wins afterwards. This read is
+  // best-effort: a failure only leaves the browser's language in place.
+  if (user && profile && isProtected && !request.cookies.has(LOCALE_COOKIE)) {
+    const { data: localeRow } = await supabase
+      .from("users")
+      .select("locale")
+      .eq("id", user.id)
+      .maybeSingle();
+    const accountLocale = (localeRow as { locale?: unknown } | null)?.locale;
+    if (isLocale(accountLocale)) {
+      request.cookies.set(LOCALE_COOKIE, accountLocale);
+      const withLocale = NextResponse.next({ request });
+      for (const cookie of supabaseResponse.cookies.getAll()) {
+        withLocale.cookies.set(cookie);
+      }
+      withLocale.cookies.set(LOCALE_COOKIE, accountLocale, {
+        path: "/",
+        maxAge: LOCALE_COOKIE_MAX_AGE_SECONDS,
+        sameSite: "lax",
+        secure: process.env.NODE_ENV === "production",
+      });
+      supabaseResponse = withLocale;
     }
   }
 

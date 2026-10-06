@@ -1,14 +1,8 @@
 import type { Metadata } from "next";
+import { getLocale, getTranslations } from "next-intl/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import {
-  STATUS_LABELS,
-  SEVERITY_LABELS,
-  REQUEST_TYPE_LABELS,
-  IMPACT_LABELS,
-  type TicketStatus,
-  type Severity,
-} from "@/types/ticket";
-import { SPR_STATUS_LABELS, SPR_STATUS_COLORS, FSO_STATUS_LABELS, FSO_STATUS_COLORS, SERVICE_TYPE_LABELS } from "@/types/spare-parts";
+import type { TicketStatus, Severity } from "@/types/ticket";
+import { SPR_STATUS_COLORS, FSO_STATUS_COLORS } from "@/types/spare-parts";
 import { formatDate, formatFileSize, resolveSiteTimezone, singleRelation } from "@/lib/utils";
 import { isCustomerReopenable } from "@/lib/tickets/status";
 import Link from "next/link";
@@ -36,7 +30,9 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   // Title from the URL alone: no lookup, so nothing about the ticket leaks.
   const { ticketId } = await params;
-  return { title: /^RPL-\d{1,12}$/i.test(ticketId) ? ticketId.toUpperCase() : "Ticket" };
+  if (/^RPL-\d{1,12}$/i.test(ticketId)) return { title: ticketId.toUpperCase() };
+  const t = await getTranslations("ticketDetail");
+  return { title: t("metaTitle") };
 }
 
 interface Props {
@@ -95,6 +91,13 @@ export default async function TicketDetailPage({ params }: Props) {
 
   const scope = await getUserScope();
   if (!scope) redirect("/login");
+  const [t, labels, locale] = await Promise.all([
+    getTranslations("ticketDetail"),
+    getTranslations("labels"),
+    getLocale(),
+  ]);
+  const label = (group: string, value: string | null | undefined) =>
+    value && labels.has(`${group}.${value}`) ? labels(`${group}.${value}`) : value ?? "";
   const currentUserId = scope.userId;
   const isInternal = scope.isInternal;
 
@@ -120,9 +123,9 @@ export default async function TicketDetailPage({ params }: Props) {
   if (!ticket) {
     return (
       <div className="p-8 text-center">
-        <h1 className="text-xl font-bold text-foreground mb-2">Ticket Not Found</h1>
+        <h1 className="text-xl font-bold text-foreground mb-2">{t("notFound")}</h1>
         <Link href="/tickets" className="text-sm text-primary hover:text-primary/80">
-          ← Back to tickets
+          {t("back")}
         </Link>
       </div>
     );
@@ -221,24 +224,13 @@ export default async function TicketDetailPage({ params }: Props) {
     | null;
   const fieldServiceOrders = fieldServiceOrdersResult.data;
 
-  // Format event type labels
-  function formatEventType(type: string): string {
-    const labels: Record<string, string> = {
-      ticket_created: "Ticket created",
-      status_changed: "Status changed",
-      owner_assigned: "Owner assigned",
-      severity_changed: "Severity changed",
-      comment_added: "Comment added",
-      attachment_added: "Attachment added",
-    };
-    return labels[type] || type.replace(/_/g, " ");
-  }
+  const when = (value: string) => formatDate(value, userTimezone, locale);
 
   return (
     <div className="min-w-0 p-4 sm:p-8">
       <div className="mb-6">
         <Link href="/tickets" className="text-sm text-muted-foreground hover:text-foreground">
-          ← Back to tickets
+          {t("back")}
         </Link>
       </div>
 
@@ -248,7 +240,7 @@ export default async function TicketDetailPage({ params }: Props) {
           <div className="mb-2 flex flex-wrap items-center gap-3">
             <span className="text-lg font-mono text-muted-foreground">{ticket.ticket_no}</span>
             <span className={`status-${ticket.status} inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium`}>
-              {STATUS_LABELS[ticket.status as keyof typeof STATUS_LABELS]}
+              {label("status", ticket.status)}
             </span>
             <span className={`severity-${ticket.severity} inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium`}>
               {ticket.severity}
@@ -263,14 +255,14 @@ export default async function TicketDetailPage({ params }: Props) {
         <div className="space-y-6 xl:col-span-2">
           {/* Description */}
           <div className="rounded-xl border border-border p-6">
-            <h2 className="text-sm font-semibold text-foreground mb-3">Description</h2>
+            <h2 className="text-sm font-semibold text-foreground mb-3">{t("description")}</h2>
             <p className="text-sm text-muted-foreground whitespace-pre-wrap">{ticket.description}</p>
           </div>
 
           {/* Resolution Summary */}
           {ticket.customer_visible_summary && (
             <div className="rounded-xl border border-green-200 bg-green-50 p-6">
-              <h2 className="text-sm font-semibold text-green-800 mb-3">✅ Customer Visible Summary</h2>
+              <h2 className="text-sm font-semibold text-green-800 mb-3">✅ {t("resolutionSummary")}</h2>
               <p className="text-sm text-green-700 whitespace-pre-wrap">{ticket.customer_visible_summary}</p>
             </div>
           )}
@@ -278,7 +270,7 @@ export default async function TicketDetailPage({ params }: Props) {
           {/* Internal Summary */}
           {isInternal && ticket.internal_summary && (
             <div className="rounded-xl border border-amber-200 bg-amber-50 p-6">
-              <h2 className="text-sm font-semibold text-amber-800 mb-3">🔒 Internal Summary</h2>
+              <h2 className="text-sm font-semibold text-amber-800 mb-3">🔒 {t("internalSummary")}</h2>
               <p className="text-sm text-amber-700 whitespace-pre-wrap">{ticket.internal_summary}</p>
             </div>
           )}
@@ -286,10 +278,10 @@ export default async function TicketDetailPage({ params }: Props) {
           {/* Comments */}
           <div className="rounded-xl border border-border p-6">
             <h2 className="text-sm font-semibold text-foreground mb-4">
-              Comments ({comments?.length || 0})
+              {t("comments", { count: comments?.length || 0 })}
             </h2>
             {(!comments || comments.length === 0) ? (
-              <p className="text-sm text-muted-foreground">No comments yet.</p>
+              <p className="text-sm text-muted-foreground">{t("noComments")}</p>
             ) : (
               <div className="space-y-4">
                 {comments.map((comment: { id: string; body: string; visibility: string; source: string; created_at: string; author: { full_name: string } | { full_name: string }[] | null }) => (
@@ -299,20 +291,20 @@ export default async function TicketDetailPage({ params }: Props) {
                       comment.visibility === "internal" ? "border-amber-400 bg-amber-50/50" : "border-primary/30"
                     }`}
                   >
-                    <div className="flex items-center gap-2 mb-1">
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mb-1">
                       <span className="text-xs font-medium text-foreground">
-                        {singleRelation(comment.author)?.full_name ?? "Ticket submitter"}
+                        {singleRelation(comment.author)?.full_name ?? t("submitter")}
                       </span>
                       <span className="text-xs text-muted-foreground">
-                        via {comment.source}
+                        {t("via", { source: label("source", comment.source) })}
                       </span>
                       {comment.visibility === "internal" && (
                         <span className="text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">
-                          Internal
+                          {t("internal")}
                         </span>
                       )}
                       <span className="text-xs text-muted-foreground">
-                        {formatDate(comment.created_at, userTimezone)}
+                        {when(comment.created_at)}
                       </span>
                     </div>
                     <p className="text-sm text-muted-foreground whitespace-pre-wrap">{comment.body}</p>
@@ -326,7 +318,7 @@ export default async function TicketDetailPage({ params }: Props) {
           {attachments && attachments.length > 0 && (
             <div className="rounded-xl border border-border p-6">
               <h2 className="text-sm font-semibold text-foreground mb-4">
-                Attachments ({attachments.length})
+                {t("attachments", { count: attachments.length })}
               </h2>
               <div className="space-y-2">
                 {attachments.map((att: { id: string; file_name: string; file_type: string; file_size: number; visibility: string }) => (
@@ -341,12 +333,12 @@ export default async function TicketDetailPage({ params }: Props) {
                         className="block break-all text-sm font-medium text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                       >
                         {att.file_name}
-                        <span className="sr-only"> (download)</span>
+                        <span className="sr-only"> {t("download")}</span>
                       </a>
                       <p className="text-xs text-muted-foreground">{formatFileSize(att.file_size)}</p>
                     </div>
                     {att.visibility === "internal" && (
-                      <span className="text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">Internal</span>
+                      <span className="text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">{t("internal")}</span>
                     )}
                   </div>
                 ))}
@@ -358,20 +350,20 @@ export default async function TicketDetailPage({ params }: Props) {
           <div className="rounded-xl border border-border overflow-hidden">
             <div className="p-4 border-b border-border flex items-center justify-between">
               <h2 className="text-sm font-semibold text-foreground">
-                📦 Spare Part Requests ({partRequests?.length || 0})
+                📦 {t("partRequests", { count: partRequests?.length || 0 })}
               </h2>
               {isInternal && (
                 <Link
                   href={`/part-requests/create?ticket_id=${ticket.id}`}
                   className="text-xs font-medium text-primary hover:text-primary/80"
                 >
-                  + New Request
+                  {t("newPartRequest")}
                 </Link>
               )}
             </div>
             {(!partRequests || partRequests.length === 0) ? (
               <div className="p-4 text-center text-xs text-muted-foreground">
-                No spare part requests linked to this ticket.
+                {t("noPartRequests")}
               </div>
             ) : (
               <div className="divide-y divide-border">
@@ -382,12 +374,12 @@ export default async function TicketDetailPage({ params }: Props) {
                     <>
                       <div className="flex items-center gap-3">
                         <span className="text-xs font-mono font-medium text-primary">{req.request_no}</span>
-                        <span className="text-xs text-muted-foreground">{itemCount} items</span>
+                        <span className="text-xs text-muted-foreground">{t("items", { count: itemCount })}</span>
                       </div>
                       <div className="flex items-center gap-3">
                         {isInternal && req.total_cost ? <span className="text-xs text-muted-foreground">${Number(req.total_cost).toFixed(2)}</span> : null}
                         <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${statusColor}`}>
-                          {SPR_STATUS_LABELS[req.status as keyof typeof SPR_STATUS_LABELS] || req.status}
+                          {label("partRequestStatus", req.status)}
                         </span>
                       </div>
                     </>
@@ -417,20 +409,20 @@ export default async function TicketDetailPage({ params }: Props) {
           <div className="rounded-xl border border-border overflow-hidden">
             <div className="p-4 border-b border-border flex items-center justify-between">
               <h2 className="text-sm font-semibold text-foreground">
-                🔧 Field Service Orders ({fieldServiceOrders?.length || 0})
+                🔧 {t("fieldService", { count: fieldServiceOrders?.length || 0 })}
               </h2>
               {isInternal && (
                 <Link
                   href={`/field-service/create?ticket_id=${ticket.id}`}
                   className="text-xs font-medium text-primary hover:text-primary/80"
                 >
-                  + New Service Order
+                  {t("newFieldService")}
                 </Link>
               )}
             </div>
             {(!fieldServiceOrders || fieldServiceOrders.length === 0) ? (
               <div className="p-4 text-center text-xs text-muted-foreground">
-                No field service orders linked to this ticket.
+                {t("noFieldService")}
               </div>
             ) : (
               <div className="divide-y divide-border">
@@ -444,10 +436,10 @@ export default async function TicketDetailPage({ params }: Props) {
                       </div>
                       <div className="flex items-center gap-3">
                         <span className="text-xs text-muted-foreground">
-                          {SERVICE_TYPE_LABELS[order.service_type as keyof typeof SERVICE_TYPE_LABELS] || order.service_type as string}
+                          {label("serviceType", order.service_type as string)}
                         </span>
                         <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${statusColor}`}>
-                          {FSO_STATUS_LABELS[order.status as keyof typeof FSO_STATUS_LABELS] || order.status as string}
+                          {label("fieldServiceStatus", order.status as string)}
                         </span>
                       </div>
                     </>
@@ -490,44 +482,44 @@ export default async function TicketDetailPage({ params }: Props) {
             timezone={userTimezone}
           />
           <div className="rounded-xl border border-border p-6 space-y-3">
-            <h2 className="text-sm font-semibold text-foreground">Details</h2>
+            <h2 className="text-sm font-semibold text-foreground">{t("details")}</h2>
             <dl className="space-y-2 text-sm">
-              <div><dt className="text-xs text-muted-foreground">Customer</dt><dd className="font-medium">{singleRelation(ticket.customer)?.name}</dd></div>
-              <div><dt className="text-xs text-muted-foreground">Site</dt><dd className="font-medium">{singleRelation(ticket.site)?.site_name} ({singleRelation(ticket.site)?.site_code})</dd></div>
-              <div><dt className="text-xs text-muted-foreground">Type</dt><dd className="font-medium">{REQUEST_TYPE_LABELS[ticket.request_type as keyof typeof REQUEST_TYPE_LABELS]}</dd></div>
-              <div><dt className="text-xs text-muted-foreground">Severity</dt><dd className="font-medium">{SEVERITY_LABELS[ticket.severity as keyof typeof SEVERITY_LABELS]}</dd></div>
-              {ticket.impact && <div><dt className="text-xs text-muted-foreground">Impact</dt><dd className="font-medium">{IMPACT_LABELS[ticket.impact as keyof typeof IMPACT_LABELS]}</dd></div>}
-              {ticket.asset_id && <div><dt className="text-xs text-muted-foreground">Asset</dt><dd className="font-medium">{ticket.asset_id}</dd></div>}
-              {ticket.area && <div><dt className="text-xs text-muted-foreground">Area</dt><dd className="font-medium">{ticket.area}</dd></div>}
-              <div><dt className="text-xs text-muted-foreground">Source</dt><dd className="font-medium">{ticket.source}</dd></div>
-              <div><dt className="text-xs text-muted-foreground">Owner</dt><dd className="font-medium">{singleRelation(ticket.owner)?.full_name || "Unassigned"}</dd></div>
-              {isInternal && ticket.submitter_name && <div><dt className="text-xs text-muted-foreground">Submitter</dt><dd className="font-medium">{ticket.submitter_name} ({ticket.submitter_email})</dd></div>}
+              <div><dt className="text-xs text-muted-foreground">{t("customer")}</dt><dd className="font-medium">{singleRelation(ticket.customer)?.name}</dd></div>
+              <div><dt className="text-xs text-muted-foreground">{t("site")}</dt><dd className="font-medium">{singleRelation(ticket.site)?.site_name} ({singleRelation(ticket.site)?.site_code})</dd></div>
+              <div><dt className="text-xs text-muted-foreground">{t("type")}</dt><dd className="font-medium">{label("requestType", ticket.request_type)}</dd></div>
+              <div><dt className="text-xs text-muted-foreground">{t("severity")}</dt><dd className="font-medium">{label("severity", ticket.severity)}</dd></div>
+              {ticket.impact && <div><dt className="text-xs text-muted-foreground">{t("impact")}</dt><dd className="font-medium">{label("impact", ticket.impact)}</dd></div>}
+              {ticket.asset_id && <div><dt className="text-xs text-muted-foreground">{t("asset")}</dt><dd className="font-medium">{ticket.asset_id}</dd></div>}
+              {ticket.area && <div><dt className="text-xs text-muted-foreground">{t("area")}</dt><dd className="font-medium">{ticket.area}</dd></div>}
+              <div><dt className="text-xs text-muted-foreground">{t("source")}</dt><dd className="font-medium">{label("source", ticket.source)}</dd></div>
+              <div><dt className="text-xs text-muted-foreground">{t("owner")}</dt><dd className="font-medium">{singleRelation(ticket.owner)?.full_name || t("unassigned")}</dd></div>
+              {isInternal && ticket.submitter_name && <div><dt className="text-xs text-muted-foreground">{t("submitterLabel")}</dt><dd className="font-medium">{ticket.submitter_name} ({ticket.submitter_email})</dd></div>}
               <div>
-                <dt className="text-xs text-muted-foreground">Created</dt>
-                <dd className="font-medium">{formatDate(ticket.created_at, userTimezone)}</dd>
+                <dt className="text-xs text-muted-foreground">{t("created")}</dt>
+                <dd className="font-medium">{when(ticket.created_at)}</dd>
               </div>
               {ticket.resolved_at && (
                 <div>
-                  <dt className="text-xs text-muted-foreground">Resolved</dt>
-                  <dd className="font-medium">{formatDate(ticket.resolved_at, userTimezone)}</dd>
+                  <dt className="text-xs text-muted-foreground">{t("resolved")}</dt>
+                  <dd className="font-medium">{when(ticket.resolved_at)}</dd>
                 </div>
               )}
               {ticket.closed_at && (
                 <div>
-                  <dt className="text-xs text-muted-foreground">Closed</dt>
-                  <dd className="font-medium">{formatDate(ticket.closed_at, userTimezone)}</dd>
+                  <dt className="text-xs text-muted-foreground">{t("closed")}</dt>
+                  <dd className="font-medium">{when(ticket.closed_at)}</dd>
                 </div>
               )}
             </dl>
             <p className="text-xs text-muted-foreground border-t border-border pt-2 mt-2">
-              All times shown in {userTimezone}
+              {t("timesShownIn", { timezone: userTimezone })}
             </p>
           </div>
 
           {/* Activity Timeline */}
           {events && events.length > 0 && (
             <div className="rounded-xl border border-border p-6">
-              <h2 className="text-sm font-semibold text-foreground mb-3">Activity</h2>
+              <h2 className="text-sm font-semibold text-foreground mb-3">{t("activity")}</h2>
               <div className="space-y-3">
                 {events.map((ev: {
                   id: string;
@@ -546,20 +538,30 @@ export default async function TicketDetailPage({ params }: Props) {
                       <div className="mt-1.5 h-1.5 w-1.5 rounded-full bg-primary flex-shrink-0" />
                       <div>
                         <p className="text-xs text-foreground">
-                          {ev.event_type === "ticket_created" && "Ticket created"}
-                          {ev.event_type === "status_changed" && `Status: ${ev.old_value} → ${ev.new_value}`}
-                          {ev.event_type === "owner_assigned" && `Owner assigned: ${ev.new_value ? "changed" : "assigned"}`}
-                          {ev.event_type === "severity_changed" && `Severity: ${ev.old_value} → ${ev.new_value}`}
-                          {ev.event_type === "comment_added" && `Comment added (${ev.new_value})`}
-                          {ev.event_type === "attachment_added" && `Attachment: ${ev.new_value}`}
+                          {ev.event_type === "ticket_created" && t("events.ticket_created")}
+                          {ev.event_type === "status_changed" &&
+                            t("events.status_changed", {
+                              from: label("status", ev.old_value),
+                              to: label("status", ev.new_value),
+                            })}
+                          {ev.event_type === "owner_assigned" && t("events.owner_assigned")}
+                          {ev.event_type === "severity_changed" &&
+                            t("events.severity_changed", {
+                              from: ev.old_value ?? "",
+                              to: ev.new_value ?? "",
+                            })}
+                          {ev.event_type === "comment_added" &&
+                            t("events.comment_added", { visibility: ev.new_value ?? "" })}
+                          {ev.event_type === "attachment_added" &&
+                            t("events.attachment_added", { name: ev.new_value ?? "" })}
                         </p>
                         <div className="flex items-center gap-1">
                           <p className="text-xs text-muted-foreground">
-                            {formatDate(ev.created_at, userTimezone)}
+                            {when(ev.created_at)}
                           </p>
                           {actorData && (
                             <span className="text-xs text-muted-foreground">
-                              by {actorData.full_name || actorData.email}
+                              {t("by", { name: actorData.full_name || actorData.email })}
                             </span>
                           )}
                         </div>
@@ -569,7 +571,7 @@ export default async function TicketDetailPage({ params }: Props) {
                 })}
               </div>
               <p className="text-xs text-muted-foreground border-t border-border pt-2 mt-3">
-                Times in {userTimezone}
+                {t("timesIn", { timezone: userTimezone })}
               </p>
             </div>
           )}

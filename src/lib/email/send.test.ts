@@ -3,6 +3,8 @@ import {
   buildTicketConfirmationEmail,
   buildTicketResolvedEmail,
   buildTicketUpdateEmail,
+  buildPasswordResetEmail,
+  buildInvitationEmail,
   sendTicketConfirmation,
 } from "./send";
 
@@ -127,6 +129,28 @@ describe("transactional email rendering", () => {
     });
     expect(resolved.html).not.toMatch(/respond to this email/i);
     expect(resolved.html).toContain("reopen it from your ticket page");
+  });
+
+  it("escapes invitation values and links to the one-time setup URL", () => {
+    const email = buildInvitationEmail({
+      to: "new@example.com",
+      link: "https://support.example.com/auth/callback?token_hash=abc&type=recovery&next=/reset-password",
+      name: "<b>Ana</b>",
+      inviter: "Morgan",
+      company: "Acme & Co",
+    });
+    expect(email.subject).toBe("You're invited to Ripple Support");
+    expect(email.html).toContain("Welcome to Ripple, &lt;b&gt;Ana&lt;/b&gt;");
+    expect(email.html).toContain("Acme &amp; Co");
+    expect(email.html).toContain("token_hash=abc&amp;type=recovery");
+  });
+
+  it("renders account emails in the recipient's language and falls back to English", () => {
+    const link = "https://support.example.com/auth/callback?token_hash=x&type=recovery";
+    expect(buildPasswordResetEmail({ to: "a@example.com", link, locale: "fr" }).subject).toBe(
+      "Reset your Ripple password"
+    );
+    expect(buildPasswordResetEmail({ to: "a@example.com", link }).html).toContain('lang="en"');
   });
 
   it("removes every ASCII control character from provider subjects", () => {

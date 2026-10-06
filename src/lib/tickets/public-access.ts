@@ -17,13 +17,18 @@ export const PUBLIC_TICKET_NO_PATTERN = /^RPL-\d{1,12}$/;
 export type PublicTicketPurpose =
   | "ticket-view"
   | "attachment-download"
-  | "guest-reply";
+  | "guest-reply"
+  | "password-recovery"
+  | "password-recovery-email";
 
 const LIMITS: Record<PublicTicketPurpose, { limit: number; windowSeconds: number }> = {
   "ticket-view": { limit: 30, windowSeconds: 60 },
   "attachment-download": { limit: 30, windowSeconds: 60 },
   // Replies create durable records and Slack posts, so they are tighter.
   "guest-reply": { limit: 10, windowSeconds: 600 },
+  // Recovery sends email; cap per network and per address.
+  "password-recovery": { limit: 5, windowSeconds: 900 },
+  "password-recovery-email": { limit: 3, windowSeconds: 3600 },
 };
 
 export type PublicLimitResult =
@@ -37,6 +42,7 @@ export type PublicLimitResult =
 export async function consumePublicTicketLimit(args: {
   supabase: SupabaseClient;
   purpose: PublicTicketPurpose;
+  /** Client IP, or another stable identifier such as an email address. */
   clientIp: string;
 }): Promise<PublicLimitResult> {
   const { limit, windowSeconds } = LIMITS[args.purpose];

@@ -65,6 +65,6 @@ describe("team member update contract", () => {
       expect(source).toContain('.select("user_id, site_id")');
       expect(source).not.toContain("sites(id, site_name, site_code)");
     }
-    expect(teamPage).toContain("Organization-wide");
+    expect(teamPage).toContain('t("organizationWide")');
   });
 });
