@@ -1,6 +1,8 @@
 -- Local verification matrix for migration 058 (customer support loop).
 -- Runs in one transaction and rolls back: zero residue.
 -- Usage: npm run verify:db   (requires `supabase start`)
+-- Share tokens use an e-prefixed pattern so the matrix can run beside
+-- `npm run seed:local` fixtures.
 
 \set ON_ERROR_STOP on
 BEGIN;
@@ -58,23 +60,23 @@ INSERT INTO public.tickets (
   customer_visible_summary, resolved_at, closed_at
 ) VALUES
   -- T1 waiting on customer, owned
-  ('70000000-0000-4000-8000-000000000001', 'RPL-958001', 'c0000000-0000-4000-8000-000000000001', '50000000-0000-4000-8000-000000000001', 'web', 'T1', 'd', 'incident', 'P3', repeat('1', 64), 'waiting_customer', 'a0000000-0000-4000-8000-000000000001', 'guest@example.com', NULL, NULL, NULL),
+  ('70000000-0000-4000-8000-000000000001', 'RPL-958001', 'c0000000-0000-4000-8000-000000000001', '50000000-0000-4000-8000-000000000001', 'web', 'T1', 'd', 'incident', 'P3', repeat('e1', 32), 'waiting_customer', 'a0000000-0000-4000-8000-000000000001', 'guest@example.com', NULL, NULL, NULL),
   -- T2 resolved yesterday
-  ('70000000-0000-4000-8000-000000000002', 'RPL-958002', 'c0000000-0000-4000-8000-000000000001', '50000000-0000-4000-8000-000000000001', 'web', 'T2', 'd', 'incident', 'P3', repeat('2', 64), 'resolved', 'a0000000-0000-4000-8000-000000000001', 'guest@example.com', 'Fixed', now() - interval '1 day', NULL),
+  ('70000000-0000-4000-8000-000000000002', 'RPL-958002', 'c0000000-0000-4000-8000-000000000001', '50000000-0000-4000-8000-000000000001', 'web', 'T2', 'd', 'incident', 'P3', repeat('e2', 32), 'resolved', 'a0000000-0000-4000-8000-000000000001', 'guest@example.com', 'Fixed', now() - interval '1 day', NULL),
   -- T3 closed 40 days ago
-  ('70000000-0000-4000-8000-000000000003', 'RPL-958003', 'c0000000-0000-4000-8000-000000000001', '50000000-0000-4000-8000-000000000001', 'web', 'T3', 'd', 'incident', 'P3', repeat('3', 64), 'closed', 'a0000000-0000-4000-8000-000000000001', NULL, 'Fixed', now() - interval '45 days', now() - interval '40 days'),
+  ('70000000-0000-4000-8000-000000000003', 'RPL-958003', 'c0000000-0000-4000-8000-000000000001', '50000000-0000-4000-8000-000000000001', 'web', 'T3', 'd', 'incident', 'P3', repeat('e3', 32), 'closed', 'a0000000-0000-4000-8000-000000000001', NULL, 'Fixed', now() - interval '45 days', now() - interval '40 days'),
   -- T4 resolved 10 days ago, quiet: auto-close candidate
-  ('70000000-0000-4000-8000-000000000004', 'RPL-958004', 'c0000000-0000-4000-8000-000000000001', '50000000-0000-4000-8000-000000000001', 'web', 'T4', 'd', 'incident', 'P3', repeat('4', 64), 'resolved', 'a0000000-0000-4000-8000-000000000001', NULL, 'Fixed', now() - interval '10 days', NULL),
+  ('70000000-0000-4000-8000-000000000004', 'RPL-958004', 'c0000000-0000-4000-8000-000000000001', '50000000-0000-4000-8000-000000000001', 'web', 'T4', 'd', 'incident', 'P3', repeat('e4', 32), 'resolved', 'a0000000-0000-4000-8000-000000000001', NULL, 'Fixed', now() - interval '10 days', NULL),
   -- T5 resolved 10 days ago but the customer wrote 2 days ago
-  ('70000000-0000-4000-8000-000000000005', 'RPL-958005', 'c0000000-0000-4000-8000-000000000001', '50000000-0000-4000-8000-000000000001', 'web', 'T5', 'd', 'incident', 'P3', repeat('5', 64), 'resolved', 'a0000000-0000-4000-8000-000000000001', NULL, 'Fixed', now() - interval '10 days', NULL),
+  ('70000000-0000-4000-8000-000000000005', 'RPL-958005', 'c0000000-0000-4000-8000-000000000001', '50000000-0000-4000-8000-000000000001', 'web', 'T5', 'd', 'incident', 'P3', repeat('e5', 32), 'resolved', 'a0000000-0000-4000-8000-000000000001', NULL, 'Fixed', now() - interval '10 days', NULL),
   -- T6 resolved 2 days ago
-  ('70000000-0000-4000-8000-000000000006', 'RPL-958006', 'c0000000-0000-4000-8000-000000000001', '50000000-0000-4000-8000-000000000001', 'web', 'T6', 'd', 'incident', 'P3', repeat('6', 64), 'resolved', 'a0000000-0000-4000-8000-000000000001', NULL, 'Fixed', now() - interval '2 days', NULL),
+  ('70000000-0000-4000-8000-000000000006', 'RPL-958006', 'c0000000-0000-4000-8000-000000000001', '50000000-0000-4000-8000-000000000001', 'web', 'T6', 'd', 'incident', 'P3', repeat('e6', 32), 'resolved', 'a0000000-0000-4000-8000-000000000001', NULL, 'Fixed', now() - interval '2 days', NULL),
   -- T7 waiting on customer without an owner (legacy shape)
-  ('70000000-0000-4000-8000-000000000007', 'RPL-958007', 'c0000000-0000-4000-8000-000000000001', '50000000-0000-4000-8000-000000000001', 'web', 'T7', 'd', 'incident', 'P3', repeat('7', 64), 'waiting_customer', NULL, NULL, NULL, NULL, NULL),
+  ('70000000-0000-4000-8000-000000000007', 'RPL-958007', 'c0000000-0000-4000-8000-000000000001', '50000000-0000-4000-8000-000000000001', 'web', 'T7', 'd', 'incident', 'P3', repeat('e7', 32), 'waiting_customer', NULL, NULL, NULL, NULL, NULL),
   -- T9 Slack-sourced, waiting on customer
-  ('70000000-0000-4000-8000-000000000009', 'RPL-958009', 'c0000000-0000-4000-8000-000000000001', '50000000-0000-4000-8000-000000000001', 'slack', 'T9', 'd', 'incident', 'P3', repeat('a', 64), 'waiting_customer', 'a0000000-0000-4000-8000-000000000001', 'slackuser@example.com', NULL, NULL, NULL),
+  ('70000000-0000-4000-8000-000000000009', 'RPL-958009', 'c0000000-0000-4000-8000-000000000001', '50000000-0000-4000-8000-000000000001', 'slack', 'T9', 'd', 'incident', 'P3', repeat('ea', 32), 'waiting_customer', 'a0000000-0000-4000-8000-000000000001', 'slackuser@example.com', NULL, NULL, NULL),
   -- T8 resolved, for guest reopen
-  ('70000000-0000-4000-8000-000000000008', 'RPL-958008', 'c0000000-0000-4000-8000-000000000001', '50000000-0000-4000-8000-000000000001', 'web', 'T8', 'd', 'incident', 'P3', repeat('8', 64), 'resolved', 'a0000000-0000-4000-8000-000000000001', 'guest@example.com', 'Fixed', now() - interval '1 day', NULL);
+  ('70000000-0000-4000-8000-000000000008', 'RPL-958008', 'c0000000-0000-4000-8000-000000000001', '50000000-0000-4000-8000-000000000001', 'web', 'T8', 'd', 'incident', 'P3', repeat('e8', 32), 'resolved', 'a0000000-0000-4000-8000-000000000001', 'guest@example.com', 'Fixed', now() - interval '1 day', NULL);
 
 INSERT INTO public.ticket_comments (ticket_id, author_id, body, visibility, source, created_at)
 VALUES ('70000000-0000-4000-8000-000000000005', 'a0000000-0000-4000-8000-000000000002', 'Still watching', 'customer', 'web', now() - interval '2 days');
@@ -337,7 +339,7 @@ UPDATE public.tickets SET status = 'waiting_customer'
 WHERE id = '70000000-0000-4000-8000-000000000001';
 
 SELECT public.record_guest_ticket_reply_atomic(jsonb_build_object(
-  'ticket_no', 'RPL-958001', 'secure_token', repeat('1', 64),
+  'ticket_no', 'RPL-958001', 'secure_token', repeat('e1', 32),
   'body', 'Guest answer', 'reopen', false, 'idempotency_key', 'verify-058-guest-reply-1'
 )) AS guest_comment \gset
 SELECT pg_temp.check(
@@ -361,31 +363,31 @@ SELECT pg_temp.check(
 );
 SELECT pg_temp.check(
   public.record_guest_ticket_reply_atomic(jsonb_build_object(
-    'ticket_no', 'RPL-958001', 'secure_token', repeat('1', 64),
+    'ticket_no', 'RPL-958001', 'secure_token', repeat('e1', 32),
     'body', 'Guest answer', 'reopen', false, 'idempotency_key', 'verify-058-guest-reply-1'
   )) = :'guest_comment'::uuid,
   'exact guest replay returns the first comment'
 );
 SELECT pg_temp.expect_error(
   $$SELECT public.record_guest_ticket_reply_atomic(jsonb_build_object(
-    'ticket_no', 'RPL-958001', 'secure_token', repeat('1', 64),
+    'ticket_no', 'RPL-958001', 'secure_token', repeat('e1', 32),
     'body', 'Guest answer', 'reopen', true, 'idempotency_key', 'verify-058-guest-reply-1'))$$,
   '22023', 'altered guest key reuse is rejected'
 );
 SELECT pg_temp.expect_error(
   $$SELECT public.record_guest_ticket_reply_atomic(jsonb_build_object(
-    'ticket_no', 'RPL-958001', 'secure_token', repeat('9', 64),
+    'ticket_no', 'RPL-958001', 'secure_token', repeat('e9', 32),
     'body', 'Hi', 'reopen', false, 'idempotency_key', 'verify-058-guest-wrong-token'))$$,
   'P0002', 'wrong share token is not found'
 );
 SELECT pg_temp.expect_error(
   $$SELECT public.record_guest_ticket_reply_atomic(jsonb_build_object(
-    'ticket_no', 'RPL-958001', 'secure_token', repeat('1', 64),
+    'ticket_no', 'RPL-958001', 'secure_token', repeat('e1', 32),
     'body', 'Hi', 'reopen', false, 'idempotency_key', 'verify-058-guest-extra', 'author_id', 'x'))$$,
   '22023', 'unknown guest input fields are rejected'
 );
 SELECT public.record_guest_ticket_reply_atomic(jsonb_build_object(
-  'ticket_no', 'RPL-958008', 'secure_token', repeat('8', 64),
+  'ticket_no', 'RPL-958008', 'secure_token', repeat('e8', 32),
   'body', 'Still broken', 'reopen', true, 'idempotency_key', 'verify-058-guest-reopen-1'
 ));
 SELECT pg_temp.check(
@@ -394,7 +396,7 @@ SELECT pg_temp.check(
 );
 SELECT pg_temp.expect_error(
   $$SELECT public.record_guest_ticket_reply_atomic(jsonb_build_object(
-    'ticket_no', 'RPL-958003', 'secure_token', repeat('3', 64),
+    'ticket_no', 'RPL-958003', 'secure_token', repeat('e3', 32),
     'body', 'Again', 'reopen', true, 'idempotency_key', 'verify-058-guest-reopen-old'))$$,
   '23514', 'guest cannot reopen a long-closed ticket'
 );
