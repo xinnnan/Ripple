@@ -16,15 +16,17 @@ meaningful change and before ending a work session. Newest entries go first.
   covered engineer, customer, other-tenant customer, and guest flows against
   a seeded local stack at 1024 px and 375 px with no horizontal overflow and
   no unexpected console errors.
-- **Deployment gate:** apply migrations 056, 057, 058 to production in order
-  (000 is a no-op where pgvector exists), then repeat the 057/058 behaviour
-  checks against production-shaped data. Set `CRON_SECRET` so the daily
-  worker can auto-close tickets and drain the outbox. Verify the Resend
-  sender domain so update/resolution emails send.
+- **Deployment gate:** migrations 056, 057, and 058 were applied to
+  production by the product owner on 2026-10-06 (reported; 000 is a no-op
+  where pgvector exists). Remaining: production behaviour checks for 057/058
+  against real data, deploy this branch so the application uses the new
+  commands, set `CRON_SECRET` so the daily worker can auto-close tickets and
+  drain the outbox, and verify the Resend sender domain.
 - **External gates unchanged:** hosted CI branch protection, protected
   staging fixture, MiniMax key, first real Slack-thread reconciliation.
-- **Exact next step:** open a PR from `claude/production-readiness`, apply
-  migrations 056–058 in production, then run the credentialed matrix.
+- **Exact next step:** merge the `claude/production-readiness` PR so the
+  deployed app matches migrations 056–058, then run the credentialed matrix
+  and production behaviour checks.
 
 ## Previous checkpoint (2026-08-19, superseded)
 

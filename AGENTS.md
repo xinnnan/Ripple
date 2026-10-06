@@ -21,9 +21,9 @@ This file is the **single source of truth for project context** — read it befo
 ship the current feature set; PRD v1.1 domains stay on the roadmap.
 Migrations 001–055 are deployed and live-verified. Migrations 000 and 056–058
 build cleanly from scratch on local Supabase and pass `npm run verify:db`
-(95 assertions plus 12-way concurrency); they are the current production
-deployment gate (apply in order 056, 057, 058; 000 is a no-op where pgvector
-already exists). `main` is live on Vercel.
+(95 assertions plus 12-way concurrency). Migrations 056–058 were applied to
+production on 2026-10-06 (reported by the product owner); production
+behaviour verification is pending. `main` is live on Vercel.
 
 ---
 
@@ -1979,7 +1979,7 @@ resume work; this section remains the broader historical summary.
 ### Known issues / open work
 | Priority | Item | Where | Notes |
 |---|---|---|---|
-| 🔴 Deploy | Migrations 056, 057, 058 (and no-op 000) not yet applied to production | `supabase/migrations/` | Apply in order through the SQL editor, then run the equivalent live checks; `npm run verify:db` passes locally (95 assertions) and replies/auto-return were 12-way concurrency checked |
+| 🟡 Verify | Migrations 056–058 applied to production 2026-10-06 (reported) | `supabase/migrations/` | Deploy the matching application code, then run production behaviour checks; `npm run verify:db` passes locally (95 assertions) and replies/auto-return were 12-way concurrency checked |
 | 🟡 Configure | Daily cron now also auto-closes resolved tickets | `vercel.json`, `/api/internal/outbox/dispatch` | Requires `CRON_SECRET`; a 5–15 minute schedule (Vercel Pro or external scheduler) would also tighten outbox retry latency |
 | 🟢 Low | 34 latent type errors in test files only (Node `File` vs DOM `File` under TS 5.9) | `src/**/*.test.ts` | `next build` type-checks app code cleanly; add a `tsc --noEmit` gate after fixing test typings |
 | 🟢 Low | Dev-only `braces` ≤3.0.3 advisory has no published fix | `eslint-config-next` → `fast-glob` | Lint-time only on repository-authored globs; CI audits production with zero tolerance and the full tree for criticals |

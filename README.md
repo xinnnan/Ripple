@@ -178,8 +178,9 @@ Apply the SQL files in `supabase/migrations/` **in order** (000 → 058) via the
 058_customer_support_loop.sql
 ```
 
-**Pending production deployment (2026-10-05):** 056, 057, and 058. They build
-from scratch on local Supabase and pass `npm run verify:db`. 057 enforces the
+**Applied to production 2026-10-06:** 056, 057, and 058 (production behaviour
+verification pending). They build from scratch on local Supabase and pass
+`npm run verify:db`. 057 enforces the
 part-request workflow and admin-only approval; 058 adds customer reply
 auto-return, customer/guest reopen, guest replies, engineer update emails,
 and the 7-day auto-close run by the protected cron.
