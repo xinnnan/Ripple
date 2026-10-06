@@ -218,6 +218,7 @@ export function TicketFilters({
               className="w-full max-w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 sm:w-auto"
             >
               <option value="">All owners</option>
+              <option value="unassigned">Unassigned</option>
               {options.owners.map((o) => (
                 <option key={o.id} value={o.id}>
                   {o.full_name}

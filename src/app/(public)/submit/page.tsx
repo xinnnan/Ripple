@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { buildPublicTicketPath } from "@/lib/tickets/public-link";
 import { useRouter } from "next/navigation";
 import {
   REQUEST_TYPE_LABELS,
@@ -526,9 +527,9 @@ export default function SubmitTicketPage() {
             </p>
           )}
           <div className="flex flex-col gap-3 sm:flex-row">
-            {result.secure_token && (
+            {result.secure_token && result.ticket_no && (
               <Link
-                href={`/t/${result.secure_token}`}
+                href={buildPublicTicketPath(result.ticket_no, result.secure_token)}
                 className="flex-1 rounded-xl bg-primary px-5 py-3 text-sm font-bold text-white hover:bg-primary/90"
               >
                 Track this ticket

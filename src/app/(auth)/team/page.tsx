@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
@@ -9,6 +10,8 @@ import { CreateTeamMemberForm } from "./create-team-member-form";
 import { TableEmpty } from "@/components/empty-state";
 import { buildTeamSiteAccess } from "@/lib/team/read-model";
 import { assertPageQueriesSucceeded } from "@/lib/server-page-query";
+
+export const metadata: Metadata = { title: "Team" };
 
 export const dynamic = "force-dynamic";
 

@@ -1,6 +1,9 @@
+import type { Metadata } from "next";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { assertPageQueriesSucceeded } from "@/lib/server-page-query";
 import { CreateFieldServiceForm } from "./create-field-service-form";
+
+export const metadata: Metadata = { title: "New field service order" };
 
 export const dynamic = "force-dynamic";
 

@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   STATUS_LABELS,
@@ -28,6 +29,16 @@ import {
   TICKET_DETAIL_FIELD_SERVICE_SELECT,
 } from "@/lib/resource-projections";
 import { assertPageQueriesSucceeded } from "@/lib/server-page-query";
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ ticketId: string }>;
+}): Promise<Metadata> {
+  // Title from the URL alone: no lookup, so nothing about the ticket leaks.
+  const { ticketId } = await params;
+  return { title: /^RPL-\d{1,12}$/i.test(ticketId) ? ticketId.toUpperCase() : "Ticket" };
+}
 
 interface Props {
   params: Promise<{ ticketId: string }>;

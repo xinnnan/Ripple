@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getUserScope, scopeTickets, scopeSites } from "@/lib/supabase/scope";
 import { redirect } from "next/navigation";
@@ -11,11 +12,14 @@ import {
   parseFilters,
   parseTicketListFilters,
   buildParams,
+  UNASSIGNED_OWNER,
   type TicketFilterOptions,
 } from "./ticket-filters.shared";
 import { TicketListControls } from "./ticket-list-controls";
 import { buildTicketSearchFilter } from "@/lib/tickets/search-filter";
 import { assertPageQueriesSucceeded } from "@/lib/server-page-query";
+
+export const metadata: Metadata = { title: "Tickets" };
 
 export const dynamic = "force-dynamic";
 
@@ -80,7 +84,7 @@ export default async function TicketsPage({ searchParams }: Props) {
       site:sites(id, site_name),
       owner:users!tickets_owner_id_fkey(id, full_name)
     `,
-      { count: "estimated" }
+      { count: "exact" }
     )
     .order("created_at", { ascending: false });
 
@@ -155,7 +159,10 @@ export default async function TicketsPage({ searchParams }: Props) {
         canFilterByOwner: false,
       });
     }
-    query = query.eq("owner_id", filters.owner_id);
+    query =
+      filters.owner_id === UNASSIGNED_OWNER
+        ? query.is("owner_id", null)
+        : query.eq("owner_id", filters.owner_id);
   }
   if (filters.q) {
     query = query.or(buildTicketSearchFilter(filters.q));

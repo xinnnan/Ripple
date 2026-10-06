@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { AdminInventoryRecord } from "@/lib/spare-parts/inventory-mutations";
 import {
@@ -7,6 +8,8 @@ import {
 } from "./inventory-client";
 import { parseAdminInventoryPageFilters } from "@/lib/admin-list-filters";
 import { assertPageQueriesSucceeded } from "@/lib/server-page-query";
+
+export const metadata: Metadata = { title: "Inventory" };
 
 export const dynamic = "force-dynamic";
 

@@ -1,9 +1,12 @@
+import type { Metadata } from "next";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { SLAPolicyForm } from "../sla-policy-form";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { parseUuidRouteId } from "@/lib/request-identifiers";
 import { assertPageQueriesSucceeded } from "@/lib/server-page-query";
+
+export const metadata: Metadata = { title: "SLA policy" };
 
 export const dynamic = "force-dynamic";
 

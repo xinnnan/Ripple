@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import {
@@ -14,6 +15,8 @@ import {
 } from "lucide-react";
 import { getConfigurationReadiness } from "@/lib/config/readiness";
 import { requireInternal } from "@/lib/supabase/auth-helpers";
+
+export const metadata: Metadata = { title: "System status" };
 
 type ReadinessStatus = "ready" | "not_ready" | "disabled";
 

@@ -15,6 +15,7 @@
 
 import { Resend } from "resend";
 import { resolvePublicAppOrigin } from "@/lib/config/public-app-url";
+import { buildPublicTicketPath } from "@/lib/tickets/public-link";
 import {
   isResendApiKeyConfigured,
   resolveEmailFromAddress,
@@ -227,12 +228,10 @@ export async function sendTicketResolved(
 // ---------------------------------------------------------------------------
 
 function buildTicketUrl(ticketNo: string, secureToken: string): string {
-  const url = new URL(
-    `/t/${encodeURIComponent(ticketNo)}`,
+  return new URL(
+    buildPublicTicketPath(ticketNo, secureToken),
     `${resolvePublicAppOrigin()}/`
-  );
-  url.searchParams.set("token", secureToken);
-  return url.toString();
+  ).toString();
 }
 
 function normalizeSubjectText(s: string): string {

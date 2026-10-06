@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { SPR_STATUS_LABELS, SPR_STATUS_COLORS, SPR_PRIORITY_LABELS } from "@/types/spare-parts";
 import Link from "next/link";
@@ -5,6 +6,8 @@ import { PartRequestActions } from "./part-request-actions";
 import { parseUuidRouteId } from "@/lib/request-identifiers";
 import { notFound } from "next/navigation";
 import { assertPageQueriesSucceeded } from "@/lib/server-page-query";
+
+export const metadata: Metadata = { title: "Part request" };
 
 export const dynamic = "force-dynamic";
 

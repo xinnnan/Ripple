@@ -79,11 +79,23 @@ export async function middleware(request: NextRequest) {
   // users cannot continue through an existing Supabase session.
   let profile: { role: string; status: string } | null = null;
   if (user && (isProtected || isAuthRoute)) {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("users")
       .select("role, status")
       .eq("id", user.id)
       .maybeSingle();
+
+    if (error) {
+      // A failed read proves nothing about the account. Revoking the session
+      // here would sign every user out during a transient database blip, so
+      // fail closed for this request only and keep the session intact.
+      console.error("[middleware] profile read failed:", {
+        code: (error as { code?: string }).code || "UNKNOWN",
+      });
+      if (isAuthRoute) return supabaseResponse;
+      return accountServiceUnavailable(supabaseResponse);
+    }
+
     profile = (data as { role: string; status: string } | null) ?? null;
 
     if (!profile || profile.status !== "active") {
@@ -110,7 +122,8 @@ export async function middleware(request: NextRequest) {
   if (isProtected && !user) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
-    url.searchParams.set("next", pathname);
+    url.search = "";
+    url.searchParams.set("next", `${pathname}${request.nextUrl.search}`);
     return NextResponse.redirect(url);
   }
 
@@ -187,6 +200,25 @@ export async function middleware(request: NextRequest) {
   }
 
   return supabaseResponse;
+}
+
+function accountServiceUnavailable(sessionResponse: NextResponse) {
+  const response = new NextResponse(
+    "Ripple is temporarily unable to verify your account. Please retry in a few seconds.",
+    {
+      status: 503,
+      headers: {
+        "content-type": "text/plain; charset=utf-8",
+        "cache-control": "no-store",
+        "retry-after": "5",
+      },
+    }
+  );
+  // Keep any refreshed session cookies so the retry stays signed in.
+  for (const cookie of sessionResponse.cookies.getAll()) {
+    response.cookies.set(cookie);
+  }
+  return response;
 }
 
 export const config = {

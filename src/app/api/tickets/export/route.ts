@@ -107,7 +107,10 @@ export async function GET(request: NextRequest) {
           { status: 403 }
         );
       }
-      query = query.eq("owner_id", filters.ownerId);
+      query =
+        filters.ownerId === "unassigned"
+          ? query.is("owner_id", null)
+          : query.eq("owner_id", filters.ownerId);
     }
 
     if (filters.q) {

@@ -2,7 +2,10 @@ import type { Metadata } from "next";
 import "@/styles/globals.css";
 
 export const metadata: Metadata = {
-  title: "Ripple — DropletAI Support",
+  title: {
+    default: "Ripple — DropletAI Support",
+    template: "%s · Ripple",
+  },
   description:
     "DropletAI Services support portal. Submit and track support requests for your automation systems.",
   icons: {

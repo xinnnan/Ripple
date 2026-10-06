@@ -1,4 +1,5 @@
 import React from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 (globalThis as typeof globalThis & { React: typeof React }).React = React;
@@ -14,6 +15,11 @@ const { createAdminClient, createClient, redirect } = vi.hoisted(() => ({
 vi.mock("@/lib/supabase/admin", () => ({ createAdminClient }));
 vi.mock("@/lib/supabase/server", () => ({ createClient }));
 vi.mock("next/navigation", () => ({ redirect }));
+vi.mock("next/link", () => ({
+  default: ({ href, children, ...rest }: { href: string; children: React.ReactNode }) => (
+    <a href={href} {...rest}>{children}</a>
+  ),
+}));
 
 import DashboardPage from "@/app/(auth)/dashboard/page";
 
@@ -134,8 +140,10 @@ function setProfile(role: "admin" | "customer_manager" | "customer") {
   );
 }
 
-async function renderDashboardVariant() {
-  const variant = await DashboardPage();
+async function renderDashboardVariant(denied?: string) {
+  const variant = await DashboardPage(
+    denied ? { searchParams: Promise.resolve({ denied }) } : undefined
+  );
   if (!React.isValidElement(variant) || typeof variant.type !== "function") {
     throw new Error("Expected an async dashboard variant");
   }
@@ -337,5 +345,90 @@ describe("dashboard read integrity", () => {
       "customer.status",
       ["active", "trial"]
     );
+  });
+
+  it("gives engineers their own queue, SLA breaches, and drill-down links", async () => {
+    setProfile("admin");
+    const admin = makeAdminClient({
+      tickets: [
+        success([], 12),
+        success([], 3),
+        success([], 2),
+        success([], 4),
+        success(
+          [
+            {
+              ticket_no: "RPL-000101",
+              title: "Sorter jam on line 3",
+              severity: "P1",
+              status: "in_progress",
+              resolve_due_at: "2026-10-05T18:00:00Z",
+              sla_breached: true,
+              customer: { name: "Acme" },
+              site: { site_name: "Indy DC", timezone: "America/Indiana/Indianapolis" },
+            },
+          ],
+          1
+        ),
+        success([
+          {
+            ticket_no: "RPL-000102",
+            title: "AMR battery alarm",
+            severity: "P3",
+            status: "new",
+            created_at: "2026-10-05T12:00:00Z",
+            customer: { name: "Acme" },
+            site: { site_name: "Indy DC", timezone: "UTC" },
+          },
+        ]),
+      ],
+    });
+    createAdminClient.mockReturnValue(admin.client);
+
+    const html = renderToStaticMarkup(
+      (await renderDashboardVariant()) as React.ReactElement
+    );
+
+    expectCall(admin.calls, "tickets", "eq", "owner_id", USER_ID);
+    expectCall(admin.calls, "tickets", "eq", "sla_breached", true);
+    expect(html).toContain("My open tickets");
+    expect(html).toContain("RPL-000101");
+    expect(html).toContain("SLA breached");
+    const open = "status=new%2Cassigned%2Cin_progress%2Cwaiting_customer%2Cwaiting_droplet%2Creopened";
+    expect(html).toContain(`href="/tickets?${open}&amp;sla=breached"`);
+    expect(html).toContain(`href="/tickets?${open}&amp;owner=unassigned"`);
+    expect(html).toContain(`href="/tickets?${open}&amp;severity=P1%2CP2"`);
+    expect(html).toContain(`href="/tickets?${open}&amp;owner=${USER_ID}"`);
+    expect(html).toContain("severity-P1");
+    expect(html).toContain("severity-P3");
+    expect(html).toContain("status-new");
+  });
+
+  it("explains a middleware access denial instead of silently redirecting", async () => {
+    setProfile("customer");
+    createAdminClient.mockReturnValue(
+      makeAdminClient({ site_members: [success()] }).client
+    );
+
+    const html = renderToStaticMarkup(
+      (await renderDashboardVariant("admin")) as React.ReactElement
+    );
+
+    expect(html).toContain('role="status"');
+    expect(html).toContain("administrators");
+  });
+
+  it("ignores unknown denial reasons", async () => {
+    setProfile("customer");
+    createAdminClient.mockReturnValue(
+      makeAdminClient({ site_members: [success()] }).client
+    );
+
+    const html = renderToStaticMarkup(
+      (await renderDashboardVariant("<script>")) as React.ReactElement
+    );
+
+    expect(html).not.toContain('role="status"');
+    expect(html).not.toContain("&lt;script&gt;");
   });
 });

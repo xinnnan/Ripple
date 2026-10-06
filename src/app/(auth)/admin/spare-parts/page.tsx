@@ -1,8 +1,11 @@
+import type { Metadata } from "next";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { PART_CATEGORY_LABELS } from "@/types/spare-parts";
 import Link from "next/link";
 import type { SparePart } from "@/types/spare-parts";
 import { assertPageQueriesSucceeded } from "@/lib/server-page-query";
+
+export const metadata: Metadata = { title: "Spare parts" };
 
 export const dynamic = "force-dynamic";
 

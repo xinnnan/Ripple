@@ -14,6 +14,7 @@ export type TicketFiltersState = {
   severity?: Severity[];
   customer_id?: string;
   site_id?: string;
+  /** Owner UUID, or "unassigned" for tickets without an owner. */
   owner_id?: string;
   range?: "7d" | "30d" | "90d" | "all";
   /** SLA bucket. "all" / "breached" / "breaching" / "on_track" / "no_sla". */
@@ -52,6 +53,7 @@ const FILTER_KEYS = new Set([
   "sla",
   "page",
 ]);
+export const UNASSIGNED_OWNER = "unassigned";
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -111,7 +113,10 @@ export function parseTicketListFilters(
   const customerId = readSingle("customer");
   const siteId = readSingle("site");
   const ownerId = readSingle("owner");
-  for (const value of [customerId, siteId, ownerId]) {
+  const ownerIsValid =
+    !ownerId || ownerId === UNASSIGNED_OWNER || UUID_PATTERN.test(ownerId);
+  if (!ownerIsValid) isValid = false;
+  for (const value of [customerId, siteId]) {
     if (value && !UUID_PATTERN.test(value)) isValid = false;
   }
 
@@ -147,7 +152,7 @@ export function parseTicketListFilters(
       customer_id:
         customerId && UUID_PATTERN.test(customerId) ? customerId : undefined,
       site_id: siteId && UUID_PATTERN.test(siteId) ? siteId : undefined,
-      owner_id: ownerId && UUID_PATTERN.test(ownerId) ? ownerId : undefined,
+      owner_id: ownerId && ownerIsValid ? ownerId : undefined,
       range: RANGES.includes(range as (typeof RANGES)[number])
         ? (range as TicketFiltersState["range"])
         : undefined,

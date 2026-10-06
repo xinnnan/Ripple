@@ -1,8 +1,11 @@
+import type { Metadata } from "next";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { FSO_STATUS_LABELS, FSO_STATUS_COLORS, SERVICE_TYPE_LABELS, FSO_PRIORITY_LABELS } from "@/types/spare-parts";
 import { formatDateOnly } from "@/lib/utils";
 import Link from "next/link";
 import { assertPageQueriesSucceeded } from "@/lib/server-page-query";
+
+export const metadata: Metadata = { title: "Field service" };
 
 export const dynamic = "force-dynamic";
 

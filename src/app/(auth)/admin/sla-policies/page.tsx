@@ -1,6 +1,9 @@
+import type { Metadata } from "next";
 import { createAdminClient } from "@/lib/supabase/admin";
 import Link from "next/link";
 import { assertPageQueriesSucceeded } from "@/lib/server-page-query";
+
+export const metadata: Metadata = { title: "SLA policies" };
 
 export const dynamic = "force-dynamic";
 

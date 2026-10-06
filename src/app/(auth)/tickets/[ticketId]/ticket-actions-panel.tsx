@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useTransition } from "react";
+import { useEffect, useState, useRef, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   STATUS_LABELS,
@@ -65,6 +65,16 @@ export function TicketActionsPanel({
   const [status, setStatus] = useState<TicketStatus>(currentStatus);
   const [severity, setSeverity] = useState<Severity>(currentSeverity);
   const [ownerId, setOwnerId] = useState<string | null>(currentOwnerId);
+  // router.refresh() can deliver another engineer's change. Re-seed the form
+  // from the new server state instead of presenting stale values as edits.
+  const serverStateKey = `${currentStatus}|${currentSeverity}|${currentOwnerId ?? ""}`;
+  const [syncedServerState, setSyncedServerState] = useState(serverStateKey);
+  if (syncedServerState !== serverStateKey) {
+    setSyncedServerState(serverStateKey);
+    setStatus(currentStatus);
+    setSeverity(currentSeverity);
+    setOwnerId(currentOwnerId);
+  }
   const [resolveOpen, setResolveOpen] = useState(false);
   const [mutationError, setMutationError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -388,6 +398,15 @@ function ResolveCard({
   const busy = submitting || refreshing;
 
   const isResolved = currentStatus === "resolved" || currentStatus === "closed";
+
+  useEffect(() => {
+    if (!open) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !busy) onOpenChange(false);
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [open, busy, onOpenChange]);
 
   async function handleResolve(e: React.FormEvent) {
     e.preventDefault();

@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { PROJECT_STATUS_LABELS, PROJECT_STATUS_COLORS } from "@/types/ticket";
@@ -7,6 +8,8 @@ import { assertPageQueriesSucceeded } from "@/lib/server-page-query";
 import { singleRelation } from "@/lib/utils";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+
+export const metadata: Metadata = { title: "My sites" };
 
 export const dynamic = "force-dynamic";
 

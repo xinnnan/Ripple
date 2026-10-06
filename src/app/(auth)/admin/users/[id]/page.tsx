@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { createAdminClient } from "@/lib/supabase/admin";
 import Link from "next/link";
 import { formatDate } from "@/lib/utils";
@@ -9,6 +10,8 @@ import { TableEmpty } from "@/components/empty-state";
 import { parseUuidRouteId } from "@/lib/request-identifiers";
 import { notFound } from "next/navigation";
 import { assertPageQueriesSucceeded } from "@/lib/server-page-query";
+
+export const metadata: Metadata = { title: "User" };
 
 export const dynamic = "force-dynamic";
 

@@ -46,6 +46,13 @@ describe("parseFilters", () => {
     expect(f.status).toEqual(["new", "in_progress"]);
   });
 
+  it("accepts the unassigned owner bucket and round-trips it", () => {
+    const parsed = parseTicketListFilters(new URLSearchParams("owner=unassigned"));
+    expect(parsed.isValid).toBe(true);
+    expect(parsed.filters.owner_id).toBe("unassigned");
+    expect(buildParams(parsed.filters)).toBe("?owner=unassigned");
+  });
+
   it("parses customer / site / owner by their URL keys", () => {
     const f = parseFilters(
       new URLSearchParams(

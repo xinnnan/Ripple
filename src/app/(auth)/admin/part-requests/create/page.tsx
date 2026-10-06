@@ -1,6 +1,9 @@
+import type { Metadata } from "next";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { assertPageQueriesSucceeded } from "@/lib/server-page-query";
 import { CreatePartRequestForm } from "./create-part-request-form";
+
+export const metadata: Metadata = { title: "New part request" };
 
 export const dynamic = "force-dynamic";
 

@@ -1,7 +1,8 @@
+import type { Metadata } from "next";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { redirect } from "next/navigation";
-import { STATUS_LABELS } from "@/types/ticket";
+import { SEVERITY_LABELS, STATUS_LABELS, type TicketStatus } from "@/types/ticket";
 import { PROJECT_STATUS_LABELS, PROJECT_STATUS_COLORS } from "@/types/ticket";
 import {
   formatDate,
@@ -12,6 +13,17 @@ import { isCustomerManager, isInternalUser } from "@/lib/roles";
 import Link from "next/link";
 import type { UserRole } from "@/types/ticket";
 import { assertPageQueriesSucceeded } from "@/lib/server-page-query";
+import {
+  buildParams,
+  type TicketFiltersState,
+} from "../tickets/ticket-filters.shared";
+import {
+  AccessDeniedNotice,
+  parseDeniedReason,
+  type DeniedReason,
+} from "./access-denied-notice";
+
+export const metadata: Metadata = { title: "Dashboard" };
 
 export const dynamic = "force-dynamic";
 
@@ -35,7 +47,14 @@ interface OpenTicketBySiteRow {
     | null;
 }
 
-export default async function DashboardPage() {
+interface DashboardPageProps {
+  searchParams?: Promise<{ denied?: string | string[] }>;
+}
+
+export default async function DashboardPage({
+  searchParams,
+}: DashboardPageProps = {}) {
+  const denied = parseDeniedReason((await searchParams)?.denied);
   const supabase = await createClient();
 
   const {
@@ -62,182 +81,359 @@ export default async function DashboardPage() {
   const isManager = role ? isCustomerManager(role) : false;
 
   if (isInternal) {
-    return <InternalDashboard />;
+    return <InternalDashboard userId={authUser.id} denied={denied} />;
   } else if (isManager && customerId) {
-    return <CustomerManagerDashboard userId={authUser.id} customerId={customerId} />;
+    return (
+      <CustomerManagerDashboard
+        userId={authUser.id}
+        customerId={customerId}
+        denied={denied}
+      />
+    );
   } else {
-    return <CustomerDashboard userId={authUser.id} />;
+    return <CustomerDashboard userId={authUser.id} denied={denied} />;
   }
 }
 
-async function InternalDashboard() {
-  const supabase = createAdminClient();
+const OPEN_TICKET_STATUSES: TicketStatus[] = [
+  "new",
+  "assigned",
+  "in_progress",
+  "waiting_customer",
+  "waiting_droplet",
+  "reopened",
+];
 
-  const [openTickets, p1p2Tickets, unassignedTickets, recentTickets] =
-    await Promise.all([
-      supabase
-        .from("tickets")
-        .select("id", { count: "exact", head: true })
-        .in("status", [
-          "new",
-          "assigned",
-          "in_progress",
-          "waiting_customer",
-          "waiting_droplet",
-          "reopened",
-        ]),
-      supabase
-        .from("tickets")
-        .select("id", { count: "exact", head: true })
-        .in("severity", ["P1", "P2"])
-        .in("status", [
-          "new",
-          "assigned",
-          "in_progress",
-          "waiting_customer",
-          "waiting_droplet",
-          "reopened",
-        ]),
-      supabase
-        .from("tickets")
-        .select("id", { count: "exact", head: true })
-        .is("owner_id", null)
-        .in("status", ["new", "assigned", "reopened"]),
-      supabase
-        .from("tickets")
-        .select(
-          `
-          ticket_no, title, severity, status, created_at,
-          customer:customers(name),
-          site:sites(site_name, timezone)
-        `
-        )
-        .order("created_at", { ascending: false })
-        .limit(10),
-    ]);
+interface InternalQueueTicket {
+  ticket_no: string;
+  title: string;
+  severity: string;
+  status: string;
+  resolve_due_at?: string | null;
+  sla_breached?: boolean | null;
+  created_at?: string;
+  customer: { name: string }[] | { name: string } | null;
+  site:
+    | { site_name: string; timezone: string }[]
+    | { site_name: string; timezone: string }
+    | null;
+}
+
+function ticketListHref(filters: Partial<TicketFiltersState>) {
+  return `/tickets${buildParams({ page: 1, ...filters })}`;
+}
+
+async function InternalDashboard({
+  userId,
+  denied,
+}: {
+  userId: string;
+  denied: DeniedReason | null;
+}) {
+  const supabase = createAdminClient();
+  const ticketSummary = `
+    ticket_no, title, severity, status, resolve_due_at, sla_breached, created_at,
+    customer:customers(name),
+    site:sites(site_name, timezone)
+  `;
+
+  const [
+    openTickets,
+    urgentTickets,
+    unassignedTickets,
+    breachedTickets,
+    myTickets,
+    recentTickets,
+  ] = await Promise.all([
+    supabase
+      .from("tickets")
+      .select("id", { count: "exact", head: true })
+      .in("status", OPEN_TICKET_STATUSES),
+    supabase
+      .from("tickets")
+      .select("id", { count: "exact", head: true })
+      .in("severity", ["P1", "P2"])
+      .in("status", OPEN_TICKET_STATUSES),
+    supabase
+      .from("tickets")
+      .select("id", { count: "exact", head: true })
+      .is("owner_id", null)
+      .in("status", OPEN_TICKET_STATUSES),
+    supabase
+      .from("tickets")
+      .select("id", { count: "exact", head: true })
+      .eq("sla_breached", true)
+      .in("status", OPEN_TICKET_STATUSES),
+    supabase
+      .from("tickets")
+      .select(ticketSummary, { count: "exact" })
+      .eq("owner_id", userId)
+      .in("status", OPEN_TICKET_STATUSES)
+      .order("resolve_due_at", { ascending: true, nullsFirst: false })
+      .limit(8),
+    supabase
+      .from("tickets")
+      .select(ticketSummary)
+      .order("created_at", { ascending: false })
+      .limit(8),
+  ]);
   assertPageQueriesSucceeded(
     "dashboard/internal",
     openTickets,
-    p1p2Tickets,
+    urgentTickets,
     unassignedTickets,
+    breachedTickets,
+    myTickets,
     recentTickets
   );
 
   const stats = [
     {
-      label: "Open Tickets",
+      label: "Open tickets",
       value: openTickets.count ?? 0,
-      color: "text-blue-600",
+      hint: "Everything not yet resolved",
+      href: ticketListHref({ status: OPEN_TICKET_STATUSES }),
+      accent: "bg-slate-900",
     },
     {
-      label: "P1/P2 Active",
-      value: p1p2Tickets.count ?? 0,
-      color: "text-red-600",
+      label: "P1 / P2 active",
+      value: urgentTickets.count ?? 0,
+      hint: "Critical and high severity",
+      href: ticketListHref({
+        status: OPEN_TICKET_STATUSES,
+        severity: ["P1", "P2"],
+      }),
+      accent: "bg-red-600",
     },
     {
       label: "Unassigned",
       value: unassignedTickets.count ?? 0,
-      color: "text-amber-600",
+      hint: "Waiting for an owner",
+      href: ticketListHref({
+        status: OPEN_TICKET_STATUSES,
+        owner_id: "unassigned",
+      }),
+      accent: "bg-amber-500",
+    },
+    {
+      label: "SLA breached",
+      value: breachedTickets.count ?? 0,
+      hint: "Open tickets past a target",
+      href: ticketListHref({ status: OPEN_TICKET_STATUSES, sla: "breached" }),
+      accent: "bg-rose-700",
     },
   ];
+  const mine = (myTickets.data ?? []) as InternalQueueTicket[];
+  const recent = (recentTickets.data ?? []) as InternalQueueTicket[];
 
   return (
     <div className="p-5 sm:p-8">
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Internal overview of all support activity.
-        </p>
+      <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-primary">
+            Service operations
+          </p>
+          <h1 className="mt-1 text-2xl font-bold text-foreground">Dashboard</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Live view of DropletAI support work across every customer site.
+          </p>
+        </div>
+        <Link
+          href={ticketListHref({ status: OPEN_TICKET_STATUSES })}
+          className="inline-flex min-h-11 items-center justify-center rounded-xl bg-slate-950 px-4 text-sm font-semibold text-white transition hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+        >
+          Open ticket queue
+        </Link>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+      <AccessDeniedNotice reason={denied} />
+
+      <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {stats.map((stat) => (
-          <div key={stat.label} className="rounded-xl border border-border p-6">
-            <p className="text-sm text-muted-foreground">{stat.label}</p>
-            <p className={`text-3xl font-bold mt-1 ${stat.color}`}>
+          <Link
+            key={stat.label}
+            href={stat.href}
+            className="group relative overflow-hidden rounded-xl border border-border bg-white p-5 transition hover:border-slate-300 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          >
+            <span
+              aria-hidden="true"
+              className={`absolute inset-y-0 left-0 w-1 ${stat.accent}`}
+            />
+            <p className="text-sm font-medium text-muted-foreground">
+              {stat.label}
+            </p>
+            <p className="mt-2 text-3xl font-bold tabular-nums text-foreground">
               {stat.value}
             </p>
-          </div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {stat.hint}
+              <span
+                aria-hidden="true"
+                className="ml-1 inline-block transition group-hover:translate-x-0.5"
+              >
+                →
+              </span>
+            </p>
+          </Link>
         ))}
       </div>
 
-      {/* Recent Tickets */}
-      <div className="rounded-xl border border-border">
-        <div className="p-6 border-b border-border flex items-center justify-between">
-          <h2 className="text-base font-semibold text-foreground">
-            Recent Tickets
-          </h2>
-          <Link
-            href="/tickets"
-            className="text-sm font-medium text-primary hover:text-primary/80"
-          >
-            View all →
-          </Link>
-        </div>
-        {recentTickets.data?.length === 0 ? (
-          <div className="p-6 text-center text-sm text-muted-foreground">
-            No tickets yet.
+      <div className="grid gap-6 lg:grid-cols-5">
+        <section
+          aria-labelledby="my-open-tickets"
+          className="rounded-xl border border-border bg-white lg:col-span-3"
+        >
+          <div className="flex items-center justify-between gap-3 border-b border-border p-5">
+            <div>
+              <h2
+                id="my-open-tickets"
+                className="text-base font-semibold text-foreground"
+              >
+                My open tickets
+              </h2>
+              <p className="text-xs text-muted-foreground">
+                {myTickets.count ?? mine.length} assigned to you, soonest due
+                first
+              </p>
+            </div>
+            <Link
+              href={ticketListHref({
+                status: OPEN_TICKET_STATUSES,
+                owner_id: userId,
+              })}
+              className="text-sm font-medium text-primary hover:text-primary/80"
+            >
+              View all →
+            </Link>
           </div>
-        ) : (
-          <div className="divide-y divide-border">
-            {recentTickets.data?.map(
-              (ticket: {
-                ticket_no: string;
-                title: string;
-                severity: string;
-                status: string;
-                created_at: string;
-                customer: { name: string }[] | { name: string } | null;
-                site:
-                  | { site_name: string; timezone: string }[]
-                  | { site_name: string; timezone: string }
-                  | null;
-              }) => (
-                <Link
-                  key={ticket.ticket_no}
-                  href={`/tickets/${ticket.ticket_no}`}
-                  className="grid gap-3 p-4 transition-colors hover:bg-muted/50 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
-                >
-                  <div className="min-w-0 sm:flex sm:items-center sm:gap-4">
-                    <span className="mb-1 block shrink-0 text-xs font-mono text-muted-foreground sm:mb-0 sm:w-24">
-                      {ticket.ticket_no}
-                    </span>
-                    <div className="min-w-0">
-                      <p className="break-words text-sm font-medium text-foreground">
-                        {ticket.title}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {singleRelation(ticket.customer)?.name || "Unknown"},{" "}
-                        {singleRelation(ticket.site)?.site_name || "Unknown Site"}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center justify-between gap-3 sm:justify-end sm:gap-4">
-                    <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-blue-50 text-blue-700">
-                      {STATUS_LABELS[ticket.status as keyof typeof STATUS_LABELS] || ticket.status}
-                    </span>
-                    <span className="text-right text-xs text-muted-foreground sm:w-28">
-                      {formatDate(
-                        ticket.created_at,
-                        resolveSiteTimezone(ticket.site)
-                      )}
-                    </span>
-                  </div>
-                </Link>
-              )
-            )}
+          {mine.length === 0 ? (
+            <div className="p-6 text-sm text-muted-foreground">
+              Nothing is assigned to you right now.{" "}
+              <Link
+                href={ticketListHref({
+                  status: OPEN_TICKET_STATUSES,
+                  owner_id: "unassigned",
+                })}
+                className="font-medium text-primary hover:text-primary/80"
+              >
+                Pick up an unassigned ticket
+              </Link>
+              .
+            </div>
+          ) : (
+            <ul className="divide-y divide-border">
+              {mine.map((ticket) => (
+                <QueueRow key={ticket.ticket_no} ticket={ticket} showDue />
+              ))}
+            </ul>
+          )}
+        </section>
+
+        <section
+          aria-labelledby="recent-tickets"
+          className="rounded-xl border border-border bg-white lg:col-span-2"
+        >
+          <div className="flex items-center justify-between gap-3 border-b border-border p-5">
+            <h2
+              id="recent-tickets"
+              className="text-base font-semibold text-foreground"
+            >
+              Recently created
+            </h2>
+            <Link
+              href="/tickets"
+              className="text-sm font-medium text-primary hover:text-primary/80"
+            >
+              All tickets →
+            </Link>
           </div>
-        )}
+          {recent.length === 0 ? (
+            <div className="p-6 text-sm text-muted-foreground">
+              No tickets yet.
+            </div>
+          ) : (
+            <ul className="divide-y divide-border">
+              {recent.map((ticket) => (
+                <QueueRow key={ticket.ticket_no} ticket={ticket} />
+              ))}
+            </ul>
+          )}
+        </section>
       </div>
     </div>
+  );
+}
+
+function QueueRow({
+  ticket,
+  showDue = false,
+}: {
+  ticket: InternalQueueTicket;
+  showDue?: boolean;
+}) {
+  const site = singleRelation(ticket.site);
+  const timezone = resolveSiteTimezone(ticket.site);
+  const severityLabel =
+    SEVERITY_LABELS[ticket.severity as keyof typeof SEVERITY_LABELS] ??
+    ticket.severity;
+  return (
+    <li>
+      <Link
+        href={`/tickets/${ticket.ticket_no}`}
+        className="block p-4 transition-colors hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:outline-none"
+      >
+        <div className="flex flex-wrap items-center gap-2">
+          <span
+            title={severityLabel}
+            className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-[11px] font-bold severity-${ticket.severity}`}
+          >
+            {ticket.severity}
+          </span>
+          <span className="font-mono text-xs text-muted-foreground">
+            {ticket.ticket_no}
+          </span>
+          <span
+            className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium status-${ticket.status}`}
+          >
+            {STATUS_LABELS[ticket.status as keyof typeof STATUS_LABELS] ??
+              ticket.status}
+          </span>
+          {showDue && ticket.sla_breached && (
+            <span className="inline-flex items-center rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-semibold text-rose-700">
+              SLA breached
+            </span>
+          )}
+        </div>
+        <p className="mt-1.5 break-words text-sm font-medium text-foreground">
+          {ticket.title}
+        </p>
+        <p className="mt-0.5 text-xs text-muted-foreground">
+          {singleRelation(ticket.customer)?.name || "Unknown customer"} ·{" "}
+          {site?.site_name || "Unknown site"} ·{" "}
+          {showDue
+            ? ticket.resolve_due_at
+              ? `Resolve by ${formatDate(ticket.resolve_due_at, timezone)}`
+              : "No resolution target"
+            : ticket.created_at
+              ? formatDate(ticket.created_at, timezone)
+              : ""}
+        </p>
+      </Link>
+    </li>
   );
 }
 
 /**
  * Customer Manager Dashboard — sees all sites and tickets under their customer.
  */
-async function CustomerManagerDashboard({ customerId }: { userId: string; customerId: string }) {
+async function CustomerManagerDashboard({
+  customerId,
+  denied,
+}: {
+  userId: string;
+  customerId: string;
+  denied: DeniedReason | null;
+}) {
   const supabase = createAdminClient();
 
   // Get all sites under this customer
@@ -362,6 +558,7 @@ async function CustomerManagerDashboard({ customerId }: { userId: string; custom
 
   return (
     <div className="p-5 sm:p-8">
+      <AccessDeniedNotice reason={denied} />
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
         <p className="text-sm text-muted-foreground mt-1">
@@ -533,7 +730,13 @@ async function CustomerManagerDashboard({ customerId }: { userId: string; custom
   );
 }
 
-async function CustomerDashboard({ userId }: { userId: string }) {
+async function CustomerDashboard({
+  userId,
+  denied,
+}: {
+  userId: string;
+  denied: DeniedReason | null;
+}) {
   const supabase = createAdminClient();
 
   // Membership rows are retained for history. Resolve them through current
@@ -639,6 +842,7 @@ async function CustomerDashboard({ userId }: { userId: string }) {
 
   return (
     <div className="p-5 sm:p-8">
+      <AccessDeniedNotice reason={denied} />
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
         <p className="text-sm text-muted-foreground mt-1">

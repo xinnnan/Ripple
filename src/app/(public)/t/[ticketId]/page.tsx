@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { rateLimit, getClientIp } from "@/lib/rate-limit";
 import {
@@ -11,6 +12,8 @@ export const dynamic = "force-dynamic";
 import { STATUS_LABELS, SEVERITY_LABELS, IMPACT_LABELS } from "@/types/ticket";
 import { formatDate } from "@/lib/utils";
 import Link from "next/link";
+
+export const metadata: Metadata = { title: "Ticket status" };
 
 interface Props {
   params: Promise<{ ticketId: string }>;

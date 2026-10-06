@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { notFound, redirect } from "next/navigation";
@@ -7,6 +8,8 @@ import { isCustomerManager, ROLE_LABELS } from "@/lib/roles";
 import { EditTeamMemberForm } from "./edit-team-member-form";
 import { parseUuidRouteId } from "@/lib/request-identifiers";
 import { assertPageQueriesSucceeded } from "@/lib/server-page-query";
+
+export const metadata: Metadata = { title: "Team member" };
 
 export const dynamic = "force-dynamic";
 
